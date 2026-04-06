@@ -64,6 +64,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         select: {
           name: true,
           assistantStyle: true,
+          assistantGender: true,
           currency: true,
         },
       });
@@ -159,6 +160,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const context: AssistantContext = {
         userName: user.name,
         assistantStyle: user.assistantStyle as 'friendly' | 'strict' | 'calm' | 'toxic',
+        assistantGender: user.assistantGender,
         todayTasks: todayTasks.map((t) => ({ title: t.title, completed: t.completed })),
         habitsProgress: {
           total: activeHabits.length,

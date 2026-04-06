@@ -6,13 +6,18 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { createMMKV } from 'react-native-mmkv';
 import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore } from '@/stores/theme-store';
 import { Card, Button } from '@/components/ui';
-import { colors, spacing, fontSize } from '@/constants';
+import { colors, spacing, fontSize, borderRadius } from '@/constants';
+import {
+  scheduleWakeUpNotification,
+  cancelWakeUpNotification,
+} from '@/services/wake-up-notification';
 
 const storage = createMMKV({ id: 'settings-storage' });
 
@@ -97,6 +102,15 @@ export default function SettingsScreen() {
     const stored = storage.getString('assistantStyle');
     return (stored as AssistantStyleKey) ?? 'friendly';
   });
+  const [assistantGender, setAssistantGender] = useState<'female' | 'male'>(() => {
+    const stored = storage.getString('assistantGender');
+    return (stored as 'female' | 'male') ?? 'female';
+  });
+  const [wakeUpTime, setWakeUpTime] = useState(() => {
+    return storage.getString('wakeUpTime') ?? '07:00';
+  });
+  const [editingWakeUpTime, setEditingWakeUpTime] = useState(false);
+  const [wakeUpTimeInput, setWakeUpTimeInput] = useState('');
 
   const handleToggleMorning = useCallback(() => {
     const next = !morningReminder;
@@ -137,6 +151,29 @@ export default function SettingsScreen() {
       storage.set('assistantStyle', key);
     }
   }, []);
+
+  const handleGenderChange = useCallback((gender: 'female' | 'male') => {
+    setAssistantGender(gender);
+    storage.set('assistantGender', gender);
+  }, []);
+
+  const handleWakeUpTimeEdit = useCallback(() => {
+    setWakeUpTimeInput(wakeUpTime);
+    setEditingWakeUpTime(true);
+  }, [wakeUpTime]);
+
+  const handleWakeUpTimeSave = useCallback(() => {
+    const trimmed = wakeUpTimeInput.trim();
+    const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(trimmed);
+    if (!match) {
+      Alert.alert('Ошибка', 'Введите время в формате ЧЧ:ММ (например, 07:00)');
+      return;
+    }
+    setWakeUpTime(trimmed);
+    storage.set('wakeUpTime', trimmed);
+    setEditingWakeUpTime(false);
+    scheduleWakeUpNotification(trimmed);
+  }, [wakeUpTimeInput]);
 
   const handleImport = useCallback(() => {
     router.push('/import');
@@ -248,6 +285,67 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         ))}
+      </Card>
+
+      {/* Голос ассистента */}
+      <Card>
+        <Text style={styles.settingLabel}>Голос ассистента</Text>
+        <View style={styles.genderRow}>
+          <TouchableOpacity
+            style={[
+              styles.genderOption,
+              assistantGender === 'female' && styles.genderOptionSelected,
+            ]}
+            onPress={() => handleGenderChange('female')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.genderOptionText}>Женский</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.genderOption,
+              assistantGender === 'male' && styles.genderOptionSelected,
+            ]}
+            onPress={() => handleGenderChange('male')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.genderOptionText}>Мужской</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.separator} />
+        <TouchableOpacity
+          style={styles.row}
+          activeOpacity={0.7}
+          onPress={handleWakeUpTimeEdit}
+        >
+          <View style={styles.rowLeft}>
+            <Text style={styles.rowIcon}>{'\u23F0'}</Text>
+            <Text style={styles.rowLabel}>Время пробуждения</Text>
+          </View>
+          <Text style={styles.rowValue}>{wakeUpTime}</Text>
+        </TouchableOpacity>
+        {editingWakeUpTime && (
+          <View style={styles.wakeUpEditRow}>
+            <TextInput
+              style={styles.wakeUpInput}
+              value={wakeUpTimeInput}
+              onChangeText={setWakeUpTimeInput}
+              placeholder="ЧЧ:ММ"
+              placeholderTextColor={colors.textSecondary}
+              keyboardType="numbers-and-punctuation"
+              maxLength={5}
+              autoFocus
+              onSubmitEditing={handleWakeUpTimeSave}
+              returnKeyType="done"
+            />
+            <TouchableOpacity
+              style={styles.wakeUpSaveButton}
+              onPress={handleWakeUpTimeSave}
+            >
+              <Text style={styles.wakeUpSaveText}>Сохранить</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </Card>
 
       {/* Данные */}
@@ -374,6 +472,60 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     backgroundColor: colors.primary,
+  },
+  settingLabel: {
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+  },
+  genderRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  genderOption: {
+    flex: 1,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  genderOptionSelected: {
+    borderColor: colors.primary,
+  },
+  genderOptionText: {
+    color: colors.text,
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+  },
+  wakeUpEditRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    alignItems: 'center',
+  },
+  wakeUpInput: {
+    flex: 1,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    color: colors.text,
+    fontSize: fontSize.md,
+  },
+  wakeUpSaveButton: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  wakeUpSaveText: {
+    color: colors.text,
+    fontSize: fontSize.sm,
+    fontWeight: '600',
   },
   dangerCard: {
     borderColor: colors.danger,

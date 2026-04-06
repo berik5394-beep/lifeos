@@ -30,6 +30,8 @@ interface AssistantResponseContext {
   budgetLimit: number;
   currentStreak: number;
   weekProgress: number;
+  assistantGender: string;
+  wakeUpTime: string;
 }
 
 export async function voiceRoutes(app: FastifyInstance): Promise<void> {
@@ -64,6 +66,8 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
         select: {
           name: true,
           assistantStyle: true,
+          assistantGender: true,
+          wakeUpTime: true,
           currency: true,
         },
       });
@@ -174,6 +178,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
       const context: AssistantContext = {
         userName: user.name,
         assistantStyle: user.assistantStyle as 'friendly' | 'strict' | 'calm' | 'toxic',
+        assistantGender: user.assistantGender,
         todayTasks: todayTasks.map((t) => ({ title: t.title, completed: t.completed })),
         habitsProgress,
         upcomingEvents: upcomingEvents.map((e) => ({
@@ -228,6 +233,8 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
         budgetLimit,
         currentStreak,
         weekProgress,
+        assistantGender: user.assistantGender,
+        wakeUpTime: user.wakeUpTime,
       };
 
       return reply.send({

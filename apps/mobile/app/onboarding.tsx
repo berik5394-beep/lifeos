@@ -5,6 +5,7 @@ import {
   FlatList,
   Dimensions,
   StyleSheet,
+  TouchableOpacity,
   type ViewToken,
   type ListRenderItemInfo,
 } from 'react-native';
@@ -22,6 +23,17 @@ interface Slide {
   title: string;
   description: string;
 }
+
+interface GenderOption {
+  key: 'female' | 'male';
+  icon: string;
+  label: string;
+}
+
+const GENDER_OPTIONS: GenderOption[] = [
+  { key: 'female', icon: '\u{1F469}', label: 'Женский голос' },
+  { key: 'male', icon: '\u{1F468}', label: 'Мужской голос' },
+];
 
 const slides: Slide[] = [
   {
@@ -52,12 +64,19 @@ const slides: Slide[] = [
     description:
       'Управляйте приложением голосом на русском языке',
   },
+  {
+    id: '5',
+    emoji: '',
+    title: 'Выберите голос ассистента',
+    description: '',
+  },
 ];
 
 export default function OnboardingScreen() {
   const router = useRouter();
   const flatListRef = useRef<FlatList<Slide>>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedGender, setSelectedGender] = useState<'female' | 'male'>('female');
 
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -76,22 +95,53 @@ export default function OnboardingScreen() {
     }
   }, [currentIndex]);
 
+  const handleGenderSelect = useCallback((gender: 'female' | 'male') => {
+    setSelectedGender(gender);
+    storage.set('assistantGender', gender);
+  }, []);
+
   const handleStart = useCallback(() => {
     storage.set('onboarding_complete', true);
+    storage.set('assistantGender', selectedGender);
     router.replace('/(auth)/login');
-  }, [router]);
+  }, [router, selectedGender]);
 
   const isLastSlide = currentIndex === slides.length - 1;
 
   const renderSlide = useCallback(
-    ({ item }: ListRenderItemInfo<Slide>) => (
-      <View style={styles.slide}>
-        <Text style={styles.emoji}>{item.emoji}</Text>
-        <Text style={styles.title}>{item.title}</Text>
-        <Text style={styles.description}>{item.description}</Text>
-      </View>
-    ),
-    [],
+    ({ item }: ListRenderItemInfo<Slide>) => {
+      if (item.id === '5') {
+        return (
+          <View style={styles.slide}>
+            <Text style={styles.title}>{item.title}</Text>
+            <View style={styles.genderContainer}>
+              {GENDER_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.genderCard,
+                    selectedGender === option.key && styles.genderCardSelected,
+                  ]}
+                  onPress={() => handleGenderSelect(option.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.genderIcon}>{option.icon}</Text>
+                  <Text style={styles.genderLabel}>{option.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        );
+      }
+      return (
+        <View style={styles.slide}>
+          <Text style={styles.emoji}>{item.emoji}</Text>
+          <Text style={styles.title}>{item.title}</Text>
+          <Text style={styles.description}>{item.description}</Text>
+        </View>
+      );
+    },
+    [selectedGender, handleGenderSelect],
   );
 
   const keyExtractor = useCallback((item: Slide) => item.id, []);
@@ -187,5 +237,33 @@ const styles = StyleSheet.create({
   },
   button: {
     width: '100%',
+  },
+  genderContainer: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginTop: spacing.xl,
+    paddingHorizontal: spacing.md,
+  },
+  genderCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  genderCardSelected: {
+    borderColor: colors.primary,
+  },
+  genderIcon: {
+    fontSize: 48,
+    marginBottom: spacing.md,
+  },
+  genderLabel: {
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    color: colors.text,
   },
 });

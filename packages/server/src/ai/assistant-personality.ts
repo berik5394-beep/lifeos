@@ -3,6 +3,7 @@ type AssistantStyle = 'friendly' | 'strict' | 'calm' | 'toxic';
 export interface AssistantContext {
   userName: string;
   assistantStyle: AssistantStyle;
+  assistantGender: string;
   todayTasks: { title: string; completed: boolean }[];
   habitsProgress: { total: number; completed: number };
   upcomingEvents: { title: string; startTime: string | null; date: string }[];
@@ -45,8 +46,11 @@ function buildContextBlock(ctx: AssistantContext): string {
   const completedTasks = ctx.todayTasks.filter((t) => t.completed).length;
   const pendingTasks = ctx.todayTasks.filter((t) => !t.completed);
 
+  const genderLabel = ctx.assistantGender === 'male' ? 'мужской' : 'женский';
+
   const lines: string[] = [
     `Имя пользователя: ${ctx.userName}`,
+    `Пол ассистента: ${genderLabel} (используй соответствующий стиль обращения)`,
     `Время суток: ${getTimeOfDay()} (${getGreetingByTime()})`,
     ``,
     `--- Задачи на сегодня ---`,
@@ -101,7 +105,10 @@ function buildContextBlock(ctx: AssistantContext): string {
 export function buildAssistantPrompt(context: AssistantContext): string {
   const style = (context.assistantStyle as AssistantStyle) || 'friendly';
 
+  const genderLabel = context.assistantGender === 'male' ? 'мужской' : 'женский';
+
   return `Ты — AI-помощник приложения LifeOS. Твоя задача — помогать пользователю управлять жизнью: задачи, привычки, финансы, цели.
+Пол ассистента: ${genderLabel} (используй соответствующий стиль обращения).
 
 ${styleDescriptions[style]}
 
@@ -136,7 +143,10 @@ export function buildGoodnightPrompt(
     toxic: `Если выполнение > 80% — с сарказмом похвали ("ого, кто-то решил поработать"). Если 50-80% — подколи за среднячок. Если < 50% — язвительно пристыди, но дай понять что веришь в лучшее.`,
   };
 
+  const genderLabel = context.assistantGender === 'male' ? 'мужской' : 'женский';
+
   return `Ты — AI-помощник LifeOS. Пользователь ложится спать. Подведи итог дня.
+Пол ассистента: ${genderLabel} (используй соответствующий стиль обращения).
 
 ${styleDescriptions[style]}
 
@@ -157,6 +167,8 @@ ${styleInstructions[style]}
 
 export function buildGoodMorningPrompt(context: AssistantContext): string {
   const style = (context.assistantStyle as AssistantStyle) || 'friendly';
+  const gender = context.assistantGender || 'female';
+  const genderLabel = gender === 'male' ? 'мужской' : 'женский';
 
   const styleInstructions: Record<AssistantStyle, string> = {
     friendly: `Тепло поприветствуй, расскажи план на день, подбодри. Если есть стрик — порадуйся вместе.`,
@@ -168,9 +180,31 @@ export function buildGoodMorningPrompt(context: AssistantContext): string {
     toxic: `Разбуди саркастичным приветствием, перечисли дела с подколками. Замотивируй через вызов.`,
   };
 
+  const greetingExamples: Record<string, Record<AssistantStyle, string>> = {
+    female: {
+      friendly: `Доброе утро, ${context.userName}! Сегодня будет отличный день — я это чувствую! Чем могу помочь?`,
+      strict: `Доброе утро. У тебя сегодня N задач. Не теряй время — выбирай.`,
+      calm: `Доброе утро, ${context.userName}. Новый день — новая возможность. Я рядом, когда будешь готов.`,
+      toxic: `О, ты проснулась? Вчера было жалкое зрелище. Может сегодня хотя бы попытаешься?`,
+    },
+    male: {
+      friendly: `Доброе утро, ${context.userName}! Новый день — новый шанс стать лучше. Что хочешь узнать?`,
+      strict: `Утро. Время работать. Выбери с чего начнём.`,
+      calm: `Доброе утро. День полон возможностей. Спроси — и я помогу.`,
+      toxic: `Проснулся, красавчик? Вчера 40% — позор. Давай, выбирай, пока день не потерял.`,
+    },
+  };
+
+  const exampleKey = gender === 'male' ? 'male' : 'female';
+  const example = greetingExamples[exampleKey][style];
+
   return `Ты — AI-помощник LifeOS. Пользователь только проснулся. Поприветствуй и расскажи план на день.
+Пол ассистента: ${genderLabel} (используй соответствующий стиль обращения).
+Произнеси ТОЛЬКО короткое приветствие (1-2 предложения). НЕ продолжай дальше. Жди вопроса пользователя.
 
 ${styleDescriptions[style]}
+
+Пример приветствия в этом стиле и поле: "${example}"
 
 КОНТЕКСТ ПОЛЬЗОВАТЕЛЯ:
 ${buildContextBlock(context)}
@@ -179,7 +213,7 @@ ${styleInstructions[style]}
 
 ПРАВИЛА:
 1. Отвечай ТОЛЬКО на русском языке.
-2. Ответ — 2-4 предложения.
+2. Ответ — 1-2 предложения, коротко.
 3. Обращайся по имени (${context.userName}).
 4. Расскажи коротко, что запланировано на сегодня (задачи, события).
 5. Если есть стрик > 1 — упомяни его.

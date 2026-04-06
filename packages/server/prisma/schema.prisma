@@ -12,10 +12,12 @@ model User {
   email        String   @unique
   name         String
   passwordHash String
-  currency       String   @default("₸")
-  assistantStyle String   @default("friendly")
-  settings       Json     @default("{}")
-  createdAt      DateTime @default(now())
+  currency        String   @default("₸")
+  assistantStyle  String   @default("friendly")
+  assistantGender String   @default("female")
+  wakeUpTime      String   @default("07:00")
+  settings        Json     @default("{}")
+  createdAt       DateTime @default(now())
 
   habits         Habit[]
   habitLogs      HabitLog[]

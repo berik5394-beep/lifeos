@@ -16,14 +16,16 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ProgressRing } from '@/components/ui';
 import { Heatmap } from '@/components/charts';
 import { Confetti } from '@/components/shared';
-import { VoiceButton, VoiceModal } from '@/components/voice';
+import { VoiceButton, VoiceModal, MorningGreeting, EveningRitual } from '@/components/voice';
 import { useVoice } from '@/hooks/use-voice';
+import { useMorningGreeting } from '@/hooks/use-morning-greeting';
 import { useTaskStore } from '@/stores/task-store';
 import { useGoalStore } from '@/stores/goal-store';
 import { useHabitStore } from '@/stores/habit-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { useStepStore } from '@/stores/step-store';
 import { useJournalStore } from '@/stores/journal-store';
+import { api } from '@/services/api';
 import { getDailyQuote } from '@/utils/quotes';
 import { formatDate, getWeekDays } from '@/utils/dates';
 import { colors, spacing, fontSize, borderRadius } from '@/constants';
@@ -168,6 +170,9 @@ export default function PlannerScreen() {
   const [addingGoal, setAddingGoal] = useState(false);
   const [voiceModalVisible, setVoiceModalVisible] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [showEveningRitual, setShowEveningRitual] = useState(false);
+  const [eveningMessage, setEveningMessage] = useState('');
+  const [dayProgress, setDayProgress] = useState(0);
 
   const { tasks, isLoading: tasksLoading, fetchTasks, toggleComplete } = useTaskStore();
   const {
@@ -191,6 +196,13 @@ export default function PlannerScreen() {
     startRecording,
     stopRecording,
   } = useVoice();
+
+  const {
+    shouldShowGreeting,
+    greeting: morningGreeting,
+    dismissGreeting,
+    handleChipPress: handleMorningChipPress,
+  } = useMorningGreeting();
 
   const today = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => formatDate(today), [today]);
@@ -331,6 +343,30 @@ export default function PlannerScreen() {
     }
   }, [isRecording, startRecording, stopRecording]);
 
+  const token = useAuthStore((state) => state.token);
+
+  const handleGoodnight = useCallback(async () => {
+    if (!token) return;
+    try {
+      const response = await api.post<{ reply: string }>(
+        '/voice/assistant',
+        { text: 'спокойной ночи' },
+        token,
+      );
+      setEveningMessage(response.reply);
+    } catch {
+      setEveningMessage('Спокойной ночи! Отличный день позади.');
+    }
+    setDayProgress(overallTotal > 0 ? Math.round((overallCompleted / overallTotal) * 100) : 0);
+    setShowEveningRitual(true);
+  }, [token, overallTotal, overallCompleted]);
+
+  const handleEveningChipPress = useCallback((action: string) => {
+    if (action === 'plan_tomorrow') {
+      router.push('/(tabs)/tasks' as never);
+    }
+  }, [router]);
+
   const isLoading = tasksLoading || goalsLoading;
 
   return (
@@ -415,6 +451,13 @@ export default function PlannerScreen() {
             activeOpacity={0.7}
           >
             <Text style={styles.quickActionText}>{'\u{1F3A4}'} Голос</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickActionPill}
+            onPress={handleGoodnight}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.quickActionText}>{'\u{1F319}'} Отбой</Text>
           </TouchableOpacity>
         </View>
 
@@ -608,6 +651,23 @@ export default function PlannerScreen() {
         isProcessing={isProcessing}
         result={lastResult}
         error={voiceError}
+      />
+
+      {/* Morning Greeting */}
+      <MorningGreeting
+        visible={shouldShowGreeting}
+        onDismiss={dismissGreeting}
+        greeting={morningGreeting}
+        onChipPress={handleMorningChipPress}
+      />
+
+      {/* Evening Ritual */}
+      <EveningRitual
+        visible={showEveningRitual}
+        onDismiss={() => setShowEveningRitual(false)}
+        message={eveningMessage}
+        dayProgress={dayProgress}
+        onChipPress={handleEveningChipPress}
       />
     </SafeAreaView>
   );
