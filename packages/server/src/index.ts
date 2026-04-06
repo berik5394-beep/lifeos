@@ -14,6 +14,7 @@ import { importRoutes } from './routes/import.js';
 import { chatRoutes } from './routes/chat.js';
 import { integrationRoutes } from './routes/integrations.js';
 import { exportRoutes } from './routes/export.js';
+import { petRoutes } from './routes/pet.js';
 import { createTelegramBot, startBot, stopBot } from './services/telegram-bot.js';
 import type { Telegraf } from 'telegraf';
 
@@ -41,6 +42,7 @@ await app.register(importRoutes);
 await app.register(chatRoutes);
 await app.register(integrationRoutes);
 await app.register(exportRoutes);
+await app.register(petRoutes);
 
 let telegramBot: Telegraf | null = null;
 

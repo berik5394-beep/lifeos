@@ -6,6 +6,7 @@ import {
   Dimensions,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   type ViewToken,
   type ListRenderItemInfo,
 } from 'react-native';
@@ -23,6 +24,20 @@ interface Slide {
   title: string;
   description: string;
 }
+
+type PetOption = {
+  key: 'cat' | 'dog' | 'fox' | 'owl' | 'dragon';
+  icon: string;
+  label: string;
+};
+
+const PET_OPTIONS: PetOption[] = [
+  { key: 'cat', icon: '\u{1F431}', label: '\u041A\u043E\u0442\u0438\u043A' },
+  { key: 'dog', icon: '\u{1F436}', label: '\u0421\u043E\u0431\u0430\u0447\u043A\u0430' },
+  { key: 'fox', icon: '\u{1F98A}', label: '\u041B\u0438\u0441\u0451\u043D\u043E\u043A' },
+  { key: 'owl', icon: '\u{1F989}', label: '\u0421\u043E\u0432\u0451\u043D\u043E\u043A' },
+  { key: 'dragon', icon: '\u{1F409}', label: '\u0414\u0440\u0430\u043A\u043E\u043D\u0447\u0438\u043A' },
+];
 
 interface GenderOption {
   key: 'female' | 'male';
@@ -70,6 +85,12 @@ const slides: Slide[] = [
     title: 'Выберите голос ассистента',
     description: '',
   },
+  {
+    id: '6',
+    emoji: '',
+    title: '\u0412\u044B\u0431\u0435\u0440\u0438 \u043F\u0438\u0442\u043E\u043C\u0446\u0430',
+    description: '\u0422\u0432\u043E\u0439 LifePet \u0431\u0443\u0434\u0435\u0442 \u0440\u0430\u0441\u0442\u0438 \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 \u0442\u043E\u0431\u043E\u0439',
+  },
 ];
 
 export default function OnboardingScreen() {
@@ -77,6 +98,8 @@ export default function OnboardingScreen() {
   const flatListRef = useRef<FlatList<Slide>>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedGender, setSelectedGender] = useState<'female' | 'male'>('female');
+  const [selectedPet, setSelectedPet] = useState<PetOption['key']>('cat');
+  const [petName, setPetName] = useState('LifePet');
 
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -100,16 +123,56 @@ export default function OnboardingScreen() {
     storage.set('assistantGender', gender);
   }, []);
 
+  const handlePetSelect = useCallback((pet: PetOption['key']) => {
+    setSelectedPet(pet);
+    storage.set('petType', pet);
+  }, []);
+
   const handleStart = useCallback(() => {
     storage.set('onboarding_complete', true);
     storage.set('assistantGender', selectedGender);
+    storage.set('petType', selectedPet);
+    storage.set('petName', petName.trim() || 'LifePet');
     router.replace('/(auth)/login');
-  }, [router, selectedGender]);
+  }, [router, selectedGender, selectedPet, petName]);
 
   const isLastSlide = currentIndex === slides.length - 1;
 
   const renderSlide = useCallback(
     ({ item }: ListRenderItemInfo<Slide>) => {
+      if (item.id === '6') {
+        return (
+          <View style={styles.slide}>
+            <Text style={styles.title}>{item.title}</Text>
+            <Text style={styles.description}>{item.description}</Text>
+            <View style={styles.petContainer}>
+              {PET_OPTIONS.map((option) => (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.petCard,
+                    selectedPet === option.key && styles.petCardSelected,
+                  ]}
+                  onPress={() => handlePetSelect(option.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.petIcon}>{option.icon}</Text>
+                  <Text style={styles.petLabel}>{option.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TextInput
+              style={styles.petNameInput}
+              value={petName}
+              onChangeText={setPetName}
+              placeholder={'\u041A\u0430\u043A \u043D\u0430\u0437\u043E\u0432\u0451\u043C?'}
+              placeholderTextColor={colors.textSecondary}
+              maxLength={20}
+              returnKeyType="done"
+            />
+          </View>
+        );
+      }
       if (item.id === '5') {
         return (
           <View style={styles.slide}>
@@ -141,7 +204,7 @@ export default function OnboardingScreen() {
         </View>
       );
     },
-    [selectedGender, handleGenderSelect],
+    [selectedGender, handleGenderSelect, selectedPet, handlePetSelect, petName],
   );
 
   const keyExtractor = useCallback((item: Slide) => item.id, []);
@@ -265,5 +328,51 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: '600',
     color: colors.text,
+  },
+  petContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.sm,
+    justifyContent: 'center',
+  },
+  petCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.border,
+    width: 90,
+  },
+  petCardSelected: {
+    borderColor: colors.primary,
+  },
+  petIcon: {
+    fontSize: 36,
+    marginBottom: spacing.xs,
+  },
+  petLabel: {
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  petNameInput: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+    textAlign: 'center',
+    width: '80%',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
 });

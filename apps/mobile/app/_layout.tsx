@@ -49,6 +49,7 @@ export default function RootLayout() {
         <Stack.Screen name="activity" options={{ headerShown: false }} />
         <Stack.Screen name="journal" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
+        <Stack.Screen name="pet" options={{ headerShown: false }} />
       </Stack>
       {getRedirect()}
     </>

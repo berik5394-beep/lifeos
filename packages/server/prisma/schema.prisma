@@ -33,6 +33,7 @@ model User {
   budgetLimits   BudgetLimit[]
   chatMessages   ChatMessage[]
   integrations   Integration[]
+  pet            Pet?
 }
 
 model Habit {
@@ -224,4 +225,20 @@ model Integration {
   createdAt    DateTime @default(now())
 
   @@unique([userId, provider])
+}
+
+model Pet {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id])
+  type       String   @default("cat")
+  name       String   @default("LifePet")
+  health     Float    @default(80)
+  happiness  Float    @default(80)
+  streak     Int      @default(0)
+  lastFed    DateTime @default(now())
+  lastPlayed DateTime @default(now())
+  costume    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

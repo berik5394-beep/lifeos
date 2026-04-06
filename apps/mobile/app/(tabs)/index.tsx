@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ProgressRing } from '@/components/ui';
 import { Heatmap } from '@/components/charts';
-import { Confetti } from '@/components/shared';
+import { Confetti, PetAvatar } from '@/components/shared';
 import { VoiceButton, VoiceModal, MorningGreeting, EveningRitual } from '@/components/voice';
 import { useVoice } from '@/hooks/use-voice';
 import { useMorningGreeting } from '@/hooks/use-morning-greeting';
@@ -25,6 +25,7 @@ import { useHabitStore } from '@/stores/habit-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { useStepStore } from '@/stores/step-store';
 import { useJournalStore } from '@/stores/journal-store';
+import { usePetStore } from '@/stores/pet-store';
 import { api } from '@/services/api';
 import { getDailyQuote } from '@/utils/quotes';
 import { formatDate, getWeekDays } from '@/utils/dates';
@@ -187,6 +188,8 @@ export default function PlannerScreen() {
   const user = useAuthStore((state) => state.user);
   const { todaySteps } = useStepStore();
   const { todayEntry, fetchEntry: fetchJournalEntry } = useJournalStore();
+  const petData = usePetStore((s) => s.petData);
+  const petReaction = usePetStore((s) => s.lastReaction);
 
   const {
     isRecording,
@@ -229,6 +232,10 @@ export default function PlannerScreen() {
     () => `${formatShortDate(currentMonday)} — ${formatShortDate(sundayDate)}`,
     [currentMonday, sundayDate],
   );
+
+  useEffect(() => {
+    usePetStore.getState().fetchPet();
+  }, []);
 
   useEffect(() => {
     fetchTasks(undefined, weekStartStr);
@@ -371,6 +378,18 @@ export default function PlannerScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      {petData ? (
+        <View style={styles.petAvatarWrapper}>
+          <PetAvatar
+            petType={petData.pet.type}
+            state={petData.state}
+            costume={petData.pet.costume}
+            size={60}
+            onPress={() => router.push('/pet')}
+            reaction={petReaction}
+          />
+        </View>
+      ) : null}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -959,5 +978,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 90,
     right: 20,
+  },
+  petAvatarWrapper: {
+    position: 'absolute',
+    top: 8,
+    right: 16,
+    zIndex: 10,
   },
 });
