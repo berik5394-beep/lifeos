@@ -1,0 +1,14 @@
+{
+  "name": "lifeos",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "mobile": "npm run --workspace=apps/mobile start",
+    "server": "npm run --workspace=packages/server dev",
+    "server:build": "npm run --workspace=packages/server build"
+  }
+}

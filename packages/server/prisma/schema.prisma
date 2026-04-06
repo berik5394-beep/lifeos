@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  currency     String   @default("₸")
+  settings     Json     @default("{}")
+  createdAt    DateTime @default(now())
+
+  habits         Habit[]
+  habitLogs      HabitLog[]
+  tasks          Task[]
+  weeklyGoals    WeeklyGoal[]
+  yearlyGoals    YearlyGoal[]
+  expenses       Expense[]
+  incomes        Income[]
+  journalEntries JournalEntry[]
+  stepLogs       StepLog[]
+}
+
+model Habit {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id])
+  name         String
+  category     String
+  frequency    String
+  goalId       String?
+  goal         YearlyGoal? @relation(fields: [goalId], references: [id])
+  autoComplete Json?
+  order        Int         @default(0)
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  logs         HabitLog[]
+
+  @@index([userId])
+}
+
+model HabitLog {
+  id            String   @id @default(cuid())
+  habitId       String
+  habit         Habit    @relation(fields: [habitId], references: [id])
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  date          DateTime @db.Date
+  completed     Boolean  @default(false)
+  autoCompleted Boolean  @default(false)
+
+  @@unique([habitId, date])
+  @@index([userId, date])
+}
+
+model Task {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  category  String
+  priority  String
+  date      DateTime @db.Date
+  time      String?
+  completed Boolean  @default(false)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+model WeeklyGoal {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  weekStart DateTime @db.Date
+  goalText  String
+  completed Boolean  @default(false)
+  order     Int      @default(0)
+
+  @@index([userId, weekStart])
+}
+
+model YearlyGoal {
+  id       String  @id @default(cuid())
+  userId   String
+  user     User    @relation(fields: [userId], references: [id])
+  year     Int
+  area     String
+  goalText String
+  progress Float   @default(0)
+  habits   Habit[]
+
+  @@index([userId, year])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  date        DateTime @db.Date
+  category    String
+  description String
+  amount      Float
+  createdAt   DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+model Income {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  date      DateTime @db.Date
+  source    String
+  amount    Float
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+model JournalEntry {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  date       DateTime @db.Date
+  sleepHours Float?
+  energy     Int?
+  mood       Int?
+  notes      String?
+
+  @@unique([userId, date])
+}
+
+model StepLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  date       DateTime @db.Date
+  steps      Int
+  distanceKm Float?
+  gpsTrack   Json?
+
+  @@unique([userId, date])
+}
