@@ -29,6 +29,8 @@ model User {
   importedFiles  ImportedFile[]
   events         CalendarEvent[]
   budgetLimits   BudgetLimit[]
+  chatMessages   ChatMessage[]
+  integrations   Integration[]
 }
 
 model Habit {
@@ -194,4 +196,30 @@ model BudgetLimit {
   year         Int
 
   @@unique([userId, category, month, year])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  role      String
+  content   String
+  actions   Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Integration {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  provider     String
+  accessToken  String?
+  refreshToken String?
+  settings     Json     @default("{}")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, provider])
 }

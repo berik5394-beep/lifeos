@@ -146,6 +146,10 @@ export default function SettingsScreen() {
     Alert.alert('Экспорт данных', 'Скоро!');
   }, []);
 
+  const handleIntegrations = useCallback(() => {
+    router.push('/settings/integrations');
+  }, [router]);
+
   const handleLogout = useCallback(() => {
     Alert.alert('Выход', 'Вы уверены, что хотите выйти?', [
       { text: 'Отмена', style: 'cancel' },
@@ -252,6 +256,8 @@ export default function SettingsScreen() {
         <SettingRow icon="📥" label="Импорт файлов" onPress={handleImport} />
         <View style={styles.separator} />
         <SettingRow icon="📤" label="Экспорт данных" onPress={handleExport} />
+        <View style={styles.separator} />
+        <SettingRow icon="🔗" label="Интеграции" onPress={handleIntegrations} />
       </Card>
 
       {/* Аккаунт */}
