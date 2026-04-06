@@ -9,6 +9,8 @@ import { financeRoutes } from './routes/finance.js';
 import { stepRoutes } from './routes/steps.js';
 import { voiceRoutes } from './routes/voice.js';
 import { journalRoutes } from './routes/journal.js';
+import { eventRoutes } from './routes/events.js';
+import { importRoutes } from './routes/import.js';
 
 const app = Fastify({ logger: true });
 
@@ -29,6 +31,8 @@ await app.register(financeRoutes);
 await app.register(stepRoutes);
 await app.register(voiceRoutes);
 await app.register(journalRoutes);
+await app.register(eventRoutes);
+await app.register(importRoutes);
 
 const start = async (): Promise<void> => {
   try {

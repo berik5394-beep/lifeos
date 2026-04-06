@@ -16,6 +16,15 @@ import { colors, spacing, fontSize } from '@/constants';
 
 const storage = createMMKV({ id: 'settings-storage' });
 
+const ASSISTANT_STYLES = [
+  { key: 'friendly', label: 'Дружелюбный', icon: '😊' },
+  { key: 'strict', label: 'Строгий тренер', icon: '💪' },
+  { key: 'calm', label: 'Спокойный наставник', icon: '🧘' },
+  { key: 'toxic', label: 'Токсичный мотиватор', icon: '🔥' },
+] as const;
+
+type AssistantStyleKey = (typeof ASSISTANT_STYLES)[number]['key'];
+
 function loadToggle(key: string, fallback: boolean): boolean {
   const stored = storage.getBoolean(key);
   return stored ?? fallback;
@@ -84,6 +93,10 @@ export default function SettingsScreen() {
   const [taskReminders, setTaskReminders] = useState(() =>
     loadToggle('task_reminders', true),
   );
+  const [assistantStyle, setAssistantStyle] = useState<AssistantStyleKey>(() => {
+    const stored = storage.getString('assistantStyle');
+    return (stored as AssistantStyleKey) ?? 'friendly';
+  });
 
   const handleToggleMorning = useCallback(() => {
     const next = !morningReminder;
@@ -102,6 +115,32 @@ export default function SettingsScreen() {
     setTaskReminders(next);
     storage.set('task_reminders', next);
   }, [taskReminders]);
+
+  const handleAssistantStyleChange = useCallback((key: AssistantStyleKey) => {
+    if (key === 'toxic') {
+      Alert.alert(
+        'Внимание',
+        'Этот ассистент будет грубым и саркастичным. Это мотивационный стиль — не принимайте близко к сердцу.',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          {
+            text: 'Понятно',
+            onPress: () => {
+              setAssistantStyle(key);
+              storage.set('assistantStyle', key);
+            },
+          },
+        ],
+      );
+    } else {
+      setAssistantStyle(key);
+      storage.set('assistantStyle', key);
+    }
+  }, []);
+
+  const handleImport = useCallback(() => {
+    router.push('/import');
+  }, [router]);
 
   const handleExport = useCallback(() => {
     Alert.alert('Экспорт данных', 'Скоро!');
@@ -177,9 +216,41 @@ export default function SettingsScreen() {
         />
       </Card>
 
+      {/* Ассистент */}
+      <Text style={styles.sectionTitle}>Ассистент</Text>
+      <Card>
+        {ASSISTANT_STYLES.map((style, index) => (
+          <View key={style.key}>
+            {index > 0 && <View style={styles.separator} />}
+            <TouchableOpacity
+              style={styles.row}
+              activeOpacity={0.7}
+              onPress={() => handleAssistantStyleChange(style.key)}
+            >
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowIcon}>{style.icon}</Text>
+                <Text style={styles.rowLabel}>{style.label}</Text>
+              </View>
+              <View
+                style={[
+                  styles.radio,
+                  assistantStyle === style.key && styles.radioSelected,
+                ]}
+              >
+                {assistantStyle === style.key && (
+                  <View style={styles.radioInner} />
+                )}
+              </View>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </Card>
+
       {/* Данные */}
       <Text style={styles.sectionTitle}>Данные</Text>
       <Card>
+        <SettingRow icon="📥" label="Импорт файлов" onPress={handleImport} />
+        <View style={styles.separator} />
         <SettingRow icon="📤" label="Экспорт данных" onPress={handleExport} />
       </Card>
 
@@ -279,6 +350,24 @@ const styles = StyleSheet.create({
   },
   toggleThumbOff: {
     alignSelf: 'flex-start',
+  },
+  radio: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioSelected: {
+    borderColor: colors.primary,
+  },
+  radioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.primary,
   },
   dangerCard: {
     borderColor: colors.danger,

@@ -13,6 +13,9 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ProgressRing } from '@/components/ui';
+import { Heatmap } from '@/components/charts';
+import { Confetti } from '@/components/shared';
 import { VoiceButton, VoiceModal } from '@/components/voice';
 import { useVoice } from '@/hooks/use-voice';
 import { useTaskStore } from '@/stores/task-store';
@@ -164,6 +167,7 @@ export default function PlannerScreen() {
   const [newGoalText, setNewGoalText] = useState('');
   const [addingGoal, setAddingGoal] = useState(false);
   const [voiceModalVisible, setVoiceModalVisible] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const { tasks, isLoading: tasksLoading, fetchTasks, toggleComplete } = useTaskStore();
   const {
@@ -241,6 +245,16 @@ export default function PlannerScreen() {
   const habitsCompletedToday = todayLogs.filter((l) => l.completed).length;
   const habitsTotal = activeHabits.length;
   const habitProgress = habitsTotal > 0 ? habitsCompletedToday / habitsTotal : 0;
+
+  const overallTotal = todayTasksTotal + habitsTotal;
+  const overallCompleted = todayTasksCompleted + habitsCompletedToday;
+  const overallProgress = overallTotal > 0 ? overallCompleted / overallTotal : 0;
+
+  useEffect(() => {
+    if (overallTotal > 0 && overallCompleted === overallTotal) {
+      setShowConfetti(true);
+    }
+  }, [overallTotal, overallCompleted]);
 
   const selectedDayTasks = useMemo(() => {
     if (selectedDayIndex === null) return tasks;
@@ -334,6 +348,24 @@ export default function PlannerScreen() {
           <Text style={styles.quoteText}>{quote.text}</Text>
           <Text style={styles.quoteAuthor}>— {quote.author}</Text>
         </Card>
+
+        {/* Day Progress Ring */}
+        <View style={styles.dayProgressRow}>
+          <ProgressRing
+            progress={overallProgress}
+            size={80}
+            strokeWidth={6}
+            color={overallProgress >= 1 ? colors.success : colors.primary}
+          />
+          <View style={styles.dayProgressInfo}>
+            <Text style={styles.dayProgressTitle}>
+              {'\u041F\u0440\u043E\u0433\u0440\u0435\u0441\u0441 \u0434\u043D\u044F'}
+            </Text>
+            <Text style={styles.dayProgressSubtitle}>
+              {overallCompleted} \u0438\u0437 {overallTotal} \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E
+            </Text>
+          </View>
+        </View>
 
         {/* Today's Summary */}
         <View style={styles.summaryRow}>
@@ -516,6 +548,14 @@ export default function PlannerScreen() {
           )}
         </Card>
 
+        {/* Year Activity Heatmap */}
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            {'\u0410\u043A\u0442\u0438\u0432\u043D\u043E\u0441\u0442\u044C \u0437\u0430 \u0433\u043E\u0434'}
+          </Text>
+          <Heatmap data={{}} />
+        </Card>
+
         {/* Analytics */}
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>Аналитика</Text>
@@ -552,6 +592,12 @@ export default function PlannerScreen() {
         isRecording={isRecording}
         isProcessing={isProcessing}
         style={styles.floatingVoice}
+      />
+
+      {/* Confetti for 100% day */}
+      <Confetti
+        visible={showConfetti}
+        onComplete={() => setShowConfetti(false)}
       />
 
       {/* Voice Modal */}
@@ -600,6 +646,28 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: fontSize.xs,
     textAlign: 'right',
+  },
+  dayProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+  },
+  dayProgressInfo: {
+    flex: 1,
+  },
+  dayProgressTitle: {
+    color: colors.text,
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+  },
+  dayProgressSubtitle: {
+    color: colors.textSecondary,
+    fontSize: fontSize.sm,
+    marginTop: spacing.xs,
   },
   summaryRow: {
     flexDirection: 'row',

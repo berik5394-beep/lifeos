@@ -12,9 +12,10 @@ model User {
   email        String   @unique
   name         String
   passwordHash String
-  currency     String   @default("₸")
-  settings     Json     @default("{}")
-  createdAt    DateTime @default(now())
+  currency       String   @default("₸")
+  assistantStyle String   @default("friendly")
+  settings       Json     @default("{}")
+  createdAt      DateTime @default(now())
 
   habits         Habit[]
   habitLogs      HabitLog[]
@@ -25,6 +26,9 @@ model User {
   incomes        Income[]
   journalEntries JournalEntry[]
   stepLogs       StepLog[]
+  importedFiles  ImportedFile[]
+  events         CalendarEvent[]
+  budgetLimits   BudgetLimit[]
 }
 
 model Habit {
@@ -148,4 +152,46 @@ model StepLog {
   gpsTrack   Json?
 
   @@unique([userId, date])
+}
+
+model ImportedFile {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  fileName   String
+  fileType   String
+  purpose    String
+  parsedData Json
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+}
+
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  title       String
+  date        DateTime @db.Date
+  startTime   String?
+  endTime     String?
+  location    String?
+  description String?
+  reminder    Int      @default(30)
+  source      String   @default("manual")
+  createdAt   DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+model BudgetLimit {
+  id           String @id @default(cuid())
+  userId       String
+  user         User   @relation(fields: [userId], references: [id])
+  category     String
+  monthlyLimit Float
+  month        Int
+  year         Int
+
+  @@unique([userId, category, month, year])
 }

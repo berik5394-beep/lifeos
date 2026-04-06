@@ -112,6 +112,8 @@ model User {
   importedFiles  ImportedFile[]
   events         CalendarEvent[]
   budgetLimits   BudgetLimit[]
+  chatMessages   ChatMessage[]
+  integrations   Integration[]
 }
 
 model Habit {
@@ -257,6 +259,29 @@ model BudgetLimit {
   year         Int
   @@unique([userId, category, month, year])
 }
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  role      String   // "user", "assistant"
+  content   String
+  actions   Json?    // предложенные действия: [{ type: "create_task", data: {...} }]
+  createdAt DateTime @default(now())
+}
+
+model Integration {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  provider     String   // "google_calendar", "apple_health", "telegram"
+  accessToken  String?
+  refreshToken String?
+  settings     Json     @default("{}")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  @@unique([userId, provider])
+}
 ```
 
 ## API Endpoints
@@ -313,6 +338,18 @@ POST   /events
 PUT    /events/:id
 DELETE /events/:id
 GET    /events/upcoming      # ближайшие события для напоминаний
+
+POST   /voice/chat           # AI-чат (мини-ChatGPT), принимает текст, возвращает ответ с контекстом
+GET    /chat/history          # история чата
+
+GET    /integrations          # список подключённых интеграций
+POST   /integrations/google-calendar/connect   # OAuth Google Calendar
+POST   /integrations/google-calendar/sync      # принудительная синхронизация
+POST   /integrations/telegram/connect          # привязка Telegram бота
+
+POST   /export/csv/:module    # экспорт данных (finance, habits, tasks)
+POST   /export/pdf/report     # красивый PDF-отчёт за месяц/год
+POST   /export/story          # генерация картинки для Instagram Stories
 ```
 
 ## Дизайн-система
@@ -565,6 +602,68 @@ LifeOS — не просто трекер, а персональный друг 
 - "У меня есть файл со встречами на месяц" → парсит Excel → создаёт CalendarEvent для каждой
 - Пользователь просто кидает файл через кнопку "+" → LifeOS сам определяет что это и куда положить
 
+## Встроенный AI-чат (мини-ChatGPT внутри LifeOS)
+
+### Концепция
+Внутри LifeOS есть полноценный AI-чат на базе Claude API. Пользователь может задать ЛЮБОЙ вопрос — не только про задачи и привычки, но и про жизнь, работу, советы. ИИ знает контекст пользователя (его цели, привычки, финансы) и даёт персонализированные ответы.
+
+### Примеры использования
+- "Как мне лучше распределить бюджет на месяц?" → ИИ анализирует расходы и даёт план
+- "Какую книгу почитать про продуктивность?" → рекомендация + предложит добавить в привычки
+- "Помоги составить план тренировок на неделю" → план + автоматически создаёт задачи/привычки
+- "Как начать откладывать деньги?" → советы + предложит цель на год + лимиты бюджета
+- "Что приготовить на ужин за 3000 тенге?" → рецепт + автоматически запишет расход
+- "Напиши мотивирующее сообщение" → персонализированная мотивация на основе прогресса
+- Любой вопрос как к ChatGPT — погода, перевод, совет, информация
+
+### Техническая реализация
+- Отдельная вкладка "Чат" или кнопка в меню
+- POST /voice/chat — отправляет текст/голос, получает ответ
+- Системный промпт включает контекст пользователя (задачи, привычки, финансы, цели)
+- История чата сохраняется локально (MMKV)
+- Ввод: текст + голос (через тот же микрофон)
+- Ответ: текст на экране + озвучка через TTS
+- ИИ может предлагать действия: "Хочешь, я создам задачу?" → кнопка подтверждения
+- Стиль общения чата совпадает с выбранным стилем ассистента (friendly/strict/calm/toxic)
+
+## Интеграции с внешними сервисами
+
+### Google Calendar (приоритет: высокий)
+- Двусторонняя синхронизация через Google Calendar API
+- OAuth2 авторизация в настройках
+- Создал встречу в LifeOS → появилась в Google Calendar
+- Добавил встречу в Google Calendar → LifeOS подхватывает и напоминает
+- expo-auth-session для OAuth на мобильном
+
+### Apple Calendar (приоритет: высокий, только iOS)
+- Через expo-calendar — прямой доступ к календарю устройства
+- Запрос разрешения на доступ
+- Синхронизация событий в обе стороны
+
+### Apple Health / Google Fit (приоритет: высокий)
+- expo-sensors + expo-health (Apple Health) / Google Fit API
+- Автоматический импорт: шаги, дистанция, сон, пульс
+- Данные сна → в дневник (JournalEntry.sleepHours)
+- Шаги → автозакрытие привычки "ходьба 10000 шагов"
+
+### Банковские SMS / Push-уведомления (приоритет: средний)
+- Парсинг SMS от банков Казахстана (Kaspi, Halyk, Forte)
+- Формат: "Покупка 3500 ₸ Magnum" → автоматический add_expense
+- expo-sms-listener (Android) или Shortcuts (iOS)
+- Пользователь подтверждает категорию или ИИ определяет автоматически
+
+### Telegram бот (приоритет: средний)
+- Бот @LifeOS_bot — для быстрого ввода без открытия приложения
+- "потратил 5000 на обед" → добавляет расход
+- "задачи на сегодня" → присылает список
+- Утренний брифинг в Telegram
+- Реализация: Node.js + telegraf на сервере
+
+### Экспорт данных (приоритет: низкий)
+- Экспорт в CSV/Excel — финансы, привычки, статистика
+- Экспорт в PDF — месячный/годовой отчёт
+- Поделиться прогрессом в Instagram Stories (красивая картинка)
+
 ## Визуальный прогресс
 
 ### Круговые индикаторы (Progress Rings)
@@ -641,5 +740,8 @@ Push до задачи + до встречи + вечерняя проверка
 ### ЭТАП 7 — Дневник + Дашборд
 Журнал (сон/энергия/настроение) + главный дашборд + графики + цитаты + круговые прогрессы + тепловая карта года + свайп категорий
 
-### ЭТАП 8 — Полировка + Запуск
+### ЭТАП 8 — AI-чат + Интеграции
+Встроенный AI-чат (мини-ChatGPT) с контекстом пользователя + Google Calendar синхронизация + Apple Calendar + Apple Health/Google Fit + Telegram бот + экспорт данных (CSV/PDF/Stories)
+
+### ЭТАП 9 — Полировка + Запуск
 Анимации + тёмная/светлая тема + онбординг + тесты + оптимизация + App Store / Google Play

@@ -3,6 +3,7 @@ export interface User {
   email: string;
   name: string;
   currency: string;
+  assistantStyle: AssistantStyle;
   settings: Record<string, unknown>;
   createdAt: string;
 }
@@ -98,7 +99,42 @@ export interface StepLog {
   gpsTrack: Record<string, unknown> | null;
 }
 
+export interface CalendarEvent {
+  id: string;
+  userId: string;
+  title: string;
+  date: string;
+  startTime: string | null;
+  endTime: string | null;
+  location: string | null;
+  description: string | null;
+  reminder: number;
+  source: string;
+  createdAt: string;
+}
+
+export interface ImportedFile {
+  id: string;
+  userId: string;
+  fileName: string;
+  fileType: string;
+  purpose: string;
+  parsedData: unknown;
+  createdAt: string;
+}
+
+export interface BudgetLimit {
+  id: string;
+  userId: string;
+  category: string;
+  monthlyLimit: number;
+  month: number;
+  year: number;
+}
+
 export type TaskCategory = 'work' | 'personal' | 'health' | 'finance' | 'education' | 'home';
 export type Priority = 'low' | 'medium' | 'high' | 'critical';
 export type HabitCategory = 'health' | 'work' | 'personal';
 export type GoalArea = 'finance' | 'spirituality' | 'career' | 'health';
+export type AssistantStyle = 'friendly' | 'strict' | 'calm' | 'toxic';
+export type ExpenseCategory = 'food' | 'transport' | 'entertainment' | 'clothing' | 'health' | 'home' | 'other';
