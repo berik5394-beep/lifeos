@@ -10,7 +10,7 @@ import Animated, {
   Easing,
   cancelAnimation,
 } from 'react-native-reanimated';
-import type { PetType, PetState } from '@/stores/pet-store';
+import type { PetType, PetState, PetStage } from '@/stores/pet-store';
 import { colors } from '@/constants/colors';
 
 const PET_EMOJIS: Record<PetType, string> = {
@@ -32,6 +32,14 @@ const REACTION_EMOJIS: Record<string, string> = {
   bored: '\u{1F4AD}',
 };
 
+const STAGE_AVATAR_SIZES: Record<PetStage, number> = {
+  baby: 50,
+  teen: 55,
+  adult: 60,
+  master: 65,
+  legend: 70,
+};
+
 interface PetAvatarProps {
   petType: PetType;
   state: PetState;
@@ -39,16 +47,21 @@ interface PetAvatarProps {
   size?: number;
   onPress?: () => void;
   reaction?: string | null;
+  stage?: PetStage;
 }
 
 const PetAvatarComponent = ({
   petType,
   state,
   costume,
-  size = 60,
+  size,
   onPress,
   reaction,
+  stage,
 }: PetAvatarProps) => {
+  const isDead = state === 'dead';
+  const effectiveSize = size ?? (stage ? STAGE_AVATAR_SIZES[stage] : 60);
+
   const translateY = useSharedValue(0);
   const translateX = useSharedValue(0);
   const scale = useSharedValue(1);
@@ -70,6 +83,12 @@ const PetAvatarComponent = ({
     scale.value = 1;
     rotate.value = 0;
     opacity.value = 1;
+
+    if (isDead) {
+      opacity.value = withTiming(0.4, { duration: 500 });
+      rotate.value = withTiming(90, { duration: 500 });
+      return;
+    }
 
     switch (state) {
       case 'happy':
@@ -163,7 +182,7 @@ const PetAvatarComponent = ({
         );
         break;
     }
-  }, [state, translateY, translateX, scale, rotate, opacity, sparkleOpacity]);
+  }, [state, isDead, translateY, translateX, scale, rotate, opacity, sparkleOpacity]);
 
   useEffect(() => {
     if (!reaction) {
@@ -218,7 +237,7 @@ const PetAvatarComponent = ({
   }));
 
   const emoji = PET_EMOJIS[petType];
-  const costumeEmoji = costume ? COSTUME_OVERLAYS[costume] : null;
+  const costumeEmoji = !isDead && costume ? COSTUME_OVERLAYS[costume] : null;
   const reactionContent =
     reaction === 'bored'
       ? '...'
@@ -231,32 +250,45 @@ const PetAvatarComponent = ({
       onPress={onPress}
       activeOpacity={0.7}
       disabled={!onPress}
-      style={[styles.wrapper, { width: size, height: size }]}
+      style={[styles.wrapper, { width: effectiveSize, height: effectiveSize }]}
     >
       {costumeEmoji ? (
-        <Text style={[styles.costume, { fontSize: size * 0.3, top: -size * 0.15 }]}>
+        <Text style={[styles.costume, { fontSize: effectiveSize * 0.3, top: -effectiveSize * 0.15 }]}>
           {costumeEmoji}
         </Text>
       ) : null}
 
       <Animated.View style={animatedStyle}>
-        <Text style={[styles.petEmoji, { fontSize: size * 0.6 }]}>{emoji}</Text>
+        <Text
+          style={[
+            styles.petEmoji,
+            { fontSize: effectiveSize * 0.6 },
+            isDead && styles.deadEmoji,
+          ]}
+        >
+          {emoji}
+        </Text>
+        {isDead ? (
+          <Text style={[styles.deadEyes, { fontSize: effectiveSize * 0.2 }]}>
+            {'\u2716\uFE0F\u2716\uFE0F'}
+          </Text>
+        ) : null}
       </Animated.View>
 
-      {state === 'sleeping' ? (
-        <Text style={[styles.sleepIndicator, { fontSize: size * 0.25 }]}>
+      {state === 'sleeping' && !isDead ? (
+        <Text style={[styles.sleepIndicator, { fontSize: effectiveSize * 0.25 }]}>
           {'\u{1F4A4}'}
         </Text>
       ) : null}
 
       {state === 'celebrating' ? (
-        <Animated.Text style={[styles.sparkle, sparkleStyle, { fontSize: size * 0.25 }]}>
+        <Animated.Text style={[styles.sparkle, sparkleStyle, { fontSize: effectiveSize * 0.25 }]}>
           {'\u2728'}
         </Animated.Text>
       ) : null}
 
       {reaction === 'clap' ? (
-        <Animated.Text style={[styles.sparkle, sparkleStyle, { fontSize: size * 0.3 }]}>
+        <Animated.Text style={[styles.sparkle, sparkleStyle, { fontSize: effectiveSize * 0.3 }]}>
           {'\u2728'}
         </Animated.Text>
       ) : null}
@@ -280,6 +312,15 @@ const styles = StyleSheet.create({
   },
   petEmoji: {
     textAlign: 'center',
+  },
+  deadEmoji: {
+    opacity: 0.3,
+  },
+  deadEyes: {
+    position: 'absolute',
+    textAlign: 'center',
+    alignSelf: 'center',
+    top: '30%',
   },
   costume: {
     position: 'absolute',

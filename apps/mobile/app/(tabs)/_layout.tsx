@@ -17,6 +17,15 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Чат',
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="message-circle" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="index"
         options={{
           title: 'Дашборд',
@@ -58,15 +67,6 @@ export default function TabLayout() {
           title: 'Финансы',
           tabBarIcon: ({ color, size }) => (
             <Feather name="dollar-sign" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Чат',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="message-circle" size={size} color={color} />
           ),
         }}
       />

@@ -6,6 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -13,21 +15,82 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PetAvatar } from '@/components/shared/pet-avatar';
 import { usePetStore } from '@/stores/pet-store';
-import type { PetState } from '@/stores/pet-store';
+import type { PetState, PetStage, ReviveMethod, CostumeInfo } from '@/stores/pet-store';
 import { colors, spacing, fontSize, borderRadius } from '@/constants';
 
 const STATE_LABELS: Record<PetState, string> = {
-  happy: '\u0421\u0447\u0430\u0441\u0442\u043B\u0438\u0432\u044B\u0439',
-  content: '\u0414\u043E\u0432\u043E\u043B\u044C\u043D\u044B\u0439',
-  normal: '\u041D\u043E\u0440\u043C\u0430\u043B\u044C\u043D\u044B\u0439',
-  sad: '\u0413\u0440\u0443\u0441\u0442\u043D\u044B\u0439',
-  sick: '\u0411\u043E\u043B\u0435\u0435\u0442',
-  hungry: '\u0413\u043E\u043B\u043E\u0434\u043D\u044B\u0439',
-  sleepy: '\u0421\u043E\u043D\u043D\u044B\u0439',
-  sleeping: '\u0421\u043F\u0438\u0442',
-  celebrating: '\u041F\u0440\u0430\u0437\u0434\u043D\u0443\u0435\u0442',
-  exercising: '\u0422\u0440\u0435\u043D\u0438\u0440\u0443\u0435\u0442\u0441\u044F',
+  happy: 'Счастливый',
+  content: 'Довольный',
+  normal: 'Нормальный',
+  sad: 'Грустный',
+  sick: 'Болеет',
+  hungry: 'Голодный',
+  sleepy: 'Сонный',
+  sleeping: 'Спит',
+  celebrating: 'Празднует',
+  exercising: 'Тренируется',
+  dead: 'Мёртв',
 };
+
+const STAGE_LABELS: Record<PetStage, string> = {
+  baby: 'Малыш',
+  teen: 'Подросток',
+  adult: 'Взрослый',
+  master: 'Мастер',
+  legend: 'Легенда',
+};
+
+const STAGE_SIZES: Record<PetStage, number> = {
+  baby: 80,
+  teen: 100,
+  adult: 120,
+  master: 140,
+  legend: 160,
+};
+
+const ROOM_DECORATIONS: Record<number, string[]> = {
+  1: [],
+  2: ['🪑', '📦'],
+  3: ['🛋️', '🖼️', '🪴'],
+  4: ['🏆', '✨', '💎'],
+  5: ['👑', '🏰', '✨', '💫'],
+};
+
+const ROOM_COLORS: Record<number, string> = {
+  1: '#1a1a2e',
+  2: '#16213e',
+  3: '#1a1a3e',
+  4: '#1e1040',
+  5: '#2a1050',
+};
+
+interface ReviveOption {
+  method: ReviveMethod;
+  icon: string;
+  title: string;
+  description: string;
+}
+
+const REVIVE_OPTIONS: ReviveOption[] = [
+  {
+    method: 'perfect_day',
+    icon: '🌟',
+    title: '100% за сегодня',
+    description: 'Выполни все привычки и задачи',
+  },
+  {
+    method: 'double_steps',
+    icon: '🏃',
+    title: 'Двойная норма шагов',
+    description: 'Пройди 20 000 шагов',
+  },
+  {
+    method: 'three_days',
+    icon: '📅',
+    title: '3 дня по 80%',
+    description: 'Выполняй 80%+ три дня подряд',
+  },
+];
 
 interface BreakdownCardProps {
   label: string;
@@ -62,13 +125,71 @@ const BreakdownCard = React.memo(function BreakdownCard({
   );
 });
 
+interface ReviveCardProps {
+  option: ReviveOption;
+  onPress: (method: ReviveMethod) => void;
+}
+
+const ReviveCard = React.memo(function ReviveCard({ option, onPress }: ReviveCardProps) {
+  return (
+    <TouchableOpacity
+      style={styles.reviveCard}
+      onPress={() => onPress(option.method)}
+      activeOpacity={0.7}
+    >
+      <Text style={styles.reviveIcon}>{option.icon}</Text>
+      <View style={styles.reviveTextContainer}>
+        <Text style={styles.reviveTitle}>{option.title}</Text>
+        <Text style={styles.reviveDescription}>{option.description}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+interface CostumeItemProps {
+  costume: CostumeInfo;
+  onEquip: (key: string) => void;
+}
+
+const CostumeItem = React.memo(function CostumeItem({ costume, onEquip }: CostumeItemProps) {
+  return (
+    <View style={[styles.costumeItem, !costume.unlocked && styles.costumeItemLocked]}>
+      <Text style={styles.costumeEmoji}>{costume.emoji}</Text>
+      <Text style={[styles.costumeName, !costume.unlocked && styles.costumeNameLocked]}>
+        {costume.name}
+      </Text>
+      {costume.unlocked ? (
+        costume.equipped ? (
+          <Text style={styles.costumeEquipped}>Надето</Text>
+        ) : (
+          <Button title="Надеть" onPress={() => onEquip(costume.key)} size="sm" />
+        )
+      ) : (
+        <Text style={styles.costumeLocked}>🔒</Text>
+      )}
+    </View>
+  );
+});
+
 export default function PetScreen() {
   const router = useRouter();
-  const { petData, isLoading, lastReaction, fetchPet, feedPet, playWithPet, renamePet } =
-    usePetStore();
+  const {
+    petData,
+    costumes,
+    isLoading,
+    lastReaction,
+    fetchPet,
+    feedPet,
+    playWithPet,
+    renamePet,
+    revivePet,
+    fetchCostumes,
+    setCostume,
+  } = usePetStore();
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [costumeModalVisible, setCostumeModalVisible] = useState(false);
 
   useEffect(() => {
     fetchPet();
@@ -97,12 +218,32 @@ export default function PetScreen() {
     await playWithPet();
   }, [playWithPet]);
 
+  const handleRevive = useCallback(
+    async (method: ReviveMethod) => {
+      await revivePet(method);
+    },
+    [revivePet],
+  );
+
+  const handleOpenCostumes = useCallback(async () => {
+    await fetchCostumes();
+    setCostumeModalVisible(true);
+  }, [fetchCostumes]);
+
+  const handleEquipCostume = useCallback(
+    async (costume: string) => {
+      await setCostume(costume);
+      setCostumeModalVisible(false);
+    },
+    [setCostume],
+  );
+
   if (isLoading || !petData) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.centered}>
           <Text style={styles.loadingText}>
-            {isLoading ? '\u0417\u0430\u0433\u0440\u0443\u0437\u043A\u0430...' : '\u041F\u0438\u0442\u043E\u043C\u0435\u0446 \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D'}
+            {isLoading ? 'Загрузка...' : 'Питомец не найден'}
           </Text>
         </View>
       </SafeAreaView>
@@ -110,8 +251,61 @@ export default function PetScreen() {
   }
 
   const { pet, state, healthBreakdown } = petData;
+
+  // Death screen
+  if (!pet.isAlive) {
+    return (
+      <SafeAreaView style={styles.deathContainer} edges={['top']}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.deathContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.backTextDeath}>{'\u2190'} Назад</Text>
+          </TouchableOpacity>
+
+          <View style={styles.deathPetSection}>
+            <View style={styles.deathPetWrapper}>
+              <PetAvatar
+                petType={pet.type}
+                state="dead"
+                costume={null}
+                size={120}
+                stage={pet.stage}
+              />
+            </View>
+
+            <Text style={styles.deathTitle}>
+              {pet.name} не выдержал...
+            </Text>
+            <Text style={styles.deathSubtitle}>
+              Он ждал тебя, но ты не пришёл.
+            </Text>
+          </View>
+
+          <Text style={styles.reviveSectionTitle}>Как воскресить</Text>
+
+          {REVIVE_OPTIONS.map((option) => (
+            <ReviveCard key={option.method} option={option} onPress={handleRevive} />
+          ))}
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Alive pet room
   const healthPercent = Math.min(Math.max(pet.health, 0), 100);
   const happinessPercent = Math.min(Math.max(pet.happiness, 0), 100);
+  const petSize = STAGE_SIZES[pet.stage] ?? 120;
+  const roomLevel = Math.min(Math.max(pet.roomLevel, 1), 5) as 1 | 2 | 3 | 4 | 5;
+  const decorations = ROOM_DECORATIONS[roomLevel] ?? [];
+  const roomBg = ROOM_COLORS[roomLevel] ?? ROOM_COLORS[1];
+  const xpPercent = pet.xpToNext > 0 ? Math.min((pet.xp / pet.xpToNext) * 100, 100) : 0;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -126,18 +320,35 @@ export default function PetScreen() {
           onPress={() => router.back()}
           activeOpacity={0.7}
         >
-          <Text style={styles.backText}>{'\u2190'} \u041D\u0430\u0437\u0430\u0434</Text>
+          <Text style={styles.backText}>{'\u2190'} Назад</Text>
         </TouchableOpacity>
 
-        {/* Pet Display */}
-        <View style={styles.petSection}>
-          <PetAvatar
-            petType={pet.type}
-            state={state}
-            costume={pet.costume}
-            size={120}
-            reaction={lastReaction}
-          />
+        {/* Room background with decorations */}
+        <View style={[styles.roomContainer, { backgroundColor: roomBg }]}>
+          {/* Room decorations */}
+          {decorations.length > 0 && (
+            <View style={styles.decorationsRow}>
+              {decorations.map((deco, idx) => (
+                <Text key={`deco-${idx}`} style={styles.decorationEmoji}>
+                  {deco}
+                </Text>
+              ))}
+            </View>
+          )}
+
+          {/* Pet center */}
+          <View style={styles.petCenter}>
+            {pet.stage === 'master' && <View style={styles.glowEffect} />}
+            {pet.stage === 'legend' && <View style={styles.goldenBorder} />}
+            <PetAvatar
+              petType={pet.type}
+              state={state}
+              costume={pet.costume}
+              size={petSize}
+              reaction={lastReaction}
+              stage={pet.stage}
+            />
+          </View>
 
           {/* Name */}
           {isEditingName ? (
@@ -160,20 +371,26 @@ export default function PetScreen() {
 
           {/* State label */}
           <Text style={styles.stateLabel}>{STATE_LABELS[state]}</Text>
-
-          {/* Streak */}
-          {pet.streak > 0 ? (
-            <Text style={styles.streakText}>
-              {'\u{1F525}'} {pet.streak} \u0434\u043D\u0435\u0439 \u043F\u043E\u0434\u0440\u044F\u0434
-            </Text>
-          ) : null}
         </View>
+
+        {/* Level & XP */}
+        <Card style={styles.levelCard}>
+          <Text style={styles.levelTitle}>
+            Уровень {pet.level} {'\u2022'} {STAGE_LABELS[pet.stage]}
+          </Text>
+          <View style={styles.xpBarBg}>
+            <View style={[styles.xpBarFill, { width: `${xpPercent}%` }]} />
+          </View>
+          <Text style={styles.xpText}>
+            {pet.xp}/{pet.xpToNext} XP
+          </Text>
+        </Card>
 
         {/* Health bar */}
         <Card style={styles.statCard}>
           <View style={styles.statRow}>
             <Text style={styles.statLabel}>
-              {'\u2764\uFE0F'} \u0417\u0434\u043E\u0440\u043E\u0432\u044C\u0435
+              {'\u2764\uFE0F'} Здоровье
             </Text>
             <Text style={styles.statValue}>{healthPercent}%</Text>
           </View>
@@ -192,7 +409,7 @@ export default function PetScreen() {
         <Card style={styles.statCard}>
           <View style={styles.statRow}>
             <Text style={styles.statLabel}>
-              {'\u{1F60A}'} \u0421\u0447\u0430\u0441\u0442\u044C\u0435
+              {'\u{1F60A}'} Счастье
             </Text>
             <Text style={styles.statValue}>{happinessPercent}%</Text>
           </View>
@@ -207,75 +424,83 @@ export default function PetScreen() {
           </View>
         </Card>
 
+        {/* Streak */}
+        {pet.streak > 0 ? (
+          <Card style={styles.streakCard}>
+            <Text style={styles.streakText}>
+              {'\u{1F525}'} {pet.streak} дней подряд
+            </Text>
+          </Card>
+        ) : null}
+
         {/* Health Breakdown */}
         <Text style={styles.sectionTitle}>
-          {'\u{1F4CA}'} \u0421\u043E\u0441\u0442\u0430\u0432 \u0437\u0434\u043E\u0440\u043E\u0432\u044C\u044F
+          {'\u{1F4CA}'} Состав здоровья
         </Text>
         <View style={styles.breakdownGrid}>
-          <BreakdownCard
-            label="\u041F\u0440\u0438\u0432\u044B\u0447\u043A\u0438"
-            value={healthBreakdown.habits}
-            max={30}
-            icon={'\u{1F3AF}'}
-          />
-          <BreakdownCard
-            label="\u0417\u0430\u0434\u0430\u0447\u0438"
-            value={healthBreakdown.tasks}
-            max={25}
-            icon={'\u2705'}
-          />
-          <BreakdownCard
-            label="\u0411\u044E\u0434\u0436\u0435\u0442"
-            value={healthBreakdown.budget}
-            max={15}
-            icon={'\u{1F4B0}'}
-          />
-          <BreakdownCard
-            label="\u0428\u0430\u0433\u0438"
-            value={healthBreakdown.steps}
-            max={10}
-            icon={'\u{1F6B6}'}
-          />
-          <BreakdownCard
-            label="\u0414\u043D\u0435\u0432\u043D\u0438\u043A"
-            value={healthBreakdown.journal}
-            max={10}
-            icon={'\u{1F4DD}'}
-          />
-          <BreakdownCard
-            label="\u0415\u0434\u0430"
-            value={healthBreakdown.meals}
-            max={10}
-            icon={'\u{1F34E}'}
-          />
+          <BreakdownCard label="Привычки" value={healthBreakdown.habits} max={30} icon={'\u{1F3AF}'} />
+          <BreakdownCard label="Задачи" value={healthBreakdown.tasks} max={25} icon={'\u2705'} />
+          <BreakdownCard label="Бюджет" value={healthBreakdown.budget} max={15} icon={'\u{1F4B0}'} />
+          <BreakdownCard label="Шаги" value={healthBreakdown.steps} max={10} icon={'\u{1F6B6}'} />
+          <BreakdownCard label="Дневник" value={healthBreakdown.journal} max={10} icon={'\u{1F4DD}'} />
+          <BreakdownCard label="Еда" value={healthBreakdown.meals} max={10} icon={'\u{1F34E}'} />
         </View>
 
         {/* Action Buttons */}
         <View style={styles.actionsRow}>
+          <Button title={'🍎 Покормить'} onPress={handleFeed} size="lg" style={styles.actionButton} />
+          <Button title={'🎮 Поиграть'} onPress={handlePlay} size="lg" variant="outline" style={styles.actionButton} />
+        </View>
+        <View style={styles.actionsRow}>
+          <Button title={'👕 Костюмы'} onPress={handleOpenCostumes} size="lg" variant="secondary" style={styles.actionButton} />
           <Button
-            title={'\u{1F34E} \u041F\u043E\u043A\u043E\u0440\u043C\u0438\u0442\u044C'}
-            onPress={handleFeed}
+            title={'🏆 Достижения'}
+            onPress={() => router.push('/achievements')}
             size="lg"
-            style={styles.actionButton}
-          />
-          <Button
-            title={'\u{1F3AE} \u041F\u043E\u0438\u0433\u0440\u0430\u0442\u044C'}
-            onPress={handlePlay}
-            size="lg"
-            variant="outline"
+            variant="secondary"
             style={styles.actionButton}
           />
         </View>
 
-        {/* Costume */}
+        {/* Current costume */}
         {pet.costume ? (
           <Card style={styles.costumeCard}>
             <Text style={styles.costumeLabel}>
-              {'\u{1F457}'} \u041A\u043E\u0441\u0442\u044E\u043C: {pet.costume}
+              {'\u{1F457}'} Костюм: {pet.costume}
             </Text>
           </Card>
         ) : null}
       </ScrollView>
+
+      {/* Costume Modal */}
+      <Modal
+        visible={costumeModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setCostumeModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Костюмы</Text>
+              <TouchableOpacity onPress={() => setCostumeModalVisible(false)} activeOpacity={0.7}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={costumes}
+              keyExtractor={(item) => item.key}
+              renderItem={({ item }) => (
+                <CostumeItem costume={item} onEquip={handleEquipCostume} />
+              )}
+              ListEmptyComponent={
+                <Text style={styles.emptyText}>Нет доступных костюмов</Text>
+              }
+              style={styles.costumeList}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -284,6 +509,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  deathContainer: {
+    flex: 1,
+    backgroundColor: '#0a0a0f',
   },
   centered: {
     flex: 1,
@@ -301,6 +530,10 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     paddingBottom: spacing.xl * 3,
   },
+  deathContent: {
+    padding: spacing.md,
+    paddingBottom: spacing.xl * 3,
+  },
   backButton: {
     marginBottom: spacing.md,
   },
@@ -309,22 +542,122 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: '600',
   },
-  petSection: {
+  backTextDeath: {
+    color: '#666',
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+
+  // Death screen
+  deathPetSection: {
     alignItems: 'center',
+    marginBottom: spacing.xl,
+    paddingVertical: spacing.xl,
+  },
+  deathPetWrapper: {
+    opacity: 0.5,
     marginBottom: spacing.lg,
-    paddingVertical: spacing.lg,
+  },
+  deathTitle: {
+    color: '#888',
+    fontSize: fontSize.xl,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  deathSubtitle: {
+    color: '#555',
+    fontSize: fontSize.md,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  reviveSectionTitle: {
+    color: '#777',
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  reviveCard: {
+    backgroundColor: '#1a1a24',
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#2a2a3a',
+  },
+  reviveIcon: {
+    fontSize: 32,
+    marginRight: spacing.md,
+  },
+  reviveTextContainer: {
+    flex: 1,
+  },
+  reviveTitle: {
+    color: '#ccc',
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    marginBottom: spacing.xs,
+  },
+  reviveDescription: {
+    color: '#777',
+    fontSize: fontSize.sm,
+  },
+
+  // Room
+  roomContainer: {
+    borderRadius: borderRadius.xl,
+    padding: spacing.lg,
+    alignItems: 'center',
+    marginBottom: spacing.md,
+    minHeight: 280,
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  decorationsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    position: 'absolute',
+    top: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  decorationEmoji: {
+    fontSize: 28,
+  },
+  petCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  glowEffect: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+  },
+  goldenBorder: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    borderWidth: 3,
+    borderColor: '#FFD700',
+    backgroundColor: 'rgba(255, 215, 0, 0.05)',
   },
   petName: {
     color: colors.text,
     fontSize: fontSize.xl,
     fontWeight: '700',
-    marginTop: spacing.sm,
+    textAlign: 'center',
   },
   nameInput: {
     color: colors.text,
     fontSize: fontSize.xl,
     fontWeight: '700',
-    marginTop: spacing.sm,
     borderBottomWidth: 2,
     borderBottomColor: colors.primary,
     paddingVertical: spacing.xs,
@@ -337,12 +670,37 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     marginTop: spacing.xs,
   },
-  streakText: {
-    color: colors.warning,
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    marginTop: spacing.sm,
+
+  // Level & XP
+  levelCard: {
+    marginBottom: spacing.sm,
+    alignItems: 'center',
   },
+  levelTitle: {
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: '700',
+    marginBottom: spacing.sm,
+  },
+  xpBarBg: {
+    width: '100%',
+    height: 8,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: spacing.xs,
+  },
+  xpBarFill: {
+    height: '100%',
+    backgroundColor: colors.secondary,
+    borderRadius: 4,
+  },
+  xpText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.xs,
+  },
+
+  // Stats
   statCard: {
     marginBottom: spacing.sm,
   },
@@ -378,6 +736,19 @@ const styles = StyleSheet.create({
   happinessBar: {
     backgroundColor: colors.warning,
   },
+
+  // Streak
+  streakCard: {
+    marginBottom: spacing.sm,
+    alignItems: 'center',
+  },
+  streakText: {
+    color: colors.warning,
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+  },
+
+  // Breakdown
   sectionTitle: {
     color: colors.text,
     fontSize: fontSize.lg,
@@ -427,14 +798,18 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     fontWeight: '600',
   },
+
+  // Actions
   actionsRow: {
     flexDirection: 'row',
     gap: spacing.md,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.sm,
   },
   actionButton: {
     flex: 1,
   },
+
+  // Costume card
   costumeCard: {
     marginBottom: spacing.md,
   },
@@ -442,5 +817,77 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: fontSize.md,
     textAlign: 'center',
+  },
+
+  // Costume modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '70%',
+    paddingBottom: spacing.xl,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+  },
+  modalClose: {
+    color: colors.textSecondary,
+    fontSize: fontSize.xl,
+    padding: spacing.xs,
+  },
+  costumeList: {
+    paddingHorizontal: spacing.md,
+  },
+  costumeItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  costumeItemLocked: {
+    opacity: 0.4,
+  },
+  costumeEmoji: {
+    fontSize: 28,
+    marginRight: spacing.md,
+  },
+  costumeName: {
+    flex: 1,
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: '600',
+  },
+  costumeNameLocked: {
+    color: colors.textSecondary,
+  },
+  costumeEquipped: {
+    color: colors.success,
+    fontSize: fontSize.sm,
+    fontWeight: '600',
+  },
+  costumeLocked: {
+    fontSize: 20,
+  },
+  emptyText: {
+    color: colors.textSecondary,
+    fontSize: fontSize.md,
+    textAlign: 'center',
+    paddingVertical: spacing.xl,
   },
 });

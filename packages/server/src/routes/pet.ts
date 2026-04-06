@@ -14,7 +14,17 @@ const changeTypeSchema = z.object({
   }),
 });
 
-type PetVisualState = 'happy' | 'content' | 'normal' | 'sad' | 'sick' | 'hungry' | 'sleepy';
+const reviveSchema = z.object({
+  method: z.enum(['perfect_day', 'double_steps', 'three_days'], {
+    errorMap: () => ({ message: 'Допустимые методы: perfect_day, double_steps, three_days' }),
+  }),
+});
+
+const costumeSchema = z.object({
+  costume: z.string().min(1, 'Костюм обязателен'),
+});
+
+type PetVisualState = 'happy' | 'content' | 'normal' | 'sad' | 'sick' | 'hungry' | 'sleepy' | 'dead';
 
 interface HealthBreakdown {
   habits: number;
@@ -24,6 +34,15 @@ interface HealthBreakdown {
   journal: number;
   meals: number;
 }
+
+const COSTUME_REQUIREMENTS: Record<string, number> = {
+  bandana: 3,
+  medal_collar: 7,
+  crown: 14,
+  superhero_cape: 30,
+  golden_wings: 60,
+  legendary_aura: 100,
+};
 
 function getStartOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -44,10 +63,45 @@ function determineVisualState(health: number, lastFed: Date): PetVisualState {
   return 'sick';
 }
 
-function determineCostume(streak: number, weeklyAllComplete: boolean): string | null {
-  if (weeklyAllComplete) return 'superhero';
-  if (streak >= 7) return 'crown';
-  return null;
+function getStage(level: number): string {
+  if (level <= 5) return 'baby';
+  if (level <= 15) return 'teen';
+  if (level <= 30) return 'adult';
+  if (level <= 50) return 'master';
+  return 'legend';
+}
+
+function getRoomLevel(level: number): number {
+  if (level <= 5) return 1;
+  if (level <= 15) return 2;
+  if (level <= 30) return 3;
+  if (level <= 50) return 4;
+  return 5;
+}
+
+function addXP(pet: { xp: number; level: number; xpToNext: number }, amount: number): {
+  level: number;
+  xp: number;
+  xpToNext: number;
+  stage: string;
+  roomLevel: number;
+  leveledUp: boolean;
+} {
+  let xp = pet.xp + amount;
+  let level = pet.level;
+  let xpToNext = pet.xpToNext;
+  let leveledUp = false;
+
+  while (xp >= xpToNext) {
+    xp -= xpToNext;
+    level++;
+    xpToNext = Math.floor(xpToNext * 1.2);
+    leveledUp = true;
+  }
+
+  const stage = getStage(level);
+  const roomLevel = getRoomLevel(level);
+  return { level, xp, xpToNext, stage, roomLevel, leveledUp };
 }
 
 export async function petRoutes(app: FastifyInstance): Promise<void> {
@@ -58,6 +112,7 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
   app.get('/pet', async (request) => {
     const userId = request.userId;
     const today = getStartOfDay(new Date());
+    const now = new Date();
 
     // Find or create pet
     let pet = await prisma.pet.findUnique({ where: { userId } });
@@ -69,11 +124,43 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
           name: 'LifePet',
           health: 80,
           happiness: 80,
+          level: 1,
+          xp: 0,
+          xpToNext: 100,
+          stage: 'baby',
           streak: 0,
-          lastFed: new Date(),
-          lastPlayed: new Date(),
+          isAlive: true,
+          lastFed: now,
+          lastPlayed: now,
+          lastActive: now,
+          roomLevel: 1,
         },
       });
+    }
+
+    // Check death: if lastActive was >2 days ago AND health was 0
+    const hoursSinceLastActive = (now.getTime() - pet.lastActive.getTime()) / (1000 * 60 * 60);
+    if (hoursSinceLastActive > 48 && pet.health <= 0 && pet.isAlive) {
+      pet = await prisma.pet.update({
+        where: { userId },
+        data: { isAlive: false, diedAt: now },
+      });
+    }
+
+    // If dead, return with revive options
+    if (!pet.isAlive) {
+      return {
+        pet,
+        state: 'dead' as PetVisualState,
+        healthBreakdown: {
+          habits: 0, tasks: 0, budget: 0, steps: 0, journal: 0, meals: 0,
+        },
+        reviveOptions: [
+          { method: 'perfect_day', description: '100% задач и привычек за сегодня' },
+          { method: 'double_steps', description: '20 000 шагов за сегодня' },
+          { method: 'three_days', description: '80%+ задач и привычек 3 дня подряд' },
+        ],
+      };
     }
 
     // --- Calculate health breakdown ---
@@ -99,7 +186,6 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
       : 25;
 
     // 3. Budget: (1 - overSpentCategories / totalCategories) * 15
-    const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
     const monthStart = new Date(currentYear, currentMonth - 1, 1);
@@ -174,20 +260,9 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
     // Determine visual state
     const state = determineVisualState(health, pet.lastFed);
 
-    // Check weekly completion for costume
-    const dayOfWeek = now.getDay();
-    const weekStart = new Date(today);
-    weekStart.setDate(weekStart.getDate() - ((dayOfWeek + 6) % 7)); // Monday
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 7);
-
-    const weeklyTasks = await prisma.task.findMany({
-      where: { userId, date: { gte: weekStart, lt: weekEnd } },
-      select: { completed: true },
-    });
-    const weeklyAllComplete = weeklyTasks.length > 0 && weeklyTasks.every((t) => t.completed);
-
-    const costume = determineCostume(pet.streak, weeklyAllComplete);
+    // Calculate stage and roomLevel from level
+    const stage = getStage(pet.level);
+    const roomLevel = getRoomLevel(pet.level);
 
     // Update pet in DB
     const updatedPet = await prisma.pet.update({
@@ -195,7 +270,9 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
       data: {
         health: Math.round(health * 10) / 10,
         happiness: Math.round(happiness * 10) / 10,
-        costume,
+        stage,
+        roomLevel,
+        lastActive: now,
       },
     });
 
@@ -206,7 +283,98 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  // --- PUT /pet/feed — Manual feed ---
+  // --- POST /pet/revive — Revive dead pet ---
+
+  app.post('/pet/revive', {
+    preHandler: validate(reviveSchema),
+  }, async (request, reply) => {
+    const userId = request.userId;
+    const { method } = request.body as z.infer<typeof reviveSchema>;
+    const today = getStartOfDay(new Date());
+
+    const pet = await prisma.pet.findUnique({ where: { userId } });
+    if (!pet) {
+      return reply.status(404).send({ message: 'Питомец не найден' });
+    }
+
+    if (pet.isAlive) {
+      return reply.status(400).send({ message: 'Питомец жив, воскрешение не требуется' });
+    }
+
+    // Verify revive condition
+    if (method === 'perfect_day') {
+      const [totalTasks, completedTasks, totalHabits, completedHabits] = await Promise.all([
+        prisma.task.count({ where: { userId, date: today } }),
+        prisma.task.count({ where: { userId, date: today, completed: true } }),
+        prisma.habit.count({ where: { userId, active: true } }),
+        prisma.habitLog.count({ where: { userId, date: today, completed: true } }),
+      ]);
+
+      const tasksOk = totalTasks > 0 && completedTasks === totalTasks;
+      const habitsOk = totalHabits > 0 && completedHabits === totalHabits;
+
+      if (!tasksOk || !habitsOk) {
+        return reply.status(400).send({
+          message: 'Условие не выполнено: нужно 100% задач и 100% привычек за сегодня',
+        });
+      }
+    } else if (method === 'double_steps') {
+      const stepLog = await prisma.stepLog.findUnique({
+        where: { userId_date: { userId, date: today } },
+      });
+
+      if (!stepLog || stepLog.steps < 20000) {
+        return reply.status(400).send({
+          message: 'Условие не выполнено: нужно минимум 20 000 шагов за сегодня',
+        });
+      }
+    } else if (method === 'three_days') {
+      // Check last 3 days each had >=80% tasks+habits
+      for (let i = 0; i < 3; i++) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dayStart = getStartOfDay(date);
+
+        const [totalTasks, completedTasks, totalHabits, completedHabits] = await Promise.all([
+          prisma.task.count({ where: { userId, date: dayStart } }),
+          prisma.task.count({ where: { userId, date: dayStart, completed: true } }),
+          prisma.habit.count({ where: { userId, active: true } }),
+          prisma.habitLog.count({ where: { userId, date: dayStart, completed: true } }),
+        ]);
+
+        const totalItems = totalTasks + totalHabits;
+        const completedItems = completedTasks + completedHabits;
+
+        if (totalItems === 0 || (completedItems / totalItems) < 0.8) {
+          return reply.status(400).send({
+            message: 'Условие не выполнено: нужно 80%+ задач и привычек за последние 3 дня',
+          });
+        }
+      }
+    }
+
+    // Revive pet
+    const updatedPet = await prisma.pet.update({
+      where: { userId },
+      data: {
+        isAlive: true,
+        health: 50,
+        happiness: 50,
+        level: 1,
+        xp: 0,
+        xpToNext: 100,
+        stage: 'baby',
+        streak: 0,
+        diedAt: null,
+        lastActive: new Date(),
+        roomLevel: 1,
+      },
+    });
+
+    return { pet: updatedPet };
+  });
+
+  // --- PUT /pet/feed — Manual feed + XP ---
 
   app.put('/pet/feed', async (request, reply) => {
     const pet = await prisma.pet.findUnique({ where: { userId: request.userId } });
@@ -214,18 +382,29 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ message: 'Питомец не найден' });
     }
 
+    if (!pet.isAlive) {
+      return reply.status(400).send({ message: 'Питомец мёртв. Сначала воскресите его' });
+    }
+
+    const xpResult = addXP(pet, 5);
+
     const updatedPet = await prisma.pet.update({
       where: { userId: request.userId },
       data: {
         lastFed: new Date(),
         happiness: Math.min(100, pet.happiness + 5),
+        xp: xpResult.xp,
+        level: xpResult.level,
+        xpToNext: xpResult.xpToNext,
+        stage: xpResult.stage,
+        roomLevel: xpResult.roomLevel,
       },
     });
 
-    return updatedPet;
+    return { pet: updatedPet, leveledUp: xpResult.leveledUp };
   });
 
-  // --- PUT /pet/play — Manual play ---
+  // --- PUT /pet/play — Manual play + XP ---
 
   app.put('/pet/play', async (request, reply) => {
     const pet = await prisma.pet.findUnique({ where: { userId: request.userId } });
@@ -233,15 +412,78 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ message: 'Питомец не найден' });
     }
 
+    if (!pet.isAlive) {
+      return reply.status(400).send({ message: 'Питомец мёртв. Сначала воскресите его' });
+    }
+
+    const xpResult = addXP(pet, 10);
+
     const updatedPet = await prisma.pet.update({
       where: { userId: request.userId },
       data: {
         lastPlayed: new Date(),
         happiness: Math.min(100, pet.happiness + 10),
+        xp: xpResult.xp,
+        level: xpResult.level,
+        xpToNext: xpResult.xpToNext,
+        stage: xpResult.stage,
+        roomLevel: xpResult.roomLevel,
       },
     });
 
-    return updatedPet;
+    return { pet: updatedPet, leveledUp: xpResult.leveledUp };
+  });
+
+  // --- GET /pet/costumes — List costumes with unlock status ---
+
+  app.get('/pet/costumes', async (request) => {
+    const pet = await prisma.pet.findUnique({ where: { userId: request.userId } });
+    const streak = pet?.streak ?? 0;
+
+    const costumes = Object.entries(COSTUME_REQUIREMENTS).map(([costume, requiredStreak]) => ({
+      costume,
+      requiredStreak,
+      unlocked: streak >= requiredStreak,
+      equipped: pet?.costume === costume,
+    }));
+
+    return { costumes, currentStreak: streak };
+  });
+
+  // --- PUT /pet/costume — Equip costume ---
+
+  app.put('/pet/costume', {
+    preHandler: validate(costumeSchema),
+  }, async (request, reply) => {
+    const { costume } = request.body as z.infer<typeof costumeSchema>;
+    const userId = request.userId;
+
+    const pet = await prisma.pet.findUnique({ where: { userId } });
+    if (!pet) {
+      return reply.status(404).send({ message: 'Питомец не найден' });
+    }
+
+    if (!pet.isAlive) {
+      return reply.status(400).send({ message: 'Питомец мёртв. Сначала воскресите его' });
+    }
+
+    const requiredStreak = COSTUME_REQUIREMENTS[costume];
+    if (requiredStreak === undefined) {
+      return reply.status(400).send({ message: 'Неизвестный костюм' });
+    }
+
+    if (pet.streak < requiredStreak) {
+      return reply.status(400).send({
+        message: `Костюм недоступен. Нужна серия ${requiredStreak} дней (текущая: ${pet.streak})`,
+      });
+    }
+
+    const updatedPet = await prisma.pet.update({
+      where: { userId },
+      data: { costume },
+    });
+
+    return { pet: updatedPet };
   });
 
   // --- PUT /pet/name — Rename pet ---
@@ -284,7 +526,7 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
     return updatedPet;
   });
 
-  // --- GET /pet/history — Health history (MVP: current state + streak) ---
+  // --- GET /pet/history — Health history ---
 
   app.get('/pet/history', async (request) => {
     const { days } = request.query as { days?: string };
@@ -295,8 +537,6 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
       return { pet: null, history: [] };
     }
 
-    // For MVP: return current pet state with streak info
-    // Calculate daily completion rates for the range
     const today = getStartOfDay(new Date());
     const startDate = new Date(today);
     startDate.setDate(startDate.getDate() - numDays + 1);
@@ -319,7 +559,6 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
       }),
     ]);
 
-    // Group by date
     const history: Array<{
       date: string;
       habitsCompleted: number;

@@ -3,6 +3,7 @@ import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 
 export type PetType = 'cat' | 'dog' | 'fox' | 'owl' | 'dragon';
+export type PetStage = 'baby' | 'teen' | 'adult' | 'master' | 'legend';
 export type PetState =
   | 'happy'
   | 'content'
@@ -13,7 +14,10 @@ export type PetState =
   | 'sleepy'
   | 'sleeping'
   | 'celebrating'
-  | 'exercising';
+  | 'exercising'
+  | 'dead';
+
+export type ReviveMethod = 'perfect_day' | 'double_steps' | 'three_days';
 
 export interface Pet {
   id: string;
@@ -25,6 +29,22 @@ export interface Pet {
   lastFed: string;
   lastPlayed: string;
   costume: string | null;
+  level: number;
+  xp: number;
+  xpToNext: number;
+  stage: PetStage;
+  isAlive: boolean;
+  diedAt: string | null;
+  lastActive: string;
+  roomLevel: number;
+}
+
+export interface CostumeInfo {
+  key: string;
+  name: string;
+  emoji: string;
+  unlocked: boolean;
+  equipped: boolean;
 }
 
 export interface HealthBreakdown {
@@ -44,6 +64,7 @@ export interface PetData {
 
 interface PetStore {
   petData: PetData | null;
+  costumes: CostumeInfo[];
   isLoading: boolean;
   lastReaction: string | null;
   fetchPet: () => Promise<void>;
@@ -52,10 +73,14 @@ interface PetStore {
   renamePet: (name: string) => Promise<void>;
   setPetType: (type: PetType) => Promise<void>;
   triggerReaction: (reaction: string) => void;
+  revivePet: (method: ReviveMethod) => Promise<void>;
+  fetchCostumes: () => Promise<void>;
+  setCostume: (costume: string) => Promise<void>;
 }
 
 export const usePetStore = create<PetStore>((set) => ({
   petData: null,
+  costumes: [],
   isLoading: false,
   lastReaction: null,
 
@@ -120,5 +145,38 @@ export const usePetStore = create<PetStore>((set) => ({
     setTimeout(() => {
       set({ lastReaction: null });
     }, 2000);
+  },
+
+  revivePet: async (method: ReviveMethod) => {
+    const token = useAuthStore.getState().token;
+    if (!token) return;
+    try {
+      const data = await api.post<PetData>('/pet/revive', { method }, token);
+      set({ petData: data });
+    } catch {
+      // Error handled silently
+    }
+  },
+
+  fetchCostumes: async () => {
+    const token = useAuthStore.getState().token;
+    if (!token) return;
+    try {
+      const data = await api.get<CostumeInfo[]>('/pet/costumes', token);
+      set({ costumes: data });
+    } catch {
+      // Error handled silently
+    }
+  },
+
+  setCostume: async (costume: string) => {
+    const token = useAuthStore.getState().token;
+    if (!token) return;
+    try {
+      const data = await api.put<PetData>('/pet/costume', { costume }, token);
+      set({ petData: data });
+    } catch {
+      // Error handled silently
+    }
   },
 }));
