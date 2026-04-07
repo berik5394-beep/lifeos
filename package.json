@@ -10,5 +10,9 @@
     "mobile": "npm run --workspace=apps/mobile start",
     "server": "npm run --workspace=packages/server dev",
     "server:build": "npm run --workspace=packages/server build"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   }
 }
