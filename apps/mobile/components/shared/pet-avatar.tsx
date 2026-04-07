@@ -1,15 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  withSequence,
-  withSpring,
-  Easing,
-  cancelAnimation,
-} from 'react-native-reanimated';
+import React, { useEffect, useRef } from 'react';
+import { Animated, View, Text, TouchableOpacity, StyleSheet, Easing } from 'react-native';
 import type { PetType, PetState, PetStage } from '@/stores/pet-store';
 import { colors } from '@/constants/colors';
 
@@ -62,179 +52,169 @@ const PetAvatarComponent = ({
   const isDead = state === 'dead';
   const effectiveSize = size ?? (stage ? STAGE_AVATAR_SIZES[stage] : 60);
 
-  const translateY = useSharedValue(0);
-  const translateX = useSharedValue(0);
-  const scale = useSharedValue(1);
-  const rotate = useSharedValue(0);
-  const opacity = useSharedValue(1);
-  const reactionOpacity = useSharedValue(0);
-  const reactionTranslateY = useSharedValue(0);
-  const sparkleOpacity = useSharedValue(0);
+  const translateY = useRef(new Animated.Value(0)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const rotate = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+  const reactionOpacity = useRef(new Animated.Value(0)).current;
+  const reactionTranslateY = useRef(new Animated.Value(0)).current;
+  const sparkleOpacity = useRef(new Animated.Value(0)).current;
+
+  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
-    cancelAnimation(translateY);
-    cancelAnimation(translateX);
-    cancelAnimation(scale);
-    cancelAnimation(rotate);
-    cancelAnimation(opacity);
+    // Stop all running animations
+    translateY.stopAnimation();
+    translateX.stopAnimation();
+    scale.stopAnimation();
+    rotate.stopAnimation();
+    opacity.stopAnimation();
 
-    translateY.value = 0;
-    translateX.value = 0;
-    scale.value = 1;
-    rotate.value = 0;
-    opacity.value = 1;
+    // Reset values
+    translateY.setValue(0);
+    translateX.setValue(0);
+    scale.setValue(1);
+    rotate.setValue(0);
+    opacity.setValue(1);
+
+    if (animationRef.current) {
+      animationRef.current.stop();
+      animationRef.current = null;
+    }
 
     if (isDead) {
-      opacity.value = withTiming(0.4, { duration: 500 });
-      rotate.value = withTiming(90, { duration: 500 });
+      Animated.timing(opacity, { toValue: 0.4, duration: 500, useNativeDriver: true }).start();
+      Animated.timing(rotate, { toValue: 90, duration: 500, useNativeDriver: true }).start();
       return;
     }
 
+    let anim: Animated.CompositeAnimation | null = null;
+
     switch (state) {
       case 'happy':
-        translateY.value = withRepeat(
-          withSequence(
-            withTiming(-8, { duration: 300, easing: Easing.out(Easing.quad) }),
-            withTiming(0, { duration: 300, easing: Easing.in(Easing.quad) }),
-          ),
-          -1,
-          true,
+        anim = Animated.loop(
+          Animated.sequence([
+            Animated.timing(translateY, { toValue: -8, duration: 300, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.timing(translateY, { toValue: 0, duration: 300, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
         );
         break;
       case 'content':
-        translateX.value = withRepeat(
-          withSequence(
-            withTiming(3, { duration: 800, easing: Easing.inOut(Easing.sin) }),
-            withTiming(-3, { duration: 800, easing: Easing.inOut(Easing.sin) }),
-          ),
-          -1,
-          true,
+        anim = Animated.loop(
+          Animated.sequence([
+            Animated.timing(translateX, { toValue: 3, duration: 800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+            Animated.timing(translateX, { toValue: -3, duration: 800, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          ]),
         );
         break;
       case 'normal':
-        scale.value = withRepeat(
-          withSequence(
-            withTiming(1.03, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
-            withTiming(1, { duration: 1200, easing: Easing.inOut(Easing.sin) }),
-          ),
-          -1,
-          true,
+        anim = Animated.loop(
+          Animated.sequence([
+            Animated.timing(scale, { toValue: 1.03, duration: 1200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+            Animated.timing(scale, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          ]),
         );
         break;
       case 'sad':
-        translateY.value = withTiming(4, { duration: 600, easing: Easing.out(Easing.quad) });
+        Animated.timing(translateY, { toValue: 4, duration: 600, easing: Easing.out(Easing.quad), useNativeDriver: true }).start();
         break;
       case 'sick':
-        rotate.value = withTiming(5, { duration: 500 });
-        opacity.value = withTiming(0.6, { duration: 500 });
+        Animated.timing(rotate, { toValue: 5, duration: 500, useNativeDriver: true }).start();
+        Animated.timing(opacity, { toValue: 0.6, duration: 500, useNativeDriver: true }).start();
         break;
       case 'hungry':
-        translateX.value = withRepeat(
-          withSequence(
-            withTiming(-4, { duration: 150 }),
-            withTiming(4, { duration: 150 }),
-            withTiming(-4, { duration: 150 }),
-            withTiming(0, { duration: 150 }),
-          ),
-          -1,
-          false,
+        anim = Animated.loop(
+          Animated.sequence([
+            Animated.timing(translateX, { toValue: -4, duration: 150, useNativeDriver: true }),
+            Animated.timing(translateX, { toValue: 4, duration: 150, useNativeDriver: true }),
+            Animated.timing(translateX, { toValue: -4, duration: 150, useNativeDriver: true }),
+            Animated.timing(translateX, { toValue: 0, duration: 150, useNativeDriver: true }),
+          ]),
         );
         break;
       case 'sleepy':
-        translateY.value = withRepeat(
-          withSequence(
-            withTiming(3, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
-            withTiming(0, { duration: 1000, easing: Easing.inOut(Easing.sin) }),
-          ),
-          -1,
-          true,
+        anim = Animated.loop(
+          Animated.sequence([
+            Animated.timing(translateY, { toValue: 3, duration: 1000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+            Animated.timing(translateY, { toValue: 0, duration: 1000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          ]),
         );
         break;
       case 'sleeping':
         // No animation
         break;
-      case 'celebrating':
-        translateY.value = withRepeat(
-          withSequence(
-            withTiming(-12, { duration: 200, easing: Easing.out(Easing.quad) }),
-            withTiming(0, { duration: 200, easing: Easing.in(Easing.quad) }),
-          ),
-          -1,
-          true,
+      case 'celebrating': {
+        const bounceAnim = Animated.loop(
+          Animated.sequence([
+            Animated.timing(translateY, { toValue: -12, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+            Animated.timing(translateY, { toValue: 0, duration: 200, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+          ]),
         );
-        sparkleOpacity.value = withRepeat(
-          withSequence(
-            withTiming(1, { duration: 300 }),
-            withTiming(0, { duration: 300 }),
-          ),
-          -1,
-          true,
+        const sparkleAnim = Animated.loop(
+          Animated.sequence([
+            Animated.timing(sparkleOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+            Animated.timing(sparkleOpacity, { toValue: 0, duration: 300, useNativeDriver: true }),
+          ]),
         );
-        break;
+        bounceAnim.start();
+        sparkleAnim.start();
+        animationRef.current = bounceAnim;
+        return;
+      }
       case 'exercising':
-        translateX.value = withRepeat(
-          withSequence(
-            withTiming(-6, { duration: 200 }),
-            withTiming(6, { duration: 200 }),
-          ),
-          -1,
-          true,
+        anim = Animated.loop(
+          Animated.sequence([
+            Animated.timing(translateX, { toValue: -6, duration: 200, useNativeDriver: true }),
+            Animated.timing(translateX, { toValue: 6, duration: 200, useNativeDriver: true }),
+          ]),
         );
         break;
+    }
+
+    if (anim) {
+      anim.start();
+      animationRef.current = anim;
     }
   }, [state, isDead, translateY, translateX, scale, rotate, opacity, sparkleOpacity]);
 
   useEffect(() => {
     if (!reaction) {
-      reactionOpacity.value = withTiming(0, { duration: 200 });
+      Animated.timing(reactionOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start();
       return;
     }
 
-    reactionTranslateY.value = 0;
-    reactionOpacity.value = 1;
+    reactionTranslateY.setValue(0);
+    reactionOpacity.setValue(1);
 
     if (reaction === 'jump') {
-      translateY.value = withSequence(
-        withSpring(-16, { damping: 4, stiffness: 300 }),
-        withSpring(0, { damping: 8, stiffness: 200 }),
-      );
+      Animated.sequence([
+        Animated.spring(translateY, { toValue: -16, useNativeDriver: true }),
+        Animated.spring(translateY, { toValue: 0, useNativeDriver: true }),
+      ]).start();
     } else if (reaction === 'clap') {
-      sparkleOpacity.value = withSequence(
-        withTiming(1, { duration: 200 }),
-        withTiming(0, { duration: 1500 }),
-      );
+      Animated.sequence([
+        Animated.timing(sparkleOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+        Animated.timing(sparkleOpacity, { toValue: 0, duration: 1500, useNativeDriver: true }),
+      ]).start();
     } else {
-      reactionTranslateY.value = withSequence(
-        withTiming(-10, { duration: 300 }),
-        withTiming(-10, { duration: 1200 }),
-        withTiming(-20, { duration: 500 }),
-      );
-      reactionOpacity.value = withSequence(
-        withTiming(1, { duration: 300 }),
-        withTiming(1, { duration: 1200 }),
-        withTiming(0, { duration: 500 }),
-      );
+      Animated.sequence([
+        Animated.timing(reactionTranslateY, { toValue: -10, duration: 300, useNativeDriver: true }),
+        Animated.delay(1200),
+        Animated.timing(reactionTranslateY, { toValue: -20, duration: 500, useNativeDriver: true }),
+      ]).start();
+      Animated.sequence([
+        Animated.timing(reactionOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.delay(1200),
+        Animated.timing(reactionOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+      ]).start();
     }
   }, [reaction, translateY, reactionOpacity, reactionTranslateY, sparkleOpacity]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value },
-      { translateX: translateX.value },
-      { scale: scale.value },
-      { rotate: `${rotate.value}deg` },
-    ],
-    opacity: opacity.value,
-  }));
-
-  const reactionStyle = useAnimatedStyle(() => ({
-    opacity: reactionOpacity.value,
-    transform: [{ translateY: reactionTranslateY.value }],
-  }));
-
-  const sparkleStyle = useAnimatedStyle(() => ({
-    opacity: sparkleOpacity.value,
-  }));
+  const rotateInterpolation = rotate.interpolate({
+    inputRange: [0, 360],
+    outputRange: ['0deg', '360deg'],
+  });
 
   const emoji = PET_EMOJIS[petType];
   const costumeEmoji = !isDead && costume ? COSTUME_OVERLAYS[costume] : null;
@@ -258,7 +238,17 @@ const PetAvatarComponent = ({
         </Text>
       ) : null}
 
-      <Animated.View style={animatedStyle}>
+      <Animated.View
+        style={{
+          transform: [
+            { translateY },
+            { translateX },
+            { scale },
+            { rotate: rotateInterpolation },
+          ],
+          opacity,
+        }}
+      >
         <Text
           style={[
             styles.petEmoji,
@@ -282,19 +272,19 @@ const PetAvatarComponent = ({
       ) : null}
 
       {state === 'celebrating' ? (
-        <Animated.Text style={[styles.sparkle, sparkleStyle, { fontSize: effectiveSize * 0.25 }]}>
+        <Animated.Text style={[styles.sparkle, { opacity: sparkleOpacity, fontSize: effectiveSize * 0.25 }]}>
           {'\u2728'}
         </Animated.Text>
       ) : null}
 
       {reaction === 'clap' ? (
-        <Animated.Text style={[styles.sparkle, sparkleStyle, { fontSize: effectiveSize * 0.3 }]}>
+        <Animated.Text style={[styles.sparkle, { opacity: sparkleOpacity, fontSize: effectiveSize * 0.3 }]}>
           {'\u2728'}
         </Animated.Text>
       ) : null}
 
       {reactionContent && reaction !== 'jump' && reaction !== 'clap' ? (
-        <Animated.View style={[styles.reactionBubble, reactionStyle]}>
+        <Animated.View style={[styles.reactionBubble, { opacity: reactionOpacity, transform: [{ translateY: reactionTranslateY }] }]}>
           <Text style={styles.reactionText}>{reactionContent}</Text>
         </Animated.View>
       ) : null}

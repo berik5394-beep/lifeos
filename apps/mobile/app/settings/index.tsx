@@ -9,7 +9,7 @@ import {
   TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { createMMKV } from 'react-native-mmkv';
+import { storage } from '@/services/storage';
 import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore } from '@/stores/theme-store';
 import { Card, Button } from '@/components/ui';
@@ -18,8 +18,6 @@ import {
   scheduleWakeUpNotification,
   cancelWakeUpNotification,
 } from '@/services/wake-up-notification';
-
-const storage = createMMKV({ id: 'settings-storage' });
 
 const ASSISTANT_STYLES = [
   { key: 'friendly', label: 'Дружелюбный', icon: '😊' },
@@ -115,19 +113,19 @@ export default function SettingsScreen() {
   const handleToggleMorning = useCallback(() => {
     const next = !morningReminder;
     setMorningReminder(next);
-    storage.set('morning_reminder', next);
+    storage.setBoolean('morning_reminder', next);
   }, [morningReminder]);
 
   const handleToggleEvening = useCallback(() => {
     const next = !eveningReview;
     setEveningReview(next);
-    storage.set('evening_review', next);
+    storage.setBoolean('evening_review', next);
   }, [eveningReview]);
 
   const handleToggleTasks = useCallback(() => {
     const next = !taskReminders;
     setTaskReminders(next);
-    storage.set('task_reminders', next);
+    storage.setBoolean('task_reminders', next);
   }, [taskReminders]);
 
   const handleAssistantStyleChange = useCallback((key: AssistantStyleKey) => {

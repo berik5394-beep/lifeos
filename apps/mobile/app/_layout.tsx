@@ -1,23 +1,32 @@
 import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { Redirect, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { createMMKV } from 'react-native-mmkv';
+import { storage } from '@/services/storage';
 import { useAuthStore } from '@/stores/auth-store';
 import { useNotifications } from '@/hooks/use-notifications';
-
-const onboardingStorage = createMMKV({ id: 'onboarding-storage' });
 
 export default function RootLayout() {
   const { token, loadStoredAuth } = useAuthStore();
   useNotifications();
 
+  const [storageReady, setStorageReady] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
 
   useEffect(() => {
+    storage.load().then(() => setStorageReady(true));
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady) return;
     loadStoredAuth();
-    const completed = onboardingStorage.getBoolean('onboarding_complete') ?? false;
+    const completed = storage.getBoolean('onboarding_complete') ?? false;
     setOnboardingComplete(completed);
-  }, [loadStoredAuth]);
+  }, [storageReady, loadStoredAuth]);
+
+  if (!storageReady) {
+    return <View style={{ flex: 1, backgroundColor: '#0F172A' }} />;
+  }
 
   const getRedirect = () => {
     if (onboardingComplete === null) {

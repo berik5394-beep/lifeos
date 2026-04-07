@@ -1,10 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-} from 'react-native-reanimated';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, View, Text, StyleSheet } from 'react-native';
 import { colors, fontSize } from '@/constants';
 
 interface ProgressRingProps {
@@ -23,31 +18,28 @@ export const ProgressRing = React.memo(function ProgressRing({
   const clampedProgress = Math.min(1, Math.max(0, progress));
   const percentage = Math.round(clampedProgress * 100);
 
-  const animatedProgress = useSharedValue(0);
+  const animatedProgress = useRef(new Animated.Value(0)).current;
+  const [displayProgress, setDisplayProgress] = useState(0);
 
   useEffect(() => {
-    animatedProgress.value = withTiming(clampedProgress, { duration: 600 });
+    const listenerId = animatedProgress.addListener(({ value }) => {
+      setDisplayProgress(value);
+    });
+
+    Animated.timing(animatedProgress, {
+      toValue: clampedProgress,
+      duration: 600,
+      useNativeDriver: false,
+    }).start();
+
+    return () => {
+      animatedProgress.removeListener(listenerId);
+    };
   }, [clampedProgress, animatedProgress]);
 
-  const rightHalfStyle = useAnimatedStyle(() => {
-    const p = animatedProgress.value;
-    const rightRotation = p <= 0.5 ? p * 360 : 180;
-    return {
-      transform: [{ rotate: `${rightRotation}deg` }],
-    };
-  });
-
-  const leftHalfStyle = useAnimatedStyle(() => {
-    const p = animatedProgress.value;
-    const leftRotation = p > 0.5 ? (p - 0.5) * 360 : 0;
-    return {
-      transform: [{ rotate: `${leftRotation}deg` }],
-    };
-  });
-
-  const leftContainerOpacity = useAnimatedStyle(() => ({
-    opacity: animatedProgress.value > 0.5 ? 1 : 0,
-  }));
+  const rightRotation = displayProgress <= 0.5 ? displayProgress * 360 : 180;
+  const leftRotation = displayProgress > 0.5 ? (displayProgress - 0.5) * 360 : 0;
+  const leftVisible = displayProgress > 0.5;
 
   const innerSize = size - strokeWidth * 2;
 
@@ -81,7 +73,7 @@ export const ProgressRing = React.memo(function ProgressRing({
           },
         ]}
       >
-        <Animated.View
+        <View
           style={[
             styles.halfCircle,
             {
@@ -93,15 +85,14 @@ export const ProgressRing = React.memo(function ProgressRing({
               borderWidth: strokeWidth,
               borderRightWidth: 0,
               borderColor: color,
-              transformOrigin: 'right center',
+              transform: [{ rotate: `${rightRotation}deg` }],
             },
-            rightHalfStyle,
           ]}
         />
       </View>
 
       {/* Left half (50-100%) */}
-      <Animated.View
+      <View
         style={[
           styles.halfContainer,
           {
@@ -111,11 +102,11 @@ export const ProgressRing = React.memo(function ProgressRing({
             borderTopLeftRadius: size / 2,
             borderBottomLeftRadius: size / 2,
             overflow: 'hidden',
+            opacity: leftVisible ? 1 : 0,
           },
-          leftContainerOpacity,
         ]}
       >
-        <Animated.View
+        <View
           style={[
             styles.halfCircle,
             {
@@ -127,12 +118,11 @@ export const ProgressRing = React.memo(function ProgressRing({
               borderWidth: strokeWidth,
               borderLeftWidth: 0,
               borderColor: color,
-              transformOrigin: 'left center',
+              transform: [{ rotate: `${leftRotation}deg` }],
             },
-            leftHalfStyle,
           ]}
         />
-      </Animated.View>
+      </View>
 
       {/* Center with percentage text */}
       <View

@@ -1,8 +1,6 @@
 import { create } from 'zustand';
-import { createMMKV } from 'react-native-mmkv';
+import { storage } from '@/services/storage';
 import { darkTheme, lightTheme, type Theme, type ThemeName } from '@/constants/themes';
-
-const storage = createMMKV({ id: 'theme-storage' });
 
 interface ThemeState {
   themeName: ThemeName;

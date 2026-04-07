@@ -1,11 +1,5 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, type ViewStyle } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withDelay,
-} from 'react-native-reanimated';
+import React, { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, type ViewStyle } from 'react-native';
 import { colors, borderRadius, spacing } from '@/constants';
 
 interface AnimatedCardProps {
@@ -21,23 +15,29 @@ export const AnimatedCard = React.memo(function AnimatedCard({
   delay,
   index,
 }: AnimatedCardProps) {
-  const opacity = useSharedValue(0);
-  const translateY = useSharedValue(20);
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(20)).current;
 
   const animationDelay = delay ?? (index ?? 0) * 100;
 
   useEffect(() => {
-    opacity.value = withDelay(animationDelay, withTiming(1, { duration: 400 }));
-    translateY.value = withDelay(animationDelay, withTiming(0, { duration: 400 }));
+    Animated.timing(opacity, {
+      toValue: 1,
+      duration: 400,
+      delay: animationDelay,
+      useNativeDriver: true,
+    }).start();
+
+    Animated.timing(translateY, {
+      toValue: 0,
+      duration: 400,
+      delay: animationDelay,
+      useNativeDriver: true,
+    }).start();
   }, [animationDelay, opacity, translateY]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
-  }));
-
   return (
-    <Animated.View style={[styles.card, animatedStyle, style]}>
+    <Animated.View style={[styles.card, { opacity, transform: [{ translateY }] }, style]}>
       {children}
     </Animated.View>
   );

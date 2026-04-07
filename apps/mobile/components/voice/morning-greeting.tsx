@@ -1,17 +1,12 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useRef } from 'react';
 import {
+  Animated,
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Modal,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  FadeIn,
-} from 'react-native-reanimated';
 import * as Speech from 'expo-speech';
 import { colors, spacing, fontSize, borderRadius } from '@/constants';
 
@@ -60,22 +55,45 @@ function MorningGreetingComponent({
   greeting,
   onChipPress,
 }: MorningGreetingProps) {
-  const opacity = useSharedValue(0);
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+  const contentOpacity = useRef(new Animated.Value(0)).current;
+  const chipsOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
-      opacity.value = withTiming(1, { duration: 600 });
+      overlayOpacity.setValue(0);
+      contentOpacity.setValue(0);
+      chipsOpacity.setValue(0);
+
+      Animated.timing(overlayOpacity, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }).start();
+
+      Animated.timing(contentOpacity, {
+        toValue: 1,
+        duration: 800,
+        delay: 200,
+        useNativeDriver: true,
+      }).start();
+
+      Animated.timing(chipsOpacity, {
+        toValue: 1,
+        duration: 600,
+        delay: 600,
+        useNativeDriver: true,
+      }).start();
+
       if (greeting) {
         Speech.speak(greeting, { language: 'ru' });
       }
     } else {
-      opacity.value = 0;
+      overlayOpacity.setValue(0);
+      contentOpacity.setValue(0);
+      chipsOpacity.setValue(0);
     }
-  }, [visible, greeting, opacity]);
-
-  const animatedOverlay = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
+  }, [visible, greeting, overlayOpacity, contentOpacity, chipsOpacity]);
 
   const handleChipPress = useCallback(
     (action: string, text: string) => {
@@ -101,7 +119,7 @@ function MorningGreetingComponent({
       statusBarTranslucent
       onRequestClose={handleClose}
     >
-      <Animated.View style={[styles.overlay, animatedOverlay]}>
+      <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
         {/* Close button */}
         <TouchableOpacity
           style={styles.closeButton}
@@ -112,12 +130,12 @@ function MorningGreetingComponent({
         </TouchableOpacity>
 
         {/* Content */}
-        <Animated.View entering={FadeIn.duration(800).delay(200)} style={styles.content}>
+        <Animated.View style={[styles.content, { opacity: contentOpacity }]}>
           <Text style={styles.greetingText}>{greeting}</Text>
         </Animated.View>
 
         {/* Chips */}
-        <Animated.View entering={FadeIn.duration(600).delay(600)} style={styles.chipsContainer}>
+        <Animated.View style={[styles.chipsContainer, { opacity: chipsOpacity }]}>
           {CHIPS.map((chip) => (
             <ChipButton
               key={chip.action}

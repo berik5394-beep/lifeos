@@ -1,11 +1,5 @@
-import React, { useEffect } from 'react';
-import { TouchableOpacity, View, StyleSheet, type ViewStyle } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSequence,
-  withSpring,
-} from 'react-native-reanimated';
+import React, { useEffect, useRef } from 'react';
+import { Animated, TouchableOpacity, View, StyleSheet, type ViewStyle } from 'react-native';
 import { colors, borderRadius } from '@/constants';
 
 interface AnimatedCheckboxProps {
@@ -23,18 +17,20 @@ export const AnimatedCheckbox = React.memo(function AnimatedCheckbox({
   color = colors.primary,
   style,
 }: AnimatedCheckboxProps) {
-  const scale = useSharedValue(1);
+  const scale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    scale.value = withSequence(
-      withSpring(1.3, { damping: 6, stiffness: 400 }),
-      withSpring(1, { damping: 8, stiffness: 300 }),
-    );
+    Animated.sequence([
+      Animated.spring(scale, {
+        toValue: 1.3,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, [checked, scale]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
 
   return (
     <TouchableOpacity
@@ -43,7 +39,7 @@ export const AnimatedCheckbox = React.memo(function AnimatedCheckbox({
       hitSlop={8}
       style={style}
     >
-      <Animated.View style={animatedStyle}>
+      <Animated.View style={{ transform: [{ scale }] }}>
         <View
           style={[
             styles.box,

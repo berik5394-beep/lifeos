@@ -1,8 +1,6 @@
 import * as Notifications from 'expo-notifications';
-import { createMMKV } from 'react-native-mmkv';
+import { storage } from '@/services/storage';
 import { getDailyQuote } from '@/utils/quotes';
-
-const storage = createMMKV({ id: 'wakeup-storage' });
 
 const WAKEUP_IDENTIFIER = 'wakeup';
 

@@ -16,3 +16,4 @@ android/
 *.orig.*
 web-build/
 .DS_Store
+*.swp

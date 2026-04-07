@@ -1,13 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withDelay,
-  runOnJS,
-  Easing,
-} from 'react-native-reanimated';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Animated, View, StyleSheet, Dimensions, Easing } from 'react-native';
 import { colors } from '@/constants';
 
 interface ConfettiProps {
@@ -53,41 +45,54 @@ const Particle = React.memo(function Particle({
   config: ParticleConfig;
   visible: boolean;
 }) {
-  const translateY = useSharedValue(-20);
-  const opacity = useSharedValue(0);
+  const progress = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
-      translateY.value = -20;
-      opacity.value = 0;
-      translateY.value = withDelay(
-        config.delay,
-        withTiming(SCREEN_HEIGHT + 20, {
-          duration: config.fallDuration,
-          easing: Easing.in(Easing.quad),
-        }),
-      );
-      opacity.value = withDelay(
-        config.delay,
-        withTiming(1, { duration: 200 }),
-      );
-    } else {
-      opacity.value = 0;
-      translateY.value = -20;
-    }
-  }, [visible, config.delay, config.fallDuration, translateY, opacity]);
+      progress.setValue(0);
+      opacity.setValue(0);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value },
-      {
-        translateX:
-          Math.sin(translateY.value / 50) * config.wobbleAmplitude,
-      },
-      { rotate: `${(translateY.value / SCREEN_HEIGHT) * 360}deg` },
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 200,
+        delay: config.delay,
+        useNativeDriver: true,
+      }).start();
+
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: config.fallDuration,
+        delay: config.delay,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }).start();
+    } else {
+      opacity.setValue(0);
+      progress.setValue(0);
+    }
+  }, [visible, config.delay, config.fallDuration, progress, opacity]);
+
+  const translateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-20, SCREEN_HEIGHT + 20],
+  });
+
+  const translateX = progress.interpolate({
+    inputRange: [0, 0.25, 0.5, 0.75, 1],
+    outputRange: [
+      0,
+      config.wobbleAmplitude,
+      0,
+      -config.wobbleAmplitude,
+      0,
     ],
-    opacity: opacity.value,
-  }));
+  });
+
+  const rotate = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
   return (
     <Animated.View
@@ -99,8 +104,13 @@ const Particle = React.memo(function Particle({
           height: config.size,
           backgroundColor: config.color,
           borderRadius: config.size / 2,
+          opacity,
+          transform: [
+            { translateY },
+            { translateX },
+            { rotate },
+          ],
         },
-        animatedStyle,
       ]}
     />
   );

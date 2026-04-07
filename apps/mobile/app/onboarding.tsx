@@ -11,11 +11,9 @@ import {
   type ListRenderItemInfo,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { createMMKV } from 'react-native-mmkv';
+import { storage } from '@/services/storage';
 import { Button } from '@/components/ui';
 import { colors, spacing, fontSize } from '@/constants';
-
-const storage = createMMKV({ id: 'onboarding-storage' });
 const { width } = Dimensions.get('window');
 
 interface Slide {
@@ -129,7 +127,7 @@ export default function OnboardingScreen() {
   }, []);
 
   const handleStart = useCallback(() => {
-    storage.set('onboarding_complete', true);
+    storage.setBoolean('onboarding_complete', true);
     storage.set('assistantGender', selectedGender);
     storage.set('petType', selectedPet);
     storage.set('petName', petName.trim() || 'LifePet');

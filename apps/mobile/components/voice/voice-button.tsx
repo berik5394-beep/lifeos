@@ -1,19 +1,12 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
+  Animated,
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
   type ViewStyle,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  withSequence,
-  cancelAnimation,
-} from 'react-native-reanimated';
 import { colors } from '@/constants/colors';
 
 interface VoiceButtonProps {
@@ -31,32 +24,33 @@ export const VoiceButton = React.memo(function VoiceButton({
   isProcessing,
   style,
 }: VoiceButtonProps) {
-  const scale = useSharedValue(1);
+  const scale = useRef(new Animated.Value(1)).current;
+  const loopRef = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
     if (isRecording) {
-      scale.value = withRepeat(
-        withSequence(
-          withTiming(1.15, { duration: 600 }),
-          withTiming(1, { duration: 600 }),
-        ),
-        -1,
-        false,
+      const anim = Animated.loop(
+        Animated.sequence([
+          Animated.timing(scale, { toValue: 1.15, duration: 600, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ]),
       );
+      loopRef.current = anim;
+      anim.start();
     } else {
-      cancelAnimation(scale);
-      scale.value = withTiming(1, { duration: 200 });
+      if (loopRef.current) {
+        loopRef.current.stop();
+        loopRef.current = null;
+      }
+      scale.stopAnimation();
+      Animated.timing(scale, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     }
   }, [isRecording, scale]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
 
   const backgroundColor = isRecording ? colors.danger : colors.primary;
 
   return (
-    <Animated.View style={[styles.wrapper, animatedStyle, style]}>
+    <Animated.View style={[styles.wrapper, { transform: [{ scale }] }, style]}>
       <TouchableOpacity
         onPress={onPress}
         activeOpacity={0.8}

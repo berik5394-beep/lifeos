@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { createMMKV } from 'react-native-mmkv';
+import { storage } from '@/services/storage';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { formatDate } from '@/utils/dates';
-
-const storage = createMMKV({ id: 'greeting-storage' });
 
 interface AssistantResponse {
   reply: string;

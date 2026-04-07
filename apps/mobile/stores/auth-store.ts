@@ -1,8 +1,6 @@
 import { create } from 'zustand';
-import { createMMKV } from 'react-native-mmkv';
+import { storage } from '@/services/storage';
 import { api } from '@/services/api';
-
-const storage = createMMKV({ id: 'auth-storage' });
 
 interface User {
   id: string;
