@@ -7,7 +7,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { Button, Input } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth-store';
 
@@ -17,6 +17,7 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
 
   const { login, isLoading } = useAuthStore();
+  const router = useRouter();
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -26,6 +27,7 @@ export default function LoginScreen() {
     setError('');
     try {
       await login(email.trim(), password);
+      router.replace('/(tabs)');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка входа';
       setError(message);

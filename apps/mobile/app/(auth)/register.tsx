@@ -7,7 +7,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { Button, Input } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth-store';
 
@@ -18,6 +18,7 @@ export default function RegisterScreen() {
   const [error, setError] = useState('');
 
   const { register, isLoading } = useAuthStore();
+  const router = useRouter();
 
   const handleRegister = async () => {
     if (!name.trim() || !email.trim() || !password.trim()) {
@@ -31,6 +32,7 @@ export default function RegisterScreen() {
     setError('');
     try {
       await register(email.trim(), name.trim(), password);
+      router.replace('/(tabs)');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка регистрации';
       setError(message);
