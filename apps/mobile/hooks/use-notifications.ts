@@ -14,8 +14,10 @@ export function useNotifications(): UseNotificationsResult {
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
 
   useEffect(() => {
-    registerForPushNotifications().then((token) => {
-      setExpoPushToken(token);
+    registerForPushNotifications().then((t) => {
+      setExpoPushToken(t);
+    }).catch(() => {
+      // Permission denied or not a device — skip silently
     });
 
     notificationListener.current = Notifications.addNotificationReceivedListener(

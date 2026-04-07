@@ -1,7 +1,10 @@
 import { Tabs } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
+import { useNotifications } from '@/hooks/use-notifications';
 
 export default function TabLayout() {
+  useNotifications();
+
   return (
     <Tabs
       screenOptions={{
