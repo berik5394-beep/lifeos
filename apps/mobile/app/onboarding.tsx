@@ -10,8 +10,9 @@ import {
   type ViewToken,
   type ListRenderItemInfo,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { storage } from '@/services/storage';
+import { useAppStore } from '@/stores/app-store';
 import { Button } from '@/components/ui';
 import { colors, spacing, fontSize } from '@/constants';
 const { width } = Dimensions.get('window');
@@ -92,7 +93,7 @@ const slides: Slide[] = [
 ];
 
 export default function OnboardingScreen() {
-  const router = useRouter();
+  const navigation = useNavigation();
   const flatListRef = useRef<FlatList<Slide>>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedGender, setSelectedGender] = useState<'female' | 'male'>('female');
@@ -131,8 +132,8 @@ export default function OnboardingScreen() {
     storage.set('assistantGender', selectedGender);
     storage.set('petType', selectedPet);
     storage.set('petName', petName.trim() || 'LifePet');
-    router.replace('/(auth)/login');
-  }, [router, selectedGender, selectedPet, petName]);
+    useAppStore.getState().setOnboardingDone(true);
+  }, [selectedGender, selectedPet, petName]);
 
   const isLastSlide = currentIndex === slides.length - 1;
 

@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAchievementStore } from '@/stores/achievement-store';
@@ -101,7 +101,7 @@ const ThemeCard = React.memo(function ThemeCard({ theme, onActivate }: ThemeCard
 });
 
 export default function AchievementsScreen() {
-  const router = useRouter();
+  const navigation = useNavigation();
   const {
     achievements,
     themes,
@@ -150,7 +150,7 @@ export default function AchievementsScreen() {
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => navigation.goBack()}
             activeOpacity={0.7}
           >
             <Text style={styles.backText}>{'\u2190'} Назад</Text>

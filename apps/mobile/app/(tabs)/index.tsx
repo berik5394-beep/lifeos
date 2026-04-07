@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -164,7 +164,7 @@ const SummaryCard = React.memo(function SummaryCard({
 });
 
 export default function PlannerScreen() {
-  const router = useRouter();
+  const navigation = useNavigation();
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
   const [newGoalText, setNewGoalText] = useState('');
@@ -370,9 +370,9 @@ export default function PlannerScreen() {
 
   const handleEveningChipPress = useCallback((action: string) => {
     if (action === 'plan_tomorrow') {
-      router.push('/(tabs)/tasks' as never);
+      navigation.navigate('Tasks' as never);
     }
-  }, [router]);
+  }, [navigation]);
 
   const isLoading = tasksLoading || goalsLoading;
 
@@ -385,7 +385,7 @@ export default function PlannerScreen() {
             state={petData.state}
             costume={petData.pet.costume}
             size={60}
-            onPress={() => router.push('/pet')}
+            onPress={() => navigation.navigate('Pet' as never)}
             reaction={petReaction}
           />
         </View>
@@ -452,14 +452,14 @@ export default function PlannerScreen() {
         <View style={styles.quickActionsRow}>
           <TouchableOpacity
             style={styles.quickActionPill}
-            onPress={() => router.push('/journal')}
+            onPress={() => navigation.navigate('Journal' as never)}
             activeOpacity={0.7}
           >
             <Text style={styles.quickActionText}>{'\u{1F4DD}'} Дневник</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.quickActionPill}
-            onPress={() => router.push('/activity')}
+            onPress={() => navigation.navigate('Activity' as never)}
             activeOpacity={0.7}
           >
             <Text style={styles.quickActionText}>{'\u{1F6B6}'} Активность</Text>

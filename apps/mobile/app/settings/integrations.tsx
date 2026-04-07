@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
   TextInput,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { useIntegrationStore } from '@/stores/integration-store';
@@ -472,7 +472,7 @@ function ExportSection() {
 /* ───────── Main screen ───────── */
 
 export default function IntegrationsScreen() {
-  const router = useRouter();
+  const navigation = useNavigation();
   const { fetchIntegrations, isLoading } = useIntegrationStore();
 
   useEffect(() => {
@@ -487,7 +487,7 @@ export default function IntegrationsScreen() {
     >
       <TouchableOpacity
         style={styles.backButton}
-        onPress={() => router.back()}
+        onPress={() => navigation.goBack()}
         activeOpacity={0.7}
       >
         <Text style={styles.backText}>← Назад</Text>

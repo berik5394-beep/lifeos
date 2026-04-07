@@ -7,7 +7,7 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
-import { Stack } from 'expo-router';
+// Stack header is now managed by the parent navigator in navigation/index.tsx
 import MapView, { Polyline } from 'react-native-maps';
 import { useStepStore } from '@/stores/step-store';
 import { useSteps } from '@/hooks/use-steps';
@@ -237,15 +237,6 @@ export default function ActivityScreen() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Активность',
-          headerStyle: { backgroundColor: colors.background },
-          headerTintColor: colors.text,
-          headerTitleStyle: { fontWeight: '600' },
-        }}
-      />
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {/* Today's Steps Card */}
         <Card style={styles.stepsCard}>

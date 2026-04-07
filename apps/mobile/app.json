@@ -26,7 +26,6 @@
       "package": "com.lifeos.app"
     },
     "plugins": [
-      "expo-router",
       "expo-web-browser"
     ]
   }

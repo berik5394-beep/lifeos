@@ -8,7 +8,7 @@ import {
   ScrollView,
   TextInput,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { storage } from '@/services/storage';
 import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore } from '@/stores/theme-store';
@@ -83,7 +83,7 @@ function SettingRow({
 }
 
 export default function SettingsScreen() {
-  const router = useRouter();
+  const navigation = useNavigation();
   const { user, logout } = useAuthStore();
   const { themeName, toggleTheme } = useThemeStore();
 
@@ -174,16 +174,16 @@ export default function SettingsScreen() {
   }, [wakeUpTimeInput]);
 
   const handleImport = useCallback(() => {
-    router.push('/import');
-  }, [router]);
+    navigation.navigate('Import' as never);
+  }, [navigation]);
 
   const handleExport = useCallback(() => {
     Alert.alert('Экспорт данных', 'Скоро!');
   }, []);
 
   const handleIntegrations = useCallback(() => {
-    router.push('/settings/integrations');
-  }, [router]);
+    navigation.navigate('Integrations' as never);
+  }, [navigation]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Выход', 'Вы уверены, что хотите выйти?', [
@@ -193,11 +193,11 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: () => {
           logout();
-          router.replace('/');
+          // Navigation auto-switches via root navigator when token is cleared
         },
       },
     ]);
-  }, [logout, router]);
+  }, [logout]);
 
   return (
     <ScrollView

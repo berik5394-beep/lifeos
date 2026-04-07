@@ -8,7 +8,7 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { Stack } from 'expo-router';
+// Stack header is now managed by the parent navigator in navigation/index.tsx
 import { Card } from '@/components/ui';
 import { Button } from '@/components/ui';
 import { useJournalStore } from '@/stores/journal-store';
@@ -284,7 +284,7 @@ export default function JournalScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Дневник', headerShown: true }} />
+      {/* Header managed by parent navigator */}
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}

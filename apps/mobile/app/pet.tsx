@@ -10,7 +10,7 @@ import {
   FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PetAvatar } from '@/components/shared/pet-avatar';
@@ -172,7 +172,7 @@ const CostumeItem = React.memo(function CostumeItem({ costume, onEquip }: Costum
 });
 
 export default function PetScreen() {
-  const router = useRouter();
+  const navigation = useNavigation();
   const {
     petData,
     costumes,
@@ -263,7 +263,7 @@ export default function PetScreen() {
         >
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => navigation.goBack()}
             activeOpacity={0.7}
           >
             <Text style={styles.backTextDeath}>{'\u2190'} Назад</Text>
@@ -317,7 +317,7 @@ export default function PetScreen() {
         {/* Back button */}
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => navigation.goBack()}
           activeOpacity={0.7}
         >
           <Text style={styles.backText}>{'\u2190'} Назад</Text>
@@ -455,7 +455,7 @@ export default function PetScreen() {
           <Button title={'👕 Костюмы'} onPress={handleOpenCostumes} size="lg" variant="secondary" style={styles.actionButton} />
           <Button
             title={'🏆 Достижения'}
-            onPress={() => router.push('/achievements')}
+            onPress={() => navigation.navigate('Achievements' as never)}
             size="lg"
             variant="secondary"
             style={styles.actionButton}

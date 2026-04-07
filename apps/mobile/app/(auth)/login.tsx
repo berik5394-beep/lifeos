@@ -6,8 +6,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import { Button, Input } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth-store';
 
@@ -17,7 +18,7 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
 
   const { login, isLoading } = useAuthStore();
-  const router = useRouter();
+  const navigation = useNavigation();
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -27,7 +28,7 @@ export default function LoginScreen() {
     setError('');
     try {
       await login(email.trim(), password);
-      router.replace('/(tabs)');
+      // Navigation auto-switches via root navigator when token is set
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка входа';
       setError(message);
@@ -81,9 +82,9 @@ export default function LoginScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>Нет аккаунта? </Text>
-          <Link href="/(auth)/register" style={styles.link}>
-            Зарегистрироваться
-          </Link>
+          <TouchableOpacity onPress={() => navigation.navigate('Register' as never)}>
+            <Text style={styles.link}>Зарегистрироваться</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
