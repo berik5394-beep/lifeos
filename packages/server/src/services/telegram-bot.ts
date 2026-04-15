@@ -89,6 +89,96 @@ async function getHabitsStatus(userId: string): Promise<string> {
   return lines.join('\n');
 }
 
+async function getBriefing(userId: string): Promise<string> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+  const [tasks, habits, habitLogs, expenses, budgetLimits, pet] = await Promise.all([
+    prisma.task.findMany({ where: { userId, date: today }, select: { title: true, completed: true } }),
+    prisma.habit.findMany({ where: { userId, active: true }, select: { id: true, name: true } }),
+    prisma.habitLog.findMany({ where: { userId, date: today, completed: true }, select: { habitId: true } }),
+    prisma.expense.findMany({ where: { userId, date: { gte: monthStart, lte: monthEnd } }, select: { amount: true } }),
+    prisma.budgetLimit.findMany({ where: { userId, month: today.getMonth() + 1, year: today.getFullYear() }, select: { monthlyLimit: true } }),
+    prisma.pet.findFirst({ where: { userId }, select: { health: true, level: true, streak: true, isAlive: true } }),
+  ]);
+
+  const completedTaskCount = tasks.filter((t) => t.completed).length;
+  const completedHabitIds = new Set(habitLogs.map((l) => l.habitId));
+  const completedHabitCount = habits.filter((h) => completedHabitIds.has(h.id)).length;
+  const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
+  const totalLimit = budgetLimits.reduce((s, b) => s + b.monthlyLimit, 0);
+
+  const lines = [
+    `📅 Брифинг на ${today.toLocaleDateString('ru-RU')}`,
+    '',
+    `📋 Задачи: ${completedTaskCount}/${tasks.length}`,
+    `🔄 Привычки: ${completedHabitCount}/${habits.length}`,
+    `💰 Бюджет: ${Math.round(totalSpent)}₸ из ${Math.round(totalLimit)}₸`,
+  ];
+
+  if (pet) {
+    lines.push(`🐾 Питомец: ❤️${Math.round(pet.health)}% · Ур.${pet.level} · Стрик ${pet.streak}д`);
+    if (!pet.isAlive) lines.push('⚠️ Питомец мёртв! Зайди в приложение!');
+  }
+
+  const incomplete = tasks.filter((t) => !t.completed).map((t) => `  ⬜ ${t.title}`);
+  if (incomplete.length > 0) {
+    lines.push('', '📝 Осталось сделать:');
+    lines.push(...incomplete.slice(0, 5));
+    if (incomplete.length > 5) lines.push(`  ... и ещё ${incomplete.length - 5}`);
+  }
+
+  return lines.join('\n');
+}
+
+async function completeTaskByText(userId: string, text: string): Promise<string> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const task = await prisma.task.findFirst({
+    where: {
+      userId,
+      date: today,
+      completed: false,
+      title: { contains: text, mode: 'insensitive' },
+    },
+  });
+
+  if (!task) return `Задача "${text}" не найдена среди сегодняшних.`;
+
+  await prisma.task.update({
+    where: { id: task.id },
+    data: { completed: true },
+  });
+
+  return `Задача "${task.title}" отмечена как выполненная ✅`;
+}
+
+async function completeHabitByText(userId: string, text: string): Promise<string> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const habit = await prisma.habit.findFirst({
+    where: {
+      userId,
+      active: true,
+      name: { contains: text, mode: 'insensitive' },
+    },
+  });
+
+  if (!habit) return `Привычка "${text}" не найдена.`;
+
+  await prisma.habitLog.upsert({
+    where: { habitId_date: { habitId: habit.id, date: today } },
+    create: { habitId: habit.id, userId, date: today, completed: true },
+    update: { completed: true },
+  });
+
+  return `Привычка "${habit.name}" отмечена ✅`;
+}
+
 async function addExpenseFromText(userId: string, text: string): Promise<string> {
   // Parse: "5000 еда" or "5000 еда обед в кафе"
   const match = text.match(/^(\d+(?:\.\d+)?)\s+(\S+)(?:\s+(.+))?$/);
@@ -126,11 +216,14 @@ export function createTelegramBot(): Telegraf {
 
   bot.start(async (ctx: Context) => {
     await ctx.reply(
-      'Привет! Я бот LifeOS.\n\n' +
-      'Чтобы привязать аккаунт, используйте настройки интеграций в приложении LifeOS.\n\n' +
-      'Доступные команды:\n' +
-      '• "задачи" — список задач на сегодня\n' +
+      'Привет! Я бот LifeOS 🚀\n\n' +
+      'Привяжите аккаунт через настройки интеграций в приложении.\n\n' +
+      '📋 Команды:\n' +
+      '• "задачи" — задачи на сегодня\n' +
       '• "привычки" — статус привычек\n' +
+      '• "брифинг" — полный обзор дня\n' +
+      '• "✅ название" — закрыть задачу\n' +
+      '• "✔ название" — отметить привычку\n' +
       '• "5000 еда обед" — добавить расход\n\n' +
       `Ваш Chat ID: ${ctx.chat?.id}`,
     );
@@ -163,6 +256,32 @@ export function createTelegramBot(): Telegraf {
         return;
       }
 
+      if (text === 'брифинг' || text === 'briefing' || text === 'обзор') {
+        const response = await getBriefing(userId);
+        await ctx.reply(response);
+        return;
+      }
+
+      // Complete task: "✅ название задачи"
+      if (text.startsWith('✅') || text.startsWith('✔️') || text.startsWith('закрыть ') || text.startsWith('done ')) {
+        const taskName = ctx.message.text.trim().replace(/^(✅|✔️|закрыть|done)\s*/i, '');
+        if (taskName) {
+          const response = await completeTaskByText(userId, taskName);
+          await ctx.reply(response);
+          return;
+        }
+      }
+
+      // Complete habit: "✔ название привычки" or "привычка тренировка"
+      if (text.startsWith('✔') || text.startsWith('привычка ') || text.startsWith('отметить ')) {
+        const habitName = ctx.message.text.trim().replace(/^(✔|привычка|отметить)\s*/i, '');
+        if (habitName) {
+          const response = await completeHabitByText(userId, habitName);
+          await ctx.reply(response);
+          return;
+        }
+      }
+
       // Check if message starts with a number (expense)
       if (/^\d/.test(text)) {
         const response = await addExpenseFromText(userId, ctx.message.text.trim());
@@ -174,6 +293,9 @@ export function createTelegramBot(): Telegraf {
         'Не понял команду. Доступные:\n' +
         '• "задачи" — задачи на сегодня\n' +
         '• "привычки" — статус привычек\n' +
+        '• "брифинг" — полный обзор дня\n' +
+        '• "✅ название" — закрыть задачу\n' +
+        '• "✔ название" — отметить привычку\n' +
         '• "5000 еда обед" — добавить расход',
       );
     } catch (err) {

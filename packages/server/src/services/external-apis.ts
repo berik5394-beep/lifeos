@@ -1,7 +1,33 @@
 /**
  * External APIs for JARVIS — flights, routes, weather, currency.
  * All keys come from .env — if missing, returns mock data.
+ *
+ * All fetch() calls use fetchWithTimeout to prevent hanging requests
+ * from tying up the event loop when upstream services are slow/down.
  */
+
+import { logger } from '../lib/logger.js';
+
+const DEFAULT_TIMEOUT_MS = 8_000;
+
+/**
+ * Fetch wrapper with a hard timeout. If the upstream doesn't respond within
+ * `timeoutMs`, the request is aborted and AbortError is thrown.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ── City → IATA mapping (KZ cities focus) ──
 const CITY_IATA: Record<string, string> = {
@@ -36,7 +62,7 @@ export async function searchFlights(params: {
 
   try {
     const url = `https://api.travelpayouts.com/aviasales/v3/prices_for_dates?origin=${origin}&destination=${destination}&departure_at=${params.departDate}${params.returnDate ? '&return_at=' + params.returnDate : ''}&sorting=price&limit=5&token=${token}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     const data = await response.json() as { data?: Array<{ airline: string; price: number; departure_at: string; duration: number; transfers: number; link: string }> };
 
     return (data.data || []).slice(0, 5).map((f) => ({
@@ -75,7 +101,7 @@ export async function buildRoute(params: {
 
   try {
     const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(params.from)}&destination=${encodeURIComponent(params.to)}&mode=${mode}&language=ru&key=${key}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     const data = await response.json() as { routes: Array<{ legs: Array<{ distance: { text: string }; duration: { text: string; value: number }; steps: Array<{ html_instructions: string }> }> }> };
 
     if (!data.routes?.length) {
@@ -145,7 +171,7 @@ async function resolveCoords(city: string): Promise<{ lat: number; lon: number; 
   // Try Open-Meteo geocoding API
   try {
     const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=ru`;
-    const res = await fetch(url);
+    const res = await fetchWithTimeout(url);
     const data = await res.json() as { results?: Array<{ latitude: number; longitude: number; name: string }> };
     if (data.results && data.results.length > 0) {
       const r = data.results[0];
@@ -193,7 +219,7 @@ export async function getWeather(city: string): Promise<{
       `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
       `&timezone=auto&forecast_days=3`;
 
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     if (!response.ok) throw new Error(`Open-Meteo HTTP ${response.status}`);
     const data = await response.json() as OpenMeteoResponse;
 
@@ -243,7 +269,7 @@ export async function convertCurrency(amount: number, from: string, to: string):
   try {
     // Frankfurter supports: USD, EUR, GBP, RUB, KZT, TRY and many more
     const url = `https://api.frankfurter.dev/v1/latest?amount=${amount}&from=${fromCode}&to=${toCode}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url);
     if (!response.ok) throw new Error(`Frankfurter HTTP ${response.status}`);
     const data = await response.json() as { rates: Record<string, number> };
     const converted = data.rates?.[toCode];
@@ -319,7 +345,7 @@ export async function sendTelegramMessage(userId: string, text: string): Promise
     }
 
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: settings.chatId, text, parse_mode: 'HTML' }),

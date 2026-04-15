@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState , useMemo} from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,8 @@ import { Button } from '@/components/ui/button';
 import { PetAvatar } from '@/components/shared/pet-avatar';
 import { usePetStore } from '@/stores/pet-store';
 import type { PetState, PetStage, ReviveMethod, CostumeInfo } from '@/stores/pet-store';
-import { colors, spacing, fontSize, borderRadius } from '@/constants';
+import { spacing, fontSize, borderRadius } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 
 const STATE_LABELS: Record<PetState, string> = {
   happy: 'Счастливый',
@@ -105,6 +106,8 @@ const BreakdownCard = React.memo(function BreakdownCard({
   max,
   icon,
 }: BreakdownCardProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const progress = max > 0 ? Math.min(value / max, 1) : 0;
   return (
     <View style={styles.breakdownCard}>
@@ -131,6 +134,8 @@ interface ReviveCardProps {
 }
 
 const ReviveCard = React.memo(function ReviveCard({ option, onPress }: ReviveCardProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <TouchableOpacity
       style={styles.reviveCard}
@@ -152,6 +157,8 @@ interface CostumeItemProps {
 }
 
 const CostumeItem = React.memo(function CostumeItem({ costume, onEquip }: CostumeItemProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <View style={[styles.costumeItem, !costume.unlocked && styles.costumeItemLocked]}>
       <Text style={styles.costumeEmoji}>{costume.emoji}</Text>
@@ -172,6 +179,8 @@ const CostumeItem = React.memo(function CostumeItem({ costume, onEquip }: Costum
 });
 
 export default function PetScreen() {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const navigation = useNavigation();
   const {
     petData,
@@ -250,7 +259,10 @@ export default function PetScreen() {
     );
   }
 
-  const { pet, state, healthBreakdown } = petData;
+  const { pet, state } = petData;
+  const healthBreakdown = petData.healthBreakdown ?? {
+    habits: 0, tasks: 0, budget: 0, steps: 0, journal: 0, meals: 0,
+  };
 
   // Death screen
   if (!pet.isAlive) {
@@ -361,7 +373,7 @@ export default function PetScreen() {
               returnKeyType="done"
               autoFocus
               maxLength={20}
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor={c.textSecondary}
             />
           ) : (
             <TouchableOpacity onPress={handleNamePress} activeOpacity={0.7}>
@@ -461,6 +473,22 @@ export default function PetScreen() {
             style={styles.actionButton}
           />
         </View>
+        <View style={styles.actionsRow}>
+          <Button
+            title={'⚔️ Персонаж'}
+            onPress={() => navigation.navigate('character-select' as never)}
+            size="lg"
+            variant="secondary"
+            style={styles.actionButton}
+          />
+          <Button
+            title={'🏟️ Арена'}
+            onPress={() => navigation.navigate('Arena' as never)}
+            size="lg"
+            variant="secondary"
+            style={styles.actionButton}
+          />
+        </View>
 
         {/* Current costume */}
         {pet.costume ? (
@@ -505,10 +533,11 @@ export default function PetScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   deathContainer: {
     flex: 1,
@@ -520,7 +549,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   loadingText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.md,
   },
   scroll: {
@@ -538,7 +567,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   backText: {
-    color: colors.primary,
+    color: c.primary,
     fontSize: fontSize.md,
     fontWeight: '600',
   },
@@ -649,24 +678,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 215, 0, 0.05)',
   },
   petName: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.xl,
     fontWeight: '700',
     textAlign: 'center',
   },
   nameInput: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.xl,
     fontWeight: '700',
     borderBottomWidth: 2,
-    borderBottomColor: colors.primary,
+    borderBottomColor: c.primary,
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     minWidth: 120,
     textAlign: 'center',
   },
   stateLabel: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.sm,
     marginTop: spacing.xs,
   },
@@ -677,7 +706,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   levelTitle: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.md,
     fontWeight: '700',
     marginBottom: spacing.sm,
@@ -685,18 +714,18 @@ const styles = StyleSheet.create({
   xpBarBg: {
     width: '100%',
     height: 8,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: c.surfaceLight,
     borderRadius: 4,
     overflow: 'hidden',
     marginBottom: spacing.xs,
   },
   xpBarFill: {
     height: '100%',
-    backgroundColor: colors.secondary,
+    backgroundColor: c.secondary,
     borderRadius: 4,
   },
   xpText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.xs,
   },
 
@@ -711,18 +740,18 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   statLabel: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.md,
     fontWeight: '600',
   },
   statValue: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.md,
     fontWeight: '700',
   },
   barBg: {
     height: 10,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: c.surfaceLight,
     borderRadius: 5,
     overflow: 'hidden',
   },
@@ -731,10 +760,10 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   healthBar: {
-    backgroundColor: colors.success,
+    backgroundColor: c.success,
   },
   happinessBar: {
-    backgroundColor: colors.warning,
+    backgroundColor: c.warning,
   },
 
   // Streak
@@ -743,14 +772,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   streakText: {
-    color: colors.warning,
+    color: c.warning,
     fontSize: fontSize.lg,
     fontWeight: '700',
   },
 
   // Breakdown
   sectionTitle: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.lg,
     fontWeight: '700',
     marginTop: spacing.md,
@@ -764,7 +793,7 @@ const styles = StyleSheet.create({
   },
   breakdownCard: {
     width: '31%',
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: borderRadius.md,
     padding: spacing.sm,
     alignItems: 'center',
@@ -775,7 +804,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   breakdownLabel: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.xs,
     marginBottom: spacing.xs,
     textAlign: 'center',
@@ -783,18 +812,18 @@ const styles = StyleSheet.create({
   breakdownBarBg: {
     width: '100%',
     height: 4,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: c.surfaceLight,
     borderRadius: 2,
     overflow: 'hidden',
     marginBottom: spacing.xs,
   },
   breakdownBarFill: {
     height: '100%',
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     borderRadius: 2,
   },
   breakdownValue: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.xs,
     fontWeight: '600',
   },
@@ -814,7 +843,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   costumeLabel: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.md,
     textAlign: 'center',
   },
@@ -826,7 +855,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
     borderTopLeftRadius: borderRadius.xl,
     borderTopRightRadius: borderRadius.xl,
     maxHeight: '70%',
@@ -838,15 +867,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: c.border,
   },
   modalTitle: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.lg,
     fontWeight: '700',
   },
   modalClose: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.xl,
     padding: spacing.xs,
   },
@@ -858,7 +887,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: c.border,
   },
   costumeItemLocked: {
     opacity: 0.4,
@@ -869,15 +898,15 @@ const styles = StyleSheet.create({
   },
   costumeName: {
     flex: 1,
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.md,
     fontWeight: '600',
   },
   costumeNameLocked: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   costumeEquipped: {
-    color: colors.success,
+    color: c.success,
     fontSize: fontSize.sm,
     fontWeight: '600',
   },
@@ -885,9 +914,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   emptyText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.md,
     textAlign: 'center',
     paddingVertical: spacing.xl,
   },
-});
+  });
+}

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
-import { colors, spacing, fontSize, borderRadius } from '@/constants';
+import { spacing, fontSize, borderRadius } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 
 interface HeatmapProps {
   data: Record<string, number>; // 'YYYY-MM-DD' -> completion percentage (0-100)
@@ -10,17 +11,17 @@ interface HeatmapProps {
 const CELL_SIZE = 10;
 const CELL_GAP = 2;
 const MONTH_LABELS = [
-  '\u042F', '\u0424', '\u041C', '\u0410', '\u041C',
-  '\u0418', '\u0418', '\u0410', '\u0421', '\u041E',
-  '\u041D', '\u0414',
+  'Я', 'Ф', 'М', 'А', 'М',
+  'И', 'И', 'А', 'С', 'О',
+  'Н', 'Д',
 ]; // Я,Ф,М,А,М,И,И,А,С,О,Н,Д
 
 const DAY_LABELS = [
-  '\u041F\u043D', '', '\u0421\u0440', '', '\u041F\u0442', '', '\u0412\u0441',
+  'Пн', '', 'Ср', '', 'Пт', '', 'Вс',
 ]; // Пн, '', Ср, '', Пт, '', Вс
 
-function getColor(value: number): string {
-  if (value <= 0) return colors.surface;
+function getColor(value: number, surfaceColor: string): string {
+  if (value <= 0) return surfaceColor;
   if (value <= 25) return '#064E3B';
   if (value <= 50) return '#059669';
   if (value <= 75) return '#34D399';
@@ -92,10 +93,14 @@ function buildGrid(data: Record<string, number>, year: number): {
 
 const HeatmapCell = React.memo(function HeatmapCell({
   value,
+  surfaceColor,
 }: {
   value: number;
+  surfaceColor: string;
 }) {
-  const bgColor = value < 0 ? 'transparent' : getColor(value);
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
+  const bgColor = value < 0 ? 'transparent' : getColor(value, surfaceColor);
   return (
     <View
       style={[
@@ -110,6 +115,8 @@ export const Heatmap = React.memo(function Heatmap({
   data,
   year,
 }: HeatmapProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const displayYear = year ?? new Date().getFullYear();
 
   const { weeks, monthPositions } = useMemo(
@@ -161,6 +168,7 @@ export const Heatmap = React.memo(function Heatmap({
                   <HeatmapCell
                     key={week.weekIndex}
                     value={dayData?.value ?? -1}
+                    surfaceColor={c.surface}
                   />
                 );
               })}
@@ -172,23 +180,24 @@ export const Heatmap = React.memo(function Heatmap({
       {/* Legend */}
       <View style={styles.legend}>
         <Text style={styles.legendLabel}>
-          {'\u041C\u0435\u043D\u044C\u0448\u0435'}
+          {'Меньше'}
         </Text>
         {[0, 15, 40, 65, 90].map((v) => (
           <View
             key={v}
-            style={[styles.legendCell, { backgroundColor: getColor(v) }]}
+            style={[styles.legendCell, { backgroundColor: getColor(v, c.surface) }]}
           />
         ))}
         <Text style={styles.legendLabel}>
-          {'\u0411\u043E\u043B\u044C\u0448\u0435'}
+          {'Больше'}
         </Text>
       </View>
     </View>
   );
 });
 
-const styles = StyleSheet.create({
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   container: {
     flexDirection: 'column',
   },
@@ -207,7 +216,7 @@ const styles = StyleSheet.create({
     width: 20,
   },
   dayLabelText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: 8,
   },
   scrollView: {
@@ -226,7 +235,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   monthLabelText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: 8,
     fontWeight: '600',
   },
@@ -253,8 +262,9 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   legendLabel: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: 8,
     marginHorizontal: 2,
   },
-});
+  });
+}

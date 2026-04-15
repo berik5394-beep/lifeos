@@ -22,10 +22,13 @@ export type ReviveMethod = 'perfect_day' | 'double_steps' | 'three_days';
 export interface Pet {
   id: string;
   type: PetType;
+  characterType: string;
   name: string;
   health: number;
   happiness: number;
   streak: number;
+  mana: number;
+  maxMana: number;
   lastFed: string;
   lastPlayed: string;
   costume: string | null;
@@ -91,7 +94,8 @@ export const usePetStore = create<PetStore>((set) => ({
     try {
       const data = await api.get<PetData>('/pet', token);
       set({ petData: data, isLoading: false });
-    } catch {
+    } catch (error) {
+      console.error('[pet-store]', 'fetchPet', error);
       set({ isLoading: false });
     }
   },
@@ -102,8 +106,9 @@ export const usePetStore = create<PetStore>((set) => ({
     try {
       const data = await api.put<PetData>('/pet/feed', {}, token);
       set({ petData: data });
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      // Error handled silently in UI — still log for dev visibility
+      console.error('[pet-store]', 'feedPet', error);
     }
   },
 
@@ -113,8 +118,9 @@ export const usePetStore = create<PetStore>((set) => ({
     try {
       const data = await api.put<PetData>('/pet/play', {}, token);
       set({ petData: data });
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      // Error handled silently in UI — still log for dev visibility
+      console.error('[pet-store]', 'playWithPet', error);
     }
   },
 
@@ -124,8 +130,9 @@ export const usePetStore = create<PetStore>((set) => ({
     try {
       const data = await api.put<PetData>('/pet/name', { name }, token);
       set({ petData: data });
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      // Error handled silently in UI — still log for dev visibility
+      console.error('[pet-store]', 'renamePet', error);
     }
   },
 
@@ -135,8 +142,9 @@ export const usePetStore = create<PetStore>((set) => ({
     try {
       const data = await api.put<PetData>('/pet/type', { type }, token);
       set({ petData: data });
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      // Error handled silently in UI — still log for dev visibility
+      console.error('[pet-store]', 'setPetType', error);
     }
   },
 
@@ -153,8 +161,9 @@ export const usePetStore = create<PetStore>((set) => ({
     try {
       const data = await api.post<PetData>('/pet/revive', { method }, token);
       set({ petData: data });
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      // Error handled silently in UI — still log for dev visibility
+      console.error('[pet-store]', 'revivePet', error);
     }
   },
 
@@ -164,8 +173,9 @@ export const usePetStore = create<PetStore>((set) => ({
     try {
       const data = await api.get<CostumeInfo[]>('/pet/costumes', token);
       set({ costumes: data });
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      // Error handled silently in UI — still log for dev visibility
+      console.error('[pet-store]', 'fetchCostumes', error);
     }
   },
 
@@ -175,8 +185,9 @@ export const usePetStore = create<PetStore>((set) => ({
     try {
       const data = await api.put<PetData>('/pet/costume', { costume }, token);
       set({ petData: data });
-    } catch {
-      // Error handled silently
+    } catch (error) {
+      // Error handled silently in UI — still log for dev visibility
+      console.error('[pet-store]', 'setCostume', error);
     }
   },
 }));

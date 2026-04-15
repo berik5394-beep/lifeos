@@ -28,10 +28,15 @@ interface ChatState {
   messages: ChatMessage[];
   isLoading: boolean;
   hasMore: boolean;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, webSearch?: boolean) => Promise<void>;
   fetchHistory: (offset?: number) => Promise<void>;
   clearHistory: () => Promise<void>;
   executeAction: (action: ChatAction) => Promise<void>;
+}
+
+let _msgSeq = 0;
+function uniqueId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${++_msgSeq}`;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -39,12 +44,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isLoading: false,
   hasMore: true,
 
-  sendMessage: async (text: string) => {
+  sendMessage: async (text: string, webSearch?: boolean) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 
     const userMessage: ChatMessage = {
-      id: `temp-${Date.now()}`,
+      id: uniqueId('user'),
       role: 'user',
       content: text,
       createdAt: new Date().toISOString(),
@@ -56,19 +61,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const data = await api.post<ChatResponse>(
+      const data = await api.post<{ message: string; actions?: ChatAction[] }>(
         '/voice/chat',
-        { message: text },
+        { text, webSearch: webSearch ?? false },
         token,
       );
 
+      const assistantMessage: ChatMessage = {
+        id: uniqueId('assistant'),
+        role: 'assistant',
+        content: data.message,
+        actions: data.actions,
+        createdAt: new Date().toISOString(),
+      };
+
       set((state) => ({
-        messages: [data.message, ...state.messages],
+        messages: [assistantMessage, ...state.messages],
         isLoading: false,
       }));
     } catch (err) {
       const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`,
+        id: uniqueId('error'),
         role: 'assistant',
         content: 'Произошла ошибка. Попробуйте ещё раз.',
         createdAt: new Date().toISOString(),
@@ -87,17 +100,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     try {
       const currentOffset = offset ?? get().messages.length;
-      const data = await api.get<ChatHistoryResponse>(
+      const raw = await api.get<ChatMessage[] | ChatHistoryResponse>(
         `/chat/history?limit=20&offset=${currentOffset}`,
         token,
       );
 
-      set((state) => ({
-        messages: offset === 0
-          ? data.messages.reverse()
-          : [...state.messages, ...data.messages.reverse()],
-        hasMore: data.hasMore,
-      }));
+      // Handle both shapes: raw array or { messages, hasMore } wrapper
+      const messages: ChatMessage[] = Array.isArray(raw)
+        ? raw
+        : Array.isArray((raw as ChatHistoryResponse).messages)
+          ? (raw as ChatHistoryResponse).messages
+          : [];
+      const serverHasMore = !Array.isArray(raw) && typeof (raw as ChatHistoryResponse).hasMore === 'boolean'
+        ? (raw as ChatHistoryResponse).hasMore
+        : messages.length >= 20;
+
+      set((state) => {
+        const reversed = messages.reverse();
+        if (offset === 0) {
+          return { messages: reversed, hasMore: serverHasMore };
+        }
+        const existingIds = new Set(state.messages.map(m => m.id));
+        const newMessages = reversed.filter(m => !existingIds.has(m.id));
+        return { messages: [...state.messages, ...newMessages], hasMore: serverHasMore };
+      });
     } catch {
       // Silently fail for history fetch
     }
@@ -107,11 +133,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
 
+    // Optimistically clear UI immediately for instant feedback
+    set({ messages: [], hasMore: false });
+
     try {
       await api.delete('/chat/history', token);
-      set({ messages: [], hasMore: false });
-    } catch {
-      // Silently fail
+    } catch (err) {
+      console.warn('Failed to clear chat history on server:', err);
+      // UI already cleared — user sees empty chat regardless
     }
   },
 
@@ -148,7 +177,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
 
       const confirmMessage: ChatMessage = {
-        id: `confirm-${Date.now()}`,
+        id: uniqueId('confirm'),
         role: 'assistant',
         content: getConfirmationText(action.type),
         createdAt: new Date().toISOString(),
@@ -159,7 +188,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }));
     } catch {
       const errorMessage: ChatMessage = {
-        id: `action-error-${Date.now()}`,
+        id: uniqueId('action-error'),
         role: 'assistant',
         content: 'Не удалось выполнить действие. Попробуйте ещё раз.',
         createdAt: new Date().toISOString(),

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   TextInput,
@@ -7,7 +7,8 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import { colors, borderRadius, fontSize, spacing } from '@/constants';
+import { borderRadius, fontSize, spacing } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 
 interface InputProps extends Omit<TextInputProps, 'style'> {
   label?: string;
@@ -22,6 +23,37 @@ export const Input = React.memo(function Input({
   ...props
 }: InputProps) {
   const [focused, setFocused] = useState(false);
+  const c = useColors();
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      gap: spacing.xs,
+    },
+    label: {
+      color: c.text,
+      fontSize: fontSize.sm,
+      fontWeight: '500',
+    },
+    input: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: borderRadius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm + 4,
+      color: c.text,
+      fontSize: fontSize.md,
+    },
+    inputFocused: {
+      borderColor: c.primary,
+    },
+    inputError: {
+      borderColor: c.danger,
+    },
+    error: {
+      color: c.danger,
+      fontSize: fontSize.xs,
+    },
+  }), [c]);
 
   return (
     <View style={[styles.container, style]}>
@@ -32,43 +64,14 @@ export const Input = React.memo(function Input({
           focused && styles.inputFocused,
           error && styles.inputError,
         ]}
-        placeholderTextColor={colors.textSecondary}
+        placeholderTextColor={c.textSecondary}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
+        accessibilityLabel={label || props.placeholder}
+        accessibilityHint={error ? `Ошибка: ${error}` : undefined}
         {...props}
       />
       {error && <Text style={styles.error}>{error}</Text>}
     </View>
   );
-});
-
-const styles = StyleSheet.create({
-  container: {
-    gap: spacing.xs,
-  },
-  label: {
-    color: colors.text,
-    fontSize: fontSize.sm,
-    fontWeight: '500',
-  },
-  input: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 4,
-    color: colors.text,
-    fontSize: fontSize.md,
-  },
-  inputFocused: {
-    borderColor: colors.primary,
-  },
-  inputError: {
-    borderColor: colors.danger,
-  },
-  error: {
-    color: colors.danger,
-    fontSize: fontSize.xs,
-  },
 });

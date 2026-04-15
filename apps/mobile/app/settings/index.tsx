@@ -1,23 +1,36 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   Alert,
   ScrollView,
   TextInput,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { storage } from '@/services/storage';
+import { exportCSV, saveCSVToFile } from '@/services/export';
 import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore } from '@/stores/theme-store';
-import { Card, Button } from '@/components/ui';
-import { colors, spacing, fontSize, borderRadius } from '@/constants';
+import { themeLabels, themeIcons, type ThemeName } from '@/constants/themes';
+import { Card, Button, SectionHeader } from '@/components/ui';
+import { spacing, fontSize, borderRadius } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
+import { useUIStore, type UIComplexity } from '@/stores/ui-store';
+import { AnimatedPress } from '@/components/ui/animated-press';
+import { FadeInView } from '@/components/ui/fade-in-view';
+
+const THEME_OPTIONS: ThemeName[] = ['dark', 'planner', 'pink'];
 import {
   scheduleWakeUpNotification,
   cancelWakeUpNotification,
 } from '@/services/wake-up-notification';
+
+const UI_COMPLEXITY_OPTIONS: { key: UIComplexity; label: string; icon: string; desc: string }[] = [
+  { key: 'simple', label: 'Простой', icon: '🌱', desc: 'Задачи и привычки' },
+  { key: 'standard', label: 'Стандарт', icon: '⚡', desc: '+ Финансы, цели, теги' },
+  { key: 'power', label: 'Продвинутый', icon: '🚀', desc: '+ Kanban, Gantt, зависимости' },
+];
 
 const ASSISTANT_STYLES = [
   { key: 'friendly', label: 'Дружелюбный', icon: '😊' },
@@ -33,6 +46,190 @@ function loadToggle(key: string, fallback: boolean): boolean {
   return stored ?? fallback;
 }
 
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: c.background,
+    },
+    content: {
+      padding: spacing.md,
+      paddingTop: spacing.xl + 32,
+      paddingBottom: spacing.xl,
+    },
+    sectionTitle: {
+      fontSize: fontSize.sm,
+      fontWeight: '600',
+      color: c.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      marginTop: spacing.lg,
+      marginBottom: spacing.sm,
+      marginLeft: spacing.xs,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.sm,
+    },
+    rowLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    rowIcon: {
+      fontSize: 20,
+      marginRight: spacing.sm,
+    },
+    rowLabel: {
+      fontSize: fontSize.md,
+      color: c.text,
+    },
+    rowValue: {
+      fontSize: fontSize.sm,
+      color: c.textSecondary,
+      maxWidth: 180,
+      textAlign: 'right',
+    },
+    separator: {
+      height: 1,
+      backgroundColor: c.border,
+      marginVertical: spacing.xs,
+    },
+    toggle: {
+      width: 48,
+      height: 28,
+      borderRadius: 14,
+      justifyContent: 'center',
+      paddingHorizontal: 2,
+    },
+    toggleOn: {
+      backgroundColor: c.primary,
+    },
+    toggleOff: {
+      backgroundColor: c.surfaceLight,
+    },
+    toggleThumb: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: c.text,
+    },
+    toggleThumbOn: {
+      alignSelf: 'flex-end' as const,
+    },
+    toggleThumbOff: {
+      alignSelf: 'flex-start' as const,
+    },
+    radio: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 2,
+      borderColor: c.surfaceLight,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    radioSelected: {
+      borderColor: c.primary,
+    },
+    radioInner: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: c.primary,
+    },
+    settingLabel: {
+      color: c.text,
+      fontSize: fontSize.md,
+      fontWeight: '600',
+      marginBottom: spacing.sm,
+    },
+    genderRow: {
+      flexDirection: 'row' as const,
+      gap: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    genderOption: {
+      flex: 1,
+      backgroundColor: c.surfaceLight,
+      borderRadius: borderRadius.md,
+      paddingVertical: spacing.sm,
+      alignItems: 'center' as const,
+      borderWidth: 2,
+      borderColor: 'transparent',
+    },
+    genderOptionSelected: {
+      borderColor: c.primary,
+    },
+    genderOptionText: {
+      color: c.text,
+      fontSize: fontSize.sm,
+      fontWeight: '600',
+    },
+    wakeUpEditRow: {
+      flexDirection: 'row' as const,
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+      alignItems: 'center' as const,
+    },
+    wakeUpInput: {
+      flex: 1,
+      backgroundColor: c.surfaceLight,
+      borderRadius: borderRadius.md,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      color: c.text,
+      fontSize: fontSize.md,
+    },
+    wakeUpSaveButton: {
+      backgroundColor: c.primary,
+      borderRadius: borderRadius.md,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+    },
+    wakeUpSaveText: {
+      color: c.text,
+      fontSize: fontSize.sm,
+      fontWeight: '600',
+    },
+    passwordChangeContainer: {
+      paddingTop: spacing.sm,
+      gap: spacing.sm,
+    },
+    passwordInput: {
+      backgroundColor: c.surfaceLight,
+      borderRadius: borderRadius.md,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      color: c.text,
+      fontSize: fontSize.md,
+    },
+    dangerCard: {
+      borderColor: c.danger,
+    },
+    logoutButton: {
+      width: '100%' as const,
+    },
+    deleteAccountButton: {
+      alignItems: 'center' as const,
+      paddingVertical: spacing.md,
+      marginTop: spacing.sm,
+    },
+    deleteAccountText: {
+      fontSize: fontSize.sm,
+      color: '#EF4444',
+    },
+    version: {
+      fontSize: fontSize.sm,
+      color: c.textSecondary,
+      textAlign: 'center',
+      marginTop: spacing.xl,
+    },
+  });
+}
+
 interface SettingRowProps {
   icon: string;
   label: string;
@@ -40,6 +237,7 @@ interface SettingRowProps {
   isToggle?: boolean;
   toggleValue?: boolean;
   onPress?: () => void;
+  styles: ReturnType<typeof createStyles>;
 }
 
 function SettingRow({
@@ -49,14 +247,10 @@ function SettingRow({
   isToggle,
   toggleValue,
   onPress,
+  styles,
 }: SettingRowProps) {
-  return (
-    <TouchableOpacity
-      style={styles.row}
-      onPress={onPress}
-      activeOpacity={0.7}
-      disabled={!onPress}
-    >
+  const content = (
+    <>
       <View style={styles.rowLeft}>
         <Text style={styles.rowIcon}>{icon}</Text>
         <Text style={styles.rowLabel}>{label}</Text>
@@ -78,14 +272,34 @@ function SettingRow({
       ) : value ? (
         <Text style={styles.rowValue}>{value}</Text>
       ) : null}
-    </TouchableOpacity>
+    </>
   );
+
+  if (onPress) {
+    return (
+      <AnimatedPress onPress={onPress} style={styles.row}>
+        {content}
+      </AnimatedPress>
+    );
+  }
+
+  return <View style={styles.row}>{content}</View>;
 }
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
-  const { user, logout } = useAuthStore();
-  const { themeName, toggleTheme } = useThemeStore();
+  const { user, logout, deleteAccount, changePassword } = useAuthStore();
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const { themeName, setTheme } = useThemeStore();
+  const uiComplexity = useUIStore((s) => s.complexity);
+  const setUIComplexity = useUIStore((s) => s.setComplexity);
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
 
   const [morningReminder, setMorningReminder] = useState(() =>
     loadToggle('morning_reminder', true),
@@ -177,13 +391,115 @@ export default function SettingsScreen() {
     navigation.navigate('Import' as never);
   }, [navigation]);
 
-  const handleExport = useCallback(() => {
-    Alert.alert('Экспорт данных', 'Скоро!');
+  const handleExportModule = useCallback(async (mod: 'finance' | 'habits' | 'tasks') => {
+    const labels = { finance: 'Финансы', habits: 'Привычки', tasks: 'Задачи' };
+    try {
+      const csv = await exportCSV(mod);
+      const filename = `lifeos_${mod}_${new Date().toISOString().split('T')[0]}.csv`;
+      const path = await saveCSVToFile(csv, filename);
+      if (path) {
+        Alert.alert('Экспорт готов', `Файл сохранён: ${filename}`);
+      } else {
+        Alert.alert('Готово', `${labels[mod]} экспортированы`);
+      }
+    } catch {
+      Alert.alert('Ошибка', 'Не удалось экспортировать данные');
+    }
   }, []);
+
+  const handleExport = useCallback(() => {
+    Alert.alert(
+      'Экспорт данных',
+      'Выберите что экспортировать:',
+      [
+        { text: '💰 Финансы (CSV)', onPress: () => handleExportModule('finance') },
+        { text: '🏃 Привычки (CSV)', onPress: () => handleExportModule('habits') },
+        { text: '📋 Задачи (CSV)', onPress: () => handleExportModule('tasks') },
+        { text: 'Отмена', style: 'cancel' },
+      ],
+    );
+  }, [handleExportModule]);
 
   const handleIntegrations = useCallback(() => {
     navigation.navigate('Integrations' as never);
   }, [navigation]);
+
+  const handleSubscription = useCallback(() => {
+    navigation.navigate('Subscription' as never);
+  }, [navigation]);
+
+  const handleTagManager = useCallback(() => {
+    navigation.navigate('TagManager' as never);
+  }, [navigation]);
+
+  const handleSharedSpaces = useCallback(() => {
+    navigation.navigate('SharedSpaces' as never);
+  }, [navigation]);
+
+  const handleChangePassword = useCallback(async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      Alert.alert('��шибка', 'Заполните все поля');
+      return;
+    }
+    if (newPassword.length < 8) {
+      Alert.alert('Ошибка', 'Новый пароль должен быть минимум 8 символов');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Ошибка', 'Пароли не совпадают');
+      return;
+    }
+    setPasswordLoading(true);
+    try {
+      await changePassword(currentPassword, newPassword);
+      Alert.alert('Готово', 'Пароль успешно изменён');
+      setShowPasswordChange(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Ошибка смены пароля';
+      Alert.alert('Ошибка', message);
+    } finally {
+      setPasswordLoading(false);
+    }
+  }, [currentPassword, newPassword, confirmPassword, changePassword]);
+
+  const handleDeleteAccount = useCallback(() => {
+    Alert.alert(
+      'Удалить аккаунт?',
+      'Все данные будут безвозвратно удалены. Это действие нельзя отменить.',
+      [
+        { text: 'Отмена', style: 'cancel' },
+        {
+          text: 'Удалить',
+          style: 'destructive',
+          onPress: () => {
+            Alert.prompt(
+              'Подтвердите пароль',
+              'Введите пароль для удаления аккаунта',
+              async (password: string) => {
+                if (!password) return;
+                setDeleteLoading(true);
+                try {
+                  await deleteAccount(password);
+                } catch (err) {
+                  const message =
+                    err instanceof Error ? err.message : 'Ошибка удаления';
+                  Alert.alert('Ошибка', message);
+                } finally {
+                  setDeleteLoading(false);
+                }
+              },
+              'secure-text',
+              '',
+              'default',
+            );
+          },
+        },
+      ],
+    );
+  }, [deleteAccount]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Выход', 'Вы уверены, что хотите выйти?', [
@@ -193,7 +509,6 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: () => {
           logout();
-          // Navigation auto-switches via root navigator when token is cleared
         },
       },
     ]);
@@ -205,336 +520,257 @@ export default function SettingsScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.screenTitle}>Настройки</Text>
+      <FadeInView delay={0}>
+        <SectionHeader title="Настройки" subtitle="Профиль, оформление и интеграции" />
+      </FadeInView>
 
-      {/* Профиль */}
-      <Text style={styles.sectionTitle}>Профиль</Text>
-      <Card>
-        <SettingRow icon="👤" label="Имя" value={user?.name ?? '—'} />
-        <View style={styles.separator} />
-        <SettingRow icon="📧" label="Почта" value={user?.email ?? '—'} />
-      </Card>
-
-      {/* Оформление */}
-      <Text style={styles.sectionTitle}>Оформление</Text>
-      <Card>
-        <SettingRow
-          icon="🌙"
-          label={themeName === 'dark' ? 'Тёмная тема' : 'Светлая тема'}
-          isToggle
-          toggleValue={themeName === 'dark'}
-          onPress={toggleTheme}
-        />
-      </Card>
-
-      {/* Уведомления */}
-      <Text style={styles.sectionTitle}>Уведомления</Text>
-      <Card>
-        <SettingRow
-          icon="🌅"
-          label="Утреннее напоминание"
-          isToggle
-          toggleValue={morningReminder}
-          onPress={handleToggleMorning}
-        />
-        <View style={styles.separator} />
-        <SettingRow
-          icon="🌙"
-          label="Вечерний обзор"
-          isToggle
-          toggleValue={eveningReview}
-          onPress={handleToggleEvening}
-        />
-        <View style={styles.separator} />
-        <SettingRow
-          icon="🔔"
-          label="Напоминания о задачах"
-          isToggle
-          toggleValue={taskReminders}
-          onPress={handleToggleTasks}
-        />
-      </Card>
-
-      {/* Ассистент */}
-      <Text style={styles.sectionTitle}>Ассистент</Text>
-      <Card>
-        {ASSISTANT_STYLES.map((style, index) => (
-          <View key={style.key}>
-            {index > 0 && <View style={styles.separator} />}
-            <TouchableOpacity
-              style={styles.row}
-              activeOpacity={0.7}
-              onPress={() => handleAssistantStyleChange(style.key)}
-            >
-              <View style={styles.rowLeft}>
-                <Text style={styles.rowIcon}>{style.icon}</Text>
-                <Text style={styles.rowLabel}>{style.label}</Text>
-              </View>
-              <View
-                style={[
-                  styles.radio,
-                  assistantStyle === style.key && styles.radioSelected,
-                ]}
+      <FadeInView delay={80}>
+        <Text style={styles.sectionTitle}>Профиль</Text>
+        <Card>
+          <SettingRow icon="👤" label="Имя" value={user?.name ?? '—'} styles={styles} />
+          <View style={styles.separator} />
+          <SettingRow icon="📧" label="Почта" value={user?.email ?? '—'} styles={styles} />
+          <View style={styles.separator} />
+          <SettingRow
+            icon="🔑"
+            label="Сменить пароль"
+            onPress={() => setShowPasswordChange(!showPasswordChange)}
+            styles={styles}
+          />
+          {showPasswordChange && (
+            <View style={styles.passwordChangeContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Текущий пароль"
+                placeholderTextColor={c.textSecondary}
+                secureTextEntry
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                autoCapitalize="none"
+              />
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Новый пароль (мин. 8 символов)"
+                placeholderTextColor={c.textSecondary}
+                secureTextEntry
+                value={newPassword}
+                onChangeText={setNewPassword}
+                autoCapitalize="none"
+              />
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Подтвердите новый пароль"
+                placeholderTextColor={c.textSecondary}
+                secureTextEntry
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                autoCapitalize="none"
+                onSubmitEditing={handleChangePassword}
+                returnKeyType="done"
+              />
+              <AnimatedPress
+                onPress={handleChangePassword}
+                disabled={passwordLoading}
+                style={[styles.wakeUpSaveButton, passwordLoading && { opacity: 0.5 }]}
               >
-                {assistantStyle === style.key && (
-                  <View style={styles.radioInner} />
-                )}
-              </View>
-            </TouchableOpacity>
-          </View>
-        ))}
-      </Card>
+                <Text style={styles.wakeUpSaveText}>
+                  {passwordLoading ? 'Сохранение...' : 'Сохранить пароль'}
+                </Text>
+              </AnimatedPress>
+            </View>
+          )}
+        </Card>
+      </FadeInView>
 
-      {/* Голос ассистента */}
-      <Card>
-        <Text style={styles.settingLabel}>Голос ассистента</Text>
-        <View style={styles.genderRow}>
-          <TouchableOpacity
-            style={[
-              styles.genderOption,
-              assistantGender === 'female' && styles.genderOptionSelected,
-            ]}
-            onPress={() => handleGenderChange('female')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.genderOptionText}>Женский</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.genderOption,
-              assistantGender === 'male' && styles.genderOptionSelected,
-            ]}
-            onPress={() => handleGenderChange('male')}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.genderOptionText}>Мужской</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.separator} />
-        <TouchableOpacity
-          style={styles.row}
-          activeOpacity={0.7}
-          onPress={handleWakeUpTimeEdit}
-        >
-          <View style={styles.rowLeft}>
-            <Text style={styles.rowIcon}>{'\u23F0'}</Text>
-            <Text style={styles.rowLabel}>Время пробуждения</Text>
-          </View>
-          <Text style={styles.rowValue}>{wakeUpTime}</Text>
-        </TouchableOpacity>
-        {editingWakeUpTime && (
-          <View style={styles.wakeUpEditRow}>
-            <TextInput
-              style={styles.wakeUpInput}
-              value={wakeUpTimeInput}
-              onChangeText={setWakeUpTimeInput}
-              placeholder="ЧЧ:ММ"
-              placeholderTextColor={colors.textSecondary}
-              keyboardType="numbers-and-punctuation"
-              maxLength={5}
-              autoFocus
-              onSubmitEditing={handleWakeUpTimeSave}
-              returnKeyType="done"
-            />
-            <TouchableOpacity
-              style={styles.wakeUpSaveButton}
-              onPress={handleWakeUpTimeSave}
+      <FadeInView delay={160}>
+        <Text style={styles.sectionTitle}>Оформление</Text>
+        <Card>
+          {THEME_OPTIONS.map((key, index) => (
+            <View key={key}>
+              {index > 0 && <View style={styles.separator} />}
+              <AnimatedPress
+                style={styles.row}
+                onPress={() => setTheme(key)}
+              >
+                <View style={styles.rowLeft}>
+                  <Text style={styles.rowIcon}>{themeIcons[key]}</Text>
+                  <Text style={styles.rowLabel}>{themeLabels[key]}</Text>
+                </View>
+                <View
+                  style={[
+                    styles.radio,
+                    themeName === key && styles.radioSelected,
+                  ]}
+                >
+                  {themeName === key && <View style={styles.radioInner} />}
+                </View>
+              </AnimatedPress>
+            </View>
+          ))}
+        </Card>
+      </FadeInView>
+
+      <FadeInView delay={240}>
+        <Text style={styles.sectionTitle}>Уровень интерфейса</Text>
+        <Card>
+          {UI_COMPLEXITY_OPTIONS.map((opt, index) => (
+            <View key={opt.key}>
+              {index > 0 && <View style={styles.separator} />}
+              <AnimatedPress
+                style={styles.row}
+                onPress={() => setUIComplexity(opt.key)}
+              >
+                <View style={styles.rowLeft}>
+                  <Text style={styles.rowIcon}>{opt.icon}</Text>
+                  <View>
+                    <Text style={styles.rowLabel}>{opt.label}</Text>
+                    <Text style={[styles.rowLabel, { fontSize: fontSize.xs, color: c.textMuted, fontWeight: '400' }]}>{opt.desc}</Text>
+                  </View>
+                </View>
+                <View
+                  style={[
+                    styles.radio,
+                    uiComplexity === opt.key && styles.radioSelected,
+                  ]}
+                >
+                  {uiComplexity === opt.key && <View style={styles.radioInner} />}
+                </View>
+              </AnimatedPress>
+            </View>
+          ))}
+        </Card>
+      </FadeInView>
+
+      <FadeInView delay={320}>
+        <Text style={styles.sectionTitle}>Уведомления</Text>
+        <Card>
+          <SettingRow icon="🌅" label="Утреннее напоминание" isToggle toggleValue={morningReminder} onPress={handleToggleMorning} styles={styles} />
+          <View style={styles.separator} />
+          <SettingRow icon="🌙" label="Вечерний обзор" isToggle toggleValue={eveningReview} onPress={handleToggleEvening} styles={styles} />
+          <View style={styles.separator} />
+          <SettingRow icon="🔔" label="Напоминания о задачах" isToggle toggleValue={taskReminders} onPress={handleToggleTasks} styles={styles} />
+        </Card>
+      </FadeInView>
+
+      <FadeInView delay={400}>
+        <Text style={styles.sectionTitle}>Ассистент</Text>
+        <Card>
+          {ASSISTANT_STYLES.map((style, index) => (
+            <View key={style.key}>
+              {index > 0 && <View style={styles.separator} />}
+              <AnimatedPress
+                style={styles.row}
+                onPress={() => handleAssistantStyleChange(style.key)}
+              >
+                <View style={styles.rowLeft}>
+                  <Text style={styles.rowIcon}>{style.icon}</Text>
+                  <Text style={styles.rowLabel}>{style.label}</Text>
+                </View>
+                <View
+                  style={[
+                    styles.radio,
+                    assistantStyle === style.key && styles.radioSelected,
+                  ]}
+                >
+                  {assistantStyle === style.key && (
+                    <View style={styles.radioInner} />
+                  )}
+                </View>
+              </AnimatedPress>
+            </View>
+          ))}
+        </Card>
+      </FadeInView>
+
+      <FadeInView delay={480}>
+        <Card>
+          <Text style={styles.settingLabel}>Голос ассистента</Text>
+          <View style={styles.genderRow}>
+            <AnimatedPress
+              style={[styles.genderOption, assistantGender === 'female' && styles.genderOptionSelected]}
+              onPress={() => handleGenderChange('female')}
             >
-              <Text style={styles.wakeUpSaveText}>Сохранить</Text>
-            </TouchableOpacity>
+              <Text style={styles.genderOptionText}>Женский</Text>
+            </AnimatedPress>
+            <AnimatedPress
+              style={[styles.genderOption, assistantGender === 'male' && styles.genderOptionSelected]}
+              onPress={() => handleGenderChange('male')}
+            >
+              <Text style={styles.genderOptionText}>Мужской</Text>
+            </AnimatedPress>
           </View>
-        )}
-      </Card>
+          <View style={styles.separator} />
+          <AnimatedPress style={styles.row} onPress={handleWakeUpTimeEdit}>
+            <View style={styles.rowLeft}>
+              <Text style={styles.rowIcon}>{'\u23F0'}</Text>
+              <Text style={styles.rowLabel}>Время пробуждения</Text>
+            </View>
+            <Text style={styles.rowValue}>{wakeUpTime}</Text>
+          </AnimatedPress>
+          {editingWakeUpTime && (
+            <View style={styles.wakeUpEditRow}>
+              <TextInput
+                style={styles.wakeUpInput}
+                value={wakeUpTimeInput}
+                onChangeText={setWakeUpTimeInput}
+                placeholder="ЧЧ:ММ"
+                placeholderTextColor={c.textSecondary}
+                keyboardType="numbers-and-punctuation"
+                maxLength={5}
+                autoFocus
+                onSubmitEditing={handleWakeUpTimeSave}
+                returnKeyType="done"
+              />
+              <AnimatedPress style={styles.wakeUpSaveButton} onPress={handleWakeUpTimeSave}>
+                <Text style={styles.wakeUpSaveText}>Сохранить</Text>
+              </AnimatedPress>
+            </View>
+          )}
+        </Card>
+      </FadeInView>
 
-      {/* Данные */}
-      <Text style={styles.sectionTitle}>Данные</Text>
-      <Card>
-        <SettingRow icon="📥" label="Импорт файлов" onPress={handleImport} />
-        <View style={styles.separator} />
-        <SettingRow icon="📤" label="Экспорт данных" onPress={handleExport} />
-        <View style={styles.separator} />
-        <SettingRow icon="🔗" label="Интеграции" onPress={handleIntegrations} />
-      </Card>
+      <FadeInView delay={560}>
+        <Text style={styles.sectionTitle}>Данные</Text>
+        <Card>
+          <SettingRow icon="📥" label="Импорт файлов" onPress={handleImport} styles={styles} />
+          <View style={styles.separator} />
+          <SettingRow icon="📤" label="Экспорт данных" onPress={() => (navigation as any).navigate('Export')} styles={styles} />
+          <View style={styles.separator} />
+          <SettingRow icon="🔗" label="Интеграции" onPress={handleIntegrations} styles={styles} />
+        </Card>
+      </FadeInView>
 
-      {/* Аккаунт */}
-      <Text style={styles.sectionTitle}>Аккаунт</Text>
-      <Card style={styles.dangerCard}>
-        <Button
-          title="Выйти из аккаунта"
-          onPress={handleLogout}
-          variant="danger"
-          style={styles.logoutButton}
-        />
-      </Card>
+      <FadeInView delay={640}>
+        <Text style={styles.sectionTitle}>Продвинутое</Text>
+        <Card>
+          <SettingRow icon="⭐" label="Подписка PRO" onPress={handleSubscription} styles={styles} />
+          <View style={styles.separator} />
+          <SettingRow icon="🏷️" label="Теги" onPress={handleTagManager} styles={styles} />
+          <View style={styles.separator} />
+          <SettingRow icon="👥" label="Общие пространства" onPress={handleSharedSpaces} styles={styles} />
+          <View style={styles.separator} />
+          <SettingRow icon="📜" label="Политика конфиденциальности" onPress={() => (navigation as any).navigate('Legal')} styles={styles} />
+        </Card>
+      </FadeInView>
 
-      <Text style={styles.version}>LifeOS v1.0.0</Text>
+      <FadeInView delay={720}>
+        <Text style={styles.sectionTitle}>Аккаунт</Text>
+        <Card style={styles.dangerCard}>
+          <Button title="Выйти из аккаунта" onPress={handleLogout} variant="danger" style={styles.logoutButton} />
+        </Card>
+
+        <AnimatedPress
+          style={styles.deleteAccountButton}
+          onPress={handleDeleteAccount}
+          disabled={deleteLoading}
+        >
+          <Text style={styles.deleteAccountText}>
+            {deleteLoading ? 'Удаление...' : 'Удалить аккаунт'}
+          </Text>
+        </AnimatedPress>
+
+        <Text style={styles.version}>LifeOS v1.0.0</Text>
+      </FadeInView>
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: spacing.md,
-    paddingTop: spacing.xl + 32,
-    paddingBottom: spacing.xl,
-  },
-  screenTitle: {
-    fontSize: fontSize.xxl,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-    marginLeft: spacing.xs,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-  },
-  rowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  rowIcon: {
-    fontSize: 20,
-    marginRight: spacing.sm,
-  },
-  rowLabel: {
-    fontSize: fontSize.md,
-    color: colors.text,
-  },
-  rowValue: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    maxWidth: 180,
-    textAlign: 'right',
-  },
-  separator: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.xs,
-  },
-  toggle: {
-    width: 48,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    paddingHorizontal: 2,
-  },
-  toggleOn: {
-    backgroundColor: colors.primary,
-  },
-  toggleOff: {
-    backgroundColor: colors.surfaceLight,
-  },
-  toggleThumb: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.text,
-  },
-  toggleThumbOn: {
-    alignSelf: 'flex-end',
-  },
-  toggleThumbOff: {
-    alignSelf: 'flex-start',
-  },
-  radio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: colors.surfaceLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioSelected: {
-    borderColor: colors.primary,
-  },
-  radioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.primary,
-  },
-  settingLabel: {
-    color: colors.text,
-    fontSize: fontSize.md,
-    fontWeight: '600',
-    marginBottom: spacing.sm,
-  },
-  genderRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  genderOption: {
-    flex: 1,
-    backgroundColor: colors.surfaceLight,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  genderOptionSelected: {
-    borderColor: colors.primary,
-  },
-  genderOptionText: {
-    color: colors.text,
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-  },
-  wakeUpEditRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    alignItems: 'center',
-  },
-  wakeUpInput: {
-    flex: 1,
-    backgroundColor: colors.surfaceLight,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    color: colors.text,
-    fontSize: fontSize.md,
-  },
-  wakeUpSaveButton: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  wakeUpSaveText: {
-    color: colors.text,
-    fontSize: fontSize.sm,
-    fontWeight: '600',
-  },
-  dangerCard: {
-    borderColor: colors.danger,
-  },
-  logoutButton: {
-    width: '100%',
-  },
-  version: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: spacing.xl,
-  },
-});

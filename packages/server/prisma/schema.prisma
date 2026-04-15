@@ -35,6 +35,60 @@ model User {
   integrations   Integration[]
   pet            Pet?
   achievements   Achievement[]
+  interests      UserInterest[]
+  arenaProfile   ArenaProfile?
+  nutritionLogs  NutritionLog[]
+  refreshTokens  RefreshToken[]
+  conversationSessions ConversationSession[]
+  travelPlans          TravelPlan[]
+  contactCache         ContactCache[]
+  documentVault        DocumentVault[]
+  tags                    Tag[]
+  sharedSpaceMemberships  SharedSpaceMember[]
+  ownedSpaces             SharedSpace[] @relation("OwnedSpaces")
+  uiComplexity            String   @default("standard")
+  subscriptionTier        String   @default("free")
+  subscriptionExpiresAt   DateTime?
+}
+
+// Хранилище refresh-токенов для ротации и отзыва.
+// При каждом /auth/refresh старый токен помечается revoked=true и выдаётся новый.
+// При выходе пользователя — все его токены отзываются.
+// Если кто-то попытается использовать уже отозванный токен → отозвать ВСЕ
+// (это значит refresh-токен утёк, нужно разлогинить пользователя везде).
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Хэш токена (SHA-256), не сам токен — даже при компрометации БД злоумышленник
+  // не сможет использовать токены без знания исходных значений.
+  tokenHash String   @unique
+  // Когда токен истекает (после этой даты он автоматически невалиден)
+  expiresAt DateTime
+  // Был ли токен использован/отозван
+  revoked   Boolean  @default(false)
+  // ID токена, которым этот был заменён (для аудита цепочки ротации)
+  replacedBy String?
+  // Метаданные клиента (для аудита подозрительной активности)
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model UserInterest {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  topic     String
+  score     Float    @default(1)
+  lastMentioned DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@unique([userId, topic])
+  @@index([userId])
 }
 
 model Habit {
@@ -81,8 +135,25 @@ model Task {
   completed Boolean  @default(false)
   notes     String?
   createdAt DateTime @default(now())
+  parentId         String?
+  parent           Task?    @relation("TaskSubtasks", fields: [parentId], references: [id])
+  subtasks         Task[]   @relation("TaskSubtasks")
+  estimatedMinutes Int?
+  recurrence       String?
+  kanbanStatus     String   @default("todo")
+  urgency          Int?
+  importance       Int?
+  aiScore          Float?
+  sharedSpaceId    String?
+  sharedSpace      SharedSpace? @relation(fields: [sharedSpaceId], references: [id])
+  taskTags         TaskTag[]
+  dependsOn        TaskDependency[] @relation("DependentTask")
+  dependedBy       TaskDependency[] @relation("PrerequisiteTask")
 
   @@index([userId, date])
+  @@index([userId, kanbanStatus])
+  @@index([parentId])
+  @@index([sharedSpaceId])
 }
 
 model WeeklyGoal {
@@ -229,27 +300,53 @@ model Integration {
 }
 
 model Pet {
-  id          String    @id @default(cuid())
-  userId      String    @unique
-  user        User      @relation(fields: [userId], references: [id])
-  type        String    @default("cat")
-  name        String    @default("LifePet")
-  health      Float     @default(80)
-  happiness   Float     @default(80)
-  level       Int       @default(1)
-  xp          Int       @default(0)
-  xpToNext    Int       @default(100)
-  stage       String    @default("baby")
-  streak      Int       @default(0)
-  isAlive     Boolean   @default(true)
-  diedAt      DateTime?
-  lastFed     DateTime  @default(now())
-  lastPlayed  DateTime  @default(now())
-  lastActive  DateTime  @default(now())
-  costume     String?
-  roomLevel   Int       @default(1)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id])
+  type           String    @default("cat")
+  characterType  String    @default("warrior")
+  name           String    @default("LifePet")
+  health         Float     @default(80)
+  happiness      Float     @default(80)
+  level          Int       @default(1)
+  xp             Int       @default(0)
+  xpToNext       Int       @default(100)
+  stage          String    @default("baby")
+  streak         Int       @default(0)
+  mana           Int       @default(0)
+  maxMana        Int       @default(100)
+  isAlive        Boolean   @default(true)
+  diedAt         DateTime?
+  lastFed        DateTime  @default(now())
+  lastPlayed     DateTime  @default(now())
+  lastActive     DateTime  @default(now())
+  costume        String?
+  roomLevel      Int       @default(1)
+  equippedHelmet String?
+  equippedArmor  String?
+  equippedWeapon String?
+  equippedShield String?
+  equippedBoots  String?
+  equippedAura   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  items          PetItem[]
+}
+
+model PetItem {
+  id          String   @id @default(cuid())
+  petId       String
+  pet         Pet      @relation(fields: [petId], references: [id])
+  itemKey     String
+  name        String
+  slot        String
+  rarity      String   @default("common")
+  bonus       String?
+  bonusValue  Float    @default(0)
+  unlockedAt  DateTime @default(now())
+
+  @@unique([petId, itemKey])
+  @@index([petId])
 }
 
 model Achievement {
@@ -263,4 +360,238 @@ model Achievement {
 
   @@unique([userId, key])
   @@index([userId])
+}
+
+// ===== PVP ARENA SYSTEM =====
+
+model ArenaProfile {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id])
+  trophies       Int       @default(0)
+  wins           Int       @default(0)
+  losses         Int       @default(0)
+  draws          Int       @default(0)
+  winStreak      Int       @default(0)
+  bestWinStreak  Int       @default(0)
+  rank           String    @default("bronze")
+  powerScore     Float     @default(0)
+  lastBattleAt   DateTime?
+  seasonWins     Int       @default(0)
+  seasonLosses   Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  battlesAsAttacker Battle[] @relation("attacker")
+  battlesAsDefender Battle[] @relation("defender")
+}
+
+model Battle {
+  id              String   @id @default(cuid())
+  attackerId      String
+  attacker        ArenaProfile @relation("attacker", fields: [attackerId], references: [id])
+  defenderId      String
+  defender        ArenaProfile @relation("defender", fields: [defenderId], references: [id])
+  winnerId        String?
+  
+  attackerPower   Float
+  defenderPower   Float
+  attackerRoll    Float
+  defenderRoll    Float
+  
+  attackerChar    String
+  defenderChar    String
+  attackerLevel   Int
+  defenderLevel   Int
+  
+  trophyChange    Int      @default(0)
+  xpReward        Int      @default(0)
+  
+  battleType      String   @default("power")  // "power" | "challenge"
+  challengeId     String?
+  log             String?
+  
+  createdAt       DateTime @default(now())
+
+  @@index([attackerId])
+  @@index([defenderId])
+  @@index([createdAt])
+}
+
+// ===== PHYSICAL CHALLENGES (MANA SYSTEM) =====
+
+model Challenge {
+  id                String    @id @default(cuid())
+  battleId          String?
+  attackerId        String
+  defenderId        String
+  exercise          String    // "squats" | "pushups" | "plank" | "burpees" | "jumps"
+  exerciseName      String    // Russian display name
+  targetReps        Int       // Base target (e.g. 50 squats)
+  attackerTarget    Int       // Adjusted by equipment (easier if better gear)
+  defenderTarget    Int       // Adjusted by equipment
+  manaCost          Int       @default(20)
+  status            String    @default("pending") // "pending" | "active" | "completed" | "expired"
+  attackerStartedAt DateTime? // Server-recorded start time (anti-cheat)
+  defenderStartedAt DateTime?
+  attackerDone      Boolean   @default(false)
+  defenderDone      Boolean   @default(false)
+  attackerTime      Int?      // seconds to complete (server-computed)
+  defenderTime      Int?      // seconds to complete (server-computed)
+  attackerVerified  Boolean   @default(false) // AI camera verification passed
+  defenderVerified  Boolean   @default(false)
+  winnerId          String?
+  xpReward          Int       @default(30)
+  trophyReward      Int       @default(20)
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+
+  @@index([attackerId])
+  @@index([defenderId])
+  @@index([status])
+}
+
+model NutritionLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  date       DateTime @db.Date
+  foodName   String
+  portion    String?
+  calories   Float    @default(0)
+  carbs      Float    @default(0)
+  protein    Float    @default(0)
+  fat        Float    @default(0)
+  confidence Float?
+  imageUrl   String?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+// ===== JARVIS VOICE CONVERSATION SYSTEM =====
+
+model ConversationSession {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contextSnapshot Json
+  status          String   @default("active") // "active", "ended"
+  endedAt         DateTime?
+  createdAt       DateTime @default(now())
+  messages        ConversationMessage[]
+  @@index([userId])
+}
+
+model ConversationMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String   // "user", "assistant"
+  content   String
+  actions   Json?
+  createdAt DateTime @default(now())
+  @@index([sessionId])
+}
+
+model TravelPlan {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  destination   String
+  dateFrom      DateTime @db.Date
+  dateTo        DateTime? @db.Date
+  purpose       String?
+  budget        Float?
+  currency      String   @default("₸")
+  status        String   @default("planning") // "planning", "booked", "in_progress", "completed"
+  flights       Json?
+  hotels        Json?
+  routes        Json?
+  packingList   Json?
+  documents     Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([userId])
+}
+
+model ContactCache {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneId     String
+  name        String
+  phone       String?
+  email       String?
+  birthday    DateTime? @db.Date
+  lastSynced  DateTime @default(now())
+  @@unique([userId, phoneId])
+  @@index([userId, name])
+}
+
+model DocumentVault {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // "passport", "id_card", "driver_license", "insurance", "visa"
+  title       String
+  data        Json
+  imageUri    String?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  @@index([userId])
+}
+
+// ===== COMPETITIVE FEATURES: TAGS, DEPENDENCIES, SHARED SPACES =====
+
+model TaskDependency {
+  id                 String @id @default(cuid())
+  dependentTaskId    String
+  dependentTask      Task   @relation("DependentTask", fields: [dependentTaskId], references: [id], onDelete: Cascade)
+  prerequisiteTaskId String
+  prerequisiteTask   Task   @relation("PrerequisiteTask", fields: [prerequisiteTaskId], references: [id], onDelete: Cascade)
+  @@unique([dependentTaskId, prerequisiteTaskId])
+}
+
+model Tag {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  color     String    @default("#6366f1")
+  createdAt DateTime  @default(now())
+  taskTags  TaskTag[]
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+model TaskTag {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tagId  String
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  @@unique([taskId, tagId])
+}
+
+model SharedSpace {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  owner     User     @relation("OwnedSpaces", fields: [ownerId], references: [id])
+  createdAt DateTime @default(now())
+  members   SharedSpaceMember[]
+  tasks     Task[]
+}
+
+model SharedSpaceMember {
+  id            String      @id @default(cuid())
+  sharedSpaceId String
+  sharedSpace   SharedSpace @relation(fields: [sharedSpaceId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role          String      @default("member")
+  joinedAt      DateTime    @default(now())
+  @@unique([sharedSpaceId, userId])
 }

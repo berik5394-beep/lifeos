@@ -1,6 +1,18 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, TouchableOpacity, View, StyleSheet, type ViewStyle } from 'react-native';
-import { colors, borderRadius } from '@/constants';
+import React, { useEffect, useCallback } from 'react';
+import { Pressable, View, StyleSheet } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withSequence,
+  withTiming,
+  interpolateColor,
+} from 'react-native-reanimated';
+import { Feather } from '@expo/vector-icons';
+import { useColors } from '@/hooks/use-colors';
+import { borderRadius } from '@/constants';
+import { hapticMedium } from '@/services/haptics';
+import type { ViewStyle } from 'react-native';
 
 interface AnimatedCheckboxProps {
   checked: boolean;
@@ -10,51 +22,57 @@ interface AnimatedCheckboxProps {
   style?: ViewStyle;
 }
 
+/**
+ * Animated checkbox with bounce + color transition (Reanimated 4).
+ * Bounces on check, smooth color fill on native thread.
+ */
 export const AnimatedCheckbox = React.memo(function AnimatedCheckbox({
   checked,
   onToggle,
   size = 24,
-  color = colors.primary,
+  color,
   style,
 }: AnimatedCheckboxProps) {
-  const scale = useRef(new Animated.Value(1)).current;
+  const c = useColors();
+  const accentColor = color || c.primary;
+  const progress = useSharedValue(checked ? 1 : 0);
+  const scale = useSharedValue(1);
 
   useEffect(() => {
-    Animated.sequence([
-      Animated.spring(scale, {
-        toValue: 1.3,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scale, {
-        toValue: 1,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [checked, scale]);
+    progress.value = withTiming(checked ? 1 : 0, { duration: 250 });
+    if (checked) {
+      scale.value = withSequence(
+        withSpring(1.25, { damping: 8, stiffness: 400 }),
+        withSpring(1, { damping: 12, stiffness: 200 }),
+      );
+    }
+  }, [checked, progress, scale]);
+
+  const boxStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(progress.value, [0, 1], ['transparent', accentColor]),
+    borderColor: interpolateColor(progress.value, [0, 1], [c.textMuted, accentColor]),
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePress = useCallback(() => {
+    hapticMedium();
+    onToggle();
+  }, [onToggle]);
 
   return (
-    <TouchableOpacity
-      onPress={onToggle}
-      activeOpacity={0.7}
-      hitSlop={8}
-      style={style}
-    >
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <View
-          style={[
-            styles.box,
-            {
-              width: size,
-              height: size,
-              borderColor: checked ? color : colors.border,
-              backgroundColor: checked ? color : 'transparent',
-            },
-          ]}
-        >
-          {checked && <View style={styles.check} />}
-        </View>
+    <Pressable onPress={handlePress} hitSlop={8} style={style}>
+      <Animated.View
+        style={[
+          styles.box,
+          { width: size, height: size },
+          boxStyle,
+        ]}
+      >
+        {checked && (
+          <Feather name="check" size={Math.round(size * 0.6)} color="#FFF" />
+        )}
       </Animated.View>
-    </TouchableOpacity>
+    </Pressable>
   );
 });
 
@@ -64,14 +82,5 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.sm / 2,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  check: {
-    width: 10,
-    height: 6,
-    borderLeftWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: colors.text,
-    transform: [{ rotate: '-45deg' }],
-    marginTop: -2,
   },
 });

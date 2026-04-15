@@ -2,6 +2,7 @@
   "expo": {
     "name": "LifeOS",
     "slug": "lifeos",
+    "owner": "lifeos1",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,7 +16,27 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.lifeos.app"
+      "bundleIdentifier": "com.lifeos.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "LifeOS использует микрофон для голосового ввода задач, привычек и общения с AI-помощником",
+        "NSSpeechRecognitionUsageDescription": "LifeOS использует распознавание речи для голосовых команд",
+        "NSCameraUsageDescription": "LifeOS использует камеру для счётчика калорий и сканирования расписания уроков",
+        "NSPhotoLibraryUsageDescription": "LifeOS использует фото для распознавания еды и расписаний",
+        "NSMotionUsageDescription": "LifeOS считает ваши шаги для отслеживания активности и автозакрытия привычек",
+        "NSHealthShareUsageDescription": "LifeOS читает данные о шагах и активности для трекера здоровья",
+        "NSHealthUpdateUsageDescription": "LifeOS сохраняет данные о тренировках в Apple Health",
+        "UIBackgroundModes": [
+          "fetch",
+          "processing",
+          "remote-notification"
+        ],
+        "NSContactsUsageDescription": "LifeOS использует контакты для голосовых команд",
+        "NSCalendarsUsageDescription": "LifeOS синхронизирует события с вашим календарём",
+        "NSCalendarsFullAccessUsageDescription": "LifeOS синхронизирует события с вашим календарём для умных напоминаний"
+      },
+      "backgroundFetch": {
+        "minimumInterval": 900
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,10 +44,81 @@
         "backgroundColor": "#0F172A"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.lifeos.app"
+      "package": "com.lifeos.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.BODY_SENSORS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.READ_CONTACTS",
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.WAKE_LOCK",
+        "android.permission.WRITE_CONTACTS"
+      ]
     },
     "plugins": [
-      "expo-web-browser"
-    ]
+      "expo-web-browser",
+      "expo-speech-recognition",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "LifeOS использует микрофон для голосового ввода задач и общения с AI-помощником"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "LifeOS использует камеру для счётчика калорий и сканирования расписания",
+          "photosPermission": "LifeOS использует фото для распознавания еды и расписаний"
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/alarm.wav"
+          ],
+          "icon": "./assets/notification-icon.png",
+          "color": "#6366F1"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "LifeOS использует GPS для отслеживания маршрутов пробежек и прогулок",
+          "locationAlwaysPermission": "LifeOS отслеживает маршрут в фоне для точного подсчёта дистанции",
+          "locationWhenInUsePermission": "LifeOS использует GPS для отслеживания маршрутов"
+        }
+      ],
+      "expo-task-manager",
+      "expo-background-fetch",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "LifeOS использует контакты для голосовых команд — найти нужного человека по имени"
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "LifeOS синхронизирует события с вашим календарём для умных напоминаний"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ee91eb7f-4cc7-4995-b844-9a12a26d588b"
+      }
+    }
   }
 }

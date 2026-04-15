@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import * as DocumentPicker from 'expo-document-picker';
 // File upload via fetch + FormData
 import { useAuthStore } from '@/stores/auth-store';
 import { Card, Button } from '@/components/ui';
-import { colors, spacing, fontSize, borderRadius } from '@/constants';
+import { spacing, fontSize, borderRadius } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -61,6 +62,8 @@ interface ImportHistoryItem {
 
 export default function ImportScreen() {
   const { token } = useAuthStore();
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
 
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -221,7 +224,7 @@ export default function ImportScreen() {
         {isUploading && (
           <ActivityIndicator
             size="small"
-            color={colors.primary}
+            color={c.primary}
             style={styles.loader}
           />
         )}
@@ -276,7 +279,7 @@ export default function ImportScreen() {
       {isLoadingHistory ? (
         <ActivityIndicator
           size="small"
-          color={colors.primary}
+          color={c.primary}
           style={styles.loader}
         />
       ) : history.length === 0 ? (
@@ -326,10 +329,11 @@ export default function ImportScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   content: {
     padding: spacing.md,
@@ -339,18 +343,18 @@ const styles = StyleSheet.create({
   screenTitle: {
     fontSize: fontSize.xxl,
     fontWeight: '700',
-    color: colors.text,
+    color: c.text,
     marginBottom: spacing.lg,
   },
   cardTitle: {
     fontSize: fontSize.lg,
     fontWeight: '600',
-    color: colors.text,
+    color: c.text,
     marginBottom: spacing.xs,
   },
   hint: {
     fontSize: fontSize.sm,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     marginBottom: spacing.md,
   },
   pickButton: {
@@ -359,7 +363,7 @@ const styles = StyleSheet.create({
   selectedFile: {
     marginTop: spacing.md,
     padding: spacing.md,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: c.surfaceLight,
     borderRadius: borderRadius.md,
   },
   fileInfo: {
@@ -370,20 +374,20 @@ const styles = StyleSheet.create({
   },
   fileName: {
     fontSize: fontSize.md,
-    color: colors.text,
+    color: c.text,
     fontWeight: '500',
     flex: 1,
     marginRight: spacing.sm,
   },
   fileTypeBadge: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.sm,
   },
   fileTypeText: {
     fontSize: fontSize.xs,
-    color: colors.text,
+    color: c.text,
     fontWeight: '600',
   },
   uploadButton: {
@@ -398,7 +402,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: fontSize.sm,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: c.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginTop: spacing.lg,
@@ -418,12 +422,12 @@ const styles = StyleSheet.create({
   },
   purposeText: {
     fontSize: fontSize.sm,
-    color: colors.text,
+    color: c.text,
     fontWeight: '600',
   },
   itemCount: {
     fontSize: fontSize.md,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontWeight: '500',
   },
   previewSection: {
@@ -431,28 +435,28 @@ const styles = StyleSheet.create({
   },
   previewTitle: {
     fontSize: fontSize.sm,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontWeight: '600',
     marginBottom: spacing.xs,
   },
   previewItem: {
     paddingVertical: spacing.xs,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: c.border,
   },
   previewText: {
     fontSize: fontSize.sm,
-    color: colors.text,
+    color: c.text,
   },
   previewMore: {
     fontSize: fontSize.xs,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontStyle: 'italic',
     marginTop: spacing.xs,
   },
   emptyText: {
     fontSize: fontSize.md,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     textAlign: 'center',
     paddingVertical: spacing.md,
   },
@@ -470,7 +474,7 @@ const styles = StyleSheet.create({
   },
   historyFileName: {
     fontSize: fontSize.md,
-    color: colors.text,
+    color: c.text,
     fontWeight: '500',
     marginBottom: spacing.xs,
   },
@@ -486,16 +490,16 @@ const styles = StyleSheet.create({
   },
   purposeTextSmall: {
     fontSize: fontSize.xs,
-    color: colors.text,
+    color: c.text,
     fontWeight: '600',
   },
   historyDate: {
     fontSize: fontSize.xs,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   historyCount: {
     fontSize: fontSize.xs,
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   deleteButton: {
     padding: spacing.sm,
@@ -503,4 +507,5 @@ const styles = StyleSheet.create({
   deleteIcon: {
     fontSize: 18,
   },
-});
+  });
+}

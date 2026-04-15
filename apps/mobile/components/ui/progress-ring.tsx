@@ -1,20 +1,25 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Animated, View, Text, StyleSheet } from 'react-native';
-import { colors, fontSize } from '@/constants';
+import { fontSize } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 
 interface ProgressRingProps {
   progress: number;
   size?: number;
   strokeWidth?: number;
   color?: string;
+  accessibilityLabel?: string;
 }
 
 export const ProgressRing = React.memo(function ProgressRing({
   progress,
   size = 60,
   strokeWidth = 4,
-  color = colors.primary,
+  color,
+  accessibilityLabel,
 }: ProgressRingProps) {
+  const c = useColors();
+  const resolvedColor = color ?? c.primary;
   const clampedProgress = Math.min(1, Math.max(0, progress));
   const percentage = Math.round(clampedProgress * 100);
 
@@ -43,8 +48,40 @@ export const ProgressRing = React.memo(function ProgressRing({
 
   const innerSize = size - strokeWidth * 2;
 
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      position: 'relative',
+    },
+    backgroundCircle: {
+      position: 'absolute',
+    },
+    halfContainer: {
+      position: 'absolute',
+      top: 0,
+    },
+    halfCircle: {
+      position: 'absolute',
+      top: 0,
+    },
+    center: {
+      position: 'absolute',
+      backgroundColor: c.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    percentageText: {
+      color: c.text,
+      fontWeight: '700',
+    },
+  }), [c]);
+
   return (
-    <View style={[styles.container, { width: size, height: size }]}>
+    <View
+      style={[styles.container, { width: size, height: size }]}
+      accessible={!!accessibilityLabel}
+      accessibilityLabel={accessibilityLabel ?? `Прогресс: ${percentage}%`}
+      accessibilityRole="progressbar"
+    >
       {/* Background circle */}
       <View
         style={[
@@ -54,7 +91,7 @@ export const ProgressRing = React.memo(function ProgressRing({
             height: size,
             borderRadius: size / 2,
             borderWidth: strokeWidth,
-            borderColor: colors.surfaceLight,
+            borderColor: c.surfaceLight,
           },
         ]}
       />
@@ -84,7 +121,7 @@ export const ProgressRing = React.memo(function ProgressRing({
               borderBottomLeftRadius: size / 2,
               borderWidth: strokeWidth,
               borderRightWidth: 0,
-              borderColor: color,
+              borderColor: resolvedColor,
               transform: [{ rotate: `${rightRotation}deg` }],
             },
           ]}
@@ -117,7 +154,7 @@ export const ProgressRing = React.memo(function ProgressRing({
               borderBottomRightRadius: size / 2,
               borderWidth: strokeWidth,
               borderLeftWidth: 0,
-              borderColor: color,
+              borderColor: resolvedColor,
               transform: [{ rotate: `${leftRotation}deg` }],
             },
           ]}
@@ -148,31 +185,4 @@ export const ProgressRing = React.memo(function ProgressRing({
       </View>
     </View>
   );
-});
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'relative',
-  },
-  backgroundCircle: {
-    position: 'absolute',
-  },
-  halfContainer: {
-    position: 'absolute',
-    top: 0,
-  },
-  halfCircle: {
-    position: 'absolute',
-    top: 0,
-  },
-  center: {
-    position: 'absolute',
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  percentageText: {
-    color: colors.text,
-    fontWeight: '700',
-  },
 });

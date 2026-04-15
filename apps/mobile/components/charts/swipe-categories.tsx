@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,8 @@ import {
   ListRenderItemInfo,
 } from 'react-native';
 import { ProgressRing } from '@/components/ui/progress-ring';
-import { colors, spacing, fontSize, borderRadius } from '@/constants';
+import { spacing, fontSize, borderRadius } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 
 interface CategoryItem {
   key: string;
@@ -36,12 +37,14 @@ const CategoryCard = React.memo(function CategoryCard({
   isSelected: boolean;
   onPress: () => void;
 }) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <TouchableOpacity
       style={[
         styles.card,
         isSelected && styles.cardSelected,
-        { borderColor: isSelected ? colors.primary : 'transparent' },
+        { borderColor: isSelected ? c.primary : 'transparent' },
       ]}
       onPress={onPress}
       activeOpacity={0.7}
@@ -65,6 +68,8 @@ export const SwipeCategories = React.memo(function SwipeCategories({
   onSelect,
   selectedKey,
 }: SwipeCategoriesProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<CategoryItem>) => (
       <CategoryCard
@@ -92,30 +97,32 @@ export const SwipeCategories = React.memo(function SwipeCategories({
   );
 });
 
-const styles = StyleSheet.create({
-  listContent: {
-    paddingHorizontal: spacing.sm,
-    gap: spacing.sm,
-  },
-  card: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    backgroundColor: colors.surface,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    gap: spacing.xs,
-  },
-  cardSelected: {
-    backgroundColor: colors.surfaceLight,
-  },
-  icon: {
-    fontSize: 24,
-  },
-  label: {
-    color: colors.text,
-    fontSize: fontSize.xs,
-    fontWeight: '600',
-  },
-});
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
+    listContent: {
+      paddingHorizontal: spacing.sm,
+      gap: spacing.sm,
+    },
+    card: {
+      width: CARD_WIDTH,
+      height: CARD_HEIGHT,
+      backgroundColor: c.surface,
+      borderRadius: borderRadius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      gap: spacing.xs,
+    },
+    cardSelected: {
+      backgroundColor: c.surfaceLight,
+    },
+    icon: {
+      fontSize: 24,
+    },
+    label: {
+      color: c.text,
+      fontSize: fontSize.xs,
+      fontWeight: '600',
+    },
+  });
+}

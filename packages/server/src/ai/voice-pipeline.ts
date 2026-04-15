@@ -31,8 +31,42 @@ const responseTemplates: Record<string, (intent: Record<string, unknown>) => str
   unknown: () => 'Не удалось распознать команду. Попробуйте ещё раз.',
 };
 
+// Heuristics: if Claude couldn't classify the intent but the user clearly spoke
+// a sentence, treat it as a task. Users with the app open almost always want
+// to *do something* — dropping their transcript on the floor with
+// "не распознал" is the worst possible UX.
+const QUESTION_MARKERS = [
+  'как', 'сколько', 'когда', 'почему', 'зачем', 'что', 'где', 'кто', 'какой', 'какая', 'какие',
+  'мотивируй', 'совет', 'помоги', 'расскажи', 'объясни',
+];
+
+function looksLikeQuestion(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  if (t.endsWith('?')) return true;
+  const firstWord = t.split(/\s+/)[0] || '';
+  return QUESTION_MARKERS.includes(firstWord);
+}
+
 export async function processVoiceCommand(transcribedText: string): Promise<VoiceResult> {
-  const intent = await parseIntent(transcribedText);
+  const raw = transcribedText.trim();
+  let intent = await parseIntent(raw);
+
+  // Fallback: Claude said "unknown" but we still have a transcript.
+  // Route it to the assistant (question) or create a task (statement).
+  if (!intent?.action || intent.action === 'unknown') {
+    if (looksLikeQuestion(raw)) {
+      intent = { action: 'ask_assistant', question: raw };
+    } else if (raw.length > 0) {
+      const today = new Date().toISOString().split('T')[0];
+      intent = {
+        action: 'create_task',
+        title: raw,
+        date: today,
+        category: 'personal',
+        priority: 'medium',
+      };
+    }
+  }
 
   const templateFn = responseTemplates[intent.action] ?? responseTemplates.unknown;
   const response = templateFn(intent as Record<string, unknown>);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Modal as RNModal,
   View,
@@ -8,7 +8,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { colors, borderRadius, fontSize, spacing } from '@/constants';
+import { borderRadius, fontSize, spacing } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 
 interface ModalProps {
   visible: boolean;
@@ -23,6 +24,37 @@ export const Modal = React.memo(function Modal({
   title,
   children,
 }: ModalProps) {
+  const c = useColors();
+  const styles = useMemo(() => StyleSheet.create({
+    overlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      justifyContent: 'flex-end',
+    },
+    content: {
+      backgroundColor: c.surface,
+      borderTopLeftRadius: borderRadius.xl,
+      borderTopRightRadius: borderRadius.xl,
+      padding: spacing.lg,
+      maxHeight: '90%',
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.md,
+    },
+    title: {
+      color: c.text,
+      fontSize: fontSize.lg,
+      fontWeight: '700',
+    },
+    close: {
+      color: c.textSecondary,
+      fontSize: fontSize.xl,
+    },
+  }), [c]);
+
   return (
     <RNModal
       visible={visible}
@@ -46,34 +78,4 @@ export const Modal = React.memo(function Modal({
       </KeyboardAvoidingView>
     </RNModal>
   );
-});
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'flex-end',
-  },
-  content: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: borderRadius.xl,
-    borderTopRightRadius: borderRadius.xl,
-    padding: spacing.lg,
-    maxHeight: '90%',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  title: {
-    color: colors.text,
-    fontSize: fontSize.lg,
-    fontWeight: '700',
-  },
-  close: {
-    color: colors.textSecondary,
-    fontSize: fontSize.xl,
-  },
 });

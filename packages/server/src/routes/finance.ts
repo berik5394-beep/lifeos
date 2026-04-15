@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { validate } from '../middleware/validate.js';
+import { validate, parseMonth as validateMonth, invalidDateReply } from '../middleware/validate.js';
 
 const createExpenseSchema = z.object({
   date: z.string(),
@@ -24,11 +24,9 @@ const createIncomeSchema = z.object({
   amount: z.number().positive('Сумма должна быть положительной'),
 });
 
-function parseMonth(month: string) {
-  const [year, m] = month.split('-').map(Number);
-  const start = new Date(year, m - 1, 1);
-  const end = new Date(year, m, 1);
-  return { start, end };
+function parseMonthLocal(month: string) {
+  const result = validateMonth(month);
+  return result;
 }
 
 export async function financeRoutes(app: FastifyInstance): Promise<void> {
@@ -36,9 +34,11 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
 
   // --- Summary ---
 
-  app.get('/finance/summary/:month', async (request) => {
+  app.get('/finance/summary/:month', async (request, reply) => {
     const { month } = request.params as { month: string };
-    const { start, end } = parseMonth(month);
+    const range = parseMonthLocal(month);
+    if (!range) return invalidDateReply(reply, 'month', 'YYYY-MM');
+    const { start, end } = range;
 
     const [expenses, incomes, topExpenses] = await Promise.all([
       prisma.expense.aggregate({
@@ -78,11 +78,13 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
 
   // --- Expenses ---
 
-  app.get('/finance/expenses', async (request) => {
+  app.get('/finance/expenses', async (request, reply) => {
     const { month } = request.query as { month?: string };
 
     if (month) {
-      const { start, end } = parseMonth(month);
+      const range = parseMonthLocal(month);
+      if (!range) return invalidDateReply(reply, 'month', 'YYYY-MM');
+      const { start, end } = range;
       return prisma.expense.findMany({
         where: { userId: request.userId, date: { gte: start, lt: end } },
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
@@ -102,8 +104,10 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
     const data = request.body as z.infer<typeof createExpenseSchema>;
     const expense = await prisma.expense.create({
       data: {
-        ...data,
         date: new Date(data.date),
+        category: data.category,
+        description: data.description,
+        amount: data.amount,
         userId: request.userId,
       },
     });
@@ -179,11 +183,13 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
 
   // --- Incomes ---
 
-  app.get('/finance/incomes', async (request) => {
+  app.get('/finance/incomes', async (request, reply) => {
     const { month } = request.query as { month?: string };
 
     if (month) {
-      const { start, end } = parseMonth(month);
+      const range = parseMonthLocal(month);
+      if (!range) return invalidDateReply(reply, 'month', 'YYYY-MM');
+      const { start, end } = range;
       return prisma.income.findMany({
         where: { userId: request.userId, date: { gte: start, lt: end } },
         orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
@@ -203,8 +209,9 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
     const data = request.body as z.infer<typeof createIncomeSchema>;
     const income = await prisma.income.create({
       data: {
-        ...data,
         date: new Date(data.date),
+        source: data.source,
+        amount: data.amount,
         userId: request.userId,
       },
     });
@@ -225,11 +232,12 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
 
   // --- Budget Limits ---
 
-  app.get('/finance/budget/:month', async (request) => {
+  app.get('/finance/budget/:month', async (request, reply) => {
     const { month } = request.params as { month: string };
-    const [yearStr, monthStr] = month.split('-');
-    const year = Number(yearStr);
-    const m = Number(monthStr);
+    const range = parseMonthLocal(month);
+    if (!range) return invalidDateReply(reply, 'month', 'YYYY-MM');
+    const year = range.start.getFullYear();
+    const m = range.start.getMonth() + 1;
 
     return prisma.budgetLimit.findMany({
       where: { userId: request.userId, year, month: m },

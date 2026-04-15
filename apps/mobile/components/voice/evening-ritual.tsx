@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Animated,
   View,
@@ -9,7 +9,9 @@ import {
 } from 'react-native';
 import * as Speech from 'expo-speech';
 import { ProgressRing } from '@/components/ui';
-import { colors, spacing, fontSize, borderRadius } from '@/constants';
+import { spacing, fontSize, borderRadius } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
+import { getPreferredVoiceIdentifier } from '@/hooks/use-voice';
 
 interface EveningRitualProps {
   visible: boolean;
@@ -39,6 +41,8 @@ function EveningRitualComponent({
   dayProgress,
   onChipPress,
 }: EveningRitualProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
   const chipsOpacity = useRef(new Animated.Value(0)).current;
@@ -70,7 +74,13 @@ function EveningRitualComponent({
       }).start();
 
       if (message) {
-        Speech.speak(message, { language: 'ru' });
+        getPreferredVoiceIdentifier()
+          .then((voiceId) => {
+            Speech.speak(message, { language: 'ru', voice: voiceId });
+          })
+          .catch(() => {
+            Speech.speak(message, { language: 'ru' });
+          });
       }
     } else {
       overlayOpacity.setValue(0);
@@ -99,10 +109,10 @@ function EveningRitualComponent({
 
   const progressColor =
     dayProgress >= 80
-      ? colors.success
+      ? c.success
       : dayProgress >= 50
-        ? colors.warning
-        : colors.primary;
+        ? c.warning
+        : c.primary;
 
   return (
     <Modal
@@ -164,7 +174,8 @@ function EveningRitualComponent({
 
 export const EveningRitual = React.memo(EveningRitualComponent);
 
-const styles = StyleSheet.create({
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(10, 15, 30, 0.97)',
@@ -180,12 +191,12 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: c.surfaceLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.md,
   },
   content: {
@@ -203,12 +214,12 @@ const styles = StyleSheet.create({
   },
   progressText: {
     position: 'absolute',
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.xl,
     fontWeight: '700',
   },
   messageText: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.lg,
     fontWeight: '600',
     textAlign: 'center',
@@ -223,16 +234,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   chip: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     borderRadius: borderRadius.xl,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
   chipText: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.sm,
     fontWeight: '600',
   },
-});
+  });
+}

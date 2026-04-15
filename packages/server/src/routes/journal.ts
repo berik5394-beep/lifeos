@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { validate } from '../middleware/validate.js';
+import { validate, parseDate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 
 const journalSchema = z.object({
   date: z.string(),
@@ -15,12 +15,14 @@ const journalSchema = z.object({
 export async function journalRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
-  app.get('/journal/:date', async (request) => {
+  app.get('/journal/:date', async (request, reply) => {
     const { date } = request.params as { date: string };
+    const parsed = parseDate(date);
+    if (!parsed) return invalidDateReply(reply, 'date', 'YYYY-MM-DD');
 
     const entry = await prisma.journalEntry.findUnique({
       where: {
-        userId_date: { userId: request.userId, date: new Date(date) },
+        userId_date: { userId: request.userId, date: parsed },
       },
     });
 
@@ -33,18 +35,17 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.get('/journal', async (request) => {
+  app.get('/journal', async (request, reply) => {
     const { month } = request.query as { month?: string };
 
     if (month) {
-      const [year, m] = month.split('-').map(Number);
-      const start = new Date(year, m - 1, 1);
-      const end = new Date(year, m, 1);
+      const range = parseMonth(month);
+      if (!range) return invalidDateReply(reply, 'month', 'YYYY-MM');
 
       return prisma.journalEntry.findMany({
         where: {
           userId: request.userId,
-          date: { gte: start, lt: end },
+          date: { gte: range.start, lt: range.end },
         },
         orderBy: { date: 'desc' },
       });

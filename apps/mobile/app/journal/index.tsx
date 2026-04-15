@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import {
 import { Card } from '@/components/ui';
 import { Button } from '@/components/ui';
 import { useJournalStore } from '@/stores/journal-store';
-import { colors, spacing, borderRadius, fontSize } from '@/constants';
+import { spacing, borderRadius, fontSize } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 
 const MONTH_NAMES_GENITIVE = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -58,6 +59,8 @@ interface DateSelectorProps {
 }
 
 const DateSelector = React.memo(function DateSelector({ date, onPrev, onNext }: DateSelectorProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <View style={styles.dateSelector}>
       <TouchableOpacity onPress={onPrev} style={styles.dateArrow}>
@@ -77,6 +80,8 @@ interface SleepCardProps {
 }
 
 const SleepCard = React.memo(function SleepCard({ value, onChange }: SleepCardProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <Card style={styles.sectionCard}>
       <View style={styles.sectionHeader}>
@@ -121,6 +126,8 @@ interface EnergyCardProps {
 }
 
 const EnergyCard = React.memo(function EnergyCard({ value, onChange }: EnergyCardProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <Card style={styles.sectionCard}>
       <View style={styles.sectionHeader}>
@@ -164,6 +171,8 @@ interface MoodCardProps {
 }
 
 const MoodCard = React.memo(function MoodCard({ value, onChange }: MoodCardProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <Card style={styles.sectionCard}>
       <View style={styles.sectionHeader}>
@@ -197,6 +206,8 @@ interface NotesCardProps {
 }
 
 const NotesCard = React.memo(function NotesCard({ value, onChange }: NotesCardProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <Card style={styles.sectionCard}>
       <View style={styles.sectionHeader}>
@@ -208,7 +219,7 @@ const NotesCard = React.memo(function NotesCard({ value, onChange }: NotesCardPr
         multiline
         numberOfLines={4}
         placeholder="Заметки на сегодня..."
-        placeholderTextColor={colors.textSecondary}
+        placeholderTextColor={c.textSecondary}
         value={value}
         onChangeText={onChange}
         textAlignVertical="top"
@@ -220,6 +231,9 @@ const NotesCard = React.memo(function NotesCard({ value, onChange }: NotesCardPr
 // --- Main Screen ---
 
 export default function JournalScreen() {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
+
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [sleepHours, setSleepHours] = useState<number | null>(null);
   const [energy, setEnergy] = useState<number | null>(null);
@@ -315,10 +329,11 @@ export default function JournalScreen() {
 
 // --- Styles ---
 
-const styles = StyleSheet.create({
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   content: {
     padding: spacing.md,
@@ -338,17 +353,17 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: borderRadius.sm,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   dateArrowText: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.xl,
     fontWeight: '600',
   },
   dateText: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.lg,
     fontWeight: '600',
   },
@@ -366,13 +381,13 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xl,
   },
   sectionLabel: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.lg,
     fontWeight: '600',
     flex: 1,
   },
   sectionValue: {
-    color: colors.primary,
+    color: c.primary,
     fontSize: fontSize.md,
     fontWeight: '600',
   },
@@ -387,20 +402,20 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: borderRadius.sm,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: c.surfaceLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   chipSelected: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
   },
   chipText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.md,
     fontWeight: '600',
   },
   chipTextSelected: {
-    color: colors.text,
+    color: c.text,
   },
 
   // Energy circles
@@ -413,20 +428,20 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: c.surfaceLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   energyCircleActive: {
-    backgroundColor: colors.success,
+    backgroundColor: c.success,
   },
   energyCircleText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.xs,
     fontWeight: '600',
   },
   energyCircleTextActive: {
-    color: colors.text,
+    color: c.text,
   },
 
   // Mood
@@ -438,14 +453,14 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: borderRadius.md,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: c.surfaceLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   moodButtonSelected: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     borderWidth: 2,
-    borderColor: colors.secondary,
+    borderColor: c.secondary,
   },
   moodEmoji: {
     fontSize: 28,
@@ -453,10 +468,10 @@ const styles = StyleSheet.create({
 
   // Notes
   notesInput: {
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: c.surfaceLight,
     borderRadius: borderRadius.md,
     padding: spacing.md,
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.md,
     minHeight: 100,
   },
@@ -465,4 +480,5 @@ const styles = StyleSheet.create({
   saveButton: {
     marginTop: spacing.sm,
   },
-});
+  });
+}

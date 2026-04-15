@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, View, StyleSheet, Dimensions, Easing } from 'react-native';
-import { colors } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 
 interface ConfettiProps {
   visible: boolean;
@@ -10,13 +10,6 @@ interface ConfettiProps {
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const PARTICLE_COUNT = 35;
-const CONFETTI_COLORS = [
-  colors.primary,
-  colors.success,
-  colors.warning,
-  colors.secondary,
-  colors.danger,
-];
 
 interface ParticleConfig {
   startX: number;
@@ -25,17 +18,6 @@ interface ParticleConfig {
   color: string;
   size: number;
   wobbleAmplitude: number;
-}
-
-function generateParticles(): ParticleConfig[] {
-  return Array.from({ length: PARTICLE_COUNT }, () => ({
-    startX: Math.random() * SCREEN_WIDTH,
-    delay: Math.random() * 500,
-    fallDuration: 2000 + Math.random() * 1500,
-    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
-    size: 6 + Math.random() * 4,
-    wobbleAmplitude: 20 + Math.random() * 40,
-  }));
 }
 
 const Particle = React.memo(function Particle({
@@ -120,7 +102,22 @@ export const Confetti = React.memo(function Confetti({
   visible,
   onComplete,
 }: ConfettiProps) {
-  const particles = useMemo(() => generateParticles(), []);
+  const c = useColors();
+  const confettiColors = useMemo(
+    () => [c.primary, c.success, c.warning, c.secondary, c.danger],
+    [c],
+  );
+
+  const particles = useMemo(() => {
+    return Array.from({ length: PARTICLE_COUNT }, () => ({
+      startX: Math.random() * SCREEN_WIDTH,
+      delay: Math.random() * 500,
+      fallDuration: 2000 + Math.random() * 1500,
+      color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
+      size: 6 + Math.random() * 4,
+      wobbleAmplitude: 20 + Math.random() * 40,
+    }));
+  }, [confettiColors]);
 
   useEffect(() => {
     if (visible && onComplete) {

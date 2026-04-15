@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
+import { calculateStreak } from '../services/streak-service.js';
 
 const pdfReportSchema = z.object({
   period: z.enum(['month', 'year']),
@@ -281,30 +282,8 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
       }),
     ]);
 
-    // Calculate streak
-    let streak = 0;
-    const checkDate = new Date(today);
-    const habitsCount = activeHabits;
-
-    if (habitsCount > 0) {
-      for (let i = 0; i < 365; i++) {
-        const dayDate = new Date(checkDate);
-        dayDate.setDate(dayDate.getDate() - i);
-
-        const completedLogs = await prisma.habitLog.count({
-          where: { userId, date: dayDate, completed: true },
-        });
-
-        const completionRate = completedLogs / habitsCount;
-
-        if (completionRate > 0.5) {
-          streak++;
-        } else {
-          if (i === 0 && completedLogs === 0) continue;
-          break;
-        }
-      }
-    }
+    // Streak — delegated to streak-service (single findMany vs 365 counts)
+    const streak = await calculateStreak(userId);
 
     return reply.send({
       title: 'Мой прогресс в LifeOS',

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { validate } from '../middleware/validate.js';
+import { validate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 
 const createHabitSchema = z.object({
   name: z.string().min(1, 'Название обязательно'),
@@ -128,14 +128,27 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
       },
       update: { completed },
     });
+
+    // Award mana when completing a habit
+    if (completed) {
+      const pet = await prisma.pet.findUnique({ where: { userId: request.userId } });
+      if (pet) {
+        const manaGain = 5; // +5 mana per completed habit
+        await prisma.pet.update({
+          where: { userId: request.userId },
+          data: { mana: Math.min(pet.maxMana, pet.mana + manaGain) },
+        });
+      }
+    }
+
     return reply.send(log);
   });
 
-  app.get('/habits/stats/:month', async (request) => {
+  app.get('/habits/stats/:month', async (request, reply) => {
     const { month } = request.params as { month: string };
-    const [year, m] = month.split('-').map(Number);
-    const start = new Date(year, m - 1, 1);
-    const end = new Date(year, m, 1);
+    const range = parseMonth(month);
+    if (!range) return invalidDateReply(reply, 'month', 'YYYY-MM');
+    const { start, end } = range;
 
     const habits = await prisma.habit.findMany({
       where: { userId: request.userId, active: true },

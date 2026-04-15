@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { validate } from '../middleware/validate.js';
+import { validate, parseDate, invalidDateReply } from '../middleware/validate.js';
 
 const upsertStepSchema = z.object({
   date: z.string(),
@@ -19,18 +19,21 @@ const upsertStepSchema = z.object({
 export async function stepRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
-  app.get('/steps', async (request) => {
+  app.get('/steps', async (request, reply) => {
     const { date, week } = request.query as { date?: string; week?: string };
 
     if (date) {
+      const parsed = parseDate(date);
+      if (!parsed) return invalidDateReply(reply, 'date', 'YYYY-MM-DD');
       const log = await prisma.stepLog.findUnique({
-        where: { userId_date: { userId: request.userId, date: new Date(date) } },
+        where: { userId_date: { userId: request.userId, date: parsed } },
       });
       return log ?? { steps: 0, distanceKm: null, gpsTrack: null };
     }
 
     if (week) {
-      const weekStart = new Date(week);
+      const weekStart = parseDate(week);
+      if (!weekStart) return invalidDateReply(reply, 'week', 'YYYY-MM-DD');
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 7);
 

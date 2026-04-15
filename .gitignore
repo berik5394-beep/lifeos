@@ -17,3 +17,4 @@ android/
 web-build/
 .DS_Store
 *.swp
+.claude/

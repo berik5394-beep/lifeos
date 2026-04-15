@@ -13,7 +13,8 @@ import { useStepStore } from '@/stores/step-store';
 import { useSteps } from '@/hooks/use-steps';
 import { useLocationTracking } from '@/hooks/use-location';
 import { Card, Button } from '@/components/ui';
-import { colors, spacing, fontSize, borderRadius } from '@/constants/colors';
+import { spacing, fontSize, borderRadius } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 import { formatDate, getWeekDays } from '@/utils/dates';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -27,6 +28,8 @@ interface StepProgressProps {
 }
 
 const StepProgress = React.memo(function StepProgress({ steps, goal }: StepProgressProps) {
+  const c = useColors();
+  const progressStyles = useMemo(() => createProgressStyles(c), [c]);
   const progress = Math.min(steps / goal, 1);
   const barWidth = (SCREEN_WIDTH - spacing.md * 2 - spacing.md * 2 - 2) * progress;
 
@@ -38,7 +41,7 @@ const StepProgress = React.memo(function StepProgress({ steps, goal }: StepProgr
             progressStyles.barFill,
             {
               width: barWidth,
-              backgroundColor: progress >= 1 ? colors.success : colors.primary,
+              backgroundColor: progress >= 1 ? c.success : c.primary,
             },
           ]}
         />
@@ -50,13 +53,14 @@ const StepProgress = React.memo(function StepProgress({ steps, goal }: StepProgr
   );
 });
 
-const progressStyles = StyleSheet.create({
+function createProgressStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   container: {
     marginTop: spacing.md,
   },
   barBackground: {
     height: 12,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: c.surfaceLight,
     borderRadius: borderRadius.xl,
     overflow: 'hidden',
   },
@@ -65,12 +69,13 @@ const progressStyles = StyleSheet.create({
     borderRadius: borderRadius.xl,
   },
   label: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.xs,
     marginTop: spacing.xs,
     textAlign: 'center',
   },
-});
+  });
+}
 
 interface WeekBarProps {
   label: string;
@@ -79,6 +84,8 @@ interface WeekBarProps {
 }
 
 const WeekBar = React.memo(function WeekBar({ label, steps, maxSteps }: WeekBarProps) {
+  const c = useColors();
+  const weekBarStyles = useMemo(() => createWeekBarStyles(c), [c]);
   const barMaxHeight = 100;
   const barHeight = maxSteps > 0 ? (steps / maxSteps) * barMaxHeight : 0;
   const reachedGoal = steps >= DAILY_GOAL;
@@ -94,7 +101,7 @@ const WeekBar = React.memo(function WeekBar({ label, steps, maxSteps }: WeekBarP
             weekBarStyles.bar,
             {
               height: Math.max(barHeight, 4),
-              backgroundColor: reachedGoal ? colors.success : colors.primary,
+              backgroundColor: reachedGoal ? c.success : c.primary,
             },
           ]}
         />
@@ -104,13 +111,14 @@ const WeekBar = React.memo(function WeekBar({ label, steps, maxSteps }: WeekBarP
   );
 });
 
-const weekBarStyles = StyleSheet.create({
+function createWeekBarStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   container: {
     alignItems: 'center',
     flex: 1,
   },
   stepsLabel: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.xs - 2,
     marginBottom: spacing.xs,
   },
@@ -125,15 +133,18 @@ const weekBarStyles = StyleSheet.create({
     borderRadius: borderRadius.sm,
   },
   dayLabel: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.xs,
     marginTop: spacing.xs,
   },
-});
+  });
+}
 
 // --- Main Screen ---
 
 export default function ActivityScreen() {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const { steps, isAvailable } = useSteps();
   const { hasPermission } = useLocationTracking();
 
@@ -298,7 +309,7 @@ export default function ActivityScreen() {
               >
                 <Polyline
                   coordinates={polylineCoords}
-                  strokeColor={colors.primary}
+                  strokeColor={c.primary}
                   strokeWidth={3}
                 />
               </MapView>
@@ -352,10 +363,11 @@ function toRad(deg: number): number {
 
 // --- Styles ---
 
-const styles = StyleSheet.create({
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   content: {
     padding: spacing.md,
@@ -366,18 +378,18 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
   },
   stepsTitle: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.md,
     marginBottom: spacing.xs,
   },
   stepsCount: {
-    color: colors.text,
+    color: c.text,
     fontSize: 48,
     fontWeight: '700',
     letterSpacing: 1,
   },
   goalText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.sm,
     marginTop: spacing.xs,
   },
@@ -388,16 +400,16 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   distanceLabel: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.sm,
   },
   distanceValue: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.sm,
     fontWeight: '600',
   },
   warningText: {
-    color: colors.warning,
+    color: c.warning,
     fontSize: fontSize.xs,
     marginTop: spacing.sm,
   },
@@ -405,7 +417,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   permissionText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.xs,
     textAlign: 'center',
     marginTop: spacing.xs,
@@ -414,7 +426,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   sectionTitle: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.lg,
     fontWeight: '600',
     marginBottom: spacing.md,
@@ -438,4 +450,5 @@ const styles = StyleSheet.create({
   saveButton: {
     marginTop: spacing.lg,
   },
-});
+  });
+}

@@ -16,6 +16,8 @@
     "react-dom": "19.1.0"
   },
   "dependencies": {
-    "@babel/runtime": "^7.29.2"
+    "@babel/runtime": "^7.29.2",
+    "expo-dev-client": "~6.0.20",
+    "react-native-reanimated": "^4.1.7"
   }
 }

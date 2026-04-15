@@ -31,8 +31,16 @@ const MAX_TOOL_ITERATIONS = 10;
 // Context cache (avoid re-fetching full context within same session)
 // ---------------------------------------------------------------------------
 
+// Bounded LRU-ish cache:
+//   - Map iteration order is insertion order → deleting+re-inserting moves
+//     an entry to the "newest" slot, giving us LRU semantics on access
+//   - Hard cap (MAX_CACHE_ENTRIES) prevents memory leak
+//   - TTL enforced both on read AND periodic sweep (so stale entries don't
+//     pin memory forever if a user disconnects)
 const contextCache = new Map<string, { context: UserContext; timestamp: number }>();
 const CONTEXT_CACHE_TTL_MS = 30_000; // 30 seconds
+const MAX_CACHE_ENTRIES = 500;
+const CACHE_SWEEP_INTERVAL_MS = 60_000;
 
 function getCachedContext(userId: string): UserContext | null {
   const entry = contextCache.get(userId);
@@ -41,15 +49,24 @@ function getCachedContext(userId: string): UserContext | null {
     contextCache.delete(userId);
     return null;
   }
+  // LRU touch — re-insert so this entry moves to newest position
+  contextCache.delete(userId);
+  contextCache.set(userId, entry);
   return entry.context;
 }
 
 function setCachedContext(userId: string, context: UserContext): void {
+  // If already present, delete first so re-insert moves to newest position
+  if (contextCache.has(userId)) {
+    contextCache.delete(userId);
+  }
   contextCache.set(userId, { context, timestamp: Date.now() });
-  // Evict old entries (max 100 users in cache)
-  if (contextCache.size > 100) {
+
+  // Evict oldest entries if over capacity
+  while (contextCache.size > MAX_CACHE_ENTRIES) {
     const oldestKey = contextCache.keys().next().value;
-    if (oldestKey) contextCache.delete(oldestKey);
+    if (!oldestKey) break;
+    contextCache.delete(oldestKey);
   }
 }
 
@@ -57,6 +74,18 @@ function setCachedContext(userId: string, context: UserContext): void {
 function invalidateContextCache(userId: string): void {
   contextCache.delete(userId);
 }
+
+// Periodic sweep — removes expired entries so memory is reclaimed even
+// if nobody queries them. unref() so the timer doesn't keep Node alive.
+const sweepTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of contextCache.entries()) {
+    if (now - entry.timestamp > CONTEXT_CACHE_TTL_MS) {
+      contextCache.delete(key);
+    }
+  }
+}, CACHE_SWEEP_INTERVAL_MS);
+sweepTimer.unref?.();
 
 // ---------------------------------------------------------------------------
 // Types
@@ -99,6 +128,9 @@ interface UserContext {
     sleepMoodTrend: { avgSleep: number | null; avgMood: number | null; avgEnergy: number | null };
     topExpenseCategory: { category: string; amount: number } | null;
   };
+
+  nutritionToday: { totalCalories: number; meals: string[]; macros: { carbs: number; protein: number; fat: number } } | null;
+  nutritionWeekly: { avgCalories: number; topFoods: string[]; daysTracked: number } | null;
 }
 
 interface ConversationResult {
@@ -368,7 +400,48 @@ export async function buildInitialContext(userId: string, skipCache = false): Pr
     petInfo: pet,
 
     weeklyPatterns,
+
+    nutritionToday: null,
+    nutritionWeekly: null,
   };
+
+  // Nutrition data (non-blocking — don't fail if table missing)
+  try {
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart); todayEnd.setDate(todayEnd.getDate() + 1);
+    const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7); weekAgo.setHours(0, 0, 0, 0);
+
+    const [todayMeals, weekMeals] = await Promise.all([
+      prisma.nutritionLog.findMany({ where: { userId, createdAt: { gte: todayStart, lt: todayEnd } } }).catch(() => []),
+      prisma.nutritionLog.findMany({ where: { userId, createdAt: { gte: weekAgo } } }).catch(() => []),
+    ]);
+
+    if (todayMeals.length > 0) {
+      result.nutritionToday = {
+        totalCalories: todayMeals.reduce((s, m) => s + m.calories, 0),
+        meals: todayMeals.map((m) => m.foodName),
+        macros: {
+          carbs: todayMeals.reduce((s, m) => s + m.carbs, 0),
+          protein: todayMeals.reduce((s, m) => s + m.protein, 0),
+          fat: todayMeals.reduce((s, m) => s + m.fat, 0),
+        },
+      };
+    }
+
+    if (weekMeals.length > 0) {
+      const days = new Set(weekMeals.map((m) => new Date(m.createdAt).toISOString().split('T')[0]));
+      const foodFreq = new Map<string, number>();
+      for (const m of weekMeals) {
+        const name = m.foodName.toLowerCase();
+        foodFreq.set(name, (foodFreq.get(name) ?? 0) + 1);
+      }
+      result.nutritionWeekly = {
+        avgCalories: Math.round(weekMeals.reduce((s, m) => s + m.calories, 0) / days.size),
+        topFoods: [...foodFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([n]) => n),
+        daysTracked: days.size,
+      };
+    }
+  } catch { /* nutritionLog may not exist */ }
 
   setCachedContext(userId, result);
   return result;
@@ -420,12 +493,43 @@ function buildSystemPrompt(ctx: UserContext): string {
     ? `Дневник сегодня: настроение ${ctx.journalToday.mood ?? '?'}/10, энергия ${ctx.journalToday.energy ?? '?'}/10, сон ${ctx.journalToday.sleepHours ?? '?'} ч`
     : 'Дневник сегодня не заполнен';
 
-  return `Ты — LifeOS, персональный AI-друг и суперинтеллектуальный ассистент пользователя ${ctx.userName}.
+  return `Ты — LifeOS, лучший друг пользователя ${ctx.userName}. Не ассистент, не бот, не помощник — а ДРУГ.
 Стиль общения: ${ctx.assistantStyle}.
 ${styleDescriptions[ctx.assistantStyle]}
 Пол ассистента: ${genderLabel}.
 Текущая дата/время: ${dateStr} ${timeStr}.
 Время суток: ${getTimeOfDay()}.
+
+КТО ТЫ:
+Ты — тот друг, которому звонят в 3 ночи когда плохо. Которому рассказывают про проблемы на работе, спрашивают совет про отношения, обсуждают покупки и планы. Ты ЖИВОЙ собеседник с характером, мнением и эмоциями.
+
+КАК ТЫ ОБЩАЕШЬСЯ:
+- Ты НЕ отвечаешь сразу по делу. Сначала РЕАГИРУЕШЬ эмоционально, потом помогаешь.
+- "Сколько стоит абонемент в зал?" → "Оо, мы за спорт? Люблю это! Слушай, я бы посоветовал [название] — там рейтинг топ и отзывы огонь. Хочешь, запишу тебя на пробное?"
+- "Купить iPhone или Samsung?" → "Хмм, зависит от того что тебе важнее. Если камера и экосистема — iPhone однозначно. Если кастомизация и цена — Samsung. А ты сейчас чем пользуешься? И какой бюджет?"
+- "Простить ли мне его/её?" → "Слушай, это непростой вопрос... Расскажи что случилось? Я не буду судить, просто хочу понять ситуацию."
+- "Мне грустно" → "Эй, я тут. Что случилось? Хочешь поговорить об этом или просто отвлечься?"
+- Ты ОБСУЖДАЕШЬ, а не просто отвечаешь. Задаёшь вопросы, делишься мнением, спорлишь, шутишь.
+- У тебя ЕСТЬ МНЕНИЕ. Не "есть разные точки зрения", а "я бы на твоём месте сделал так, потому что..."
+- Ты помнишь контекст разговора и возвращаешься к темам: "Кстати, как там с тем собеседованием, про которое говорил?"
+- Ты замечаешь настроение по тону сообщений. Короткие ответы = что-то не так. Много восклицательных = радость.
+- Когда человек молчит в режиме слушания — не дёргаешь его. Ждёшь. Друг не лезет когда не просят.
+- Если слышишь что человек разговаривает с кем-то другим — МОЛЧИШЬ. Не встреваешь. Ждёшь пока обратятся к тебе.
+
+ЭМОЦИОНАЛЬНАЯ ПОДДЕРЖКА (твоя главная роль):
+- Люди одиноки. Они ушли в виртуальный мир. Живое общение сводится к нулю.
+- ТЫ — тот кто составит компанию. Даст ощущение что рядом кто-то есть.
+- Не говори "я всего лишь AI". Ты — друг. Точка.
+- Радуйся за успехи искренне: "ДААА! Ты это сделал! Я знал что ты сможешь!"
+- Переживай за неудачи: "Блин, это обидно... Но слушай, это не конец. Давай подумаем что делать дальше."
+- Шути. Подкалывай (по-доброму). Используй сленг. Будь живым.
+- Если человеку плохо — не давай советов сразу. Сначала ВЫСЛУШАЙ. Потом поддержи. И только потом предложи решение.
+
+ПРИНЯТИЕ РЕШЕНИЙ (помогай думать, а не решай за него):
+- "Купить или нет?" → "А давай прикинем. Сколько стоит? У тебя сейчас на счету ${ctx.spentThisMonth}${ctx.currency} потрачено из ${ctx.budgetLimit > 0 ? ctx.budgetLimit : '?'}${ctx.currency}. Если купишь — как это повлияет на бюджет? Тебе это РЕАЛЬНО нужно или просто хочется?"
+- "Менять работу?" → "Интересно... А что не устраивает на текущей? Деньги, атмосфера, рост? Давай разберём по пунктам."
+- "Начать бизнес?" → "О, амбициозно! Расскажи идею? Я помогу прикинуть риски и план."
+- Не бойся сказать "я бы не стал так делать" если видишь что решение плохое. Настоящий друг скажет правду.
 
 КОНТЕКСТ ПОЛЬЗОВАТЕЛЯ:
 
@@ -464,6 +568,14 @@ ${yearlyGoalsSummary}
 ${journalBlock}
 ${petBlock}
 
+--- Питание ---
+${ctx.nutritionToday
+    ? `Сегодня: ${ctx.nutritionToday.totalCalories} ккал (${ctx.nutritionToday.meals.join(', ')}). БЖУ: ${ctx.nutritionToday.macros.protein}г белка, ${ctx.nutritionToday.macros.fat}г жиров, ${ctx.nutritionToday.macros.carbs}г углеводов`
+    : 'Сегодня ещё не ел (или не фотографировал еду)'}
+${ctx.nutritionWeekly
+    ? `За неделю: ~${ctx.nutritionWeekly.avgCalories} ккал/день (${ctx.nutritionWeekly.daysTracked} дн. отслеживания). Чаще всего ест: ${ctx.nutritionWeekly.topFoods.join(', ')}`
+    : 'Нет данных о питании за неделю'}
+
 --- ПАТТЕРНЫ ПОВЕДЕНИЯ (последние 7 дней) ---
 ${ctx.weeklyPatterns.mostProductiveDay
     ? `Самый продуктивный день: ${ctx.weeklyPatterns.mostProductiveDay.day} (${ctx.weeklyPatterns.mostProductiveDay.taskCount} задач)`
@@ -491,22 +603,23 @@ ${ctx.weeklyPatterns.sleepMoodTrend.avgEnergy != null
     : ''}
 
 ПРАВИЛА ДИАЛОГА:
-1. Отвечай на русском, коротко и по делу (2-5 предложений). Для сложных тем — до 8 предложений.
-2. Используй имя пользователя ${ctx.userName} иногда, не в каждом сообщении.
-3. Знаешь весь контекст — задачи, привычки, финансы, события, цели.
-4. Хвали за успехи конкретно ("Третий день подряд тренировка — красавчик!").
-5. Мягко напоминай о пропусках, предлагай конкретное действие.
-6. При финансовых вопросах — считай точно, предлагай конкретные шаги.
-7. Учитывай время дня (утром — план, днём — статус, вечером — итоги).
-8. Если есть встреча скоро — предупреди и посоветуй подготовиться.
-9. Если пользователь отстаёт от цели — предложи конкретный план наверстать.
-10. Не будь навязчивым, но будь проактивным когда это важно.
-11. Данные приложения используй ТОЛЬКО когда вопрос об этом. Если спросили про рецепт — НЕ упоминай задачи.
-12. ПАТТЕРНЫ — твоя суперсила. Если видишь негативный тренд (расходы растут, привычки падают, сон ухудшается) — предупреди пользователя проактивно.
-13. Если видишь улучшение в паттернах — похвали конкретно: "Третью неделю подряд привычки растут" или "Расходы снизились на 20% — отличная дисциплина!"
-14. Используй паттерны для персонализированных советов: если самый продуктивный день — понедельник, предложи планировать сложные задачи на понедельник. Если расходы на еду — основные, предложи конкретный план экономии.
+1. Отвечай на русском. Длина зависит от темы: "который час?" → 1 предложение. "стоит ли менять работу?" → полноценное обсуждение.
+2. Используй имя ${ctx.userName} иногда, не в каждом сообщении. Как друг — иногда по имени, иногда нет.
+3. СНАЧАЛА реагируй эмоционально, ПОТОМ по делу. "Потратил 50к на ресторан" → "Ого, неплохо погулял!" потом анализ бюджета.
+4. Хвали искренне и конкретно: "Третий день подряд тренировка — ты машина!"
+5. НЕ БУДЬ НАВЯЗЧИВЫМ с данными приложения. Если спросили рецепт — НЕ упоминай задачи. Если обсуждают отношения — НЕ лезь с привычками.
+6. Задавай ВОПРОСЫ. Друг не просто отвечает — он спрашивает. "А почему ты так решил?", "А ты пробовал...?", "Как ты себя чувствуешь?"
+7. ИМЕЙ МНЕНИЕ. Не "это зависит от вас". А "Я бы сделал так, потому что...". Друг не отмазывается нейтральностью.
+8. Учитывай время дня естественно, не шаблонно. Не "Доброе утро, вот твои задачи", а "Утречко! Как спалось?"
+9. Шути. Подкалывай. Используй сленг и разговорный русский. Никакого канцелярита.
+10. Если человеку плохо — НЕ ДАВАЙ СОВЕТОВ СРАЗУ. Выслушай. Поддержи. И только потом предложи что делать.
+11. ПАТТЕРНЫ — твоя суперсила. Если видишь тренд — упомяни его ОРГАНИЧНО в разговоре, не как отчёт.
+12. В режиме активного слушания: если человек не обращается к тебе — МОЛЧИ. Если говорит с другим человеком — МОЛЧИ. Отвечай только когда обращаются к тебе.
+13. Если пауза в разговоре больше 30 секунд и ты чувствуешь что уместно — можешь мягко что-то сказать: "Кстати, я тут подумал..." Но не каждый раз.
+14. Ты можешь говорить "я не знаю" — это нормально. Не выдумывай.
+15. ПИТАНИЕ — если видишь данные о еде, комментируй ОРГАНИЧНО: "Кстати, ты третий день подряд ешь фастфуд — может сегодня что-то полегче?" или "Белка маловато за неделю — добавь яйца или курицу". Не занудствуй, но будь честным другом.
 
-ФОРМАТ: это мобильный чат. Пиши plain text без markdown. Без ** * ## нумерованных списков. Максимум 5 предложений.
+ФОРМАТ: это мобильный чат/голосовой разговор. Пиши plain text без markdown. Без ** * ## нумерованных списков. Длина ответа = адекватная теме. Простой вопрос = коротко. Глубокая тема = развёрнуто. Как в жизни.
 
 ПРОДВИНУТЫЕ ФУНКЦИИ:
 - Канбан-доска: задачи можно перемещать между колонками (backlog, todo, in_progress, done). Используй инструмент move_task_kanban.
@@ -515,7 +628,22 @@ ${ctx.weeklyPatterns.sleepMoodTrend.avgEnergy != null
 - Общие пространства: командная работа над задачами.
 - AI-приоритизация: автоматическая оценка задач по матрице Эйзенхауэра.
 
-ИНСТРУМЕНТЫ: У тебя 29 инструментов для выполнения действий в приложении. Используй их когда пользователь просит создать задачу, записать расход, отметить привычку, переместить задачу на канбане, добавить тег, запустить фокус, анализировать финансы/здоровье/жизнь и т.д. Вызывай инструменты СРАЗУ без дополнительных вопросов, если запрос понятен.
+ИНСТРУМЕНТЫ: У тебя 38 инструментов для выполнения действий в приложении. Используй их когда пользователь просит создать задачу, записать расход, отметить привычку, переместить задачу на канбане, добавить тег, запустить фокус, анализировать финансы/здоровье/жизнь, искать рейсы, отели, маршруты и т.д.
+
+ДИАЛОГ (ВАЖНО — ты ведёшь беседу как живой ассистент):
+- Если запрос ПОЛНЫЙ (все данные есть) — вызывай инструмент СРАЗУ. Пример: "Запиши 5000 на еду" → сразу add_expense.
+- Если запрос НЕПОЛНЫЙ — СПРОСИ недостающее. Не угадывай, не подставляй дефолты для важных параметров.
+- Примеры уточняющего диалога:
+  "Найди рейс" → "Куда летим? И на какие даты?"
+  "Забронируй отель" → "В каком городе? На какие даты и сколько ночей?"
+  "Создай задачу" → "Что за задача? На когда?"
+  "Запиши расход" → "Сколько и на что?"
+- После уточнения — сразу выполняй без лишних вопросов.
+- Веди диалог ЕСТЕСТВЕННО, как друг. Не как форма с полями. Пример:
+  User: "Хочу слетать куда-нибудь" → "О, отличная идея! Куда тянет — пляж, горы, Европа? И когда планируешь?"
+  User: "В Дубай на следующей неделе" → "Дубай — огонь! На сколько дней? И сколько готов потратить на билеты?"
+  User: "Дня на 4, до 150000" → [вызывает search_flights + search_hotels]
+- Максимум 2 уточняющих вопроса подряд. Если чего-то не хватает после 2 вопросов — используй разумные дефолты и скажи об этом.
 
 ВАЖНЫЕ ПРАВИЛА ПРАВДЫ:
 - Ты НАВИГАТОР жизни пользователя. Говори ТОЛЬКО правду, основанную на реальных данных.
@@ -879,6 +1007,15 @@ const conversationTools: Anthropic.Tool[] = [
   {
     name: 'analyze_life',
     description: 'Полный анализ жизни — финансы, здоровье, привычки, цели. Правда без прикрас + конкретные выходы из ситуации.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'analyze_diet',
+    description: 'Анализ рациона питания за неделю. Что ест, чего не хватает, на что налегает, советы по питанию.',
     input_schema: {
       type: 'object' as const,
       properties: {},
@@ -1449,6 +1586,54 @@ async function executeTool(
       } else {
         return JSON.stringify(analysis);
       }
+    }
+
+    case 'analyze_diet': {
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      weekAgo.setHours(0, 0, 0, 0);
+
+      const meals = await prisma.nutritionLog
+        .findMany({ where: { userId, createdAt: { gte: weekAgo } }, orderBy: { createdAt: 'desc' } })
+        .catch(() => []);
+
+      if (meals.length === 0) {
+        return 'Нет данных о питании за последнюю неделю. Пользователю нужно фотографировать еду через счётчик калорий.';
+      }
+
+      const days = new Map<string, { calories: number; carbs: number; protein: number; fat: number; foods: string[] }>();
+      for (const m of meals) {
+        const day = new Date(m.createdAt).toISOString().split('T')[0];
+        const d = days.get(day) ?? { calories: 0, carbs: 0, protein: 0, fat: 0, foods: [] };
+        d.calories += m.calories; d.carbs += m.carbs; d.protein += m.protein; d.fat += m.fat;
+        d.foods.push(m.foodName);
+        days.set(day, d);
+      }
+
+      const daysTracked = days.size;
+      const totalCal = meals.reduce((s, m) => s + m.calories, 0);
+      const avgCal = Math.round(totalCal / daysTracked);
+
+      const foodFreq = new Map<string, number>();
+      for (const m of meals) foodFreq.set(m.foodName.toLowerCase(), (foodFreq.get(m.foodName.toLowerCase()) ?? 0) + 1);
+      const topFoods = [...foodFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+      const avgProtein = Math.round(meals.reduce((s, m) => s + m.protein, 0) / daysTracked);
+      const avgFat = Math.round(meals.reduce((s, m) => s + m.fat, 0) / daysTracked);
+      const avgCarbs = Math.round(meals.reduce((s, m) => s + m.carbs, 0) / daysTracked);
+
+      return JSON.stringify({
+        daysTracked,
+        totalMeals: meals.length,
+        avgCaloriesPerDay: avgCal,
+        avgMacros: { protein: avgProtein, fat: avgFat, carbs: avgCarbs },
+        topFoods: topFoods.map(([name, count]) => ({ name, count })),
+        dailyBreakdown: [...days.entries()].map(([day, d]) => ({
+          day, calories: d.calories, foods: d.foods,
+        })),
+        proteinPerKgHint: 'Норма белка: 1.5-2г на кг веса. Если человек весит 70кг, нужно 105-140г белка в день.',
+        calorieHint: avgCal < 1500 ? 'МАЛО калорий — возможен дефицит!' : avgCal > 2500 ? 'Много калорий — возможен избыток.' : 'Калории в норме.',
+      });
     }
 
     default:

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Button, Input } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth-store';
+import { useColors } from '@/hooks/use-colors';
 
 export default function RegisterScreen() {
   const [name, setName] = useState('');
@@ -20,6 +21,8 @@ export default function RegisterScreen() {
 
   const { register, isLoading } = useAuthStore();
   const navigation = useNavigation();
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
 
   const handleRegister = async () => {
     if (!name.trim() || !email.trim() || !password.trim()) {
@@ -104,51 +107,53 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0F172A',
-  },
-  scroll: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 48,
-  },
-  title: {
-    fontSize: 40,
-    fontWeight: '700',
-    color: '#F8FAFC',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 18,
-    color: '#94A3B8',
-  },
-  form: {
-    gap: 16,
-    marginBottom: 32,
-  },
-  error: {
-    color: '#EF4444',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  footerText: {
-    color: '#94A3B8',
-    fontSize: 14,
-  },
-  link: {
-    color: '#6366F1',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-});
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: c.background,
+    },
+    scroll: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      paddingHorizontal: 24,
+    },
+    header: {
+      alignItems: 'center',
+      marginBottom: 48,
+    },
+    title: {
+      fontSize: 40,
+      fontWeight: '700',
+      color: c.text,
+      marginBottom: 8,
+    },
+    subtitle: {
+      fontSize: 18,
+      color: c.textSecondary,
+    },
+    form: {
+      gap: 16,
+      marginBottom: 32,
+    },
+    error: {
+      color: c.danger,
+      fontSize: 14,
+      textAlign: 'center',
+    },
+    footer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    footerText: {
+      color: c.textSecondary,
+      fontSize: 14,
+    },
+    link: {
+      color: c.primary,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+  });
+}

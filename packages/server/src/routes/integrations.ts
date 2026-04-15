@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
+import { encrypt, decrypt } from '../lib/crypto.js';
 
 const googleCalendarSchema = z.object({
   accessToken: z.string().min(1, 'Access token обязателен'),
@@ -46,16 +47,18 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
           provider: 'google_calendar',
         },
       },
+      // БЕЗОПАСНОСТЬ: токены шифруются перед сохранением (AES-256-GCM).
+      // Даже если БД утечёт, без ENCRYPTION_KEY токены бесполезны.
       update: {
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
+        accessToken: encrypt(data.accessToken),
+        refreshToken: encrypt(data.refreshToken),
         active: true,
       },
       create: {
         userId: request.userId,
         provider: 'google_calendar',
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
+        accessToken: encrypt(data.accessToken),
+        refreshToken: encrypt(data.refreshToken),
         active: true,
       },
     });

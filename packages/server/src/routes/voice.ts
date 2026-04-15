@@ -1,6 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { writeFileSync, unlinkSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import Anthropic from '@anthropic-ai/sdk';
+import Groq from 'groq-sdk';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { processVoiceCommand } from '../ai/voice-pipeline.js';
@@ -12,6 +16,19 @@ import {
   type AssistantContext,
 } from '../ai/assistant-personality.js';
 import { parseIntent } from '../ai/intent-parser.js';
+import {
+  calculateStreak,
+  calculateWeekProgress,
+} from '../services/streak-service.js';
+import { rateLimiter } from '../middleware/security.js';
+
+// Voice assistant/transcribe are expensive (Groq Whisper + Claude API) — cap per IP
+const assistantRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'voice-assistant' });
+const transcribeRateLimit = rateLimiter({ max: 30, windowMs: 60_000, keyPrefix: 'voice-transcribe' });
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY || '',
+});
 
 const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY || '',
@@ -54,7 +71,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/voice/assistant', {
-    preHandler: validate(voiceSchema),
+    preHandler: [assistantRateLimit, validate(voiceSchema)],
   }, async (request, reply) => {
     const { text } = request.body as z.infer<typeof voiceSchema>;
     const userId = request.userId;
@@ -239,6 +256,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
 
       return reply.send({
         response: responseText,
+        reply: responseText, // alias — mobile clients read `.reply`
         context: responseContext,
       });
     } catch (err) {
@@ -248,71 +266,85 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
       });
     }
   });
-}
 
-async function calculateStreak(userId: string): Promise<number> {
-  let streak = 0;
-  const checkDate = new Date();
-  checkDate.setHours(0, 0, 0, 0);
+  // --- Voice Transcription (Speech-to-Text via Groq Whisper) ---
 
-  const activeHabits = await prisma.habit.count({
-    where: { userId, active: true },
+  const transcribeSchema = z.object({
+    audio: z.string().min(1, 'Audio data обязателен'),
+    format: z.string().default('m4a'),
   });
 
-  if (activeHabits === 0) return 0;
+  app.post('/voice/transcribe', {
+    bodyLimit: 10 * 1024 * 1024, // 10 MB для голосовых записей в base64
+    preHandler: [transcribeRateLimit, validate(transcribeSchema)],
+  }, async (request, reply) => {
+    const { audio, format } = request.body as z.infer<typeof transcribeSchema>;
 
-  for (let i = 0; i < 365; i++) {
-    const dayDate = new Date(checkDate);
-    dayDate.setDate(dayDate.getDate() - i);
+    try {
+      // 1. Decode base64 audio to temp file
+      const buffer = Buffer.from(audio, 'base64');
 
-    const completedLogs = await prisma.habitLog.count({
-      where: {
-        userId,
-        date: dayDate,
-        completed: true,
-      },
-    });
-
-    const completionRate = completedLogs / activeHabits;
-
-    if (completionRate > 0.5) {
-      streak++;
-    } else {
-      // For the current day, if nothing is done yet, skip it
-      if (i === 0 && completedLogs === 0) {
-        continue;
+      if (buffer.length < 100) {
+        return reply.send({ text: '', message: 'Аудио слишком короткое' });
       }
-      break;
+
+      const tempPath = join(tmpdir(), `lifeos-voice-${Date.now()}.${format}`);
+      writeFileSync(tempPath, buffer);
+
+      let text = '';
+      let lastError = '';
+
+      app.log.info(`Voice transcribe: received ${buffer.length} bytes, format=${format}`);
+
+      // Try Groq Whisper first
+      if (process.env.GROQ_API_KEY) {
+        try {
+          const transcription: unknown = await groq.audio.transcriptions.create({
+            file: new File([readFileSync(tempPath)], `audio.${format}`, {
+              type: format === 'm4a' ? 'audio/mp4' : `audio/${format}`,
+            }),
+            model: 'whisper-large-v3-turbo',
+            language: 'ru',
+            response_format: 'text',
+          });
+
+          text = typeof transcription === 'string'
+            ? transcription.trim()
+            : String(transcription).trim();
+
+          app.log.info(`Groq Whisper transcribed: ${text.length} chars`);
+        } catch (groqErr: any) {
+          lastError = groqErr?.message || String(groqErr);
+          app.log.error(`Groq Whisper failed: ${lastError}`);
+        }
+      } else {
+        lastError = 'GROQ_API_KEY not set';
+        app.log.error(lastError);
+      }
+
+      // Clean up temp file
+      try { unlinkSync(tempPath); } catch {}
+
+      if (!text) {
+        // БЕЗОПАСНОСТЬ: lastError может содержать сырые сообщения от Groq API
+        // (включая фрагменты ключей или внутренние пути). Логируем детально, шлём generic.
+        if (lastError) {
+          app.log.error({ lastError }, 'Voice transcription failed');
+        }
+        return reply.send({
+          text: '',
+          message: 'Не удалось распознать речь. Говорите громче и ближе к микрофону.',
+        });
+      }
+
+      return reply.send({ text });
+    } catch (err) {
+      app.log.error(err);
+      return reply.status(500).send({
+        message: 'Ошибка транскрипции аудио',
+      });
     }
-  }
-
-  return streak;
-}
-
-async function calculateWeekProgress(userId: string, today: Date): Promise<number> {
-  const dayOfWeek = today.getDay();
-  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-
-  const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() + mondayOffset);
-  weekStart.setHours(0, 0, 0, 0);
-
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 7);
-
-  const weekTasks = await prisma.task.findMany({
-    where: {
-      userId,
-      date: {
-        gte: weekStart,
-        lt: weekEnd,
-      },
-    },
-    select: { completed: true },
   });
-
-  if (weekTasks.length === 0) return 0;
-
-  const completedCount = weekTasks.filter((t) => t.completed).length;
-  return completedCount / weekTasks.length;
 }
+
+// calculateStreak + calculateWeekProgress moved to ../services/streak-service

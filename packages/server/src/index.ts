@@ -16,19 +16,142 @@ import { integrationRoutes } from './routes/integrations.js';
 import { exportRoutes } from './routes/export.js';
 import { petRoutes } from './routes/pet.js';
 import { achievementRoutes } from './routes/achievements.js';
+import { arenaRoutes } from './routes/arena.js';
+import { challengeRoutes } from './routes/challenge.js';
+import { visionRoutes } from './routes/vision.js';
+import { conversationRoutes } from './routes/conversation.js';
+import { contactRoutes } from './routes/contacts.js';
+import { calendarSyncRoutes } from './routes/calendar-sync.js';
+import { travelRoutes } from './routes/travel.js';
+import { documentRoutes } from './routes/documents.js';
+import { tagRoutes } from './routes/tags.js';
+import { dependencyRoutes } from './routes/dependencies.js';
+import { sharedSpaceRoutes } from './routes/shared-spaces.js';
+import { quickAddRoutes } from './routes/quick-add.js';
+import { prioritizationRoutes } from './routes/prioritization.js';
+import { subscriptionRoutes } from './routes/subscription.js';
+import { briefingRoutes } from './routes/briefing.js';
+import { notificationRoutes } from './routes/notifications.js';
+import { appInfoRoutes } from './routes/app-info.js';
+import { lifeAnalysisRoutes } from './routes/life-analysis.js';
 import { createTelegramBot, startBot, stopBot } from './services/telegram-bot.js';
+import { registerSecurityHeaders, rateLimiter } from './middleware/security.js';
+import { registerErrorHandler } from './middleware/error-handler.js';
+import { attachLogger } from './lib/logger.js';
 import type { Telegraf } from 'telegraf';
 
-const app = Fastify({ logger: true });
+// ============================================================================
+// БЕЗОПАСНОСТЬ: JWT_SECRET обязателен. Без него — крах на старте.
+// Это защита от случайного запуска прода со слабым/дефолтным секретом.
+// ============================================================================
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  console.error(
+    '\n❌ FATAL: JWT_SECRET не задан или слишком короткий (нужно ≥32 символа).\n' +
+      '   Сгенерируй: openssl rand -base64 48\n' +
+      '   Затем добавь в .env (локально) или в Railway → Variables (прод).\n',
+  );
+  process.exit(1);
+}
 
-await app.register(cors, { origin: true });
-await app.register(jwt, {
-  secret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+// ============================================================================
+// БЕЗОПАСНОСТЬ: bodyLimit по умолчанию 256 KB.
+// Эндпоинты, которым нужно больше (vision, import) — переопределяют per-route.
+// Это закрывает DoS-вектор, когда атакующий шлёт мегабайтные JSON в /auth/login.
+// ============================================================================
+const DEFAULT_BODY_LIMIT = 256 * 1024; // 256 KB
+const app = Fastify({
+  logger: true,
+  bodyLimit: DEFAULT_BODY_LIMIT,
+  // Доверяем X-Forwarded-For от прокси (Railway, Cloudflare и т.д.)
+  // чтобы rate-limiter работал по реальному IP клиента, а не по IP прокси.
+  trustProxy: true,
 });
+
+// ============================================================================
+// БЕЗОПАСНОСТЬ: CORS — whitelist, а не "origin: true" (любой источник)
+// ============================================================================
+const CORS_ORIGINS_ENV = process.env.CORS_ORIGINS || '';
+const allowedOrigins = CORS_ORIGINS_ENV
+  .split(',')
+  .map((o) => o.trim())
+  .filter((o) => o.length > 0);
+
+// В разработке разрешаем localhost и Expo Go (если CORS_ORIGINS не задан)
+const isProduction = process.env.NODE_ENV === 'production';
+
+await app.register(cors, {
+  origin: (origin, cb) => {
+    // Мобильные приложения и серверные клиенты не шлют Origin — это нормально
+    if (!origin) return cb(null, true);
+
+    if (allowedOrigins.length > 0) {
+      // Явный whitelist из переменной окружения
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+      // БЕЗОПАСНОСТЬ: cb(null, false) — браузер блокирует ответ через CORS,
+      // сервер не кидает 500 (раньше cb(new Error(...)) давал stack trace в логи).
+      app.log.warn({ origin }, 'CORS: origin не в whitelist, отклонено');
+      return cb(null, false);
+    }
+
+    if (!isProduction) {
+      // В dev-режиме разрешаем локальные запросы
+      if (
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1') ||
+        origin.includes('192.168.') ||
+        origin.includes('exp://') ||
+        origin.includes('.expo.dev')
+      ) {
+        return cb(null, true);
+      }
+    }
+
+    app.log.warn({ origin }, 'CORS: origin отклонён');
+    cb(null, false);
+  },
+  credentials: true,
+});
+
+await app.register(jwt, {
+  secret: JWT_SECRET,
+});
+
+// Security headers (X-Frame-Options, HSTS, CSP, etc.)
+registerSecurityHeaders(app);
+
+// ============================================================================
+// Глобальный обработчик ошибок.
+// Ловит всё, что летит из роутов (Prisma throws, Zod validation, Fastify
+// schema validation, прочие Error). Возвращает структурированный JSON и
+// пишет полный контекст в лог. В проде не протекает stack trace наружу.
+// ============================================================================
+// NEW: centralized error handler using /lib/errors.ts + /middleware/error-handler.ts
+// Behaviour preserved from the legacy inline handler:
+//   - Zod / Fastify validation → 400 with field info
+//   - Prisma P2002 → 409 "Запись с такими данными уже существует"
+//   - Prisma P2025 → 404 "Запись не найдена"
+//   - Prisma P10xx → 500 database error
+//   - Fallback → 500 internal error (stack hidden in production)
+// Plus NEW capabilities:
+//   - Sensitive-field sanitization (passwords, tokens, JWTs redacted from logs)
+//   - Stable `code` field for client-side error taxonomy
+//   - Typed AppError classes routes can throw directly
+//   - requestId echoed back for support debugging
+registerErrorHandler(app);
+attachLogger(app.log as unknown as Parameters<typeof attachLogger>[0]);
 
 app.get('/health', async () => {
   return { status: 'ok' };
 });
+
+// ============================================================================
+// БЕЗОПАСНОСТЬ: Глобальный rate limiter для всех API-маршрутов.
+// 120 запросов в минуту на IP — защита от перебора и DoS.
+// Auth-эндпоинты имеют собственные, более строгие лимиты (3-30 req/min).
+// ============================================================================
+const globalApiLimiter = rateLimiter({ max: 120, windowMs: 60_000, keyPrefix: 'global' });
+app.addHook('onRequest', globalApiLimiter);
 
 await app.register(authRoutes);
 await app.register(taskRoutes);
@@ -45,6 +168,24 @@ await app.register(integrationRoutes);
 await app.register(exportRoutes);
 await app.register(petRoutes);
 await app.register(achievementRoutes);
+await app.register(arenaRoutes);
+await app.register(challengeRoutes);
+await app.register(visionRoutes);
+await app.register(conversationRoutes);
+await app.register(contactRoutes);
+await app.register(calendarSyncRoutes);
+await app.register(travelRoutes);
+await app.register(documentRoutes);
+await app.register(tagRoutes);
+await app.register(dependencyRoutes);
+await app.register(sharedSpaceRoutes);
+await app.register(quickAddRoutes);
+await app.register(prioritizationRoutes);
+await app.register(subscriptionRoutes);
+await app.register(briefingRoutes);
+await app.register(notificationRoutes);
+await app.register(appInfoRoutes);
+await app.register(lifeAnalysisRoutes);
 
 let telegramBot: Telegraf | null = null;
 

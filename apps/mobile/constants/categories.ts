@@ -14,10 +14,12 @@ export const habitCategories = {
 } as const;
 
 export const goalAreas = {
-  finance: { label: 'Финансы', icon: '💰' },
-  spirituality: { label: 'Духовность', icon: '🧘' },
-  career: { label: 'Карьера', icon: '🚀' },
-  health: { label: 'Здоровье', icon: '💪' },
+  finance: { label: 'Финансы', icon: '💰', color: '#F59E0B' },
+  spirituality: { label: 'Духовность', icon: '🧘', color: '#8B5CF6' },
+  career: { label: 'Карьера', icon: '🚀', color: '#3B82F6' },
+  health: { label: 'Здоровье', icon: '💪', color: '#22C55E' },
+  relationships: { label: 'Отношения', icon: '❤️', color: '#EC4899' },
+  creativity: { label: 'Творчество', icon: '🎨', color: '#F97316' },
 } as const;
 
 export const expenseCategories = {

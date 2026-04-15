@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import * as SecureStore from 'expo-secure-store';
 import { storage } from '@/services/storage';
 import { api } from '@/services/api';
 
@@ -23,9 +24,11 @@ interface AuthState {
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, name: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   refreshAuth: () => Promise<void>;
-  loadStoredAuth: () => void;
+  loadStoredAuth: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -39,8 +42,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const data = await api.post<AuthResponse>('/auth/login', { email, password });
-      storage.set('token', data.accessToken);
-      storage.set('refreshToken', data.refreshToken);
+      await SecureStore.setItemAsync('token', data.accessToken);
+      await SecureStore.setItemAsync('refreshToken', data.refreshToken);
       storage.set('user', JSON.stringify(data.user));
       set({
         token: data.accessToken,
@@ -63,8 +66,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         name,
         password,
       });
-      storage.set('token', data.accessToken);
-      storage.set('refreshToken', data.refreshToken);
+      await SecureStore.setItemAsync('token', data.accessToken);
+      await SecureStore.setItemAsync('refreshToken', data.refreshToken);
       storage.set('user', JSON.stringify(data.user));
       set({
         token: data.accessToken,
@@ -79,11 +82,44 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  logout: () => {
-    storage.remove('token');
-    storage.remove('refreshToken');
+  logout: async () => {
+    await SecureStore.deleteItemAsync('token');
+    await SecureStore.deleteItemAsync('refreshToken');
     storage.remove('user');
+    // Clear cached store data so next user starts fresh
+    const { clearPersistedStores } = await import('@/services/store-persist');
+    await clearPersistedStores();
     set({ token: null, refreshToken: null, user: null, error: null });
+  },
+
+  deleteAccount: async (password: string) => {
+    const token = get().token;
+    if (!token) throw new Error('Не авторизован');
+    await api.post('/auth/delete-account', { password }, token);
+    await SecureStore.deleteItemAsync('token');
+    await SecureStore.deleteItemAsync('refreshToken');
+    storage.remove('user');
+    storage.remove('assistantStyle');
+    storage.remove('assistantGender');
+    storage.remove('wakeUpTime');
+    storage.remove('morning_reminder');
+    storage.remove('evening_review');
+    storage.remove('task_reminders');
+    set({ token: null, refreshToken: null, user: null, error: null });
+  },
+
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    const token = get().token;
+    if (!token) throw new Error('Не авторизован');
+    const data = await api.post<{ accessToken: string; refreshToken: string; message: string }>(
+      '/auth/change-password',
+      { currentPassword, newPassword },
+      token,
+    );
+    // Update tokens after password change (server revoked old ones)
+    await SecureStore.setItemAsync('token', data.accessToken);
+    await SecureStore.setItemAsync('refreshToken', data.refreshToken);
+    set({ token: data.accessToken, refreshToken: data.refreshToken });
   },
 
   refreshAuth: async () => {
@@ -96,22 +132,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const data = await api.post<{ accessToken: string; refreshToken: string }>('/auth/refresh', {
         refreshToken: currentRefreshToken,
       });
-      storage.set('token', data.accessToken);
-      storage.set('refreshToken', data.refreshToken);
+      await SecureStore.setItemAsync('token', data.accessToken);
+      await SecureStore.setItemAsync('refreshToken', data.refreshToken);
       set({
         token: data.accessToken,
         refreshToken: data.refreshToken,
       });
     } catch {
-      get().logout();
+      await get().logout();
     }
   },
 
-  loadStoredAuth: () => {
-    const token = storage.getString('token') ?? null;
-    const refreshToken = storage.getString('refreshToken') ?? null;
+  loadStoredAuth: async () => {
+    const token = await SecureStore.getItemAsync('token');
+    const refreshToken = await SecureStore.getItemAsync('refreshToken');
     const userJson = storage.getString('user');
-    const user: User | null = userJson ? (JSON.parse(userJson) as User) : null;
-    set({ token, refreshToken, user });
+    let user: User | null = null;
+    if (userJson) {
+      try {
+        user = JSON.parse(userJson) as User;
+      } catch {
+        // Corrupted JSON — clear it to prevent repeated crashes
+        storage.remove('user');
+      }
+    }
+    set({ token: token ?? null, refreshToken: refreshToken ?? null, user });
   },
 }));

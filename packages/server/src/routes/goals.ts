@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { validate } from '../middleware/validate.js';
+import { validate, parseDate, parseYear, invalidDateReply } from '../middleware/validate.js';
 
 const createWeeklyGoalSchema = z.object({
   weekStart: z.string(),
@@ -32,14 +32,16 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
 
   // --- Weekly Goals ---
 
-  app.get('/goals/weekly', async (request) => {
+  app.get('/goals/weekly', async (request, reply) => {
     const { week } = request.query as { week?: string };
 
     if (week) {
+      const weekDate = parseDate(week);
+      if (!weekDate) return invalidDateReply(reply, 'week', 'YYYY-MM-DD');
       return prisma.weeklyGoal.findMany({
         where: {
           userId: request.userId,
-          weekStart: new Date(week),
+          weekStart: weekDate,
         },
         orderBy: { order: 'asc' },
       });
@@ -112,9 +114,14 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
 
   // --- Yearly Goals ---
 
-  app.get('/goals/yearly', async (request) => {
+  app.get('/goals/yearly', async (request, reply) => {
     const { year } = request.query as { year?: string };
-    const targetYear = year ? Number(year) : new Date().getFullYear();
+    let targetYear = new Date().getFullYear();
+    if (year) {
+      const parsed = parseYear(year);
+      if (parsed === null) return invalidDateReply(reply, 'year', 'YYYY (2000-2100)');
+      targetYear = parsed;
+    }
 
     return prisma.yearlyGoal.findMany({
       where: {

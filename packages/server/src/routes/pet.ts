@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
+import { validateUnlock, type ItemSpec } from '../services/items-catalog.js';
 
 const renameSchema = z.object({
   name: z.string().min(1, 'Имя обязательно').max(30, 'Имя слишком длинное'),
@@ -264,22 +265,98 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
     const stage = getStage(pet.level);
     const roomLevel = getRoomLevel(pet.level);
 
-    // Update pet in DB
-    const updatedPet = await prisma.pet.update({
-      where: { userId },
-      data: {
-        health: Math.round(health * 10) / 10,
-        happiness: Math.round(happiness * 10) / 10,
-        stage,
-        roomLevel,
-        lastActive: now,
-      },
-    });
+    // PERF: Only write back to DB when state actually changed or when
+    // lastActive is stale. The response always returns the computed values
+    // regardless, so skipping the write doesn't affect what the client sees.
+    const roundedHealth = Math.round(health * 10) / 10;
+    const roundedHappiness = Math.round(happiness * 10) / 10;
+    const lastActiveStaleMinutes = (now.getTime() - pet.lastActive.getTime()) / 60000;
+
+    const needsWrite =
+      pet.health !== roundedHealth ||
+      pet.happiness !== roundedHappiness ||
+      pet.stage !== stage ||
+      pet.roomLevel !== roomLevel ||
+      lastActiveStaleMinutes > 15;
+
+    let updatedPet = pet;
+    if (needsWrite) {
+      updatedPet = await prisma.pet.update({
+        where: { userId },
+        data: {
+          health: roundedHealth,
+          happiness: roundedHappiness,
+          stage,
+          roomLevel,
+          lastActive: now,
+        },
+      });
+    }
+
+    // PERF: Auto-unlock logic is expensive (1 findMany + 1 count + 1 createMany).
+    // Run at most once per hour instead of every GET.
+    const unlocksStale = lastActiveStaleMinutes > 60;
+    let unlocks: Array<{ itemKey: string; name: string; slot: string; rarity: string; bonus?: string; bonusValue?: number }> = [];
+
+    if (unlocksStale) {
+      const existingItems = await prisma.petItem.findMany({
+        where: { petId: updatedPet.id },
+        select: { itemKey: true },
+      });
+      const ownedKeys = new Set(existingItems.map((i) => i.itemKey));
+
+      // Streak-based unlocks
+      if (updatedPet.streak >= 7 && !ownedKeys.has('iron_helm'))
+        unlocks.push({ itemKey: 'iron_helm', name: 'Железный Шлем', slot: 'helmet', rarity: 'common', bonus: 'streak_shield', bonusValue: 1 });
+      if (updatedPet.streak >= 14 && !ownedKeys.has('wooden_shield'))
+        unlocks.push({ itemKey: 'wooden_shield', name: 'Деревянный Щит', slot: 'shield', rarity: 'common', bonus: 'streak_shield', bonusValue: 1 });
+      if (updatedPet.streak >= 30 && !ownedKeys.has('focus_aura'))
+        unlocks.push({ itemKey: 'focus_aura', name: 'Аура Фокуса', slot: 'aura', rarity: 'rare', bonus: 'focus_time', bonusValue: 10 });
+      if (updatedPet.streak >= 60 && !ownedKeys.has('fire_aura'))
+        unlocks.push({ itemKey: 'fire_aura', name: 'Огненная Аура', slot: 'aura', rarity: 'epic', bonus: 'motivation', bonusValue: 0 });
+      if (updatedPet.streak >= 90 && !ownedKeys.has('dragon_helm'))
+        unlocks.push({ itemKey: 'dragon_helm', name: 'Шлем Дракона', slot: 'helmet', rarity: 'legendary', bonus: 'streak_shield', bonusValue: 3 });
+      if (updatedPet.streak >= 180 && !ownedKeys.has('titan_plate'))
+        unlocks.push({ itemKey: 'titan_plate', name: 'Титановый Доспех', slot: 'armor', rarity: 'legendary', bonus: 'health_regen', bonusValue: 20 });
+
+      // Task-based unlocks
+      const totalCompletedTasks = await prisma.task.count({
+        where: { userId, completed: true },
+      });
+      if (totalCompletedTasks >= 50 && !ownedKeys.has('leather_armor'))
+        unlocks.push({ itemKey: 'leather_armor', name: 'Кожаная Броня', slot: 'armor', rarity: 'common', bonus: 'health_regen', bonusValue: 5 });
+
+      // Level-based unlocks
+      if (updatedPet.level >= 1 && !ownedKeys.has('training_sword'))
+        unlocks.push({ itemKey: 'training_sword', name: 'Тренировочный Меч', slot: 'weapon', rarity: 'common', bonus: 'task_xp', bonusValue: 5 });
+      if (updatedPet.level >= 10 && !ownedKeys.has('excalibur'))
+        unlocks.push({ itemKey: 'excalibur', name: 'Экскалибур', slot: 'weapon', rarity: 'legendary', bonus: 'all_xp', bonusValue: 20 });
+
+      // Step-based unlock
+      if (steps >= 100000 && !ownedKeys.has('swift_boots'))
+        unlocks.push({ itemKey: 'swift_boots', name: 'Ботинки Скорости', slot: 'boots', rarity: 'common', bonus: 'step_xp', bonusValue: 1 });
+
+      if (unlocks.length > 0) {
+        await prisma.petItem.createMany({
+          data: unlocks.map((u) => ({
+            petId: updatedPet.id,
+            itemKey: u.itemKey,
+            name: u.name,
+            slot: u.slot,
+            rarity: u.rarity,
+            bonus: u.bonus || null,
+            bonusValue: u.bonusValue || 0,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
 
     return {
       pet: updatedPet,
       state,
       healthBreakdown,
+      newItems: unlocks.length > 0 ? unlocks : undefined,
     };
   });
 
@@ -374,7 +451,7 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
     return { pet: updatedPet };
   });
 
-  // --- PUT /pet/feed — Manual feed + XP ---
+  // --- PUT /pet/feed — Manual feed (no XP, only happiness) ---
 
   app.put('/pet/feed', async (request, reply) => {
     const pet = await prisma.pet.findUnique({ where: { userId: request.userId } });
@@ -386,25 +463,19 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ message: 'Питомец мёртв. Сначала воскресите его' });
     }
 
-    const xpResult = addXP(pet, 5);
-
+    // No XP from feeding — XP only from task/habit/goal completion
     const updatedPet = await prisma.pet.update({
       where: { userId: request.userId },
       data: {
         lastFed: new Date(),
         happiness: Math.min(100, pet.happiness + 5),
-        xp: xpResult.xp,
-        level: xpResult.level,
-        xpToNext: xpResult.xpToNext,
-        stage: xpResult.stage,
-        roomLevel: xpResult.roomLevel,
       },
     });
 
-    return { pet: updatedPet, leveledUp: xpResult.leveledUp };
+    return { pet: updatedPet, leveledUp: false };
   });
 
-  // --- PUT /pet/play — Manual play + XP ---
+  // --- PUT /pet/play — Manual play (no XP, only happiness) ---
 
   app.put('/pet/play', async (request, reply) => {
     const pet = await prisma.pet.findUnique({ where: { userId: request.userId } });
@@ -416,22 +487,16 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ message: 'Питомец мёртв. Сначала воскресите его' });
     }
 
-    const xpResult = addXP(pet, 10);
-
+    // No XP from playing — XP only from task/habit/goal completion
     const updatedPet = await prisma.pet.update({
       where: { userId: request.userId },
       data: {
         lastPlayed: new Date(),
         happiness: Math.min(100, pet.happiness + 10),
-        xp: xpResult.xp,
-        level: xpResult.level,
-        xpToNext: xpResult.xpToNext,
-        stage: xpResult.stage,
-        roomLevel: xpResult.roomLevel,
       },
     });
 
-    return { pet: updatedPet, leveledUp: xpResult.leveledUp };
+    return { pet: updatedPet, leveledUp: false };
   });
 
   // --- GET /pet/costumes — List costumes with unlock status ---
@@ -592,5 +657,149 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
       pet,
       history,
     };
+  });
+
+  // === CHARACTER TYPE ===
+  const characterSchema = z.object({
+    characterType: z.enum(['warrior', 'elf', 'mage', 'guardian'], {
+      errorMap: () => ({ message: 'Допустимые типы: warrior, elf, mage, guardian' }),
+    }),
+  });
+
+  app.put('/pet/character', {
+    preHandler: validate(characterSchema),
+  }, async (request, reply) => {
+    const { characterType } = request.body as { characterType: string };
+
+    const pet = await prisma.pet.findUnique({ where: { userId: request.userId } });
+    if (!pet) {
+      return reply.status(404).send({ error: 'Питомец не найден' });
+    }
+
+    const updated = await prisma.pet.update({
+      where: { userId: request.userId },
+      data: { characterType },
+    });
+
+    return { success: true, characterType: updated.characterType };
+  });
+
+  // === PET ITEMS ===
+  app.get('/pet/items', async (request) => {
+    const pet = await prisma.pet.findUnique({
+      where: { userId: request.userId },
+      include: { items: true },
+    });
+
+    if (!pet) {
+      return { items: [], equipped: {} };
+    }
+
+    return {
+      items: pet.items,
+      equipped: {
+        helmet: pet.equippedHelmet,
+        armor: pet.equippedArmor,
+        weapon: pet.equippedWeapon,
+        shield: pet.equippedShield,
+        boots: pet.equippedBoots,
+        aura: pet.equippedAura,
+      },
+    };
+  });
+
+  const equipSchema = z.object({
+    itemKey: z.string().min(1),
+    slot: z.enum(['helmet', 'armor', 'weapon', 'shield', 'boots', 'aura']),
+  });
+
+  app.put('/pet/equip', {
+    preHandler: validate(equipSchema),
+  }, async (request, reply) => {
+    const { itemKey, slot } = request.body as { itemKey: string; slot: string };
+
+    const pet = await prisma.pet.findUnique({
+      where: { userId: request.userId },
+      include: { items: true },
+    });
+
+    if (!pet) {
+      return reply.status(404).send({ error: 'Питомец не найден' });
+    }
+
+    const item = pet.items.find(i => i.itemKey === itemKey);
+    if (!item) {
+      return reply.status(400).send({ error: 'Предмет не найден в инвентаре' });
+    }
+
+    const slotField = `equipped${slot.charAt(0).toUpperCase() + slot.slice(1)}` as string;
+
+    const updated = await prisma.pet.update({
+      where: { userId: request.userId },
+      data: { [slotField]: itemKey },
+    });
+
+    return { success: true, slot, itemKey };
+  });
+
+  // === UNLOCK ITEM ===
+  // SECURITY: Server owns the item catalog. Client sends only itemKey; name/
+  // slot/rarity/bonus all come from the catalog (see services/items-catalog.ts).
+  // Previously clients could mint arbitrary legendary gear by posting any payload.
+  const unlockItemSchema = z.object({
+    itemKey: z.string().min(1).max(64),
+  });
+
+  app.post('/pet/unlock-item', {
+    preHandler: validate(unlockItemSchema),
+  }, async (request, reply) => {
+    const { itemKey } = request.body as z.infer<typeof unlockItemSchema>;
+    const userId = request.userId;
+
+    const [pet, arenaProfile] = await Promise.all([
+      prisma.pet.findUnique({ where: { userId } }),
+      prisma.arenaProfile.findUnique({ where: { userId } }),
+    ]);
+
+    if (!pet) {
+      return reply.status(404).send({ error: 'Питомец не найден' });
+    }
+
+    const validation = validateUnlock(itemKey, {
+      petLevel: pet.level,
+      petStreak: pet.streak,
+      arenaWins: arenaProfile?.wins ?? 0,
+      arenaTrophies: arenaProfile?.trophies ?? 0,
+    });
+
+    if (!validation.ok) {
+      const err = validation as { ok: false; error: string };
+      return reply.status(403).send({ error: err.error });
+    }
+
+    const success = validation as { ok: true; item: ItemSpec };
+    const spec = success.item;
+
+    const existing = await prisma.petItem.findUnique({
+      where: { petId_itemKey: { petId: pet.id, itemKey: spec.itemKey } },
+    });
+
+    if (existing) {
+      return { success: true, alreadyUnlocked: true, item: existing };
+    }
+
+    const item = await prisma.petItem.create({
+      data: {
+        petId: pet.id,
+        itemKey: spec.itemKey,
+        name: spec.name,
+        slot: spec.slot,
+        rarity: spec.rarity,
+        bonus: spec.bonus ?? null,
+        bonusValue: spec.bonusValue,
+      },
+    });
+
+    return { success: true, alreadyUnlocked: false, item };
   });
 }

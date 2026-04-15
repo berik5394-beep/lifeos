@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { Animated, View, Text, TouchableOpacity, StyleSheet, Easing } from 'react-native';
 import type { PetType, PetState, PetStage } from '@/stores/pet-store';
-import { colors } from '@/constants/colors';
+import { useColors } from '@/hooks/use-colors';
 
 const PET_EMOJIS: Record<PetType, string> = {
   cat: '\u{1F431}',
@@ -49,6 +49,8 @@ const PetAvatarComponent = ({
   reaction,
   stage,
 }: PetAvatarProps) => {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const isDead = state === 'dead';
   const effectiveSize = size ?? (stage ? STAGE_AVATAR_SIZES[stage] : 60);
 
@@ -294,7 +296,8 @@ const PetAvatarComponent = ({
 
 export const PetAvatar = React.memo(PetAvatarComponent);
 
-const styles = StyleSheet.create({
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   wrapper: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -330,7 +333,7 @@ const styles = StyleSheet.create({
   reactionBubble: {
     position: 'absolute',
     top: -20,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 12,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -340,4 +343,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
-});
+  });
+}

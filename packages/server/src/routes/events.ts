@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { validate } from '../middleware/validate.js';
+import { validate, parseDate, parseMonth as validateMonthRange, invalidDateReply } from '../middleware/validate.js';
 
 const createEventSchema = z.object({
   title: z.string().min(1, 'Название обязательно'),
@@ -17,8 +17,7 @@ const createEventSchema = z.object({
 
 const updateEventSchema = createEventSchema.partial();
 
-function getWeekRange(dateStr: string) {
-  const date = new Date(dateStr);
+function getWeekRange(date: Date) {
   const day = date.getDay();
   const diff = date.getDate() - day + (day === 0 ? -6 : 1);
   const start = new Date(date);
@@ -26,13 +25,6 @@ function getWeekRange(dateStr: string) {
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
   end.setDate(start.getDate() + 7);
-  return { start, end };
-}
-
-function getMonthRange(monthStr: string) {
-  const [year, m] = monthStr.split('-').map(Number);
-  const start = new Date(year, m - 1, 1);
-  const end = new Date(year, m, 1);
   return { start, end };
 }
 
@@ -75,7 +67,7 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
 
   // --- List events ---
 
-  app.get('/events', async (request) => {
+  app.get('/events', async (request, reply) => {
     const { date, week, month } = request.query as {
       date?: string;
       week?: string;
@@ -85,13 +77,18 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
     let where: Record<string, unknown> = { userId: request.userId };
 
     if (date) {
-      where.date = new Date(date);
+      const parsed = parseDate(date);
+      if (!parsed) return invalidDateReply(reply, 'date', 'YYYY-MM-DD');
+      where.date = parsed;
     } else if (week) {
-      const { start, end } = getWeekRange(week);
+      const weekDate = parseDate(week);
+      if (!weekDate) return invalidDateReply(reply, 'week', 'YYYY-MM-DD');
+      const { start, end } = getWeekRange(weekDate);
       where.date = { gte: start, lt: end };
     } else if (month) {
-      const { start, end } = getMonthRange(month);
-      where.date = { gte: start, lt: end };
+      const range = validateMonthRange(month);
+      if (!range) return invalidDateReply(reply, 'month', 'YYYY-MM');
+      where.date = { gte: range.start, lt: range.end };
     }
 
     return prisma.calendarEvent.findMany({

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { persistStoreData } from '@/services/store-persist';
 
 interface Expense {
   id: string;
@@ -53,6 +54,7 @@ interface FinanceState {
   incomes: Income[];
   summary: Summary | null;
   isLoading: boolean;
+  _loadingCount: number;
   fetchSummary: (month: string) => Promise<void>;
   fetchExpenses: (month?: string) => Promise<void>;
   fetchIncomes: (month?: string) => Promise<void>;
@@ -62,22 +64,37 @@ interface FinanceState {
   deleteIncome: (id: string) => Promise<void>;
 }
 
+/** Helpers to track parallel loading correctly */
+function startLoading(set: (fn: (s: FinanceState) => Partial<FinanceState>) => void) {
+  set((s) => ({ _loadingCount: s._loadingCount + 1, isLoading: true }));
+}
+function stopLoading(set: (fn: (s: FinanceState) => Partial<FinanceState>) => void) {
+  set((s) => {
+    const next = Math.max(0, s._loadingCount - 1);
+    return { _loadingCount: next, isLoading: next > 0 };
+  });
+}
+
 export const useFinanceStore = create<FinanceState>((set) => ({
   expenses: [],
   incomes: [],
   summary: null,
   isLoading: false,
+  _loadingCount: 0,
 
   fetchSummary: async (month: string) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    set({ isLoading: true });
+    startLoading(set);
     try {
       const summary = await api.get<Summary>(`/finance/summary/${month}`, token);
-      set({ summary, isLoading: false });
+      set({ summary });
+      persistStoreData('finance_summary', summary).catch(() => {});
     } catch {
-      set({ isLoading: false });
+      // Summary fetch failed silently
+    } finally {
+      stopLoading(set);
     }
   },
 
@@ -85,13 +102,16 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    set({ isLoading: true });
+    startLoading(set);
     try {
       const query = month ? `?month=${month}` : '';
       const expenses = await api.get<Expense[]>(`/finance/expenses${query}`, token);
-      set({ expenses, isLoading: false });
+      set({ expenses });
+      persistStoreData('finance_expenses', expenses).catch(() => {});
     } catch {
-      set({ isLoading: false });
+      // Expenses fetch failed silently
+    } finally {
+      stopLoading(set);
     }
   },
 
@@ -99,13 +119,15 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    set({ isLoading: true });
+    startLoading(set);
     try {
       const query = month ? `?month=${month}` : '';
       const incomes = await api.get<Income[]>(`/finance/incomes${query}`, token);
-      set({ incomes, isLoading: false });
+      set({ incomes });
     } catch {
-      set({ isLoading: false });
+      // Incomes fetch failed silently
+    } finally {
+      stopLoading(set);
     }
   },
 
@@ -113,35 +135,55 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    const expense = await api.post<Expense>('/finance/expenses', data, token);
-    set((state) => ({ expenses: [expense, ...state.expenses] }));
+    try {
+      const expense = await api.post<Expense>('/finance/expenses', data, token);
+      set((state) => ({ expenses: [expense, ...state.expenses] }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Ошибка при добавлении расхода';
+      throw new Error(msg);
+    }
   },
 
   deleteExpense: async (id: string) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    await api.delete(`/finance/expenses/${id}`, token);
-    set((state) => ({
-      expenses: state.expenses.filter((e) => e.id !== id),
-    }));
+    try {
+      await api.delete(`/finance/expenses/${id}`, token);
+      set((state) => ({
+        expenses: state.expenses.filter((e) => e.id !== id),
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Ошибка при удалении расхода';
+      throw new Error(msg);
+    }
   },
 
   createIncome: async (data: CreateIncomeData) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    const income = await api.post<Income>('/finance/incomes', data, token);
-    set((state) => ({ incomes: [income, ...state.incomes] }));
+    try {
+      const income = await api.post<Income>('/finance/incomes', data, token);
+      set((state) => ({ incomes: [income, ...state.incomes] }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Ошибка при добавлении дохода';
+      throw new Error(msg);
+    }
   },
 
   deleteIncome: async (id: string) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    await api.delete(`/finance/incomes/${id}`, token);
-    set((state) => ({
-      incomes: state.incomes.filter((i) => i.id !== id),
-    }));
+    try {
+      await api.delete(`/finance/incomes/${id}`, token);
+      set((state) => ({
+        incomes: state.incomes.filter((i) => i.id !== id),
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Ошибка при удалении дохода';
+      throw new Error(msg);
+    }
   },
 }));

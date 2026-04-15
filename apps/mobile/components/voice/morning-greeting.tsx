@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Animated,
   View,
@@ -8,7 +8,9 @@ import {
   Modal,
 } from 'react-native';
 import * as Speech from 'expo-speech';
-import { colors, spacing, fontSize, borderRadius } from '@/constants';
+import { spacing, fontSize, borderRadius } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
+import { getPreferredVoiceIdentifier } from '@/hooks/use-voice';
 
 interface MorningGreetingProps {
   visible: boolean;
@@ -40,6 +42,8 @@ const ChipButton = React.memo(function ChipButton({
   label: string;
   onPress: () => void;
 }) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <TouchableOpacity style={styles.chip} onPress={onPress} activeOpacity={0.7}>
       <Text style={styles.chipText}>
@@ -55,6 +59,8 @@ function MorningGreetingComponent({
   greeting,
   onChipPress,
 }: MorningGreetingProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
   const chipsOpacity = useRef(new Animated.Value(0)).current;
@@ -86,7 +92,13 @@ function MorningGreetingComponent({
       }).start();
 
       if (greeting) {
-        Speech.speak(greeting, { language: 'ru' });
+        getPreferredVoiceIdentifier()
+          .then((voiceId) => {
+            Speech.speak(greeting, { language: 'ru', voice: voiceId });
+          })
+          .catch(() => {
+            Speech.speak(greeting, { language: 'ru' });
+          });
       }
     } else {
       overlayOpacity.setValue(0);
@@ -152,7 +164,8 @@ function MorningGreetingComponent({
 
 export const MorningGreeting = React.memo(MorningGreetingComponent);
 
-const styles = StyleSheet.create({
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.95)',
@@ -168,12 +181,12 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.surfaceLight,
+    backgroundColor: c.surfaceLight,
     alignItems: 'center',
     justifyContent: 'center',
   },
   closeText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.md,
   },
   content: {
@@ -181,7 +194,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl * 2,
   },
   greetingText: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.xxl,
     fontWeight: '700',
     textAlign: 'center',
@@ -195,16 +208,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   chip: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     borderRadius: borderRadius.xl,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
   },
   chipText: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.sm,
     fontWeight: '600',
   },
-});
+  });
+}

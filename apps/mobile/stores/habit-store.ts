@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { persistStoreData } from '@/services/store-persist';
 
 interface Habit {
   id: string;
@@ -43,6 +44,7 @@ interface UpdateHabitData {
   frequency?: string;
   active?: boolean;
   order?: number;
+  goalId?: string | null;
 }
 
 interface HabitState {
@@ -72,6 +74,7 @@ export const useHabitStore = create<HabitState>((set) => ({
     try {
       const habits = await api.get<Habit[]>('/habits', token);
       set({ habits, isLoading: false });
+      persistStoreData('habits', habits).catch(() => {});
     } catch (err) {
       set({ isLoading: false });
       throw err;
@@ -82,52 +85,72 @@ export const useHabitStore = create<HabitState>((set) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    const habit = await api.post<Habit>('/habits', data, token);
-    set((state) => ({ habits: [...state.habits, habit] }));
+    try {
+      const habit = await api.post<Habit>('/habits', data, token);
+      set((state) => ({ habits: [...state.habits, habit] }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Ошибка при создании привычки';
+      throw new Error(msg);
+    }
   },
 
   updateHabit: async (id: string, data: UpdateHabitData) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    const updated = await api.put<Habit>(`/habits/${id}`, data, token);
-    set((state) => ({
-      habits: state.habits.map((h) => (h.id === id ? updated : h)),
-    }));
+    try {
+      const updated = await api.put<Habit>(`/habits/${id}`, data, token);
+      set((state) => ({
+        habits: state.habits.map((h) => (h.id === id ? updated : h)),
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Ошибка при обновлении привычки';
+      throw new Error(msg);
+    }
   },
 
   deleteHabit: async (id: string) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    await api.delete(`/habits/${id}`, token);
-    set((state) => ({
-      habits: state.habits.filter((h) => h.id !== id),
-    }));
+    try {
+      await api.delete(`/habits/${id}`, token);
+      set((state) => ({
+        habits: state.habits.filter((h) => h.id !== id),
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Ошибка при удалении привычки';
+      throw new Error(msg);
+    }
   },
 
   toggleHabitLog: async (habitId: string, date: string, completed: boolean) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    const log = await api.post<HabitLog>(
-      `/habits/${habitId}/log`,
-      { date, completed },
-      token,
-    );
+    try {
+      const log = await api.post<HabitLog>(
+        `/habits/${habitId}/log`,
+        { date, completed },
+        token,
+      );
 
-    set((state) => {
-      const dateLogs = state.logs[date] ?? [];
-      const existingIndex = dateLogs.findIndex((l) => l.habitId === habitId);
-      const updatedLogs =
-        existingIndex >= 0
-          ? dateLogs.map((l, i) => (i === existingIndex ? log : l))
-          : [...dateLogs, log];
+      set((state) => {
+        const dateLogs = state.logs[date] ?? [];
+        const existingIndex = dateLogs.findIndex((l) => l.habitId === habitId);
+        const updatedLogs =
+          existingIndex >= 0
+            ? dateLogs.map((l, i) => (i === existingIndex ? log : l))
+            : [...dateLogs, log];
 
-      return {
-        logs: { ...state.logs, [date]: updatedLogs },
-      };
-    });
+        return {
+          logs: { ...state.logs, [date]: updatedLogs },
+        };
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Ошибка при отметке привычки';
+      throw new Error(msg);
+    }
   },
 
   fetchStats: async (month: string) => {

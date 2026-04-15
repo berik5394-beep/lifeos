@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { SectionHeader } from '@/components/ui';
 import { useAchievementStore } from '@/stores/achievement-store';
 import type { Achievement, ThemeInfo } from '@/stores/achievement-store';
-import { colors, spacing, fontSize, borderRadius } from '@/constants';
+import { spacing, fontSize, borderRadius } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 
 const TYPE_ICONS: Record<string, string> = {
   costume: '👕',
@@ -39,6 +41,8 @@ const AchievementCard = React.memo(function AchievementCard({
   achievement,
   onClaim,
 }: AchievementCardProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const icon = TYPE_ICONS[achievement.type] ?? '🏆';
   const isUnlocked = achievement.unlocked;
   const isClaimed = achievement.claimed;
@@ -76,6 +80,8 @@ interface ThemeCardProps {
 }
 
 const ThemeCard = React.memo(function ThemeCard({ theme, onActivate }: ThemeCardProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <Card style={[styles.achievementCard, !theme.unlocked ? styles.achievementCardLocked : undefined]}>
       <View style={styles.achievementRow}>
@@ -101,7 +107,9 @@ const ThemeCard = React.memo(function ThemeCard({ theme, onActivate }: ThemeCard
 });
 
 export default function AchievementsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const {
     achievements,
     themes,
@@ -116,6 +124,16 @@ export default function AchievementsScreen() {
     fetchAchievements();
     fetchThemes();
   }, [fetchAchievements, fetchThemes]);
+
+  // Safe back navigation — if there's no history (e.g. after modal dismiss),
+  // fall back to the Dashboard instead of producing a white screen.
+  const handleBack = useCallback(() => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate('Tabs' as never);
+    }
+  }, [navigation]);
 
   const handleClaim = useCallback(
     async (key: string) => {
@@ -132,7 +150,7 @@ export default function AchievementsScreen() {
   );
 
   // Group achievements by type
-  const grouped = achievements.reduce<Record<string, Achievement[]>>((acc, a) => {
+  const grouped = (achievements || []).reduce<Record<string, Achievement[]>>((acc, a) => {
     if (!acc[a.type]) {
       acc[a.type] = [];
     }
@@ -148,16 +166,14 @@ export default function AchievementsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.backText}>{'\u2190'} Назад</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>Достижения</Text>
-          <View style={styles.headerSpacer} />
-        </View>
+        <TouchableOpacity
+          onPress={handleBack}
+          activeOpacity={0.7}
+          style={styles.backButton}
+        >
+          <Text style={styles.backText}>{'\u2190'} Назад</Text>
+        </TouchableOpacity>
+        <SectionHeader title="Достижения" subtitle="Награды, бейджи и темы" />
 
         {isLoading ? (
           <View style={styles.centered}>
@@ -187,7 +203,7 @@ export default function AchievementsScreen() {
             })}
 
             {/* Themes section */}
-            {themes.length > 0 ? (
+            {(themes || []).length > 0 ? (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>🎨 Темы</Text>
                 {themes.map((theme) => (
@@ -201,7 +217,7 @@ export default function AchievementsScreen() {
             ) : null}
 
             {/* Empty state */}
-            {achievements.length === 0 && themes.length === 0 ? (
+            {(achievements || []).length === 0 && (themes || []).length === 0 ? (
               <View style={styles.centered}>
                 <Text style={styles.emptyIcon}>🏆</Text>
                 <Text style={styles.emptyText}>
@@ -216,10 +232,11 @@ export default function AchievementsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   scroll: {
     flex: 1,
@@ -228,24 +245,13 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     paddingBottom: spacing.xl * 3,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+  backButton: {
+    marginBottom: spacing.sm,
   },
   backText: {
-    color: colors.primary,
+    color: c.primary,
     fontSize: fontSize.md,
     fontWeight: '600',
-  },
-  title: {
-    color: colors.text,
-    fontSize: fontSize.xl,
-    fontWeight: '700',
-  },
-  headerSpacer: {
-    width: 60,
   },
   centered: {
     alignItems: 'center',
@@ -253,7 +259,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xl * 2,
   },
   loadingText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.md,
   },
   emptyIcon: {
@@ -261,7 +267,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   emptyText: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.md,
     textAlign: 'center',
   },
@@ -271,7 +277,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   sectionTitle: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.lg,
     fontWeight: '700',
     marginBottom: spacing.sm,
@@ -299,15 +305,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   achievementName: {
-    color: colors.text,
+    color: c.text,
     fontSize: fontSize.md,
     fontWeight: '600',
   },
   achievementNameLocked: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
   },
   achievementDescription: {
-    color: colors.textSecondary,
+    color: c.textSecondary,
     fontSize: fontSize.sm,
     marginTop: 2,
   },
@@ -315,8 +321,9 @@ const styles = StyleSheet.create({
     marginLeft: spacing.sm,
   },
   claimedLabel: {
-    color: colors.success,
+    color: c.success,
     fontSize: fontSize.sm,
     fontWeight: '600',
   },
-});
+  });
+}

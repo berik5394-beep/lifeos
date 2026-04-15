@@ -39,8 +39,9 @@ export const useAchievementStore = create<AchievementStore>((set, get) => ({
     if (!token) return;
     set({ isLoading: true });
     try {
-      const data = await api.get<Achievement[]>('/achievements', token);
-      set({ achievements: data, isLoading: false });
+      const raw = await api.get<Achievement[] | { achievements: Achievement[] }>('/achievements', token);
+      const list = Array.isArray(raw) ? raw : (raw.achievements ?? []);
+      set({ achievements: list, isLoading: false });
     } catch {
       set({ isLoading: false });
     }
@@ -65,8 +66,9 @@ export const useAchievementStore = create<AchievementStore>((set, get) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
     try {
-      const data = await api.get<ThemeInfo[]>('/themes', token);
-      set({ themes: data });
+      const raw = await api.get<ThemeInfo[] | { themes: ThemeInfo[] }>('/themes', token);
+      const list = Array.isArray(raw) ? raw : (raw.themes ?? []);
+      set({ themes: list });
     } catch {
       // Error handled silently
     }

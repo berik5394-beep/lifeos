@@ -1,42 +1,62 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, memo , useMemo} from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Alert,
   Platform,
   ActivityIndicator,
   TextInput,
+  Share,
+  Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { useIntegrationStore } from '@/stores/integration-store';
-import { Card, Button } from '@/components/ui';
-import { colors, spacing, fontSize } from '@/constants';
-import {
-  requestCalendarPermissions,
-  getDeviceCalendars,
-  importEventsFromCalendar,
-} from '@/services/calendar-sync';
+import { Card, Button, SectionHeader } from '@/components/ui';
+import { spacing, fontSize } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
+import { useCalendarSync } from '@/hooks/use-calendar-sync';
+import { AnimatedPress } from '@/components/ui/animated-press';
+import { FadeInView } from '@/components/ui/fade-in-view';
 import { getHealthPermissions, syncStepsFromHealth, syncWeekSteps } from '@/services/health-sync';
+import {
+  requestPermissions as requestHealthPermissions,
+  syncHealthData,
+  syncWeekSteps as syncWeekHealthSteps,
+  isHealthSyncEnabled,
+  setHealthSyncEnabled,
+  getLastSyncTime,
+  getCachedMetrics,
+  getHealthProviderName,
+} from '@/services/health-connect';
+import { useHealthSync } from '@/hooks/use-health-sync';
 import { exportCSV, exportPDFReport, exportStory, saveCSVToFile } from '@/services/export';
 
 WebBrowser.maybeCompleteAuthSession();
 
 const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? '';
 
-const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');
+const GOOGLE_DISCOVERY = {
+  authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
+  tokenEndpoint: 'https://oauth2.googleapis.com/token',
+  revocationEndpoint: 'https://oauth2.googleapis.com/revoke',
+};
 
-/* ───────── Section header ───────── */
-interface SectionHeaderProps {
+/* ───────── Integration group header ───────── */
+interface IntegrationGroupHeaderProps {
   title: string;
   icon: string;
 }
 
-const SectionHeader = memo(function SectionHeader({ title, icon }: SectionHeaderProps) {
+const IntegrationGroupHeader = memo(function IntegrationGroupHeader({
+  title,
+  icon,
+}: IntegrationGroupHeaderProps) {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <Text style={styles.sectionTitle}>
       {icon}  {title}
@@ -46,6 +66,8 @@ const SectionHeader = memo(function SectionHeader({ title, icon }: SectionHeader
 
 /* ───────── Status badge ───────── */
 const ConnectedBadge = memo(function ConnectedBadge() {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   return (
     <View style={styles.badge}>
       <Text style={styles.badgeText}>Подключён ✓</Text>
@@ -56,6 +78,8 @@ const ConnectedBadge = memo(function ConnectedBadge() {
 /* ───────── Google Calendar section ───────── */
 
 function GoogleCalendarSection() {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const { isConnected, connectGoogleCalendar, syncGoogleCalendar, disconnect, isLoading } =
     useIntegrationStore();
   const connected = isConnected('google-calendar');
@@ -66,7 +90,7 @@ function GoogleCalendarSection() {
       scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
       redirectUri: AuthSession.makeRedirectUri(),
     },
-    discovery,
+    GOOGLE_DISCOVERY,
   );
 
   useEffect(() => {
@@ -79,9 +103,13 @@ function GoogleCalendarSection() {
     }
   }, [response, connectGoogleCalendar]);
 
-  const handleConnect = useCallback(() => {
+  const handleConnect = useCallback(async () => {
     if (!GOOGLE_CLIENT_ID) {
-      Alert.alert('Ошибка', 'Google Client ID не настроен');
+      // Если OAuth не настроен — предложить синхронизацию через календарь устройства
+      Alert.alert(
+        'Google Calendar',
+        'Для синхронизации используйте календарь устройства ниже — он автоматически подключится к вашим Google-аккаунтам.',
+      );
       return;
     }
     promptAsync();
@@ -146,130 +174,573 @@ function GoogleCalendarSection() {
   );
 }
 
-/* ───────── Apple Calendar section (iOS only) ───────── */
+/* ───────── Device Calendar section (iOS + Android) ───────── */
 
-function AppleCalendarSection() {
-  const [importing, setImporting] = useState(false);
+function DeviceCalendarSection() {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
+  const calStyles = useMemo(() => createCalendarStyles(c), [c]);
+  const {
+    isSyncing,
+    lastSync,
+    syncNow,
+    calendars,
+    selectedCalendar,
+    setSelectedCalendar,
+    syncEnabled,
+    setSyncEnabled,
+    syncedEventCount,
+    loadCalendars,
+  } = useCalendarSync();
+  const [showPicker, setShowPicker] = useState(false);
 
-  const handleSync = useCallback(async () => {
-    const granted = await requestCalendarPermissions();
-    if (!granted) {
-      Alert.alert('Нет доступа', 'Разрешите доступ к календарю в настройках устройства');
-      return;
+  useEffect(() => {
+    if (syncEnabled) {
+      loadCalendars();
     }
+  }, [syncEnabled, loadCalendars]);
 
-    const calendars = await getDeviceCalendars();
-    if (calendars.length === 0) {
-      Alert.alert('Пусто', 'Не найдено календарей на устройстве');
-      return;
+  const providerName =
+    Platform.OS === 'ios' ? 'Apple Calendar' : 'Google Calendar';
+  const providerIcon = Platform.OS === 'ios' ? '🍎' : '📅';
+
+  const selectedCalName = calendars.find(
+    (cal) => cal.id === selectedCalendar,
+  )?.title;
+
+  const formatLastSync = (iso: string | null): string => {
+    if (!iso) return 'никогда';
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'только что';
+    if (diffMin < 60) return `${diffMin} мин назад`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `${diffH} ч назад`;
+    return d.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const handleToggle = useCallback(async () => {
+    await setSyncEnabled(!syncEnabled);
+    if (!syncEnabled) {
+      await loadCalendars();
     }
+  }, [syncEnabled, setSyncEnabled, loadCalendars]);
 
-    // Show calendar picker
-    const calendarButtons = calendars.slice(0, 5).map((cal) => ({
-      text: cal.title,
-      onPress: async () => {
-        setImporting(true);
-        try {
-          const now = new Date();
-          const startDate = new Date(now);
-          startDate.setDate(now.getDate() - 7);
-          const endDate = new Date(now);
-          endDate.setDate(now.getDate() + 30);
-
-          const count = await importEventsFromCalendar(cal.id, startDate, endDate);
-          Alert.alert('Готово', `Импортировано ${count} событий`);
-        } catch {
-          Alert.alert('Ошибка', 'Не удалось импортировать события');
-        } finally {
-          setImporting(false);
-        }
-      },
-    }));
-
-    Alert.alert('Выберите календарь', 'Откуда импортировать события?', [
-      ...calendarButtons,
-      { text: 'Отмена', style: 'cancel' },
-    ]);
-  }, []);
-
-  if (Platform.OS !== 'ios') return null;
+  const handleSelectCalendar = useCallback(
+    (calId: string) => {
+      setSelectedCalendar(calId);
+      setShowPicker(false);
+    },
+    [setSelectedCalendar],
+  );
 
   return (
     <Card>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>🍎  Календарь устройства</Text>
+        <Text style={styles.cardTitle}>
+          {providerIcon}  {providerName}
+        </Text>
+        {syncEnabled && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>Активно ✓</Text>
+          </View>
+        )}
       </View>
+
       <Text style={styles.cardDescription}>
-        Импортируйте события из вашего календаря iOS
+        Двусторонняя синхронизация событий с календарём устройства
       </Text>
-      {importing ? (
-        <ActivityIndicator color={colors.primary} style={styles.loader} />
-      ) : (
-        <Button
-          title="Синхронизировать календарь устройства"
-          onPress={handleSync}
-          variant="secondary"
-          style={styles.connectButton}
-        />
+
+      {/* Enable/disable toggle */}
+      <AnimatedPress
+        style={calStyles.toggleRow}
+        onPress={handleToggle}
+      >
+        <Text style={calStyles.toggleLabel}>Автосинхронизация</Text>
+        <View
+          style={[
+            calStyles.toggleTrack,
+            syncEnabled && calStyles.toggleTrackOn,
+          ]}
+        >
+          <View
+            style={[
+              calStyles.toggleThumb,
+              syncEnabled && calStyles.toggleThumbOn,
+            ]}
+          />
+        </View>
+      </AnimatedPress>
+
+      {syncEnabled && (
+        <>
+          {/* Calendar picker */}
+          <AnimatedPress
+            style={calStyles.pickerButton}
+            onPress={() => setShowPicker(!showPicker)}
+          >
+            <Text style={calStyles.pickerLabel}>Календарь</Text>
+            <Text style={calStyles.pickerValue}>
+              {selectedCalName ?? 'Все календари'} {'\u25BE'}
+            </Text>
+          </AnimatedPress>
+
+          {showPicker && calendars.length > 0 && (
+            <View style={calStyles.pickerList}>
+              <AnimatedPress
+                style={calStyles.pickerItem}
+                onPress={() => {
+                  setSelectedCalendar('');
+                  setShowPicker(false);
+                }}
+              >
+                <Text
+                  style={[
+                    calStyles.pickerItemText,
+                    !selectedCalendar && calStyles.pickerItemActive,
+                  ]}
+                >
+                  Все календари
+                </Text>
+              </AnimatedPress>
+              {calendars.map((cal) => (
+                <AnimatedPress
+                  key={cal.id}
+                  style={calStyles.pickerItem}
+                  onPress={() => handleSelectCalendar(cal.id)}
+                >
+                  <View
+                    style={[
+                      calStyles.calendarDot,
+                      { backgroundColor: cal.color },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      calStyles.pickerItemText,
+                      selectedCalendar === cal.id &&
+                        calStyles.pickerItemActive,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {cal.title}
+                  </Text>
+                  <Text style={calStyles.calendarSource}>{cal.source}</Text>
+                </AnimatedPress>
+              ))}
+            </View>
+          )}
+
+          {/* Stats row */}
+          <View style={calStyles.statsRow}>
+            <View style={calStyles.statItem}>
+              <Text style={calStyles.statValue}>{syncedEventCount}</Text>
+              <Text style={calStyles.statLabel}>событий</Text>
+            </View>
+            <View style={calStyles.statItem}>
+              <Text style={calStyles.statValue}>
+                {formatLastSync(lastSync)}
+              </Text>
+              <Text style={calStyles.statLabel}>посл. синхр.</Text>
+            </View>
+          </View>
+
+          {/* Manual sync button */}
+          {isSyncing ? (
+            <ActivityIndicator color={c.primary} style={styles.loader} />
+          ) : (
+            <Button
+              title="Синхронизировать сейчас"
+              onPress={syncNow}
+              variant="secondary"
+              style={styles.connectButton}
+            />
+          )}
+        </>
       )}
     </Card>
   );
+}
+
+function createCalendarStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
+    toggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    toggleLabel: {
+      fontSize: fontSize.md,
+      color: c.text,
+    },
+    toggleTrack: {
+      width: 48,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: c.border,
+      justifyContent: 'center',
+      paddingHorizontal: 2,
+    },
+    toggleTrackOn: {
+      backgroundColor: c.primary,
+    },
+    toggleThumb: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: '#fff',
+    },
+    toggleThumbOn: {
+      alignSelf: 'flex-end',
+    },
+    pickerButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+      padding: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    pickerLabel: {
+      fontSize: fontSize.sm,
+      color: c.textSecondary,
+    },
+    pickerValue: {
+      fontSize: fontSize.sm,
+      color: c.text,
+      fontWeight: '500',
+    },
+    pickerList: {
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 12,
+      marginBottom: spacing.sm,
+      overflow: 'hidden',
+    },
+    pickerItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    pickerItemText: {
+      fontSize: fontSize.sm,
+      color: c.text,
+      flex: 1,
+    },
+    pickerItemActive: {
+      color: c.primary,
+      fontWeight: '600',
+    },
+    calendarDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      marginRight: spacing.sm,
+    },
+    calendarSource: {
+      fontSize: fontSize.xs,
+      color: c.textSecondary,
+      marginLeft: spacing.sm,
+    },
+    statsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      paddingVertical: spacing.md,
+      marginBottom: spacing.sm,
+      backgroundColor: c.surface,
+      borderRadius: 12,
+    },
+    statItem: {
+      alignItems: 'center',
+    },
+    statValue: {
+      fontSize: fontSize.lg,
+      fontWeight: '700',
+      color: c.text,
+    },
+    statLabel: {
+      fontSize: fontSize.xs,
+      color: c.textSecondary,
+      marginTop: 2,
+    },
+  });
 }
 
 /* ───────── Health section ───────── */
 
 function HealthSection() {
-  const [syncing, setSyncing] = useState(false);
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
+  const healthStyles = useMemo(() => createHealthStyles(c), [c]);
+  const [enabled, setEnabled] = useState(isHealthSyncEnabled);
+  const { metrics, isSyncing, syncNow, lastError } = useHealthSync();
 
-  const handleSyncSteps = useCallback(async () => {
-    const available = await getHealthPermissions();
-    if (!available) {
-      Alert.alert('Недоступно', 'Педометр недоступен на этом устройстве');
+  const providerName = getHealthProviderName();
+
+  const handleToggle = useCallback(async () => {
+    if (!enabled) {
+      // Включаем — запрашиваем разрешения
+      const granted = await requestHealthPermissions();
+      if (!granted) {
+        Alert.alert(
+          'Нет доступа',
+          `Разрешите доступ к ${providerName} в настройках устройства`,
+          [
+            { text: 'Отмена', style: 'cancel' },
+            { text: 'Открыть настройки', onPress: () => Linking.openSettings() },
+          ],
+        );
+        return;
+      }
+      setHealthSyncEnabled(true);
+      setEnabled(true);
+      syncNow();
+    } else {
+      // Выключаем
+      setHealthSyncEnabled(false);
+      setEnabled(false);
+    }
+  }, [enabled, providerName, syncNow]);
+
+  const handleManualSync = useCallback(async () => {
+    const granted = await requestHealthPermissions();
+    if (!granted) {
+      Alert.alert(
+        'Педометр недоступен',
+        'Разрешите доступ к здоровью в настройках устройства',
+        [
+          { text: 'Отмена', style: 'cancel' },
+          { text: 'Открыть настройки', onPress: () => Linking.openSettings() },
+        ],
+      );
       return;
     }
 
-    setSyncing(true);
     try {
-      const todaySteps = await syncStepsFromHealth(new Date());
-      const weekResults = await syncWeekSteps();
+      await syncNow();
 
+      // Также синхронизируем шаги за неделю
+      const weekResults = await syncWeekHealthSteps();
       const weekTotal = weekResults.reduce((sum, d) => sum + d.steps, 0);
+
       Alert.alert(
-        'Шаги синхронизированы',
-        `Сегодня: ${todaySteps.toLocaleString()} шагов\nЗа неделю: ${weekTotal.toLocaleString()} шагов`,
+        'Данные синхронизированы',
+        `Сегодня: ${metrics.steps.toLocaleString()} шагов\nЗа неделю: ${weekTotal.toLocaleString()} шагов`,
       );
     } catch {
-      Alert.alert('Ошибка', 'Не удалось синхронизировать шаги');
-    } finally {
-      setSyncing(false);
+      Alert.alert('Ошибка', 'Не удалось синхронизировать данные');
     }
+  }, [syncNow, metrics.steps]);
+
+  const formatLastSync = useCallback((isoStr: string | null): string => {
+    if (!isoStr) return 'никогда';
+    const date = new Date(isoStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMin = Math.floor(diffMs / 60_000);
+
+    if (diffMin < 1) return 'только что';
+    if (diffMin < 60) return `${diffMin} мин. назад`;
+
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return `${diffHours} ч. назад`;
+
+    return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   }, []);
 
   return (
     <Card>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>❤️  Здоровье</Text>
+        <Text style={styles.cardTitle}>
+          {Platform.OS === 'ios' ? '🍎' : '💚'}  {providerName}
+        </Text>
+        {enabled && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>Вкл</Text>
+          </View>
+        )}
       </View>
+
       <Text style={styles.cardDescription}>
-        Синхронизация шагов из {Platform.OS === 'ios' ? 'Apple Health' : 'Google Fit'}
+        Автоматическая синхронизация шагов, сна и пульса из {providerName}.
+        {'\n'}Данные обновляются каждые 15 минут.
       </Text>
-      {syncing ? (
-        <ActivityIndicator color={colors.primary} style={styles.loader} />
-      ) : (
-        <Button
-          title="Синхронизировать шаги"
-          onPress={handleSyncSteps}
-          variant="secondary"
-          style={styles.connectButton}
-        />
+
+      {/* Переключатель */}
+      <AnimatedPress
+        style={healthStyles.toggleRow}
+        onPress={handleToggle}
+      >
+        <Text style={healthStyles.toggleLabel}>
+          {enabled ? 'Синхронизация включена' : 'Включить синхронизацию'}
+        </Text>
+        <View style={[healthStyles.toggle, enabled && healthStyles.toggleActive]}>
+          <View style={[healthStyles.toggleThumb, enabled && healthStyles.toggleThumbActive]} />
+        </View>
+      </AnimatedPress>
+
+      {enabled && (
+        <>
+          {/* Метрики */}
+          <View style={healthStyles.metricsGrid}>
+            <View style={healthStyles.metricCard}>
+              <Text style={healthStyles.metricIcon}>👟</Text>
+              <Text style={healthStyles.metricValue}>
+                {metrics.steps.toLocaleString()}
+              </Text>
+              <Text style={healthStyles.metricLabel}>Шаги</Text>
+            </View>
+
+            <View style={healthStyles.metricCard}>
+              <Text style={healthStyles.metricIcon}>😴</Text>
+              <Text style={healthStyles.metricValue}>
+                {metrics.sleepHours !== null ? `${metrics.sleepHours.toFixed(1)} ч` : '—'}
+              </Text>
+              <Text style={healthStyles.metricLabel}>Сон</Text>
+            </View>
+
+            <View style={healthStyles.metricCard}>
+              <Text style={healthStyles.metricIcon}>❤️</Text>
+              <Text style={healthStyles.metricValue}>
+                {metrics.heartRate !== null ? `${metrics.heartRate}` : '—'}
+              </Text>
+              <Text style={healthStyles.metricLabel}>Пульс</Text>
+            </View>
+
+            <View style={healthStyles.metricCard}>
+              <Text style={healthStyles.metricIcon}>🔥</Text>
+              <Text style={healthStyles.metricValue}>
+                {metrics.activeCalories !== null ? `${metrics.activeCalories}` : '—'}
+              </Text>
+              <Text style={healthStyles.metricLabel}>Калории</Text>
+            </View>
+          </View>
+
+          {/* Последняя синхронизация */}
+          <Text style={healthStyles.lastSyncText}>
+            Последняя синхронизация: {formatLastSync(metrics.lastSyncAt)}
+          </Text>
+
+          {lastError && (
+            <Text style={healthStyles.errorText}>{lastError}</Text>
+          )}
+
+          {/* Кнопка ручной синхронизации */}
+          {isSyncing ? (
+            <ActivityIndicator color={c.primary} style={styles.loader} />
+          ) : (
+            <Button
+              title="Синхронизировать сейчас"
+              onPress={handleManualSync}
+              variant="secondary"
+              style={styles.connectButton}
+            />
+          )}
+        </>
       )}
     </Card>
   );
 }
 
+function createHealthStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
+    toggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    toggleLabel: {
+      fontSize: fontSize.md,
+      color: c.text,
+      fontWeight: '500',
+    },
+    toggle: {
+      width: 50,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: c.surfaceLight,
+      justifyContent: 'center',
+      paddingHorizontal: 2,
+    },
+    toggleActive: {
+      backgroundColor: c.success,
+    },
+    toggleThumb: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: c.text,
+    },
+    toggleThumbActive: {
+      alignSelf: 'flex-end',
+    },
+    metricsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+      marginVertical: spacing.sm,
+    },
+    metricCard: {
+      flex: 1,
+      minWidth: 130,
+      backgroundColor: c.surface,
+      borderRadius: 12,
+      padding: spacing.sm,
+      alignItems: 'center',
+    },
+    metricIcon: {
+      fontSize: 24,
+      marginBottom: spacing.xs,
+    },
+    metricValue: {
+      fontSize: fontSize.lg,
+      fontWeight: '700',
+      color: c.text,
+    },
+    metricLabel: {
+      fontSize: fontSize.xs,
+      color: c.textSecondary,
+      marginTop: 2,
+    },
+    lastSyncText: {
+      fontSize: fontSize.xs,
+      color: c.textSecondary,
+      textAlign: 'center',
+      marginTop: spacing.xs,
+      marginBottom: spacing.sm,
+    },
+    errorText: {
+      fontSize: fontSize.xs,
+      color: c.danger,
+      textAlign: 'center',
+      marginBottom: spacing.sm,
+    },
+  });
+}
+
 /* ───────── Telegram section ───────── */
 
 function TelegramSection() {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const { isConnected, connectTelegram, disconnect, isLoading } = useIntegrationStore();
   const connected = isConnected('telegram');
   const [chatId, setChatId] = useState('');
@@ -325,12 +796,21 @@ function TelegramSection() {
       ) : (
         <>
           <Text style={styles.cardDescription}>
-            Напишите @LifeOS_bot в Telegram, получите Chat ID и введите его здесь
+            1. Откройте Telegram и найдите @LifeOS_bot{'\n'}
+            2. Нажмите /start — бот пришлёт ваш Chat ID{'\n'}
+            3. Вставьте его ниже
           </Text>
+          <AnimatedPress
+            onPress={() => Linking.openURL('https://t.me/LifeOS_bot')}
+          >
+            <Text style={[styles.cardDescription, { color: c.primary, fontWeight: '600' }]}>
+              Открыть @LifeOS_bot в Telegram {'\u2192'}
+            </Text>
+          </AnimatedPress>
           <TextInput
             style={styles.input}
-            placeholder="Chat ID"
-            placeholderTextColor={colors.textSecondary}
+            placeholder="Вставьте Chat ID"
+            placeholderTextColor={c.textSecondary}
             value={chatId}
             onChangeText={setChatId}
             keyboardType="number-pad"
@@ -351,6 +831,8 @@ function TelegramSection() {
 /* ───────── Export section ───────── */
 
 function ExportSection() {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const [exporting, setExporting] = useState(false);
 
   const handleExportCSV = useCallback(async (module: 'finance' | 'habits' | 'tasks') => {
@@ -393,10 +875,49 @@ function ExportSection() {
   const handleStory = useCallback(async () => {
     setExporting(true);
     try {
-      await exportStory();
-      Alert.alert('Готово', 'Сторис сформирована');
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось сформировать сторис');
+      const story = await exportStory();
+      // Open native share sheet: user picks Instagram / Telegram / WhatsApp.
+      const shareMessage = story.text
+        ? story.text
+        : 'Мой прогресс в LifeOS 🎯';
+
+      const result = await Share.share(
+        {
+          title: 'LifeOS — мой прогресс',
+          message: shareMessage,
+          ...(story.imageUrl ? { url: story.imageUrl } : {}),
+        },
+        {
+          dialogTitle: 'Поделиться прогрессом',
+          subject: 'LifeOS Stories',
+        },
+      );
+
+      if (result.action === Share.dismissedAction) {
+        // User cancelled — no-op.
+        return;
+      }
+
+      // Offer direct Instagram Stories deep link (iOS only, and only if app installed).
+      if (Platform.OS === 'ios') {
+        const canOpenIG = await Linking.canOpenURL('instagram-stories://share');
+        if (canOpenIG) {
+          Alert.alert(
+            'Открыть в Instagram Stories?',
+            'Вставить текст прямо в сторис Instagram?',
+            [
+              { text: 'Нет', style: 'cancel' },
+              {
+                text: 'Открыть',
+                onPress: () => Linking.openURL('instagram-stories://share'),
+              },
+            ],
+          );
+        }
+      }
+    } catch (err) {
+      console.error('Share story error:', err);
+      Alert.alert('Ошибка', 'Не удалось поделиться');
     } finally {
       setExporting(false);
     }
@@ -408,61 +929,56 @@ function ExportSection() {
         <Text style={styles.cardTitle}>📤  Экспорт данных</Text>
       </View>
       {exporting ? (
-        <ActivityIndicator color={colors.primary} style={styles.loader} />
+        <ActivityIndicator color={c.primary} style={styles.loader} />
       ) : (
         <View style={styles.exportButtons}>
-          <TouchableOpacity
+          <AnimatedPress
             style={styles.exportRow}
-            activeOpacity={0.7}
             onPress={() => handleExportCSV('finance')}
           >
             <Text style={styles.exportRowIcon}>💰</Text>
             <Text style={styles.exportRowLabel}>Экспорт финансов (CSV)</Text>
-          </TouchableOpacity>
+          </AnimatedPress>
 
           <View style={styles.separator} />
 
-          <TouchableOpacity
+          <AnimatedPress
             style={styles.exportRow}
-            activeOpacity={0.7}
             onPress={() => handleExportCSV('habits')}
           >
             <Text style={styles.exportRowIcon}>🏃</Text>
             <Text style={styles.exportRowLabel}>Экспорт привычек (CSV)</Text>
-          </TouchableOpacity>
+          </AnimatedPress>
 
           <View style={styles.separator} />
 
-          <TouchableOpacity
+          <AnimatedPress
             style={styles.exportRow}
-            activeOpacity={0.7}
             onPress={() => handleExportCSV('tasks')}
           >
             <Text style={styles.exportRowIcon}>📋</Text>
             <Text style={styles.exportRowLabel}>Экспорт задач (CSV)</Text>
-          </TouchableOpacity>
+          </AnimatedPress>
 
           <View style={styles.separator} />
 
-          <TouchableOpacity
+          <AnimatedPress
             style={styles.exportRow}
-            activeOpacity={0.7}
             onPress={handleMonthReport}
           >
             <Text style={styles.exportRowIcon}>📊</Text>
             <Text style={styles.exportRowLabel}>Отчёт за месяц</Text>
-          </TouchableOpacity>
+          </AnimatedPress>
 
           <View style={styles.separator} />
 
-          <TouchableOpacity
+          <AnimatedPress
             style={styles.exportRow}
-            activeOpacity={0.7}
             onPress={handleStory}
           >
             <Text style={styles.exportRowIcon}>📱</Text>
             <Text style={styles.exportRowLabel}>Поделиться в Stories</Text>
-          </TouchableOpacity>
+          </AnimatedPress>
         </View>
       )}
     </Card>
@@ -472,6 +988,8 @@ function ExportSection() {
 /* ───────── Main screen ───────── */
 
 export default function IntegrationsScreen() {
+  const c = useColors();
+  const styles = useMemo(() => createStyles(c), [c]);
   const navigation = useNavigation();
   const { fetchIntegrations, isLoading } = useIntegrationStore();
 
@@ -485,42 +1003,55 @@ export default function IntegrationsScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <TouchableOpacity
+      <AnimatedPress
         style={styles.backButton}
         onPress={() => navigation.goBack()}
-        activeOpacity={0.7}
       >
-        <Text style={styles.backText}>← Назад</Text>
-      </TouchableOpacity>
+        <Text style={styles.backText}>{'\u2190'} Назад</Text>
+      </AnimatedPress>
 
-      <Text style={styles.screenTitle}>Интеграции</Text>
+      <FadeInView delay={0}>
+        <SectionHeader title="Интеграции" subtitle="Подключения и экспорт данных" />
+      </FadeInView>
 
       {isLoading && (
-        <ActivityIndicator color={colors.primary} style={styles.topLoader} />
+        <ActivityIndicator color={c.primary} style={styles.topLoader} />
       )}
 
-      <SectionHeader title="Календари" icon="📅" />
-      <GoogleCalendarSection />
-      <AppleCalendarSection />
+      <FadeInView delay={80}>
+        <IntegrationGroupHeader title="Календари" icon="📅" />
+        <GoogleCalendarSection />
+      </FadeInView>
 
-      <SectionHeader title="Здоровье" icon="❤️" />
-      <HealthSection />
+      <FadeInView delay={160}>
+        <DeviceCalendarSection />
+      </FadeInView>
 
-      <SectionHeader title="Мессенджеры" icon="💬" />
-      <TelegramSection />
+      <FadeInView delay={240}>
+        <IntegrationGroupHeader title="Здоровье" icon="❤️" />
+        <HealthSection />
+      </FadeInView>
 
-      <SectionHeader title="Экспорт" icon="📤" />
-      <ExportSection />
+      <FadeInView delay={320}>
+        <IntegrationGroupHeader title="Мессенджеры" icon="💬" />
+        <TelegramSection />
+      </FadeInView>
+
+      <FadeInView delay={400}>
+        <IntegrationGroupHeader title="Экспорт" icon="📤" />
+        <ExportSection />
+      </FadeInView>
     </ScrollView>
   );
 }
 
 /* ───────── Styles ───────── */
 
-const styles = StyleSheet.create({
+function createStyles(c: ReturnType<typeof useColors>) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: c.background,
   },
   content: {
     padding: spacing.md,
@@ -532,13 +1063,7 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: fontSize.md,
-    color: colors.primary,
-  },
-  screenTitle: {
-    fontSize: fontSize.xxl,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: spacing.lg,
+    color: c.primary,
   },
   topLoader: {
     marginBottom: spacing.md,
@@ -546,7 +1071,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: fontSize.sm,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: c.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginTop: spacing.lg,
@@ -562,11 +1087,11 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: fontSize.lg,
     fontWeight: '600',
-    color: colors.text,
+    color: c.text,
   },
   cardDescription: {
     fontSize: fontSize.sm,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     marginBottom: spacing.md,
     lineHeight: 20,
   },
@@ -581,24 +1106,24 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   badge: {
-    backgroundColor: colors.success + '20',
+    backgroundColor: c.success + '20',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: 8,
   },
   badgeText: {
     fontSize: fontSize.xs,
-    color: colors.success,
+    color: c.success,
     fontWeight: '600',
   },
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     borderRadius: 12,
     padding: spacing.md,
     fontSize: fontSize.md,
-    color: colors.text,
+    color: c.text,
     marginBottom: spacing.sm,
   },
   loader: {
@@ -618,11 +1143,12 @@ const styles = StyleSheet.create({
   },
   exportRowLabel: {
     fontSize: fontSize.md,
-    color: colors.text,
+    color: c.text,
   },
   separator: {
     height: 1,
-    backgroundColor: colors.border,
+    backgroundColor: c.border,
     marginVertical: spacing.xs,
   },
-});
+  });
+}

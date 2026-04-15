@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -7,7 +7,8 @@ import {
   type ViewStyle,
   type TextStyle,
 } from 'react-native';
-import { colors, borderRadius, fontSize, spacing } from '@/constants';
+import { borderRadius, fontSize, spacing } from '@/constants';
+import { useColors } from '@/hooks/use-colors';
 
 interface ButtonProps {
   title: string;
@@ -28,6 +29,63 @@ export const Button = React.memo(function Button({
   loading = false,
   style,
 }: ButtonProps) {
+  const c = useColors();
+  const styles = useMemo(() => StyleSheet.create({
+    base: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: borderRadius.md,
+    },
+    variant_primary: {
+      backgroundColor: c.primary,
+    },
+    variant_secondary: {
+      backgroundColor: c.secondary,
+    },
+    variant_outline: {
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: c.primary,
+    },
+    variant_danger: {
+      backgroundColor: c.danger,
+    },
+    size_sm: {
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      height: 36,
+    },
+    size_md: {
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      height: 48,
+    },
+    size_lg: {
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.xl,
+      height: 56,
+    },
+    disabled: {
+      opacity: 0.5,
+    },
+    text: {
+      color: c.text,
+      fontWeight: '600',
+    },
+    text_sm: {
+      fontSize: fontSize.sm,
+    },
+    text_md: {
+      fontSize: fontSize.md,
+    },
+    text_lg: {
+      fontSize: fontSize.lg,
+    },
+    textOutline: {
+      color: c.primary,
+    },
+  }), [c]);
+
   const buttonStyles: ViewStyle[] = [
     styles.base,
     styles[`variant_${variant}`],
@@ -48,68 +106,15 @@ export const Button = React.memo(function Button({
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: disabled || loading }}
     >
       {loading ? (
-        <ActivityIndicator color={colors.text} size="small" />
+        <ActivityIndicator color={c.text} size="small" />
       ) : (
         <Text style={textStyles}>{title}</Text>
       )}
     </TouchableOpacity>
   );
-});
-
-const styles = StyleSheet.create({
-  base: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: borderRadius.md,
-  },
-  variant_primary: {
-    backgroundColor: colors.primary,
-  },
-  variant_secondary: {
-    backgroundColor: colors.secondary,
-  },
-  variant_outline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  variant_danger: {
-    backgroundColor: colors.danger,
-  },
-  size_sm: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    height: 36,
-  },
-  size_md: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    height: 48,
-  },
-  size_lg: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    height: 56,
-  },
-  disabled: {
-    opacity: 0.5,
-  },
-  text: {
-    color: colors.text,
-    fontWeight: '600',
-  },
-  text_sm: {
-    fontSize: fontSize.sm,
-  },
-  text_md: {
-    fontSize: fontSize.md,
-  },
-  text_lg: {
-    fontSize: fontSize.lg,
-  },
-  textOutline: {
-    color: colors.primary,
-  },
 });
