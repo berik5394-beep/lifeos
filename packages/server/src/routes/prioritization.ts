@@ -2,8 +2,15 @@ import type { FastifyInstance } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { rateLimiter } from '../middleware/security.js';
+import { AiModelError } from '../lib/errors.js';
 
 const anthropic = new Anthropic();
+
+// POST /tasks/prioritize зовёт Claude Sonnet 4 с полным списком задач
+// (до 50 штук) — это дорогой вызов (~$0.01-0.05 за раз). Без лимита клиент
+// с багом «повторный POST при ошибке» может сжечь $50-100 за час.
+const prioritizeLimiter = rateLimiter({ max: 5, windowMs: 60_000, keyPrefix: 'ai:prioritize' });
 
 interface EisenhowerTask {
   id: string;
@@ -20,7 +27,7 @@ export async function prioritizationRoutes(app: FastifyInstance): Promise<void> 
   app.addHook('preHandler', authMiddleware);
 
   // POST /tasks/prioritize — AI ranks user's incomplete tasks using Eisenhower matrix
-  app.post('/tasks/prioritize', async (request, reply) => {
+  app.post('/tasks/prioritize', { preHandler: prioritizeLimiter }, async (request, reply) => {
     const tasks = await prisma.task.findMany({
       where: {
         userId: request.userId,
@@ -63,58 +70,59 @@ export async function prioritizationRoutes(app: FastifyInstance): Promise<void> 
 - Просроченные задачи (дата < сегодня) → максимальная urgency
 - aiScore = urgency * importance / 10 * 100, скорректированный твоей экспертизой`;
 
-    try {
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        messages: [{ role: 'user', content: JSON.stringify(taskList) }],
-        system: systemPrompt,
-      });
+    // Нет try/catch вокруг всего: Anthropic SDK ошибки ловит глобальный
+    // registerErrorHandler и нормализует в AiModelError автоматически.
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: JSON.stringify(taskList) }],
+      system: systemPrompt,
+    });
 
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        return reply.status(500).send({ message: 'Не удалось приоритизировать задачи' });
-      }
-
-      const scores = JSON.parse(content.text) as Array<{
-        id: string;
-        urgency: number;
-        importance: number;
-        aiScore: number;
-      }>;
-
-      // Update tasks in DB with AI scores
-      const updates = scores.map((s) =>
-        prisma.task.update({
-          where: { id: s.id },
-          data: {
-            urgency: s.urgency,
-            importance: s.importance,
-            aiScore: s.aiScore,
-          },
-        }),
-      );
-
-      await prisma.$transaction(updates);
-
-      // Return updated tasks
-      const updatedTasks = await prisma.task.findMany({
-        where: {
-          userId: request.userId,
-          completed: false,
-        },
-        orderBy: { aiScore: 'desc' },
-        include: {
-          taskTags: { include: { tag: true } },
-          subtasks: true,
-        },
-      });
-
-      return reply.send(updatedTasks);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Ошибка приоритизации';
-      return reply.status(500).send({ message: `Не удалось приоритизировать: ${message}` });
+    const content = response.content[0];
+    if (!content || content.type !== 'text') {
+      throw new AiModelError(new Error('Empty or non-text response from Claude'));
     }
+
+    // Парсинг JSON отдельно — кривой ответ модели не должен приводить к 500
+    // с голой строкой, а должен лететь через наш error handler как AiModelError.
+    let scores: Array<{ id: string; urgency: number; importance: number; aiScore: number }>;
+    try {
+      scores = JSON.parse(content.text);
+      if (!Array.isArray(scores)) throw new Error('expected array');
+    } catch (parseErr) {
+      throw new AiModelError(parseErr);
+    }
+
+    // Update tasks in DB with AI scores — транзакция гарантирует консистентность
+    // (либо все задачи обновлены, либо ни одна).
+    const updates = scores.map((s) =>
+      prisma.task.update({
+        where: { id: s.id },
+        data: {
+          urgency: s.urgency,
+          importance: s.importance,
+          aiScore: s.aiScore,
+        },
+      }),
+    );
+
+    await prisma.$transaction(updates);
+
+    // Return updated tasks
+    const updatedTasks = await prisma.task.findMany({
+      where: {
+        userId: request.userId,
+        completed: false,
+      },
+      orderBy: { aiScore: 'desc' },
+      include: {
+        taskTags: { include: { tag: true } },
+        subtasks: true,
+      },
+    });
+
+    return reply.send(updatedTasks);
   });
 
   // GET /tasks/eisenhower — return tasks grouped in 4 quadrants

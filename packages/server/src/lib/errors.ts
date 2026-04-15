@@ -131,11 +131,11 @@ export class ConflictError extends AppError {
 }
 
 export class RateLimitError extends AppError {
-  constructor(retryAfterSec: number) {
+  constructor(retryAfterSec: number, userMessage?: string) {
     super({
       code: 'RATE_LIMITED',
       statusCode: 429,
-      userMessage: 'Слишком много запросов. Попробуй через минуту.',
+      userMessage: userMessage ?? 'Слишком много запросов. Попробуй через минуту.',
       details: { retryAfterSec },
     });
   }

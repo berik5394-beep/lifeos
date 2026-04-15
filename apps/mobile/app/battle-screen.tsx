@@ -12,7 +12,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useAuthStore } from '@/stores/auth-store';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const API = process.env.EXPO_PUBLIC_API_URL || 'http://172.20.10.4:3000';
+const API = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
 // Battle phases
 type Phase = 'enter' | 'face-off' | 'clash' | 'result' | 'challenge';
@@ -174,8 +174,11 @@ export default function BattleScreen() {
         body: JSON.stringify({ opponentId: params.opponentUserId }),
       });
       if (res.status === 429) {
-        const data = await res.json();
-        Alert.alert('Кулдаун', data.error);
+        // Сервер теперь отдаёт user-facing текст в `message`, а `error` —
+        // это стабильный код ("rate_limited"). Читаем оба: сначала message,
+        // потом старый error для обратной совместимости со старыми сборками.
+        const data = await res.json().catch(() => ({}));
+        Alert.alert('Кулдаун', data.message ?? data.error ?? 'Подожди немного');
         navigation.goBack();
         return;
       }

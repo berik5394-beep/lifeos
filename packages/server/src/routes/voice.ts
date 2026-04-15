@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { writeFileSync, unlinkSync, readFileSync } from 'fs';
+import { writeFile, unlink, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import crypto from 'node:crypto';
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
 import { authMiddleware } from '../middleware/auth.js';
@@ -288,8 +289,12 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
         return reply.send({ text: '', message: 'Аудио слишком короткое' });
       }
 
-      const tempPath = join(tmpdir(), `lifeos-voice-${Date.now()}.${format}`);
-      writeFileSync(tempPath, buffer);
+      // Раньше writeFileSync/readFileSync — блокируют event loop на десятки мс
+      // для m4a/wav. Несколько параллельных голосовых запросов морозили весь
+      // сервер. fs/promises использует libuv thread pool, event loop свободен.
+      // crypto.randomUUID() чтобы параллельные запросы не коллидили Date.now().
+      const tempPath = join(tmpdir(), `lifeos-voice-${crypto.randomUUID()}.${format}`);
+      await writeFile(tempPath, buffer);
 
       let text = '';
       let lastError = '';
@@ -299,8 +304,9 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
       // Try Groq Whisper first
       if (process.env.GROQ_API_KEY) {
         try {
+          const fileBuffer = await readFile(tempPath);
           const transcription: unknown = await groq.audio.transcriptions.create({
-            file: new File([readFileSync(tempPath)], `audio.${format}`, {
+            file: new File([fileBuffer], `audio.${format}`, {
               type: format === 'm4a' ? 'audio/mp4' : `audio/${format}`,
             }),
             model: 'whisper-large-v3-turbo',
@@ -323,7 +329,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
       }
 
       // Clean up temp file
-      try { unlinkSync(tempPath); } catch {}
+      try { await unlink(tempPath); } catch {}
 
       if (!text) {
         // БЕЗОПАСНОСТЬ: lastError может содержать сырые сообщения от Groq API

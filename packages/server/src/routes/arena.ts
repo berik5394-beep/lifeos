@@ -1,6 +1,17 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { validate } from '../middleware/validate.js';
+import { NotFoundError, RateLimitError } from '../lib/errors.js';
+
+// ---------------------------------------------------------------------------
+// Схемы валидации. opponentId — cuid, ограничиваем длиной: cuid ~25 символов,
+// берём запас до 64 чтобы пережить миграцию на cuid2/ulid без переписывания.
+// ---------------------------------------------------------------------------
+const battleSchema = z.object({
+  opponentId: z.string().min(1).max(64),
+});
 
 // ===== RANK SYSTEM =====
 const RANKS = [
@@ -250,13 +261,12 @@ export async function arenaRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // --- POST /arena/battle — Start a battle ---
-  app.post('/arena/battle', async (request, reply) => {
+  app.post(
+    '/arena/battle',
+    { preHandler: validate(battleSchema) },
+    async (request, reply) => {
     const userId = request.userId;
-    const { opponentId } = request.body as { opponentId: string };
-
-    if (!opponentId) {
-      return reply.status(400).send({ error: 'opponentId обязателен' });
-    }
+    const { opponentId } = request.body as z.infer<typeof battleSchema>;
 
     // Get or create profiles
     let attackerProfile = await prisma.arenaProfile.findUnique({ where: { userId } });
@@ -268,15 +278,17 @@ export async function arenaRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // Check cooldown (1 battle per 5 minutes)
+    // Бросаем RateLimitError — глобальный handler поставит 429 + legacy поле
+    // error='rate_limited', а user-facing сообщение с секундами уедет в message.
     if (attackerProfile.lastBattleAt) {
       const cooldown = 5 * 60 * 1000; // 5 minutes
       const timeSince = Date.now() - attackerProfile.lastBattleAt.getTime();
       if (timeSince < cooldown) {
         const remaining = Math.ceil((cooldown - timeSince) / 1000);
-        return reply.status(429).send({
-          error: `Подожди ${remaining} секунд до следующего боя`,
-          cooldownRemaining: remaining,
-        });
+        throw new RateLimitError(
+          remaining,
+          `Подожди ${remaining} секунд до следующего боя`,
+        );
       }
     }
 
@@ -284,7 +296,7 @@ export async function arenaRoutes(app: FastifyInstance): Promise<void> {
       where: { userId: opponentId },
     });
     if (!defenderProfile) {
-      return reply.status(404).send({ error: 'Противник не найден' });
+      throw new NotFoundError('Противник');
     }
 
     // Calculate power scores
@@ -334,49 +346,16 @@ export async function arenaRoutes(app: FastifyInstance): Promise<void> {
       result.winnerId,
     );
 
-    // Create battle record
-    const battle = await prisma.battle.create({
-      data: {
-        attackerId: attackerProfile.id,
-        defenderId: defenderProfile.id,
-        winnerId: winnerProfileId,
-        attackerPower: attackerPower.total,
-        defenderPower: defenderPower.total,
-        attackerRoll: result.attackerRoll,
-        defenderRoll: result.defenderRoll,
-        attackerChar: attackerPet?.characterType || 'warrior',
-        defenderChar: defenderPet?.characterType || 'warrior',
-        attackerLevel: attackerPet?.level || 1,
-        defenderLevel: defenderPet?.level || 1,
-        trophyChange,
-        xpReward,
-        log,
-      },
-    });
-
-    // Update attacker profile
+    // КРИТИЧНО: все записи боя (battle record + 2 профиля + pet XP) должны
+    // быть атомарны. До этого было 3-4 последовательных запроса: если Railway
+    // убивал воркер между ними на деплое, получали "битый" бой — атакующий
+    // получил трофеи, защитник не потерял, статистика кривая.
+    //
+    // Переменные, которые нужны после транзакции (в response), вычисляем
+    // заранее, чтобы не тащить замыкания через prisma callback.
     const newAttackerTrophies = Math.max(0, attackerProfile.trophies + trophyChange);
     const attackerWon = result.winnerId === 'attacker';
     const newWinStreak = attackerWon ? attackerProfile.winStreak + 1 : 0;
-
-    await prisma.arenaProfile.update({
-      where: { userId },
-      data: {
-        trophies: newAttackerTrophies,
-        wins: attackerWon ? { increment: 1 } : undefined,
-        losses: result.winnerId === 'defender' ? { increment: 1 } : undefined,
-        draws: result.winnerId === 'draw' ? { increment: 1 } : undefined,
-        winStreak: newWinStreak,
-        bestWinStreak: Math.max(attackerProfile.bestWinStreak, newWinStreak),
-        rank: getRank(newAttackerTrophies),
-        powerScore: attackerPower.total,
-        lastBattleAt: new Date(),
-        seasonWins: attackerWon ? { increment: 1 } : undefined,
-        seasonLosses: result.winnerId === 'defender' ? { increment: 1 } : undefined,
-      },
-    });
-
-    // Update defender trophies (inverse)
     const defenderTrophyChange = result.winnerId === 'defender'
       ? Math.abs(trophyChange)
       : result.winnerId === 'attacker'
@@ -384,25 +363,68 @@ export async function arenaRoutes(app: FastifyInstance): Promise<void> {
         : 3;
     const newDefenderTrophies = Math.max(0, defenderProfile.trophies + defenderTrophyChange);
 
-    await prisma.arenaProfile.update({
-      where: { userId: opponentId },
-      data: {
-        trophies: newDefenderTrophies,
-        wins: result.winnerId === 'defender' ? { increment: 1 } : undefined,
-        losses: result.winnerId === 'attacker' ? { increment: 1 } : undefined,
-        draws: result.winnerId === 'draw' ? { increment: 1 } : undefined,
-        rank: getRank(newDefenderTrophies),
-        powerScore: defenderPower.total,
-      },
-    });
-
-    // Give XP to attacker's pet
-    if (attackerPet && xpReward > 0) {
-      await prisma.pet.update({
-        where: { userId },
-        data: { xp: { increment: xpReward } },
+    const battle = await prisma.$transaction(async (tx) => {
+      // 1. Создаём запись боя
+      const created = await tx.battle.create({
+        data: {
+          attackerId: attackerProfile.id,
+          defenderId: defenderProfile.id,
+          winnerId: winnerProfileId,
+          attackerPower: attackerPower.total,
+          defenderPower: defenderPower.total,
+          attackerRoll: result.attackerRoll,
+          defenderRoll: result.defenderRoll,
+          attackerChar: attackerPet?.characterType || 'warrior',
+          defenderChar: defenderPet?.characterType || 'warrior',
+          attackerLevel: attackerPet?.level || 1,
+          defenderLevel: defenderPet?.level || 1,
+          trophyChange,
+          xpReward,
+          log,
+        },
       });
-    }
+
+      // 2. Обновляем профиль атакующего
+      await tx.arenaProfile.update({
+        where: { userId },
+        data: {
+          trophies: newAttackerTrophies,
+          wins: attackerWon ? { increment: 1 } : undefined,
+          losses: result.winnerId === 'defender' ? { increment: 1 } : undefined,
+          draws: result.winnerId === 'draw' ? { increment: 1 } : undefined,
+          winStreak: newWinStreak,
+          bestWinStreak: Math.max(attackerProfile.bestWinStreak, newWinStreak),
+          rank: getRank(newAttackerTrophies),
+          powerScore: attackerPower.total,
+          lastBattleAt: new Date(),
+          seasonWins: attackerWon ? { increment: 1 } : undefined,
+          seasonLosses: result.winnerId === 'defender' ? { increment: 1 } : undefined,
+        },
+      });
+
+      // 3. Обновляем профиль защитника
+      await tx.arenaProfile.update({
+        where: { userId: opponentId },
+        data: {
+          trophies: newDefenderTrophies,
+          wins: result.winnerId === 'defender' ? { increment: 1 } : undefined,
+          losses: result.winnerId === 'attacker' ? { increment: 1 } : undefined,
+          draws: result.winnerId === 'draw' ? { increment: 1 } : undefined,
+          rank: getRank(newDefenderTrophies),
+          powerScore: defenderPower.total,
+        },
+      });
+
+      // 4. Награждаем XP питомца атакующего
+      if (attackerPet && xpReward > 0) {
+        await tx.pet.update({
+          where: { userId },
+          data: { xp: { increment: xpReward } },
+        });
+      }
+
+      return created;
+    });
 
     return {
       battle: {

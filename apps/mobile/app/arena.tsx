@@ -11,7 +11,7 @@ import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 import { useAuthStore } from '@/stores/auth-store';
 
-const API = process.env.EXPO_PUBLIC_API_URL || 'http://172.20.10.4:3000';
+const API = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
 const RANK_ICONS: Record<string, string> = {
   bronze: '🥉', silver: '🥈', gold: '🥇',

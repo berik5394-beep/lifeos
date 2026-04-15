@@ -15,7 +15,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useAuthStore } from '@/stores/auth-store';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const API = process.env.EXPO_PUBLIC_API_URL || 'http://172.20.10.4:3000';
+const API = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
 // ===== EXERCISE DETECTION CONFIG =====
 // Each exercise has its own accelerometer thresholds

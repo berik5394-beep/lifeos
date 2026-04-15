@@ -25,7 +25,12 @@ const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY || '',
 });
 
-const MAX_TOOL_ITERATIONS = 10;
+// Было 10 — слишком дорого: в худшем случае один user message → 10 вызовов
+// Claude Sonnet 4 × ~1K output + накопленный контекст. При 30 msg/min
+// (conversationRateLimit) абьюзер прожигает до $10-20/час.
+// 5 итераций хватает для типовых кейсов (найти задачу → закрыть → добавить
+// заметку → ответ), но режет runaway-циклы где модель застревает.
+const MAX_TOOL_ITERATIONS = 5;
 
 // ---------------------------------------------------------------------------
 // Context cache (avoid re-fetching full context within same session)

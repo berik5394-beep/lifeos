@@ -1,16 +1,48 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import type { ZodSchema } from 'zod';
+import { ValidationError } from '../lib/errors.js';
 
-export function validate(schema: ZodSchema) {
-  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const result = schema.safeParse(request.body);
+/**
+ * Валидация тела/квери/парамов запроса через Zod.
+ *
+ * Раньше возвращал 400 напрямую через reply.status().send(). Теперь бросает
+ * ValidationError — чтобы глобальный registerErrorHandler нормализовал ответ
+ * в единый формат (ok, code, message, details, requestId). Поле errors из
+ * zod.flatten() кладём в details.errors, чтобы не ломать потенциальных
+ * клиентов которые смотрят в details.
+ *
+ * `source` по умолчанию 'body' — чтобы существующие вызовы `validate(schema)`
+ * продолжали работать без изменений.
+ */
+export function validate(
+  schema: ZodSchema,
+  source: 'body' | 'query' | 'params' = 'body',
+) {
+  return async (request: FastifyRequest, _reply: FastifyReply): Promise<void> => {
+    const payload =
+      source === 'body'
+        ? request.body
+        : source === 'query'
+          ? request.query
+          : request.params;
+
+    const result = schema.safeParse(payload);
     if (!result.success) {
-      return reply.status(400).send({
-        message: 'Ошибка валидации',
+      throw new ValidationError('Ошибка валидации', {
+        source,
         errors: result.error.flatten().fieldErrors,
       });
     }
-    request.body = result.data;
+
+    // Подменяем только соответствующий источник — чтобы типы совпадали
+    // с z.infer<typeof schema> на стороне хендлера.
+    if (source === 'body') {
+      request.body = result.data;
+    } else if (source === 'query') {
+      request.query = result.data as typeof request.query;
+    } else {
+      request.params = result.data as typeof request.params;
+    }
   };
 }
 

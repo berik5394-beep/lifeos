@@ -102,29 +102,54 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
     preHandler: validate(createExpenseSchema),
   }, async (request, reply) => {
     const data = request.body as z.infer<typeof createExpenseSchema>;
-    const expense = await prisma.expense.create({
-      data: {
-        date: new Date(data.date),
-        category: data.category,
-        description: data.description,
-        amount: data.amount,
-        userId: request.userId,
-      },
-    });
 
     const expenseDate = new Date(data.date);
     const expMonth = expenseDate.getMonth() + 1;
     const expYear = expenseDate.getFullYear();
+    const monthStart = new Date(expYear, expMonth - 1, 1);
+    const monthEnd = new Date(expYear, expMonth, 1);
 
-    const budgetLimit = await prisma.budgetLimit.findUnique({
-      where: {
-        userId_category_month_year: {
-          userId: request.userId,
+    // ATOMIC: insert the expense and recompute the monthly total for its
+    // category inside a single transaction. Without this, two parallel
+    // voice inputs ("потратил 3000 на еду, ещё 2000 на такси") can both
+    // insert and then both read a stale aggregate — producing wrong
+    // "percentage of budget used" in the response and confusing warnings.
+    const { expense, budgetLimit, spent } = await prisma.$transaction(async (tx) => {
+      const expense = await tx.expense.create({
+        data: {
+          date: expenseDate,
           category: data.category,
-          month: expMonth,
-          year: expYear,
+          description: data.description,
+          amount: data.amount,
+          userId: request.userId,
         },
-      },
+      });
+
+      const budgetLimit = await tx.budgetLimit.findUnique({
+        where: {
+          userId_category_month_year: {
+            userId: request.userId,
+            category: data.category,
+            month: expMonth,
+            year: expYear,
+          },
+        },
+      });
+
+      let spent = 0;
+      if (budgetLimit) {
+        const totalSpent = await tx.expense.aggregate({
+          where: {
+            userId: request.userId,
+            category: data.category,
+            date: { gte: monthStart, lt: monthEnd },
+          },
+          _sum: { amount: true },
+        });
+        spent = totalSpent._sum.amount ?? 0;
+      }
+
+      return { expense, budgetLimit, spent };
     });
 
     let budgetInfo: {
@@ -135,21 +160,7 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
     } | undefined;
 
     if (budgetLimit) {
-      const monthStart = new Date(expYear, expMonth - 1, 1);
-      const monthEnd = new Date(expYear, expMonth, 1);
-
-      const totalSpent = await prisma.expense.aggregate({
-        where: {
-          userId: request.userId,
-          category: data.category,
-          date: { gte: monthStart, lt: monthEnd },
-        },
-        _sum: { amount: true },
-      });
-
-      const spent = totalSpent._sum.amount ?? 0;
       const percentage = Math.round((spent / budgetLimit.monthlyLimit) * 100);
-
       budgetInfo = {
         limit: budgetLimit.monthlyLimit,
         spent,

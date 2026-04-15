@@ -10,9 +10,10 @@
 
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { writeFileSync, unlinkSync, readFileSync } from 'fs';
+import { writeFile, unlink, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import crypto from 'node:crypto';
 import Groq from 'groq-sdk';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -66,12 +67,20 @@ async function transcribeAudio(audioBase64: string, format: string): Promise<str
     return '';
   }
 
-  const tempPath = join(tmpdir(), `lifeos-conv-${Date.now()}.${format}`);
-  writeFileSync(tempPath, buffer);
+  // Раньше было writeFileSync/readFileSync — эти синхронные вызовы блокируют
+  // event loop на десятки мс для больших m4a файлов. При 10+ параллельных
+  // голосовых запросах (офис-демо, пик утром) один запрос мог "замораживать"
+  // всех остальных. Асинхронные аналоги используют thread pool libuv.
+  //
+  // Дополнительно: crypto.randomUUID() вместо Date.now() — при одновременных
+  // запросах Date.now() мог совпасть и два tempPath оказывались идентичными.
+  const tempPath = join(tmpdir(), `lifeos-conv-${crypto.randomUUID()}.${format}`);
+  await writeFile(tempPath, buffer);
 
   try {
+    const fileBuffer = await readFile(tempPath);
     const transcription: unknown = await groq.audio.transcriptions.create({
-      file: new File([readFileSync(tempPath)], `audio.${format}`, {
+      file: new File([fileBuffer], `audio.${format}`, {
         type: format === 'm4a' ? 'audio/mp4' : `audio/${format}`,
       }),
       model: 'whisper-large-v3-turbo',
@@ -83,7 +92,7 @@ async function transcribeAudio(audioBase64: string, format: string): Promise<str
       ? transcription.trim()
       : String(transcription).trim();
   } finally {
-    try { unlinkSync(tempPath); } catch { /* ignore */ }
+    try { await unlink(tempPath); } catch { /* ignore */ }
   }
 }
 

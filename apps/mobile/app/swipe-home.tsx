@@ -22,7 +22,7 @@ import { useVoice } from '@/hooks/use-voice';
 import { useWakeWord } from '@/hooks/use-wake-word';
 
 const { width: SW } = Dimensions.get('window');
-const API = process.env.EXPO_PUBLIC_API_URL || 'http://172.20.10.4:3000';
+const API = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 const SWIPE_TH = SW * 0.2;
 const PAGES = 7;
 const PAGE_ICONS = ['🛡️', '🏠', '📋', '🔁', '📆', '🎯', '💰'];

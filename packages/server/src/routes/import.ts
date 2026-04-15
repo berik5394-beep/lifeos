@@ -1,13 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { validate } from '../middleware/validate.js';
 import multipart from '@fastify/multipart';
 import ExcelJS from 'exceljs';
 import Anthropic from '@anthropic-ai/sdk';
 import { rateLimiter } from '../middleware/security.js';
+import { AppError, NotFoundError, ValidationError } from '../lib/errors.js';
 
 // Import calls Claude API + parses files — tight cap per IP
 const importRateLimit = rateLimiter({ max: 5, windowMs: 60_000, keyPrefix: 'import' });
@@ -225,7 +224,7 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     const file = await request.file();
     if (!file) {
-      return reply.status(400).send({ message: 'Файл не предоставлен' });
+      throw new ValidationError('Файл не предоставлен');
     }
 
     // Sanitize filename to prevent path traversal (we only use it for display/metadata)
@@ -236,20 +235,25 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
 
     const ext = getFileExtension(safeName);
     if (!ALLOWED_EXTENSIONS.has(ext)) {
-      return reply
-        .status(400)
-        .send({ message: `Неподдерживаемый формат файла: .${ext}` });
+      throw new ValidationError(`Неподдерживаемый формат файла: .${ext}`, {
+        allowed: Array.from(ALLOWED_EXTENSIONS),
+      });
     }
 
     const buffer = await file.toBuffer();
 
     if (buffer.length > MAX_FILE_BYTES) {
-      return reply
-        .status(413)
-        .send({ message: `Файл слишком большой. Максимум 10 МБ.` });
+      // 413 Payload Too Large — отдельный код, чтобы клиент мог показать
+      // специфичный UI (прогресс → "файл слишком большой, сожми"), а не
+      // общий валидационный тост.
+      throw new AppError({
+        code: 'PAYLOAD_TOO_LARGE',
+        statusCode: 413,
+        userMessage: 'Файл слишком большой. Максимум 10 МБ.',
+      });
     }
     if (buffer.length === 0) {
-      return reply.status(400).send({ message: 'Файл пуст' });
+      throw new ValidationError('Файл пуст');
     }
 
     // Magic-byte check: prevents extension spoofing + unknown file types
@@ -262,8 +266,9 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
       pdf: ['pdf'],
     };
     if (!extToSniff[ext]?.includes(sniffed)) {
-      return reply.status(400).send({
-        message: 'Содержимое файла не соответствует его расширению',
+      throw new ValidationError('Содержимое файла не соответствует его расширению', {
+        declaredExt: ext,
+        sniffed,
       });
     }
 
@@ -295,8 +300,13 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
         }
       }
     } catch (err) {
+      // Логируем причину, но пользователю отдаём типизированную ValidationError
+      // — глобальный handler нормализует ответ. cause сохраняется для трейса.
       app.log.warn({ err, ext }, 'Import parse failed');
-      return reply.status(400).send({ message: 'Не удалось разобрать файл' });
+      throw new ValidationError('Не удалось разобрать файл', {
+        ext,
+        cause: err instanceof Error ? err.message : String(err),
+      });
     }
 
     const analysis = await analyzeWithClaude(parsedData);
@@ -340,9 +350,7 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
       where: { id, userId: request.userId },
     });
     if (!file) {
-      return reply
-        .status(404)
-        .send({ message: 'Импортированный файл не найден' });
+      throw new NotFoundError('Импортированный файл');
     }
 
     await prisma.importedFile.delete({ where: { id } });

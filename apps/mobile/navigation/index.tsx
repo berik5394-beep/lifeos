@@ -239,6 +239,19 @@ export default function Navigation() {
           const token = useAuthStore.getState().token;
           if (!token) return;
           await offlineQueue.sync(async (mutation) => {
+            // Раньше было `return res.ok || res.status === 404` — любой не-200
+            // ответ считался "non-retryable" и дропался из очереди. Это ломало
+            // два сценария:
+            //   1. 500/502/503 (транзиентная ошибка сервера) — пользователь
+            //      терял изменения вместо повторной попытки после восстановления
+            //      сервера.
+            //   2. 401 (access-токен истёк) — offline-мутация дропалась, хотя
+            //      после рефреша токена она бы прошла.
+            // Теперь:
+            //   - 2xx → success
+            //   - 404 → success (идемпотентный DELETE, запись уже удалена)
+            //   - 4xx (400, 403, 409, 422, ...) → drop (клиентский баг / конфликт)
+            //   - 401 / 408 / 429 / 5xx / network → throw → retry с backoff
             try {
               const headers: Record<string, string> = {};
               if (mutation.body !== undefined) {
@@ -253,9 +266,29 @@ export default function Navigation() {
                   body: mutation.body !== undefined ? JSON.stringify(mutation.body) : undefined,
                 }
               );
-              return res.ok || res.status === 404; // 404 = already deleted, skip
-            } catch {
-              throw new Error('Network error'); // Will retry later
+
+              // Успешные статусы
+              if (res.ok) return true;
+              if (res.status === 404) return true; // идемпотентный DELETE
+
+              // Транзиентные ошибки — бросаем, чтобы offlineQueue поставил
+              // на retry (с инкрементом retryCount).
+              if (
+                res.status === 401 ||  // токен истёк — после рефреша пройдёт
+                res.status === 408 ||  // request timeout
+                res.status === 429 ||  // rate limited
+                res.status >= 500      // 5xx серверные ошибки
+              ) {
+                throw new Error(`Transient HTTP ${res.status}`);
+              }
+
+              // 4xx (кроме 401/404/408/429) — клиентская ошибка, ретрай
+              // бессмысленен. Дропаем из очереди.
+              return false;
+            } catch (err) {
+              // Сетевые ошибки fetch (TypeError / "Network request failed")
+              // + наши явные throw выше → попадают сюда и идут на retry.
+              throw err instanceof Error ? err : new Error(String(err));
             }
           });
         }

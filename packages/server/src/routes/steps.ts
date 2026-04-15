@@ -4,16 +4,43 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, invalidDateReply } from '../middleware/validate.js';
+import { rateLimiter } from '../middleware/security.js';
+
+// POST /steps — педометр на клиенте шлёт upsert раз в несколько минут.
+// Даже при частых синках 30/мин с запасом. gpsTrack может быть до 5000 точек
+// и ~500KB — тем более не стоит принимать это 60 раз в минуту.
+const stepsLimiter = rateLimiter({ max: 30, windowMs: 60_000, keyPrefix: 'steps:upsert' });
+
+// ---------------------------------------------------------------------------
+// СХЕМЫ. КРИТИЧНО: до этого gpsTrack был без лимита — клиент мог прислать
+// миллион точек, которые упаковываются в JSONB и живут в БД + десериализуются
+// в память на каждом GET /steps?week=. 5000 точек = ~85 минут пробежки при
+// частоте раз в секунду, с запасом. На телефоне такая дорожка занимает ~500KB
+// в JSON — терпимо.
+//
+// date: до этого была голая z.string() → new Date(data.date) на битой строке
+// давал Invalid Date, upsert падал с непонятной ошибкой Prisma. Добавил regex.
+// ---------------------------------------------------------------------------
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'дата должна быть в формате YYYY-MM-DD');
+
+const MAX_GPS_POINTS = 5000;
+const MAX_STEPS_PER_DAY = 200_000; // мировой рекорд ~125k шагов/сутки
 
 const upsertStepSchema = z.object({
-  date: z.string(),
-  steps: z.number().int().min(0),
-  distanceKm: z.number().min(0).nullable().optional(),
-  gpsTrack: z.array(z.object({
-    latitude: z.number(),
-    longitude: z.number(),
-    timestamp: z.number(),
-  })).nullable().optional(),
+  date: isoDate,
+  steps: z.number().int().min(0).max(MAX_STEPS_PER_DAY),
+  distanceKm: z.number().min(0).max(1000).nullable().optional(),
+  gpsTrack: z
+    .array(
+      z.object({
+        latitude: z.number().min(-90).max(90),
+        longitude: z.number().min(-180).max(180),
+        timestamp: z.number().int().min(0),
+      }),
+    )
+    .max(MAX_GPS_POINTS)
+    .nullable()
+    .optional(),
 });
 
 export async function stepRoutes(app: FastifyInstance): Promise<void> {
@@ -54,10 +81,12 @@ export async function stepRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/steps', {
-    preHandler: validate(upsertStepSchema),
+    preHandler: [stepsLimiter, validate(upsertStepSchema)],
   }, async (request, reply) => {
     const data = request.body as z.infer<typeof upsertStepSchema>;
-    const dateObj = new Date(data.date);
+    // После isoDate-regex гарантируем, что дата парсится. UTC-полночь —
+    // чтобы уникальный ключ userId+date не плавал по часовым поясам.
+    const dateObj = new Date(data.date + 'T00:00:00Z');
 
     const log = await prisma.stepLog.upsert({
       where: { userId_date: { userId: request.userId, date: dateObj } },

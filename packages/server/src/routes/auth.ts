@@ -7,6 +7,16 @@ import { validate } from '../middleware/validate.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimiter, validatePassword, getClientIp } from '../middleware/security.js';
 
+// Приватный сентинел для обозначения race condition внутри транзакции —
+// выбрасывается из $transaction callback и ловится снаружи, чтобы сделать
+// reuse-detection. Не AppError, потому что коды AppError жёстко типизированы.
+class TokenRaceError extends Error {
+  constructor() {
+    super('TOKEN_RACE');
+    this.name = 'TokenRaceError';
+  }
+}
+
 const registerSchema = z.object({
   email: z.string().email('Некорректный email').max(254),
   name: z.string().min(2, 'Имя слишком короткое').max(100),
@@ -192,6 +202,20 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ----- REFRESH (с ротацией) ----------------------------------------------
+  //
+  // Раньше ротация была в двух отдельных запросах:
+  //   1. createRefreshToken() — INSERT нового
+  //   2. refreshToken.update() — UPDATE старого (revoked=true)
+  // Две проблемы:
+  //   А) Если шаг 2 упал (сеть/таймаут), у юзера оказывались ДВА живых токена
+  //      (старый + новый) и мы теряли reuse detection.
+  //   Б) Две параллельные /refresh с одним и тем же токеном обе проходили
+  //      проверку `stored.revoked === false` и обе успешно минтили новые
+  //      токены, потому что между read и write не было лока.
+  //
+  // Теперь всё в одной транзакции с атомарным updateMany({revoked:false}) —
+  // только одна из двух параллельных ротаций попадёт в `count === 1`,
+  // вторая получит `count === 0` и честно упадёт на reuse-detection.
   app.post('/auth/refresh', {
     preHandler: [refreshLimiter, validate(refreshSchema)],
   }, async (request, reply) => {
@@ -208,21 +232,18 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(401).send({ message: 'Неверный токен' });
     }
 
-    // Проверяем, что токен есть в БД и не отозван
+    // Проверяем, что токен есть в БД — ещё вне транзакции, чтобы быстро
+    // отличить "фантомный" токен (подпись ок, в БД нет) от reuse отозванного.
     const tokenHash = hashToken(refreshToken);
     const stored = await prisma.refreshToken.findUnique({ where: { tokenHash } });
 
     if (!stored) {
-      // Токен подписан правильно, но в БД его нет — попытка использовать поддельный
-      // или устаревший токен после миграции. Безопасно отказать.
       return reply.status(401).send({ message: 'Токен не найден' });
     }
 
     if (stored.revoked) {
-      // 🚨 ВНИМАНИЕ: использован уже отозванный токен.
-      // Это означает: либо токен утёк и им пользуется злоумышленник,
-      // либо рассинхрон клиента. В любом случае — отозвать ВСЕ токены пользователя.
-      // Это заставит пользователя залогиниться заново, но защитит данные.
+      // 🚨 Использован уже отозванный токен. Либо утечка, либо рассинхрон
+      // клиента. В любом случае — отзываем все токены пользователя.
       app.log.warn(
         `🚨 Использован отозванный refresh-token для user ${stored.userId}. Отзываем все токены.`,
       );
@@ -241,12 +262,55 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(401).send({ message: 'Пользователь не найден' });
     }
 
-    // Ротация: создаём новый refresh, отзываем старый
-    const newRefreshToken = await createRefreshToken(app, user.id, request);
-    await prisma.refreshToken.update({
-      where: { tokenHash },
-      data: { revoked: true, replacedBy: hashToken(newRefreshToken) },
-    });
+    // Готовим новый токен заранее (без БД). JWT-подпись — чистая функция,
+    // не нужно её гонять внутри транзакции.
+    const newRefreshToken = app.jwt.sign(
+      { sub: user.id, type: 'refresh', jti: crypto.randomUUID() },
+      { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` },
+    );
+    const newTokenHash = hashToken(newRefreshToken);
+    const newExpiresAt = new Date();
+    newExpiresAt.setDate(newExpiresAt.getDate() + REFRESH_TOKEN_TTL_DAYS);
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        // Атомарно отзываем старый токен С УСЛОВИЕМ revoked=false.
+        // Если между нашим findUnique выше и этим updateMany параллельный
+        // запрос успел отозвать токен — count будет 0, и мы бросим TOKEN_RACE.
+        const result = await tx.refreshToken.updateMany({
+          where: { tokenHash, revoked: false },
+          data: { revoked: true, replacedBy: newTokenHash },
+        });
+        if (result.count === 0) {
+          throw new TokenRaceError();
+        }
+        // Создаём новый токен в той же транзакции — либо оба write'а
+        // успешны, либо rollback.
+        await tx.refreshToken.create({
+          data: {
+            userId: user.id,
+            tokenHash: newTokenHash,
+            expiresAt: newExpiresAt,
+            replacedBy: null,
+            ip: getClientIp(request),
+            userAgent: String(request.headers['user-agent'] ?? '').slice(0, 500),
+          },
+        });
+      });
+    } catch (err) {
+      if (err instanceof TokenRaceError) {
+        // Параллельный /refresh уже забрал токен. Это подозрительно —
+        // отзываем ВСЕ токены юзера по той же логике reuse-detection.
+        app.log.warn(
+          `🚨 Race condition на refresh-token для user ${stored.userId}. Отзываем все.`,
+        );
+        await revokeAllUserTokens(stored.userId);
+        return reply.status(401).send({
+          message: 'Подозрительная активность. Войдите заново.',
+        });
+      }
+      throw err;
+    }
 
     const accessToken = generateAccessToken(app, user.id);
     return reply.send({ accessToken, refreshToken: newRefreshToken });

@@ -5,9 +5,59 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { prisma } from '../lib/prisma.js';
 import { rateLimiter } from '../middleware/security.js';
+import { AppError } from '../lib/errors.js';
 
 // Vision endpoints hit Claude Vision API (expensive per call) — tight cap
 const visionRateLimit = rateLimiter({ max: 15, windowMs: 60_000, keyPrefix: 'vision' });
+
+// Anthropic Vision API hard-caps single image at 5MB of decoded binary.
+// We enforce this BEFORE shipping the base64 string to Claude so an attacker
+// can't OOM our 512MB Railway instance by sending a 10MB base64 blob that
+// decodes to ~7.5MB. bodyLimit (15MB on JSON) is a coarse outer guard; this
+// is the precise per-image check.
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+
+/**
+ * Validates a base64-encoded image payload.
+ * - Confirms the string is valid base64
+ * - Confirms the decoded binary is within MAX_IMAGE_BYTES
+ * Throws AppError(PAYLOAD_TOO_LARGE / INVALID_INPUT) on failure.
+ *
+ * Note: we estimate size via string length first (cheap — no alloc) and
+ * only decode a small prefix to verify it's actually base64. Full decode
+ * happens inside Anthropic SDK after the size check passes.
+ */
+function assertImageSizeOk(base64: string, mediaType: string): void {
+  // Strip any accidental data-URI prefix the client forgot to remove.
+  const commaIdx = base64.indexOf(',');
+  const payload = commaIdx > -1 && base64.slice(0, commaIdx).includes('base64') ? base64.slice(commaIdx + 1) : base64;
+
+  // base64 length → decoded bytes ratio: 4 chars = 3 bytes. Account for
+  // `=` padding (1–2 chars). Using `length * 3/4` is a tight upper bound.
+  const paddingCount = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0;
+  const estimatedBytes = Math.floor((payload.length * 3) / 4) - paddingCount;
+
+  if (estimatedBytes > MAX_IMAGE_BYTES) {
+    throw new AppError({
+      code: 'PAYLOAD_TOO_LARGE',
+      statusCode: 413,
+      userMessage: `Фото слишком большое. Максимум ${Math.floor(MAX_IMAGE_BYTES / 1024 / 1024)} МБ.`,
+      internalMessage: `Image payload ${estimatedBytes} bytes exceeds ${MAX_IMAGE_BYTES} cap (mediaType=${mediaType})`,
+    });
+  }
+
+  // Cheap sanity: reject if the string contains characters outside base64 alphabet.
+  // Using a bounded regex (not backtracking-prone) on first 256 chars.
+  const sample = payload.slice(0, 256);
+  if (!/^[A-Za-z0-9+/=_-]*$/.test(sample)) {
+    throw new AppError({
+      code: 'INVALID_INPUT',
+      statusCode: 400,
+      userMessage: 'Некорректный формат изображения',
+      internalMessage: 'Base64 string contains non-base64 characters',
+    });
+  }
+}
 
 const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY || '',
@@ -94,6 +144,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
     const { image, mediaType } = request.body as z.infer<typeof analyzeFoodSchema>;
 
     try {
+      assertImageSizeOk(image, mediaType);
       const response = await anthropic.messages.create({
         model: VISION_MODEL,
         max_tokens: 1024,
@@ -132,6 +183,9 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
       const parsed = extractJSON(textBlock.text);
       return reply.send(parsed);
     } catch (err: any) {
+      // AppError (e.g. PAYLOAD_TOO_LARGE) should bubble to global handler
+      // so the client gets the correct 413 + stable error code.
+      if (err instanceof AppError) throw err;
       // БЕЗОПАСНОСТЬ: детали ошибки только в логах, клиенту — generic message.
       // err.message может содержать информацию о структуре кода/таблиц/API ключах.
       app.log.error({ err }, 'Vision analyze-food error');
@@ -321,6 +375,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
     const { image, mediaType } = request.body as z.infer<typeof analyzeScheduleSchema>;
 
     try {
+      assertImageSizeOk(image, mediaType);
       const response = await anthropic.messages.create({
         model: VISION_MODEL,
         max_tokens: 2048,
@@ -361,6 +416,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
       const parsed = extractJSON(textBlock.text);
       return reply.send(parsed);
     } catch (err: any) {
+      if (err instanceof AppError) throw err;
       app.log.error({ err }, 'Vision analyze-schedule error');
       return reply.status(500).send({
         message: 'Не удалось распознать расписание. Попробуй другое фото.',
@@ -394,6 +450,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
     const { image, mediaType, hint } = request.body as z.infer<typeof captureTaskSchema>;
 
     try {
+      assertImageSizeOk(image, mediaType);
       const response = await anthropic.messages.create({
         model: VISION_MODEL,
         max_tokens: 1500,
@@ -443,6 +500,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
       const parsed = extractJSON(textBlock.text);
       return reply.send(parsed);
     } catch (err) {
+      if (err instanceof AppError) throw err;
       app.log.error({ err }, 'Vision capture-task error');
       return reply.status(500).send({
         message: 'Не удалось распознать задачи на фото. Попробуй другое изображение.',
@@ -506,6 +564,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
     const userId = request.userId;
 
     try {
+      assertImageSizeOk(image, mediaType);
       const exerciseLabels: Record<string, string> = {
         squats: 'приседания (squat position)',
         pushups: 'отжимания (push-up position, hands on floor)',
@@ -566,6 +625,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
 
       return reply.send(parsed);
     } catch (err) {
+      if (err instanceof AppError) throw err;
       app.log.error({ err }, 'Vision verify-exercise error');
       return reply.status(500).send({
         message: 'Не удалось проверить упражнение. Попробуй ещё раз.',

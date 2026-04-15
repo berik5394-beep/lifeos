@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { rateLimiter } from '../middleware/security.js';
+
+// Брифинг делает 8 параллельных запросов к БД за раз — не AI, но тяжело.
+// Нет смысла вызывать чаще чем раз в 2 секунды (пользователь не обновляет
+// утренний дашборд 60 раз в минуту). 30 запросов/мин на юзера — с запасом.
+const briefingLimiter = rateLimiter({ max: 30, windowMs: 60_000, keyPrefix: 'briefing' });
 
 const MOTIVATIONAL_QUOTES = [
   'Каждый день — это новый шанс стать лучше.',
@@ -40,7 +46,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
   // GET /briefing/morning — утренний брифинг
-  app.get('/briefing/morning', async (request) => {
+  app.get('/briefing/morning', { preHandler: briefingLimiter }, async (request) => {
     const userId = request.userId;
     const today = getToday();
     const tomorrow = new Date(today);
@@ -187,7 +193,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // GET /briefing/evening — вечерний обзор
-  app.get('/briefing/evening', async (request) => {
+  app.get('/briefing/evening', { preHandler: briefingLimiter }, async (request) => {
     const userId = request.userId;
     const today = getToday();
 

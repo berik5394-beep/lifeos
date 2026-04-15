@@ -34,7 +34,7 @@ export default function CharacterSelectScreen() {
     if (!token) return;
     setIsSelecting(true);
     try {
-      const API = process.env.EXPO_PUBLIC_API_URL || 'http://172.20.10.4:3000';
+      const API = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
       const res = await fetch(`${API}/pet/character`, {
         method: 'PUT',
         headers: {

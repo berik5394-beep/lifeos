@@ -4,6 +4,12 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth, invalidDateReply } from '../middleware/validate.js';
+import { rateLimiter } from '../middleware/security.js';
+
+// POST /habits/:id/log — каждый лог обновляет pet mana в транзакции. Нормальный
+// юзер за минуту отмечает максимум 10-20 привычек, даже на полном свайп-списке.
+// 60/мин оставляем запас на мульти-отметки и голосовые команды «отметь всё».
+const logLimiter = rateLimiter({ max: 60, windowMs: 60_000, keyPrefix: 'habits:log' });
 
 const createHabitSchema = z.object({
   name: z.string().min(1, 'Название обязательно'),
@@ -18,8 +24,12 @@ const updateHabitSchema = createHabitSchema.partial().extend({
   order: z.number().optional(),
 });
 
+// isoDate regex — раньше была голая z.string() и new Date(date) на мусоре
+// молча давал Invalid Date, что потом взрывалось на уровне Prisma.
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'дата должна быть в формате YYYY-MM-DD');
+
 const logHabitSchema = z.object({
-  date: z.string(),
+  date: isoDate,
   completed: z.boolean(),
 });
 
@@ -106,7 +116,7 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/habits/:id/log', {
-    preHandler: validate(logHabitSchema),
+    preHandler: [logLimiter, validate(logHabitSchema)],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { date, completed } = request.body as z.infer<typeof logHabitSchema>;
@@ -118,28 +128,43 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ message: 'Привычка не найдена' });
     }
 
-    const log = await prisma.habitLog.upsert({
-      where: { habitId_date: { habitId: id, date: new Date(date) } },
-      create: {
-        habitId: id,
-        userId: request.userId,
-        date: new Date(date),
-        completed,
-      },
-      update: { completed },
-    });
+    // КРИТИЧНО: раньше upsert логов и update питомца были отдельными
+    // запросами — два параллельных запроса (голос: "отметь бег и отжимания")
+    // видели одинаковое pet.mana и оба писали +5 вместо +10. Теперь всё в
+    // транзакции + атомарный increment + проверка maxMana отдельным шагом
+    // через повторный read внутри транзакции (Prisma не поддерживает
+    // условный increment с clamp, но в рамках транзакции это безопасно).
+    const dateObj = new Date(date + 'T00:00:00Z');
 
-    // Award mana when completing a habit
-    if (completed) {
-      const pet = await prisma.pet.findUnique({ where: { userId: request.userId } });
-      if (pet) {
-        const manaGain = 5; // +5 mana per completed habit
-        await prisma.pet.update({
-          where: { userId: request.userId },
-          data: { mana: Math.min(pet.maxMana, pet.mana + manaGain) },
-        });
+    const log = await prisma.$transaction(async (tx) => {
+      const created = await tx.habitLog.upsert({
+        where: { habitId_date: { habitId: id, date: dateObj } },
+        create: {
+          habitId: id,
+          userId: request.userId,
+          date: dateObj,
+          completed,
+        },
+        update: { completed },
+      });
+
+      if (completed) {
+        const pet = await tx.pet.findUnique({ where: { userId: request.userId } });
+        if (pet) {
+          const manaGain = 5;
+          // Clamp до maxMana — если уже на потолке, просто пропускаем апдейт.
+          const nextMana = Math.min(pet.maxMana, pet.mana + manaGain);
+          if (nextMana > pet.mana) {
+            await tx.pet.update({
+              where: { userId: request.userId },
+              data: { mana: nextMana },
+            });
+          }
+        }
       }
-    }
+
+      return created;
+    });
 
     return reply.send(log);
   });

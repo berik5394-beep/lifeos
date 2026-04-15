@@ -74,8 +74,26 @@ export function rateLimiter(options: RateLimitOptions): onRequestHookHandler {
   const prefix = options.keyPrefix ?? 'default';
 
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const ip = getClientIp(request);
-    const key = `${prefix}:${ip}`;
+    // Per-user keying когда юзер аутентифицирован — так два юзера за одним
+    // NAT (офисный Wi-Fi, мобильный оператор с CGNAT) не делят общий бакет.
+    // Для публичных роутов (login, register, refresh, глобальный лимитер
+    // onRequest) userId ещё не установлен authMiddleware → fallback на IP,
+    // что корректно для анти-брутфорса и анти-DoS.
+    //
+    // ВАЖНО: authMiddleware ставит request.userId в preHandler, а rateLimiter
+    // тоже обычно цепляется как preHandler. Порядок регистрации preHandler'ов
+    // важен — если rateLimiter повешен раньше auth (например, глобально через
+    // onRequest), userId ещё не установлен и мы автоматически упадём на IP.
+    // Это ожидаемое поведение: глобальный лимитер защищает от DoS по IP,
+    // а per-route лимитеры после auth — от спама одним юзером.
+    // request.userId типизирован как string, но до authMiddleware он
+    // фактически undefined — читаем через as, чтобы проверка работала
+    // на глобальном лимитере (который бежит до auth).
+    const maybeUserId = (request as FastifyRequest & { userId?: string }).userId;
+    // Префиксуем user: или ip: чтобы userId="1.2.3.4" случайно не совпал с IP
+    const key = maybeUserId
+      ? `${prefix}:user:${maybeUserId}`
+      : `${prefix}:ip:${getClientIp(request)}`;
     const now = Date.now();
 
     let bucket = buckets.get(key);

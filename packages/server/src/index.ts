@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { prisma } from './lib/prisma.js';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import { authRoutes } from './routes/auth.js';
@@ -35,6 +36,7 @@ import { notificationRoutes } from './routes/notifications.js';
 import { appInfoRoutes } from './routes/app-info.js';
 import { lifeAnalysisRoutes } from './routes/life-analysis.js';
 import { createTelegramBot, startBot, stopBot } from './services/telegram-bot.js';
+import { startRefreshTokenCleanup } from './services/token-cleanup.js';
 import { registerSecurityHeaders, rateLimiter } from './middleware/security.js';
 import { registerErrorHandler } from './middleware/error-handler.js';
 import { attachLogger } from './lib/logger.js';
@@ -188,11 +190,16 @@ await app.register(appInfoRoutes);
 await app.register(lifeAnalysisRoutes);
 
 let telegramBot: Telegraf | null = null;
+let tokenCleanupTimer: NodeJS.Timeout | null = null;
 
 const start = async (): Promise<void> => {
   try {
     const port = Number(process.env.PORT) || 3000;
     await app.listen({ port, host: '0.0.0.0' });
+
+    // Background cleanup: stale revoked/expired refresh tokens.
+    // Keeps the refreshToken table bounded so auth/refresh stays fast.
+    tokenCleanupTimer = startRefreshTokenCleanup(app);
 
     // Start Telegram bot if token is configured
     if (process.env.TELEGRAM_BOT_TOKEN) {
@@ -211,15 +218,42 @@ const start = async (): Promise<void> => {
 };
 
 // Graceful shutdown
-const shutdown = async (): Promise<void> => {
-  if (telegramBot) {
-    stopBot(telegramBot);
+//
+// Railway шлёт SIGTERM при каждом деплое с ~10-секундным grace-period. До
+// этого мы закрывали только Fastify — Prisma pool висел, in-flight
+// транзакции обрезались посередине. Теперь:
+//   1. Перестаём принимать новые запросы + дожидаемся in-flight (app.close)
+//   2. Останавливаем Telegram polling (чтобы бот не ловил апдейты в вакуум)
+//   3. Явно закрываем Prisma pool ($disconnect) — это flushит транзакции
+//   4. exit(0)
+//
+// Флаг isShuttingDown защищает от повторных SIGTERM/SIGINT — если юзер жмёт
+// Ctrl+C дважды, не запускаем вторую shutdown параллельно.
+let isShuttingDown = false;
+const shutdown = async (signal: string): Promise<void> => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  app.log.info({ signal }, 'graceful shutdown start');
+  try {
+    if (tokenCleanupTimer) {
+      clearInterval(tokenCleanupTimer);
+      tokenCleanupTimer = null;
+    }
+    if (telegramBot) {
+      stopBot(telegramBot);
+    }
+    await app.close();
+    await prisma.$disconnect();
+    app.log.info('graceful shutdown complete');
+    process.exit(0);
+  } catch (err) {
+    app.log.error({ err }, 'graceful shutdown failed');
+    process.exit(1);
   }
-  await app.close();
-  process.exit(0);
 };
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
 
 start();
