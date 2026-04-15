@@ -64,7 +64,11 @@ export default function ArenaScreen() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
-  const [battling] = useState(false);
+  // battling — guard от rapid double-tap по кнопке "Атаковать".
+  // Без setter юзер успевает тапнуть несколько раз → на стек пушится
+  // несколько BattleScreen и сервер получает несколько POST /arena/battle
+  // до того как сработает кулдаун.
+  const [battling, setBattling] = useState(false);
   const [battleResult, setBattleResult] = useState<BattleResult | null>(null);
   const [tab, setTab] = useState<'fight' | 'history' | 'leaderboard'>('fight');
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
@@ -152,6 +156,11 @@ export default function ArenaScreen() {
   }, [token]);
 
   const startBattle = useCallback((opponent: Opponent) => {
+    if (battling) return;
+    setBattling(true);
+    // Отпускаем guard через 600мс — достаточно чтобы навигация отработала,
+    // и юзер не застрял если быстро вернулся назад до истечения срока.
+    setTimeout(() => setBattling(false), 600);
     (navigation as any).navigate('BattleScreen', {
       opponentUserId: opponent.userId,
       opponentName: opponent.name,
@@ -163,7 +172,7 @@ export default function ArenaScreen() {
       myPower: power?.total || 0,
       myName: myChar?.name || 'Герой',
     });
-  }, [myChar, power, navigation]);
+  }, [myChar, power, navigation, battling]);
 
   if (loading) {
     return (

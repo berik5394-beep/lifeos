@@ -96,9 +96,11 @@ export async function prioritizationRoutes(app: FastifyInstance): Promise<void> 
 
     // Update tasks in DB with AI scores — транзакция гарантирует консистентность
     // (либо все задачи обновлены, либо ни одна).
+    // IDOR defense: updateMany c фильтром userId гарантирует, что даже если Claude
+    // галлюцинирует foreign id, мы не затронем чужие задачи (обновит 0 строк).
     const updates = scores.map((s) =>
-      prisma.task.update({
-        where: { id: s.id },
+      prisma.task.updateMany({
+        where: { id: s.id, userId: request.userId },
         data: {
           urgency: s.urgency,
           importance: s.importance,

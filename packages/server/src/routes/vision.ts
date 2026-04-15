@@ -5,7 +5,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { prisma } from '../lib/prisma.js';
 import { rateLimiter } from '../middleware/security.js';
-import { AppError } from '../lib/errors.js';
+import { AppError, AiModelError } from '../lib/errors.js';
 
 // Vision endpoints hit Claude Vision API (expensive per call) — tight cap
 const visionRateLimit = rateLimiter({ max: 15, windowMs: 60_000, keyPrefix: 'vision' });
@@ -114,14 +114,21 @@ const verifyExerciseSchema = z.object({
 
 function extractJSON(text: string): any {
   // Claude sometimes wraps JSON in ```json ... ``` or adds commentary.
+  // Любая ошибка парсинга → AiModelError, чтобы глобальный handler отдал 502
+  // с понятным текстом, а не 500 "Internal error" (Claude иногда возвращает
+  // кривой JSON с обрезанной скобкой или лишним текстом).
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   const raw = fenceMatch ? fenceMatch[1] : text;
   const firstBrace = raw.indexOf('{');
   const lastBrace = raw.lastIndexOf('}');
   if (firstBrace === -1 || lastBrace === -1) {
-    throw new Error('No JSON object found in model output');
+    throw new AiModelError(new Error('No JSON object found in model output'));
   }
-  return JSON.parse(raw.slice(firstBrace, lastBrace + 1));
+  try {
+    return JSON.parse(raw.slice(firstBrace, lastBrace + 1));
+  } catch (parseErr) {
+    throw new AiModelError(parseErr);
+  }
 }
 
 // ============================================================================

@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseMonth, invalidDateReply } from '../middleware/validate.js';
+import { NotFoundError } from '../lib/errors.js';
+
+// Максимум задач на один запрос — защита от OOM на клиенте у power users
+const MAX_TASKS_PER_REQUEST = 500;
 
 const createTaskSchema = z.object({
   title: z.string().min(1, 'Название обязательно'),
@@ -47,6 +51,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
           subtasks: true,
         },
         orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+        take: MAX_TASKS_PER_REQUEST,
       });
     }
 
@@ -63,6 +68,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
           subtasks: true,
         },
         orderBy: { createdAt: 'asc' },
+        take: MAX_TASKS_PER_REQUEST,
       });
     }
 
@@ -80,6 +86,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
           subtasks: true,
         },
         orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+        take: MAX_TASKS_PER_REQUEST,
       });
     }
 
@@ -90,6 +97,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         subtasks: true,
       },
       orderBy: [{ date: 'desc' }, { createdAt: 'asc' }],
+      take: MAX_TASKS_PER_REQUEST,
     });
   });
 
@@ -125,69 +133,79 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
     const { id } = request.params as { id: string };
     const data = request.body as z.infer<typeof updateTaskSchema>;
 
-    const task = await prisma.task.findFirst({
-      where: { id, userId: request.userId },
+    // Атомарно: проверяем ownership и обновляем внутри одной транзакции.
+    // Postgres MVCC гарантирует что никто не удалит/изменит задачу между findFirst и update.
+    const updated = await prisma.$transaction(async (tx) => {
+      const task = await tx.task.findFirst({
+        where: { id, userId: request.userId },
+      });
+      if (!task) return null;
+      return tx.task.update({
+        where: { id },
+        data: {
+          ...data,
+          date: data.date ? new Date(data.date) : undefined,
+        },
+        include: {
+          taskTags: { include: { tag: true } },
+          subtasks: true,
+        },
+      });
     });
-    if (!task) {
-      return reply.status(404).send({ message: 'Задача не найдена' });
-    }
-
-    const updated = await prisma.task.update({
-      where: { id },
-      data: {
-        ...data,
-        date: data.date ? new Date(data.date) : undefined,
-      },
-      include: {
-        taskTags: { include: { tag: true } },
-        subtasks: true,
-      },
-    });
+    if (!updated) throw new NotFoundError('Задача');
     return reply.send(updated);
   });
 
   app.delete('/tasks/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    const task = await prisma.task.findFirst({
-      where: { id, userId: request.userId },
+    // Атомарный delete с проверкой ownership. updateMany-стиль через deleteMany
+    // не подходит — возвращает count, но мы хотим 404 если задача не найдена.
+    const deleted = await prisma.$transaction(async (tx) => {
+      const task = await tx.task.findFirst({
+        where: { id, userId: request.userId },
+      });
+      if (!task) return false;
+      await tx.task.delete({ where: { id } });
+      return true;
     });
-    if (!task) {
-      return reply.status(404).send({ message: 'Задача не найдена' });
-    }
-
-    await prisma.task.delete({ where: { id } });
+    if (!deleted) throw new NotFoundError('Задача');
     return reply.send({ success: true });
   });
 
   app.patch('/tasks/:id/complete', async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    const task = await prisma.task.findFirst({
-      where: { id, userId: request.userId },
-    });
-    if (!task) {
-      return reply.status(404).send({ message: 'Задача не найдена' });
-    }
+    // Атомарно: toggle complete + mana reward в одной транзакции.
+    const result = await prisma.$transaction(async (tx) => {
+      const task = await tx.task.findFirst({
+        where: { id, userId: request.userId },
+      });
+      if (!task) return null;
 
-    const updated = await prisma.task.update({
-      where: { id },
-      data: { completed: !task.completed },
-    });
+      const updated = await tx.task.update({
+        where: { id },
+        data: { completed: !task.completed },
+      });
 
-    // Award mana when completing a task (not when uncompleting)
-    if (!task.completed) {
-      const pet = await prisma.pet.findUnique({ where: { userId: request.userId } });
-      if (pet) {
-        const manaGain = 10; // +10 mana per completed task
-        await prisma.pet.update({
-          where: { userId: request.userId },
-          data: { mana: Math.min(pet.maxMana, pet.mana + manaGain) },
-        });
+      // Award mana when completing a task (not when uncompleting)
+      if (!task.completed) {
+        const pet = await tx.pet.findUnique({ where: { userId: request.userId } });
+        if (pet) {
+          const manaGain = 10; // +10 mana per completed task
+          const nextMana = Math.min(pet.maxMana, pet.mana + manaGain);
+          if (nextMana > pet.mana) {
+            await tx.pet.update({
+              where: { userId: request.userId },
+              data: { mana: nextMana },
+            });
+          }
+        }
       }
-    }
-
-    return reply.send(updated);
+      return updated;
+    });
+    if (!result) throw new NotFoundError('Задача');
+    return reply.send(result);
   });
 
   // PATCH /tasks/:id/kanban — update kanban status
@@ -197,37 +215,42 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
     const { id } = request.params as { id: string };
     const { status } = request.body as z.infer<typeof kanbanStatusSchema>;
 
-    const task = await prisma.task.findFirst({
-      where: { id, userId: request.userId },
-    });
-    if (!task) {
-      return reply.status(404).send({ message: 'Задача не найдена' });
-    }
+    // Атомарная транзакция: ownership check + kanban update + mana reward.
+    const result = await prisma.$transaction(async (tx) => {
+      const task = await tx.task.findFirst({
+        where: { id, userId: request.userId },
+      });
+      if (!task) return null;
 
-    const updated = await prisma.task.update({
-      where: { id },
-      data: {
-        kanbanStatus: status,
-        completed: status === 'done',
-      },
-      include: {
-        taskTags: { include: { tag: true } },
-        subtasks: true,
-      },
-    });
+      const updated = await tx.task.update({
+        where: { id },
+        data: {
+          kanbanStatus: status,
+          completed: status === 'done',
+        },
+        include: {
+          taskTags: { include: { tag: true } },
+          subtasks: true,
+        },
+      });
 
-    // Award mana when moving to done (same as complete)
-    if (status === 'done' && !task.completed) {
-      const pet = await prisma.pet.findUnique({ where: { userId: request.userId } });
-      if (pet) {
-        const manaGain = 10;
-        await prisma.pet.update({
-          where: { userId: request.userId },
-          data: { mana: Math.min(pet.maxMana, pet.mana + manaGain) },
-        });
+      // Award mana when moving to done (same as complete)
+      if (status === 'done' && !task.completed) {
+        const pet = await tx.pet.findUnique({ where: { userId: request.userId } });
+        if (pet) {
+          const manaGain = 10;
+          const nextMana = Math.min(pet.maxMana, pet.mana + manaGain);
+          if (nextMana > pet.mana) {
+            await tx.pet.update({
+              where: { userId: request.userId },
+              data: { mana: nextMana },
+            });
+          }
+        }
       }
-    }
-
-    return reply.send(updated);
+      return updated;
+    });
+    if (!result) throw new NotFoundError('Задача');
+    return reply.send(result);
   });
 }

@@ -53,6 +53,10 @@ export default function BattleScreen() {
   const [battleResult, setBattleResult] = useState<any>(null);
   const [mana, setMana] = useState(0);
   const [challengeData] = useState<any>(null);
+  // Guard против double-submit: если юзер хлопает по кнопке
+  // "Физический Челлендж" дважды — мана спишется дважды и создастся
+  // два челленджа. Блокируем кнопку на время POST-запроса.
+  const [isStartingChallenge, setIsStartingChallenge] = useState(false);
 
   // Animations
   const leftWalkX = useRef(new Animated.Value(-150)).current;    // attacker enters from left
@@ -194,17 +198,25 @@ export default function BattleScreen() {
 
   // === CHALLENGE MODE — navigate to ExerciseTracker ===
   const startChallenge = useCallback(async () => {
+    if (isStartingChallenge) return; // double-tap guard
     if (mana < 20) {
       Alert.alert('Мало маны!', 'Нужно минимум 20 маны. Выполняй задачи чтобы её получить!');
       return;
     }
+    setIsStartingChallenge(true);
     try {
       const res = await fetch(`${API}/challenge/create`, {
         method: 'POST', headers,
         body: JSON.stringify({ opponentUserId: params.opponentUserId }),
       });
-      const data = await res.json();
-      if (data.error) { Alert.alert('Ошибка', data.error); return; }
+      // Читаем ответ безопасно: если прокси вернул HTML-ошибку, .json() упадёт,
+      // мы покажем дружественное сообщение вместо сырой TypeError.
+      const data = await res.json().catch(() => ({ error: 'Неожиданный ответ сервера' }));
+      if (!res.ok || data.error) {
+        const msg = data.message ?? data.error ?? `Ошибка ${res.status}`;
+        Alert.alert('Не удалось создать челлендж', msg);
+        return;
+      }
       setMana(data.manaRemaining);
       // Navigate to exercise tracker
       (navigation as any).navigate('ExerciseTracker', {
@@ -217,9 +229,12 @@ export default function BattleScreen() {
         opponentTarget: data.challenge.defenderTarget,
       });
     } catch (e) {
-      Alert.alert('Ошибка', 'Не удалось создать челлендж');
+      const msg = e instanceof Error ? e.message : 'Нет связи с сервером';
+      Alert.alert('Не удалось создать челлендж', msg);
+    } finally {
+      setIsStartingChallenge(false);
     }
-  }, [mana, params.opponentUserId, navigation]);
+  }, [mana, params.opponentUserId, navigation, isStartingChallenge, headers]);
 
   // (challenge timer moved to ExerciseTracker screen)
 
@@ -341,8 +356,15 @@ export default function BattleScreen() {
           <View style={styles.challengeSection}>
             <Text style={styles.manaDisplay}>🔮 Мана: {mana}/100</Text>
             {mana >= 20 ? (
-              <TouchableOpacity style={styles.challengeButton} onPress={startChallenge} activeOpacity={0.8}>
-                <Text style={styles.challengeButtonText}>💪 Физический Челлендж (20 маны)</Text>
+              <TouchableOpacity
+                style={[styles.challengeButton, isStartingChallenge && styles.buttonDisabled]}
+                onPress={startChallenge}
+                disabled={isStartingChallenge}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.challengeButtonText}>
+                  {isStartingChallenge ? 'Создаём…' : '💪 Физический Челлендж (20 маны)'}
+                </Text>
               </TouchableOpacity>
             ) : (
               <Text style={styles.noManaText}>Мало маны — выполняй задачи!</Text>
@@ -427,6 +449,7 @@ function createStyles(cl: ReturnType<typeof useColors>) {
       borderRadius: borderRadius.lg,
     },
     challengeButtonText: { color: '#fff', fontSize: fontSize.sm, fontWeight: '800' },
+    buttonDisabled: { opacity: 0.5 },
     noManaText: { color: cl.textSecondary, fontSize: fontSize.sm, fontStyle: 'italic' },
     backButton: {
       backgroundColor: cl.surfaceLight, paddingHorizontal: 24, paddingVertical: 12,

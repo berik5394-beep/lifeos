@@ -40,7 +40,16 @@ import { startRefreshTokenCleanup } from './services/token-cleanup.js';
 import { registerSecurityHeaders, rateLimiter } from './middleware/security.js';
 import { registerErrorHandler } from './middleware/error-handler.js';
 import { attachLogger } from './lib/logger.js';
+import { checkRequiredEnv } from './lib/env-check.js';
 import type { Telegraf } from 'telegraf';
+
+// ============================================================================
+// БЕЗОПАСНОСТЬ: проверка ВСЕХ обязательных env vars до старта сервера.
+// Без этого Anthropic SDK инициализируется с пустой строкой и падает на
+// первом запросе через минуту после запуска. checkRequiredEnv() падает с
+// полным списком отсутствующих переменных сразу.
+// ============================================================================
+checkRequiredEnv();
 
 // ============================================================================
 // БЕЗОПАСНОСТЬ: JWT_SECRET обязателен. Без него — крах на старте.
