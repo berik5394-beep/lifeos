@@ -14,6 +14,7 @@ import {
   calculateWeekProgress,
 } from '../services/streak-service.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
+import { getRelevantMemories } from '../services/memory-service.js';
 
 // AI chat is expensive (Claude API + web search) — limit per minute and per hour
 const chatRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'ai-chat' });
@@ -461,6 +462,10 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         ? yearlyGoals.map((g) => `${g.area}: ${g.goalText} (${Math.round(g.progress)}%)`).join('; ')
         : 'Не заданы';
 
+      // JARVIS long-term memory: подмешиваем top-K важных воспоминаний.
+      // Без этого ассистент забывает разговоры между сессиями.
+      const memories = await getRelevantMemories(userId, 20);
+
       const context: AssistantContext = {
         userName: user.name,
         assistantStyle: user.assistantStyle as 'friendly' | 'strict' | 'calm' | 'toxic',
@@ -480,6 +485,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         currentStreak,
         weekProgress,
         yearlyGoalsSummary,
+        memories,
       };
 
       // 6. Build system prompt with interests + chat rules

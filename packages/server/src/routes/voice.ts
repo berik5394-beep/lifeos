@@ -22,6 +22,7 @@ import {
   calculateWeekProgress,
 } from '../services/streak-service.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
+import { getRelevantMemories } from '../services/memory-service.js';
 
 // Voice assistant/transcribe are expensive (Groq Whisper + Claude API) — cap per IP
 const assistantRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'voice-assistant' });
@@ -195,6 +196,9 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
         ? yearlyGoals.map((g) => `${g.area}: ${g.goalText} (${Math.round(g.progress)}%)`).join('; ')
         : 'Не заданы';
 
+      // JARVIS memories — подмешиваем чтобы ассистент помнил про юзера.
+      const memories = await getRelevantMemories(userId, 20);
+
       // Build context
       const context: AssistantContext = {
         userName: user.name,
@@ -212,6 +216,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
         currentStreak,
         weekProgress,
         yearlyGoalsSummary,
+        memories,
       };
 
       // 9-11. Determine which prompt to use

@@ -12,6 +12,12 @@ export interface AssistantContext {
   currentStreak: number;
   weekProgress: number;
   yearlyGoalsSummary: string;
+  // JARVIS long-term memory: top-K важных воспоминаний из таблицы Memory.
+  // Подмешивается в системный промпт чтобы ассистент "помнил" про юзера
+  // между сессиями — людей, решения, факты, предпочтения.
+  // В Фазе 1 это просто top-K по importance, в Фазе 2 заменится на
+  // vector retrieval с релевантностью к текущему запросу.
+  memories?: { type: string; content: string; importance: number }[];
 }
 
 function getTimeOfDay(): string {
@@ -98,6 +104,20 @@ function buildContextBlock(ctx: AssistantContext): string {
     `--- Годовые цели ---`,
     ctx.yearlyGoalsSummary || 'Не заданы',
   );
+
+  if (ctx.memories && ctx.memories.length > 0) {
+    lines.push(``, `--- Что я помню о тебе ---`);
+    for (const m of ctx.memories) {
+      const tag = m.type === 'person' ? '👤' :
+                  m.type === 'place' ? '📍' :
+                  m.type === 'decision' ? '✅' :
+                  m.type === 'event' ? '📅' :
+                  m.type === 'preference' ? '⭐' :
+                  m.type === 'emotion' ? '💭' : '·';
+      lines.push(`${tag} ${m.content}`);
+    }
+    lines.push(``, `Используй эти воспоминания естественно — упоминай людей и факты когда уместно. Не зачитывай список механически.`);
+  }
 
   return lines.join('\n');
 }

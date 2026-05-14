@@ -46,6 +46,8 @@ model User {
   tags                    Tag[]
   sharedSpaceMemberships  SharedSpaceMember[]
   ownedSpaces             SharedSpace[] @relation("OwnedSpaces")
+  memories                Memory[]
+  dictationSessions       DictationSession[]
   uiComplexity            String   @default("standard")
   subscriptionTier        String   @default("free")
   subscriptionExpiresAt   DateTime?
@@ -594,4 +596,56 @@ model SharedSpaceMember {
   role          String      @default("member")
   joinedAt      DateTime    @default(now())
   @@unique([sharedSpaceId, userId])
+}
+
+// JARVIS long-term memory: факты/решения/события/предпочтения, извлечённые
+// из диктофона, чатов и разговоров. Используется для retrieval-augmented
+// контекста: на каждый запрос к ассистенту подмешиваем релевантные воспоминания.
+// Фаза 2 добавит embedding (pgvector) — пока чисто структурированное хранилище
+// с тегами и важностью для упрощённого поиска.
+model Memory {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "fact" | "decision" | "event" | "person" | "place" | "preference" | "emotion"
+  type       String
+  // Короткая суть ("Серик переехал в Астану", "Решили встретиться в субботу")
+  content    String
+  // Развёрнутый контекст если нужен
+  details    String?
+  // "dictation" | "chat" | "voice" | "manual" | "import"
+  source     String
+  // ID исходной записи (DictationSession.id, ChatMessage.id и т.д.)
+  sourceId   String?
+  // Теги для фильтрации ("family", "work", "health", "travel")
+  tags       String[]
+  // 1-10, насколько важно. Используется при выборе top-K для контекста.
+  importance Int      @default(5)
+  // Некоторые факты устаревают (например "завтра встреча")
+  expiresAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, type])
+  @@index([userId, createdAt])
+  @@index([userId, importance])
+}
+
+// Запись сессии диктофона: транскрипт + что из него извлекли.
+// Хранится как audit trail — можно вернуться и посмотреть исходник если
+// AI-извлечение что-то упустило.
+model DictationSession {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcript      String
+  // Краткая сводка от Claude: что записали, что создали
+  summary         String?
+  // Что Claude сказал юзеру вслух после обработки
+  spokenResponse  String?
+  tasksCreated    Int      @default(0)
+  memoriesCreated Int      @default(0)
+  durationSeconds Int?
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
