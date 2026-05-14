@@ -56,7 +56,9 @@ async function webSearch(query: string, maxResults = 5): Promise<string> {
 }
 
 const chatSchema = z.object({
-  text: z.string().min(1, 'Текст обязателен'),
+  // Cap protects Claude billing: 4000 chars ≈ 1000 tokens на запрос юзера —
+  // больше не имеет смысла для диалога (модель усечёт контекст).
+  text: z.string().min(1, 'Текст обязателен').max(4000, 'Сообщение слишком длинное'),
 });
 
 const historyQuerySchema = z.object({

@@ -9,16 +9,18 @@ import { NotFoundError } from '../lib/errors.js';
 const MAX_TASKS_PER_REQUEST = 500;
 
 const createTaskSchema = z.object({
-  title: z.string().min(1, 'Название обязательно'),
-  category: z.string(),
-  priority: z.string(),
-  date: z.string(),
-  time: z.string().nullable().optional(),
-  notes: z.string().nullable().optional(),
-  kanbanStatus: z.string().optional(),
-  parentId: z.string().nullable().optional(),
+  title: z.string().min(1, 'Название обязательно').max(500),
+  category: z.string().max(64),
+  priority: z.string().max(32),
+  // Жёсткая валидация YYYY-MM-DD до того как `new Date(data.date)` молча
+  // создаст Invalid Date и Prisma запишет мусор.
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD'),
+  time: z.string().max(8).nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
+  kanbanStatus: z.string().max(32).optional(),
+  parentId: z.string().max(64).nullable().optional(),
   estimatedMinutes: z.number().int().positive().nullable().optional(),
-  recurrence: z.string().nullable().optional(),
+  recurrence: z.string().max(64).nullable().optional(),
 });
 
 const updateTaskSchema = createTaskSchema.partial().extend({

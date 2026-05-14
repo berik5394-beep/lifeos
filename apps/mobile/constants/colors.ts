@@ -15,7 +15,10 @@ export const colors = {
   surfaceAlt: '#0A1836',     // nested panel
   text: '#FFFFFF',
   textSecondary: '#A8B2D1',
-  textMuted: '#6B7A9E',
+  // Bumped from #6B7A9E to clear WCAG AA body-text contrast (4.5:1) on
+  // surface #0F1D46 and background #04102B. Previous value was 3.57:1 on
+  // surface — App Store accessibility review blocker.
+  textMuted: '#8B96B8',
   border: '#1F2F5C',
   divider: '#172448',
 } as const;

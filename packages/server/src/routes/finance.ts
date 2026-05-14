@@ -5,9 +5,9 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth as validateMonth, invalidDateReply } from '../middleware/validate.js';
 
 const createExpenseSchema = z.object({
-  date: z.string(),
-  category: z.string(),
-  description: z.string().min(1, 'Описание обязательно'),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD'),
+  category: z.string().max(64),
+  description: z.string().min(1, 'Описание обязательно').max(500),
   amount: z.number().positive('Сумма должна быть положительной'),
 });
 
@@ -19,8 +19,8 @@ const createBudgetSchema = z.object({
 });
 
 const createIncomeSchema = z.object({
-  date: z.string(),
-  source: z.string().min(1, 'Источник обязателен'),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD'),
+  source: z.string().min(1, 'Источник обязателен').max(200),
   amount: z.number().positive('Сумма должна быть положительной'),
 });
 

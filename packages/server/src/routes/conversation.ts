@@ -42,14 +42,16 @@ const startSchema = z.object({
 }).passthrough();
 
 const textMessageSchema = z.object({
-  sessionId: z.string().min(1, 'sessionId обязателен'),
-  text: z.string().min(1, 'Текст обязателен'),
+  sessionId: z.string().min(1, 'sessionId обязателен').max(64),
+  // Cap для Claude billing — длиннее не имеет смысла в живом диалоге.
+  text: z.string().min(1, 'Текст обязателен').max(4000, 'Сообщение слишком длинное'),
 });
 
 const audioMessageSchema = z.object({
-  sessionId: z.string().min(1, 'sessionId обязателен'),
-  audio: z.string().min(1, 'Audio data обязателен'),
-  format: z.string().default('m4a'),
+  sessionId: z.string().min(1, 'sessionId обязателен').max(64),
+  // Base64 аудио до ~7MB сырого = 10MB после base64. bodyLimit на маршруте уже стоит.
+  audio: z.string().min(1, 'Audio data обязателен').max(10_000_000, 'Аудио слишком большое'),
+  format: z.string().max(8).default('m4a'),
 });
 
 const endSchema = z.object({

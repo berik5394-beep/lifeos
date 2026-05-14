@@ -42,7 +42,8 @@ export const darkTheme: Theme = {
   surfaceAlt: '#0A1836',
   text: '#FFFFFF',
   textSecondary: '#A8B2D1',
-  textMuted: '#6B7A9E',
+  // Bumped from #6B7A9E to clear WCAG AA body-text (4.5:1) on surface #0F1D46.
+  textMuted: '#8B96B8',
   border: '#1F2F5C',
   divider: '#172448',
   cardShadow: 'rgba(0,0,0,0.4)',

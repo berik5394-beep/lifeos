@@ -5,11 +5,11 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 
 const journalSchema = z.object({
-  date: z.string(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD'),
   sleepHours: z.number().min(0).max(24).nullable().optional(),
   energy: z.number().min(1).max(10).nullable().optional(),
   mood: z.number().min(1).max(10).nullable().optional(),
-  notes: z.string().nullable().optional(),
+  notes: z.string().max(5000).nullable().optional(),
 });
 
 export async function journalRoutes(app: FastifyInstance): Promise<void> {

@@ -37,7 +37,9 @@ const anthropic = new Anthropic({
 });
 
 const voiceSchema = z.object({
-  text: z.string().min(1, 'Текст обязателен'),
+  // Cap protects Claude billing: 2000 chars ≈ 500 tokens — больше для голосовой
+  // команды бессмысленно, но без потолка баг-цикл клиента может слать 1MB.
+  text: z.string().min(1, 'Текст обязателен').max(2000, 'Текст слишком длинный'),
 });
 
 interface AssistantResponseContext {
@@ -272,7 +274,9 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
   // --- Voice Transcription (Speech-to-Text via Groq Whisper) ---
 
   const transcribeSchema = z.object({
-    audio: z.string().min(1, 'Audio data обязателен'),
+    // Base64 аудио до ~7MB (10MB после base64 + header). bodyLimit уже стоит,
+    // но дублируем здесь как defense-in-depth.
+    audio: z.string().min(1, 'Audio data обязателен').max(10_000_000, 'Аудио слишком большое'),
     format: z.string().default('m4a'),
   });
 

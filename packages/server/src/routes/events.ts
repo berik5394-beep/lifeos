@@ -5,14 +5,14 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseMonth as validateMonthRange, invalidDateReply } from '../middleware/validate.js';
 
 const createEventSchema = z.object({
-  title: z.string().min(1, 'Название обязательно'),
-  date: z.string(),
-  startTime: z.string().optional(),
-  endTime: z.string().optional(),
-  location: z.string().optional(),
-  description: z.string().optional(),
+  title: z.string().min(1, 'Название обязательно').max(500),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD'),
+  startTime: z.string().max(8).optional(),
+  endTime: z.string().max(8).optional(),
+  location: z.string().max(500).optional(),
+  description: z.string().max(2000).optional(),
   reminder: z.number().int().optional(),
-  source: z.string().optional(),
+  source: z.string().max(64).optional(),
 });
 
 const updateEventSchema = createEventSchema.partial();

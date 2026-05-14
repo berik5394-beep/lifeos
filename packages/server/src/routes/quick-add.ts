@@ -7,7 +7,8 @@ import { validate } from '../middleware/validate.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 
 const quickAddSchema = z.object({
-  text: z.string().min(1, 'Текст обязателен'),
+  // Quick-add — короткие фразы для парсинга в задачу. 500 chars с запасом.
+  text: z.string().min(1, 'Текст обязателен').max(500, 'Слишком длинный текст для быстрого добавления'),
 });
 
 const anthropic = new Anthropic();
