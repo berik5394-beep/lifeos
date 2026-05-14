@@ -196,8 +196,8 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
         ? yearlyGoals.map((g) => `${g.area}: ${g.goalText} (${Math.round(g.progress)}%)`).join('; ')
         : 'Не заданы';
 
-      // JARVIS memories — подмешиваем чтобы ассистент помнил про юзера.
-      const memories = await getRelevantMemories(userId, 20);
+      // JARVIS memories — query-aware retrieval (текст юзера → Postgres FTS).
+      const memories = await getRelevantMemories(userId, text, 20);
 
       // Build context
       const context: AssistantContext = {

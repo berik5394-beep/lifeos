@@ -462,9 +462,11 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         ? yearlyGoals.map((g) => `${g.area}: ${g.goalText} (${Math.round(g.progress)}%)`).join('; ')
         : 'Не заданы';
 
-      // JARVIS long-term memory: подмешиваем top-K важных воспоминаний.
-      // Без этого ассистент забывает разговоры между сессиями.
-      const memories = await getRelevantMemories(userId, 20);
+      // JARVIS long-term memory: query-aware retrieval (Фаза 2a).
+      // Текст пользователя передаём как query → Postgres FTS вытащит
+      // релевантные памяти (про Серика, маму, спорт и т.д.) с приоритетом
+      // совпадений, fallback на importance.
+      const memories = await getRelevantMemories(userId, text, 20);
 
       const context: AssistantContext = {
         userName: user.name,
