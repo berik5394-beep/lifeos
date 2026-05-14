@@ -36,6 +36,7 @@ import { notificationRoutes } from './routes/notifications.js';
 import { appInfoRoutes } from './routes/app-info.js';
 import { lifeAnalysisRoutes } from './routes/life-analysis.js';
 import { dictationRoutes } from './routes/dictation.js';
+import { insightsRoutes } from './routes/insights.js';
 import { createTelegramBot, startBot, stopBot } from './services/telegram-bot.js';
 import { startRefreshTokenCleanup } from './services/token-cleanup.js';
 import { registerSecurityHeaders, rateLimiter } from './middleware/security.js';
@@ -199,6 +200,7 @@ await app.register(notificationRoutes);
 await app.register(appInfoRoutes);
 await app.register(lifeAnalysisRoutes);
 await app.register(dictationRoutes);
+await app.register(insightsRoutes);
 
 let telegramBot: Telegraf | null = null;
 let tokenCleanupTimer: NodeJS.Timeout | null = null;

@@ -28,6 +28,12 @@ const responseTemplates: Record<string, (intent: Record<string, unknown>) => str
   ask_assistant: () => 'Обрабатываю ваш вопрос',
   goodnight: () => 'Спокойной ночи! Подвожу итоги дня.',
   good_morning: () => 'Доброе утро! Вот план на сегодня.',
+  // JARVIS: эти три действия мобилка должна перехватить и дёрнуть
+  // соответствующие роуты (/dictation/process, /memory/search, /travel/smart-book).
+  // Шаблоны здесь — fallback на случай если мобилка не подхватила action.
+  start_dictation: () => 'Включаю запись. Говори свободно — я выделю задачи и запомню важное.',
+  search_memory: (i) => `Ищу в памяти: ${i.query || ''}`,
+  plan_travel: () => 'Подбираю варианты, секунду...',
   unknown: () => 'Не удалось распознать команду. Попробуйте ещё раз.',
 };
 
