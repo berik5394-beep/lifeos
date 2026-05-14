@@ -9,7 +9,76 @@ interface VoiceIntent {
   [key: string]: unknown;
 }
 
+// -----------------------------------------------------------------------------
+// Deterministic prefilter — критичные интенты ловим до Claude. Зачем:
+//   • Claude систематически путает booking-команды с create_task — три
+//     попытки промптинга не помогли. Регекс надёжнее.
+//   • Эти 3 интента (plan_travel / start_dictation / search_memory) имеют
+//     характерные триггер-слова, легко детектятся без модели.
+//   • Скорость + ноль cost: 0мс + $0 vs ~500мс + $0.001 на Claude.
+// Если регекс не сработал, падаем на Claude как раньше.
+// -----------------------------------------------------------------------------
+
+const TRAVEL_VERBS = [
+  'забронируй', 'забронируем', 'забронируй-ка',
+  'закажи', 'закажем',
+  'купи билет', 'купить билет', 'купи билеты',
+  'найди билет', 'найди рейс', 'найди отель', 'найди гостиницу', 'найди номер',
+  'найди тур', 'найди путёвку',
+  'вызови такси', 'закажи такси', 'позови такси',
+  'поедем в', 'полетим в', 'полечу в', 'съезжу в', 'слетаю в',
+];
+
+const TRAVEL_NOUNS = /(рейс|билет(ы|а)?|самолёт|полёт|такси|машин[ауы]?|отель|гостиниц[ауы]?|номер|поездк[ауи]|путешествие|тур|путёвк[ауи]?)/i;
+
+const DICTATION_TRIGGERS = [
+  /^лайфос[, ]+диктофон/i,
+  /^включи запись/i,
+  /^начни запись/i,
+  /^записывай/i,
+  /^запиши разговор/i,
+  /^запиши за мной/i,
+];
+
+const MEMORY_TRIGGERS = [
+  /^что я говорил про /i,
+  /^что я рассказывал про /i,
+  /^помнишь про /i,
+  /^помнишь о /i,
+  /^ты помнишь /i,
+  /^найди в памяти /i,
+  /^что ты знаешь о /i,
+  /^что ты знаешь про /i,
+];
+
+function deterministicIntent(text: string): VoiceIntent | null {
+  const lower = text.toLowerCase();
+
+  for (const re of DICTATION_TRIGGERS) {
+    if (re.test(text)) return { action: 'start_dictation' };
+  }
+  for (const re of MEMORY_TRIGGERS) {
+    const m = text.match(re);
+    if (m) {
+      const query = text.slice(m[0].length).trim() || text;
+      return { action: 'search_memory', query };
+    }
+  }
+  // Travel: верб + сущность (или верб + город — но город детектить дорого,
+  // полагаемся на верб + сущность; если без сущности но с городом, Claude разберёт).
+  for (const v of TRAVEL_VERBS) {
+    if (lower.includes(v) && TRAVEL_NOUNS.test(text)) {
+      return { action: 'plan_travel', query: text };
+    }
+  }
+  return null;
+}
+
 export async function parseIntent(text: string): Promise<VoiceIntent> {
+  // Fast path: детерминированные интенты без вызова Claude.
+  const det = deterministicIntent(text);
+  if (det) return det;
+
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
