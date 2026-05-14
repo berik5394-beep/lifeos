@@ -11,7 +11,11 @@ const quickAddSchema = z.object({
   text: z.string().min(1, 'Текст обязателен').max(500, 'Слишком длинный текст для быстрого добавления'),
 });
 
-const anthropic = new Anthropic();
+// BUG FIX: Anthropic SDK по умолчанию ищет ENV `ANTHROPIC_API_KEY`,
+// а Railway/документация проекта задают `CLAUDE_API_KEY` (см. .env.example).
+// Без явного apiKey клиент падал с "Could not resolve authentication method"
+// 500 на каждом запросе.
+const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
 
 const quickAddRateLimit = rateLimiter({ max: 15, windowMs: 60_000, keyPrefix: 'quick-add' });
 
