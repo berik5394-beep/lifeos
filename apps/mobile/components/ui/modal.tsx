@@ -69,7 +69,12 @@ export const Modal = React.memo(function Modal({
         <View style={styles.content}>
           <View style={styles.header}>
             <Text style={styles.title}>{title}</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={8}>
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Закрыть"
+            >
               <Text style={styles.close}>✕</Text>
             </TouchableOpacity>
           </View>

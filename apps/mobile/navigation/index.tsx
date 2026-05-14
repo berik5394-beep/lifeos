@@ -89,6 +89,8 @@ function SettingsHeaderButton() {
     <TouchableOpacity
       onPress={() => navigation.navigate('Settings')}
       style={{ marginRight: 16, padding: 4 }}
+      accessibilityRole="button"
+      accessibilityLabel="Настройки"
     >
       <Feather name="settings" size={22} color={theme.text} />
     </TouchableOpacity>

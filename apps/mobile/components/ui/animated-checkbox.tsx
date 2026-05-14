@@ -60,7 +60,14 @@ export const AnimatedCheckbox = React.memo(function AnimatedCheckbox({
   }, [onToggle]);
 
   return (
-    <Pressable onPress={handlePress} hitSlop={8} style={style}>
+    <Pressable
+      onPress={handlePress}
+      hitSlop={8}
+      style={style}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel={checked ? 'Отметка снята' : 'Отметить выполнено'}
+    >
       <Animated.View
         style={[
           styles.box,

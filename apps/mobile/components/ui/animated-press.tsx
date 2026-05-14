@@ -18,6 +18,11 @@ interface AnimatedPressProps {
   scaleDown?: number;
   disabled?: boolean;
   haptic?: boolean;
+  // A11y props — пробрасываются в Pressable, чтобы каждый callsite мог
+  // указать понятный label без обходных путей.
+  accessibilityLabel?: string;
+  accessibilityRole?: 'button' | 'link' | 'tab' | 'checkbox' | 'switch';
+  accessibilityHint?: string;
 }
 
 /**
@@ -32,6 +37,9 @@ export const AnimatedPress = React.memo(function AnimatedPress({
   scaleDown = 0.96,
   disabled = false,
   haptic = true,
+  accessibilityLabel,
+  accessibilityRole = 'button',
+  accessibilityHint,
 }: AnimatedPressProps) {
   const scale = useSharedValue(1);
 
@@ -56,6 +64,10 @@ export const AnimatedPress = React.memo(function AnimatedPress({
       onPressOut={handlePressOut}
       disabled={disabled}
       style={[animatedStyle, style]}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled }}
     >
       {children}
     </AnimatedPressable>

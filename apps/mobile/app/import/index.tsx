@@ -9,13 +9,13 @@ import {
   Alert,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-// File upload via fetch + FormData
+// File upload via api.upload (FormData with 401-retry)
 import { useAuthStore } from '@/stores/auth-store';
+import { api, ApiError } from '@/services/api';
 import { Card, Button } from '@/components/ui';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
 const FILE_TYPE_LABELS: Record<string, string> = {
   xlsx: 'Excel',
@@ -75,13 +75,8 @@ export default function ImportScreen() {
     if (!token) return;
     setIsLoadingHistory(true);
     try {
-      const response = await fetch(`${API_URL}/import/history`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const data = (await response.json()) as ImportHistoryItem[];
-        setHistory(data);
-      }
+      const data = await api.get<ImportHistoryItem[]>('/import/history', token);
+      setHistory(data);
     } catch {
       // ignore
     } finally {
@@ -127,20 +122,14 @@ export default function ImportScreen() {
         type: selectedFile.mimeType || 'application/octet-stream',
       } as unknown as Blob);
 
-      const response = await fetch(`${API_URL}/import/file`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      if (response.ok) {
-        const data = (await response.json()) as ImportResult;
+      try {
+        const data = await api.upload<ImportResult>('/import/file', formData, token);
         setImportResult(data);
         setSelectedFile(null);
         loadHistory();
-      } else {
-        const errorData = (await response.json()) as { message?: string };
-        Alert.alert('Ошибка', errorData.message ?? 'Не удалось загрузить файл');
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : 'Не удалось загрузить файл';
+        Alert.alert('Ошибка', msg);
       }
     } catch {
       Alert.alert('Ошибка', 'Не удалось загрузить файл');
@@ -160,10 +149,7 @@ export default function ImportScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await fetch(`${API_URL}/import/${id}`, {
-                method: 'DELETE',
-                headers: { Authorization: `Bearer ${token}` },
-              });
+              await api.delete(`/import/${id}`, token);
               setHistory((prev) => prev.filter((item) => item.id !== id));
             } catch {
               Alert.alert('Ошибка', 'Не удалось удалить');

@@ -73,6 +73,9 @@ export const QuickAddBar = React.memo(function QuickAddBar({
         onPress={handleSubmit}
         disabled={loading}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Добавить"
+        accessibilityState={{ disabled: loading }}
       >
         {loading ? (
           <ActivityIndicator color="#fff" size="small" />

@@ -18,7 +18,7 @@ import Groq from 'groq-sdk';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { rateLimiter } from '../middleware/security.js';
+import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import {
   buildInitialContext,
   processConversationMessage,
@@ -105,7 +105,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
   // --- Start conversation session ---
   app.post('/voice/conversation/start', {
-    preHandler: [conversationRateLimit],
+    preHandler: [conversationRateLimit, aiDailyLimiter],
   }, async (request, reply) => {
     const userId = request.userId;
 
@@ -152,7 +152,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
   // --- Send audio message ---
   app.post('/voice/conversation/message', {
     bodyLimit: 10 * 1024 * 1024, // 10 MB for base64 audio
-    preHandler: [audioRateLimit, validate(audioMessageSchema)],
+    preHandler: [audioRateLimit, aiDailyLimiter, validate(audioMessageSchema)],
   }, async (request, reply) => {
     const { sessionId, audio, format } = request.body as z.infer<typeof audioMessageSchema>;
     const userId = request.userId;
@@ -209,7 +209,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
   // --- Send text message ---
   app.post('/voice/conversation/text', {
-    preHandler: [conversationRateLimit, validate(textMessageSchema)],
+    preHandler: [conversationRateLimit, aiDailyLimiter, validate(textMessageSchema)],
   }, async (request, reply) => {
     const { sessionId, text } = request.body as z.infer<typeof textMessageSchema>;
     const userId = request.userId;

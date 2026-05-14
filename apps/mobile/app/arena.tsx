@@ -10,8 +10,7 @@ import { CHARACTERS, getCharacter } from '@/constants/characters';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 import { useAuthStore } from '@/stores/auth-store';
-
-const API = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+import { api } from '@/services/api';
 
 const RANK_ICONS: Record<string, string> = {
   bronze: '🥉', silver: '🥈', gold: '🥇',
@@ -77,34 +76,31 @@ export default function ArenaScreen() {
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-
   const fetchProfile = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/arena/profile`, { headers });
-      const data = await res.json();
+      const data = await api.get<{ profile: ArenaProfile; power: Power; character: any }>(
+        '/arena/profile', token,
+      );
       setProfile(data.profile);
       setPower(data.power);
       setMyChar(data.character);
-      // Also fetch mana
-      const manaRes = await fetch(`${API}/challenge/mana`, { headers });
-      const manaData = await manaRes.json();
+      const manaData = await api.get<{ mana: number }>('/challenge/mana', token);
       setManaAmount(manaData.mana || 0);
     } catch (e) { console.error(e); }
   }, [token]);
 
   const fetchHistory = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/arena/history`, { headers });
-      const data = await res.json();
+      const data = await api.get<{ battles: HistoryEntry[] }>('/arena/history', token);
       setHistory(data.battles || []);
     } catch (e) { console.error(e); }
   }, [token]);
 
   const fetchLeaderboard = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/arena/leaderboard`, { headers });
-      const data = await res.json();
+      const data = await api.get<{ leaderboard: any[]; myPosition: number | null }>(
+        '/arena/leaderboard', token,
+      );
       setLeaderboard(data.leaderboard || []);
       setMyPosition(data.myPosition);
     } catch (e) { console.error(e); }
@@ -145,8 +141,7 @@ export default function ArenaScreen() {
     setSearching(true);
     setBattleResult(null);
     try {
-      const res = await fetch(`${API}/arena/find-opponent`, { method: 'POST', headers });
-      const data = await res.json();
+      const data = await api.post<{ opponents: Opponent[] }>('/arena/find-opponent', undefined, token);
       setOpponents(data.opponents || []);
     } catch (e) {
       Alert.alert('Ошибка', 'Не удалось найти противников');

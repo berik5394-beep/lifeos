@@ -13,7 +13,7 @@ import {
   calculateStreak,
   calculateWeekProgress,
 } from '../services/streak-service.js';
-import { rateLimiter } from '../middleware/security.js';
+import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 
 // AI chat is expensive (Claude API + web search) — limit per minute and per hour
 const chatRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'ai-chat' });
@@ -343,7 +343,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
   // --- AI Chat ---
 
   app.post('/voice/chat', {
-    preHandler: [chatRateLimit, validate(chatSchema)],
+    preHandler: [chatRateLimit, aiDailyLimiter, validate(chatSchema)],
   }, async (request, reply) => {
     const { text } = request.body as z.infer<typeof chatSchema>;
     const userId = request.userId;

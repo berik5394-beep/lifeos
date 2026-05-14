@@ -15,6 +15,7 @@ import { CHARACTERS, RARITY_NAMES, getItemsForCharacter } from '@/constants/char
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 import { useAuthStore } from '@/stores/auth-store';
+import { api } from '@/services/api';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 48;
@@ -34,19 +35,7 @@ export default function CharacterSelectScreen() {
     if (!token) return;
     setIsSelecting(true);
     try {
-      const API = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
-      const res = await fetch(`${API}/pet/character`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ characterType: selectedChar.key }),
-      });
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(body || `HTTP ${res.status}`);
-      }
+      await api.put('/pet/character', { characterType: selectedChar.key }, token);
       Alert.alert('Персонаж выбран!', `${selectedChar.name} теперь твой герой!`);
       navigation.goBack();
     } catch (e) {

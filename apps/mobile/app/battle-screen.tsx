@@ -10,9 +10,9 @@ import { getCharacter, CHARACTERS } from '@/constants/characters';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 import { useAuthStore } from '@/stores/auth-store';
+import { api, ApiError } from '@/services/api';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const API = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
 // Battle phases
 type Phase = 'enter' | 'face-off' | 'clash' | 'result' | 'challenge';
@@ -44,7 +44,6 @@ export default function BattleScreen() {
   const { token } = useAuthStore();
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
-  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
   const arena = ARENA_THEMES[Math.floor(Math.random() * ARENA_THEMES.length)];
 
@@ -79,8 +78,7 @@ export default function BattleScreen() {
 
   // Fetch mana on mount
   useEffect(() => {
-    fetch(`${API}/challenge/mana`, { headers })
-      .then(r => r.json())
+    api.get<{ mana: number }>('/challenge/mana', token)
       .then(d => setMana(d.mana || 0))
       .catch(() => {});
   }, []);
@@ -173,28 +171,19 @@ export default function BattleScreen() {
   // === BATTLE API CALL ===
   const startBattle = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/arena/battle`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ opponentId: params.opponentUserId }),
-      });
-      if (res.status === 429) {
-        // Сервер теперь отдаёт user-facing текст в `message`, а `error` —
-        // это стабильный код ("rate_limited"). Читаем оба: сначала message,
-        // потом старый error для обратной совместимости со старыми сборками.
-        const data = await res.json().catch(() => ({}));
-        Alert.alert('Кулдаун', data.message ?? data.error ?? 'Подожди немного');
-        navigation.goBack();
-        return;
-      }
-      const data = await res.json();
+      const data = await api.post<any>('/arena/battle', { opponentId: params.opponentUserId }, token);
       setBattleResult(data);
       const isWin = data.battle.result === 'attacker';
       playClashAnimation(isWin);
     } catch (e) {
-      Alert.alert('Ошибка', 'Бой не удался');
+      if (e instanceof ApiError && e.status === 429) {
+        Alert.alert('Кулдаун', e.message || 'Подожди немного');
+      } else {
+        Alert.alert('Ошибка', 'Бой не удался');
+      }
       navigation.goBack();
     }
-  }, [params.opponentUserId]);
+  }, [params.opponentUserId, token]);
 
   // === CHALLENGE MODE — navigate to ExerciseTracker ===
   const startChallenge = useCallback(async () => {
@@ -205,18 +194,11 @@ export default function BattleScreen() {
     }
     setIsStartingChallenge(true);
     try {
-      const res = await fetch(`${API}/challenge/create`, {
-        method: 'POST', headers,
-        body: JSON.stringify({ opponentUserId: params.opponentUserId }),
-      });
-      // Читаем ответ безопасно: если прокси вернул HTML-ошибку, .json() упадёт,
-      // мы покажем дружественное сообщение вместо сырой TypeError.
-      const data = await res.json().catch(() => ({ error: 'Неожиданный ответ сервера' }));
-      if (!res.ok || data.error) {
-        const msg = data.message ?? data.error ?? `Ошибка ${res.status}`;
-        Alert.alert('Не удалось создать челлендж', msg);
-        return;
-      }
+      const data = await api.post<any>(
+        '/challenge/create',
+        { opponentUserId: params.opponentUserId },
+        token,
+      );
       setMana(data.manaRemaining);
       // Navigate to exercise tracker
       (navigation as any).navigate('ExerciseTracker', {
@@ -234,7 +216,7 @@ export default function BattleScreen() {
     } finally {
       setIsStartingChallenge(false);
     }
-  }, [mana, params.opponentUserId, navigation, isStartingChallenge, headers]);
+  }, [mana, params.opponentUserId, navigation, isStartingChallenge, token]);
 
   // (challenge timer moved to ExerciseTracker screen)
 

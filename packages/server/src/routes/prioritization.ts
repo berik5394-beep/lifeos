@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { rateLimiter } from '../middleware/security.js';
+import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { AiModelError } from '../lib/errors.js';
 
 const anthropic = new Anthropic();
@@ -27,7 +27,7 @@ export async function prioritizationRoutes(app: FastifyInstance): Promise<void> 
   app.addHook('preHandler', authMiddleware);
 
   // POST /tasks/prioritize — AI ranks user's incomplete tasks using Eisenhower matrix
-  app.post('/tasks/prioritize', { preHandler: prioritizeLimiter }, async (request, reply) => {
+  app.post('/tasks/prioritize', { preHandler: [prioritizeLimiter, aiDailyLimiter] }, async (request, reply) => {
     const tasks = await prisma.task.findMany({
       where: {
         userId: request.userId,

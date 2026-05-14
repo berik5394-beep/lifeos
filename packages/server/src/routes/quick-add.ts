@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
+import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 
 const quickAddSchema = z.object({
   text: z.string().min(1, 'Текст обязателен'),
@@ -11,12 +12,14 @@ const quickAddSchema = z.object({
 
 const anthropic = new Anthropic();
 
+const quickAddRateLimit = rateLimiter({ max: 15, windowMs: 60_000, keyPrefix: 'quick-add' });
+
 export async function quickAddRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
   // POST /tasks/quick-add — parse natural language text into task fields
   app.post('/tasks/quick-add', {
-    preHandler: validate(quickAddSchema),
+    preHandler: [quickAddRateLimit, aiDailyLimiter, validate(quickAddSchema)],
   }, async (request, reply) => {
     const { text } = request.body as z.infer<typeof quickAddSchema>;
 

@@ -47,7 +47,13 @@ export const TagChip = React.memo(function TagChip({
     <View style={styles.container}>
       <Text style={styles.text}>{name}</Text>
       {onRemove && (
-        <TouchableOpacity style={styles.removeButton} onPress={onRemove} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.removeButton}
+          onPress={onRemove}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Удалить"
+        >
           <Feather name="x" size={size === 'small' ? 12 : 14} color={chipColor} />
         </TouchableOpacity>
       )}

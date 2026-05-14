@@ -5,7 +5,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import multipart from '@fastify/multipart';
 import ExcelJS from 'exceljs';
 import Anthropic from '@anthropic-ai/sdk';
-import { rateLimiter } from '../middleware/security.js';
+import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { AppError, NotFoundError, ValidationError } from '../lib/errors.js';
 
 // Import calls Claude API + parses files — tight cap per IP
@@ -220,7 +220,7 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/import/file', {
     bodyLimit: MAX_FILE_BYTES + 1024 * 1024,
-    preHandler: importRateLimit,
+    preHandler: [importRateLimit, aiDailyLimiter],
   }, async (request, reply) => {
     const file = await request.file();
     if (!file) {

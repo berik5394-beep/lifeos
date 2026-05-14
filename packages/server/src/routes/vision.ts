@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { prisma } from '../lib/prisma.js';
-import { rateLimiter } from '../middleware/security.js';
+import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { AppError, AiModelError } from '../lib/errors.js';
 
 // Vision endpoints hit Claude Vision API (expensive per call) — tight cap
@@ -146,7 +146,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
   // ----- Analyze food photo → nutrition breakdown -------------------------
   app.post('/vision/analyze-food', {
     bodyLimit: PHOTO_BODY_LIMIT,
-    preHandler: [visionRateLimit, validate(analyzeFoodSchema)],
+    preHandler: [visionRateLimit, aiDailyLimiter, validate(analyzeFoodSchema)],
   }, async (request, reply) => {
     const { image, mediaType } = request.body as z.infer<typeof analyzeFoodSchema>;
 
@@ -377,7 +377,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
   // ----- Analyze schedule/timetable photo → structured lessons ------------
   app.post('/vision/analyze-schedule', {
     bodyLimit: PHOTO_BODY_LIMIT,
-    preHandler: [visionRateLimit, validate(analyzeScheduleSchema)],
+    preHandler: [visionRateLimit, aiDailyLimiter, validate(analyzeScheduleSchema)],
   }, async (request, reply) => {
     const { image, mediaType } = request.body as z.infer<typeof analyzeScheduleSchema>;
 
@@ -452,7 +452,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
   // extracts structured tasks, returns them for preview before saving.
   app.post('/vision/capture-task', {
     bodyLimit: PHOTO_BODY_LIMIT,
-    preHandler: [visionRateLimit, validate(captureTaskSchema)],
+    preHandler: [visionRateLimit, aiDailyLimiter, validate(captureTaskSchema)],
   }, async (request, reply) => {
     const { image, mediaType, hint } = request.body as z.infer<typeof captureTaskSchema>;
 
@@ -565,7 +565,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
   // /challenge/complete with `verified: true`.
   app.post('/vision/verify-exercise', {
     bodyLimit: PHOTO_BODY_LIMIT,
-    preHandler: [visionRateLimit, validate(verifyExerciseSchema)],
+    preHandler: [visionRateLimit, aiDailyLimiter, validate(verifyExerciseSchema)],
   }, async (request, reply) => {
     const { image, mediaType, exercise } = request.body as z.infer<typeof verifyExerciseSchema>;
     const userId = request.userId;

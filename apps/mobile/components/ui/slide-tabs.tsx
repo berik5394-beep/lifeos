@@ -115,6 +115,9 @@ export const SlideTabs = React.memo(function SlideTabs({
               onPress={() => handleTabPress(i)}
               style={[styles.tab, { width: tabWidth }]}
               activeOpacity={0.7}
+              accessibilityRole="tab"
+              accessibilityLabel={tab.title}
+              accessibilityState={{ selected: isActive }}
             >
               {tab.icon ? <Text style={styles.tabIcon}>{tab.icon}</Text> : null}
               <Text style={[styles.tabText, isActive && styles.tabTextActive]}>

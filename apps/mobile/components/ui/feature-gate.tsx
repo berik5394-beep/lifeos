@@ -86,7 +86,13 @@ export const FeatureGate = React.memo(function FeatureGate({
             Эта функция доступна в PRO версии. Обновитесь для полного доступа.
           </Text>
           {onUpgrade && (
-            <TouchableOpacity style={styles.upgradeButton} onPress={onUpgrade} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.upgradeButton}
+              onPress={onUpgrade}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Перейти на PRO"
+            >
               <Text style={styles.upgradeButtonText}>Перейти на PRO</Text>
             </TouchableOpacity>
           )}

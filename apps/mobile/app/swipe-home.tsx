@@ -20,9 +20,9 @@ import { priorities } from '@/constants/priorities';
 import { VoiceButton, VoiceOverlay } from '@/components/voice';
 import { useVoice } from '@/hooks/use-voice';
 import { useWakeWord } from '@/hooks/use-wake-word';
+import { api } from '@/services/api';
 
 const { width: SW } = Dimensions.get('window');
-const API = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 const SWIPE_TH = SW * 0.2;
 const PAGES = 7;
 const PAGE_ICONS = ['🛡️', '🏠', '📋', '🔁', '📆', '🎯', '💰'];
@@ -75,7 +75,6 @@ export default function SwipeHome() {
   const { habits, fetchHabits, stats, fetchStats } = useHabitStore();
   const { summary, expenses, fetchSummary, fetchExpenses } = useFinanceStore();
   const pet = petData?.pet || null;
-  const hdr = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 
   const [pg, setPg] = useState(START);
   const [ti, setTi] = useState(0);
@@ -96,9 +95,8 @@ export default function SwipeHome() {
     fetchTasks(today); fetchPet(); fetchHabits(); fetchStats(mon);
     fetchWeeklyGoals(ws); fetchYearlyGoals(new Date().getFullYear());
     fetchSummary(mon); fetchExpenses(mon);
-    const h = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
-    fetch(`${API}/challenge/mana`, { headers: h }).then(r=>r.json()).then(d=>setMana(d.mana||0)).catch(()=>{});
-    fetch(`${API}/arena/profile`, { headers: h }).then(r=>r.json()).then(d=>setArena(d.profile)).catch(()=>{});
+    api.get<{ mana: number }>('/challenge/mana', token).then(d=>setMana(d.mana||0)).catch(()=>{});
+    api.get<{ profile: any }>('/arena/profile', token).then(d=>setArena(d.profile)).catch(()=>{});
   }, [token]);
 
   const tday = tasks.filter(t => t.date?.startsWith(today));
@@ -146,7 +144,7 @@ export default function SwipeHome() {
     if(!ct)return;
     aniOut('up',async()=>{
       await toggleComplete(ct.id); await fetchTasks(today);
-      fetch(`${API}/challenge/mana`,{headers:hdr}).then(r=>r.json()).then(d=>setMana(d.mana||0)).catch(()=>{});
+      api.get<{ mana: number }>('/challenge/mana', token).then(d=>setMana(d.mana||0)).catch(()=>{});
       setTi(p=>Math.min(p, Math.max(0, inc.length-2)));
     });
   }, [ct, inc.length, today]);

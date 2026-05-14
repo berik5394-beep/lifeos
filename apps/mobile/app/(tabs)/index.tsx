@@ -574,6 +574,8 @@ export default function PlannerScreen() {
               onPress={handleQuoteMuteToggle}
               hitSlop={8}
               style={styles.quoteSpeakerBtn}
+              accessibilityRole="button"
+              accessibilityLabel={quoteMuted ? 'Включить озвучку цитаты' : 'Выключить озвучку цитаты'}
             >
               <Text style={styles.quoteSpeakerIcon}>
                 {quoteMuted ? '\u{1F507}' : '\u{1F50A}'}

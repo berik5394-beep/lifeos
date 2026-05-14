@@ -109,16 +109,34 @@ export const PomodoroTimer = React.memo(function PomodoroTimer({
       </View>
 
       <View style={styles.controls}>
-        <TouchableOpacity style={styles.controlButton} onPress={onReset} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.controlButton}
+          onPress={onReset}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Сбросить таймер"
+        >
           <Feather name="rotate-ccw" size={22} color={c.textSecondary} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.playButton} onPress={onToggle} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.playButton}
+          onPress={onToggle}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={isRunning ? 'Пауза' : 'Запустить таймер'}
+        >
           <Feather name={isRunning ? 'pause' : 'play'} size={28} color="#fff" />
         </TouchableOpacity>
 
         {onSkip && (
-          <TouchableOpacity style={styles.controlButton} onPress={onSkip} activeOpacity={0.7}>
+          <TouchableOpacity
+            style={styles.controlButton}
+            onPress={onSkip}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Пропустить"
+          >
             <Feather name="skip-forward" size={22} color={c.textSecondary} />
           </TouchableOpacity>
         )}

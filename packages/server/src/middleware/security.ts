@@ -120,6 +120,35 @@ export function rateLimiter(options: RateLimitOptions): onRequestHookHandler {
 }
 
 // ============================================================================
+// 2b. Общий дневной потолок AI-вызовов (per-user)
+// ============================================================================
+
+/**
+ * Единый дневной лимит на ВСЕ AI-эндпоинты вместе (Claude + Groq + Vision).
+ * Защищает кошелёк от drain'а одним юзером: даже если он не упрётся
+ * в per-minute лимит конкретного роута, общий suma по всем AI-роутам
+ * за 24 часа не превысит этого порога.
+ *
+ * Ключ `ai-daily` общий — все AI-роуты делят один бакет на юзера.
+ * 200 вызовов/день покрывают активного тестера и оставляют запас.
+ *
+ * Менять через ENV `AI_DAILY_LIMIT` (число запросов в сутки).
+ */
+const AI_DAILY_LIMIT_DEFAULT = 200;
+const aiDailyMax = (() => {
+  const raw = process.env.AI_DAILY_LIMIT;
+  if (!raw) return AI_DAILY_LIMIT_DEFAULT;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : AI_DAILY_LIMIT_DEFAULT;
+})();
+
+export const aiDailyLimiter: onRequestHookHandler = rateLimiter({
+  max: aiDailyMax,
+  windowMs: 24 * 60 * 60 * 1000,
+  keyPrefix: 'ai-daily',
+});
+
+// ============================================================================
 // 3. Security headers (минимальный helmet)
 // ============================================================================
 

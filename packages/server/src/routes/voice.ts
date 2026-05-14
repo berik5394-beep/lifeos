@@ -21,11 +21,12 @@ import {
   calculateStreak,
   calculateWeekProgress,
 } from '../services/streak-service.js';
-import { rateLimiter } from '../middleware/security.js';
+import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 
 // Voice assistant/transcribe are expensive (Groq Whisper + Claude API) — cap per IP
 const assistantRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'voice-assistant' });
 const transcribeRateLimit = rateLimiter({ max: 30, windowMs: 60_000, keyPrefix: 'voice-transcribe' });
+const processRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'voice-process' });
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY || '',
@@ -56,7 +57,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
   app.post('/voice/process', {
-    preHandler: validate(voiceSchema),
+    preHandler: [processRateLimit, aiDailyLimiter, validate(voiceSchema)],
   }, async (request, reply) => {
     const { text } = request.body as z.infer<typeof voiceSchema>;
 
@@ -72,7 +73,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/voice/assistant', {
-    preHandler: [assistantRateLimit, validate(voiceSchema)],
+    preHandler: [assistantRateLimit, aiDailyLimiter, validate(voiceSchema)],
   }, async (request, reply) => {
     const { text } = request.body as z.infer<typeof voiceSchema>;
     const userId = request.userId;
@@ -277,7 +278,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/voice/transcribe', {
     bodyLimit: 10 * 1024 * 1024, // 10 MB для голосовых записей в base64
-    preHandler: [transcribeRateLimit, validate(transcribeSchema)],
+    preHandler: [transcribeRateLimit, aiDailyLimiter, validate(transcribeSchema)],
   }, async (request, reply) => {
     const { audio, format } = request.body as z.infer<typeof transcribeSchema>;
 

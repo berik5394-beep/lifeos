@@ -49,7 +49,7 @@ interface RequestOptions {
   token?: string;
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
@@ -205,21 +205,62 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   return data;
 }
 
+// auth-store keeps token as `string | null` — accept both forms so callers
+// don't need to `?? undefined` at every call site.
+type MaybeToken = string | null | undefined;
+
 export const api = {
-  get: <T>(endpoint: string, token?: string) =>
-    request<T>(endpoint, { token }),
+  get: <T>(endpoint: string, token?: MaybeToken) =>
+    request<T>(endpoint, { token: token ?? undefined }),
 
-  post: <T>(endpoint: string, body: unknown, token?: string) =>
-    request<T>(endpoint, { method: 'POST', body, token }),
+  post: <T>(endpoint: string, body: unknown, token?: MaybeToken) =>
+    request<T>(endpoint, { method: 'POST', body, token: token ?? undefined }),
 
-  put: <T>(endpoint: string, body: unknown, token?: string) =>
-    request<T>(endpoint, { method: 'PUT', body, token }),
+  put: <T>(endpoint: string, body: unknown, token?: MaybeToken) =>
+    request<T>(endpoint, { method: 'PUT', body, token: token ?? undefined }),
 
-  patch: <T>(endpoint: string, body: unknown, token?: string) =>
-    request<T>(endpoint, { method: 'PATCH', body, token }),
+  patch: <T>(endpoint: string, body: unknown, token?: MaybeToken) =>
+    request<T>(endpoint, { method: 'PATCH', body, token: token ?? undefined }),
 
-  delete: <T>(endpoint: string, token?: string) =>
-    request<T>(endpoint, { method: 'DELETE', token }),
+  delete: <T>(endpoint: string, token?: MaybeToken) =>
+    request<T>(endpoint, { method: 'DELETE', token: token ?? undefined }),
+
+  /**
+   * Multipart upload (FormData). Тот же 401-retry как у обычного request,
+   * но Content-Type выставляет сам RN/браузер (с правильным boundary).
+   * Таймаут увеличен — загрузка файла может занять до 45с на медленной сети.
+   */
+  upload: async <T>(endpoint: string, formData: FormData, token?: MaybeToken): Promise<T> => {
+    const tk = token ?? undefined;
+    const url = `${API_URL}${endpoint}`;
+    const buildHeaders = (t?: string): Record<string, string> => {
+      const h: Record<string, string> = {};
+      if (t) h['Authorization'] = `Bearer ${t}`;
+      return h;
+    };
+
+    let response = await fetchWithTimeout(
+      url,
+      { method: 'POST', headers: buildHeaders(tk), body: formData },
+      45_000,
+    );
+
+    if (response.status === 401 && tk) {
+      const newToken = await refreshToken();
+      if (newToken) {
+        response = await fetchWithTimeout(
+          url,
+          { method: 'POST', headers: buildHeaders(newToken), body: formData },
+          45_000,
+        );
+      }
+    }
+
+    if (!response.ok) {
+      throw new ApiError(response.status, await getErrorMessage(response));
+    }
+    return parseJsonSafe<T>(response);
+  },
 
   /** Returns raw Response (for CSV downloads, etc.) */
   postRaw: async (endpoint: string, body?: unknown): Promise<Response> => {
