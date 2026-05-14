@@ -3,9 +3,15 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { rateLimiter } from '../middleware/security.js';
+import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { searchFlights, searchHotels, buildRoute, getWeather, convertCurrency } from '../services/external-apis.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
+import {
+  parseBookingIntent,
+  buildBookingUrl,
+  narrateBooking,
+  type BookingContext,
+} from '../services/smart-booking.js';
 
 // Travel-роуты стучатся в платные external API (Amadeus flights, Booking
 // hotels, Google Maps directions). Каждый вызов — реальные деньги. Без
@@ -40,6 +46,16 @@ const buildRouteSchema = z.object({
   to: z.string().min(2).max(128),
   mode: z.enum(['driving', 'walking', 'transit', 'bicycling']).optional(),
 });
+
+// JARVIS smart-book: естественный запрос → ссылка на агрегатор + умная озвучка
+const smartBookSchema = z.object({
+  text: z.string().min(2, 'Слишком короткий запрос').max(500, 'Слишком длинный запрос'),
+});
+
+// Отдельный rate-limit поверх aiDailyLimiter: smart-book зовёт Claude дважды
+// (parse intent + narrate) — дороже обычного chat. 10/мин — комфортно для
+// бытового использования, защищает от спамных циклов.
+const smartBookLimiter = rateLimiter({ max: 10, windowMs: 60_000, keyPrefix: 'smart-book' });
 
 export async function travelRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -121,4 +137,112 @@ export async function travelRoutes(app: FastifyInstance): Promise<void> {
     }
     return await convertCurrency(numAmount, from, to);
   });
+
+  // JARVIS Smart-book — главный JARVIS-эндпоинт: естественная речь →
+  // распознанные параметры + deeplink + контекстная озвучка.
+  // Пример: "забронируй рейс в Астану на завтра" →
+  //   { type: "flight", url: "https://www.aviasales.kz/search/ALA1505NQZ1",
+  //     spokenResponse: "Опять в Астану! В 14:00 у тебя встреча — успеешь.
+  //                       Глянь утренние рейсы, посмотри что есть." }
+  app.post(
+    '/travel/smart-book',
+    {
+      preHandler: [smartBookLimiter, aiDailyLimiter, validate(smartBookSchema)],
+    },
+    async (request, reply) => {
+      const { text } = request.body as z.infer<typeof smartBookSchema>;
+      const userId = request.userId;
+
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const intent = await parseBookingIntent(text, todayIso);
+
+      // Дата(ы) для подтягивания событий — для авиа берём departDate, для
+      // отеля checkIn, для такси — сегодня (поездка чаще всего сейчас).
+      const targetDate =
+        intent.departDate ||
+        intent.checkIn ||
+        todayIso;
+
+      const [user, eventsOnDate, destMemory] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: userId },
+          select: { name: true },
+        }),
+        prisma.calendarEvent.findMany({
+          where: {
+            userId,
+            date: new Date(targetDate + 'T00:00:00Z'),
+          },
+          select: { title: true, date: true, startTime: true },
+          take: 10,
+        }),
+        // Был ли юзер в этом городе раньше — проверяем по Memory
+        intent.toCity || intent.city
+          ? prisma.memory.findFirst({
+              where: {
+                userId,
+                content: {
+                  contains: (intent.toCity || intent.city) as string,
+                  mode: 'insensitive',
+                },
+              },
+              select: { id: true },
+            })
+          : null,
+      ]);
+
+      const url = buildBookingUrl(intent);
+
+      const context: BookingContext = {
+        userName: user?.name || 'друг',
+        eventsOnDate: eventsOnDate.map((e) => ({
+          title: e.title,
+          date: e.date.toISOString().slice(0, 10),
+          startTime: e.startTime,
+        })),
+        destinationKnown: !!destMemory,
+      };
+
+      const spokenResponse = await narrateBooking(intent, context);
+
+      // Сохраняем намерение в TravelPlan для истории (если flight/hotel и
+      // достаточная уверенность). Такси не сохраняем — слишком эфемерно.
+      let planId: string | null = null;
+      if (
+        intent.confidence >= 0.5 &&
+        (intent.type === 'flight' || intent.type === 'hotel')
+      ) {
+        const destination =
+          intent.type === 'flight'
+            ? intent.toCity || intent.toCode || 'неизвестно'
+            : intent.city || 'неизвестно';
+        const dateFrom = intent.departDate || intent.checkIn;
+        if (dateFrom) {
+          const plan = await prisma.travelPlan.create({
+            data: {
+              userId,
+              destination: destination.slice(0, 128),
+              dateFrom: new Date(dateFrom + 'T00:00:00Z'),
+              dateTo: intent.returnDate || intent.checkOut
+                ? new Date((intent.returnDate || intent.checkOut)! + 'T00:00:00Z')
+                : null,
+              purpose: intent.rawText.slice(0, 200),
+              status: 'planning',
+              routes: { bookingUrl: url, intent: JSON.parse(JSON.stringify(intent)) },
+            },
+          });
+          planId = plan.id;
+        }
+      }
+
+      return reply.send({
+        type: intent.type,
+        url,
+        spokenResponse,
+        intent,
+        eventsOnDate: context.eventsOnDate,
+        planId,
+      });
+    },
+  );
 }

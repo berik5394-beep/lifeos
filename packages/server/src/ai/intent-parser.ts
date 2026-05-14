@@ -36,6 +36,7 @@ export async function parseIntent(text: string): Promise<VoiceIntent> {
 - good_morning: { "action": "good_morning" }
 - start_dictation: { "action": "start_dictation" }
 - search_memory: { "action": "search_memory", "query": string }
+- plan_travel: { "action": "plan_travel", "query": string }
 - unknown: { "action": "unknown", "text": string }
 
 Текущая дата: ${formatDate(today)}. "завтра" = ${formatDate(tomorrow)}, "послезавтра" = ${formatDate(dayAfter)}.
@@ -51,6 +52,7 @@ export async function parseIntent(text: string): Promise<VoiceIntent> {
 - "Как мне сэкономить?" / "Совет по финансам" → get_finance_advice
 - "Лайфос диктофон" / "Записывай" / "Включи запись" / "Запиши разговор" → start_dictation
 - "Что я говорил про маму?" / "Помнишь про Серика?" / "Найди в памяти ..." → search_memory
+- "Забронируй рейс в Астану" / "Найди билет в Москву" / "Вызови такси до аэропорта" / "Найди отель в Анталье" → plan_travel (query = весь текст команды)
 - Любой вопрос или просьба поговорить → ask_assistant`;
 
   const response = await anthropic.messages.create({
