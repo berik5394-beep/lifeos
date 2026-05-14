@@ -17,7 +17,7 @@ import { useHabitStore } from '@/stores/habit-store';
 import { useFinanceStore } from '@/stores/finance-store';
 import { taskCategories } from '@/constants/categories';
 import { priorities } from '@/constants/priorities';
-import { VoiceButton, VoiceOverlay } from '@/components/voice';
+import { VoiceButton, VoiceOverlay, DictationModal } from '@/components/voice';
 import { useVoice } from '@/hooks/use-voice';
 import { useWakeWord } from '@/hooks/use-wake-word';
 import { api } from '@/services/api';
@@ -172,6 +172,7 @@ export default function SwipeHome() {
   // --- Voice system ---
   const voice = useVoice();
   const [voiceOverlayVisible, setVoiceOverlayVisible] = useState(false);
+  const [dictationOpen, setDictationOpen] = useState(false);
   const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
 
   // Show overlay when voice becomes active; hide when fully idle
@@ -473,6 +474,15 @@ export default function SwipeHome() {
         >
           <Text style={s.cameraFabEmoji}>📸</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setDictationOpen(true)}
+          style={s.cameraFab}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="JARVIS диктофон — записать речь, выделить задачи и запомнить факты"
+        >
+          <Text style={s.cameraFabEmoji}>🎙️</Text>
+        </TouchableOpacity>
         <VoiceButton
           onPress={handleVoicePress}
           isRecording={voice.isRecording}
@@ -480,6 +490,17 @@ export default function SwipeHome() {
           amplitude={voice.amplitude}
         />
       </View>
+
+      {/* JARVIS dictation modal — нажми "🎙️", говори, JARVIS вытащит
+          задачи + запомнит факты + ответит голосом. */}
+      <DictationModal
+        visible={dictationOpen}
+        onClose={() => setDictationOpen(false)}
+        onResult={() => {
+          // Подтянем свежие задачи: диктовка могла создать новые на сегодня.
+          fetchTasks(today).catch(() => {});
+        }}
+      />
 
       {/* Live voice overlay */}
       <VoiceOverlay

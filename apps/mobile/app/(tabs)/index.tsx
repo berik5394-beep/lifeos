@@ -19,7 +19,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ProgressRing } from '@/components/ui';
 import { Heatmap } from '@/components/charts';
 import { Confetti, PetAvatar } from '@/components/shared';
-import { VoiceButton, MorningGreeting, EveningRitual } from '@/components/voice';
+import { VoiceButton, MorningGreeting, EveningRitual, DictationModal } from '@/components/voice';
 import { useVoice } from '@/hooks/use-voice';
 import { useMorningGreeting } from '@/hooks/use-morning-greeting';
 import { useTaskStore } from '@/stores/task-store';
@@ -192,6 +192,7 @@ export default function PlannerScreen() {
   const [addingGoal, setAddingGoal] = useState(false);
   // voiceModalVisible removed — hold-to-record replaces modal
   const [showConfetti, setShowConfetti] = useState(false);
+  const [dictationOpen, setDictationOpen] = useState(false);
   const [showEveningRitual, setShowEveningRitual] = useState(false);
   const [eveningMessage, setEveningMessage] = useState('');
   const [dayProgress, setDayProgress] = useState(0);
@@ -901,6 +902,22 @@ export default function PlannerScreen() {
         style={styles.floatingVoice}
       />
 
+      {/* Dictation FAB — рядом с голосовой кнопкой, открывает JARVIS-диктофон. */}
+      <TouchableOpacity
+        onPress={() => setDictationOpen(true)}
+        style={styles.dictationFab}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel="JARVIS диктофон — записать речь, выделить задачи и запомнить факты"
+      >
+        <Text style={styles.dictationFabEmoji}>🎙️</Text>
+      </TouchableOpacity>
+
+      <DictationModal
+        visible={dictationOpen}
+        onClose={() => setDictationOpen(false)}
+      />
+
       {/* Confetti for 100% day */}
       <Confetti
         visible={showConfetti}
@@ -1238,6 +1255,25 @@ function createStyles(c: C) {
       bottom: 90,
       right: 20,
     },
+    dictationFab: {
+      position: 'absolute',
+      bottom: 100,
+      right: 96, // левее VoiceButton (~60px+padding), не перекрывает
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: c.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 6,
+      elevation: 8,
+    },
+    dictationFabEmoji: { fontSize: 22 },
     petAvatarWrapper: {
       position: 'absolute',
       top: 8,
