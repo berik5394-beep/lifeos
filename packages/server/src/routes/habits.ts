@@ -5,6 +5,10 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 import { rateLimiter } from '../middleware/security.js';
+import { addXP } from './pet.js';
+
+// CLAUDE.md spec: выполнил привычку = +10 XP.
+const HABIT_XP_REWARD = 10;
 
 // POST /habits/:id/log — каждый лог обновляет pet mana в транзакции. Нормальный
 // юзер за минуту отмечает максимум 10-20 привычек, даже на полном свайп-списке.
@@ -151,15 +155,21 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
       if (completed) {
         const pet = await tx.pet.findUnique({ where: { userId: request.userId } });
         if (pet) {
-          const manaGain = 5;
-          // Clamp до maxMana — если уже на потолке, просто пропускаем апдейт.
-          const nextMana = Math.min(pet.maxMana, pet.mana + manaGain);
-          if (nextMana > pet.mana) {
-            await tx.pet.update({
-              where: { userId: request.userId },
-              data: { mana: nextMana },
-            });
-          }
+          // Мана +5, XP +10 (CLAUDE.md spec). Раньше давалась только мана,
+          // pet.xp/level не рос от привычек — баг пойман prod-тестом.
+          const nextMana = Math.min(pet.maxMana, pet.mana + 5);
+          const xpResult = addXP(pet, HABIT_XP_REWARD);
+          await tx.pet.update({
+            where: { userId: request.userId },
+            data: {
+              mana: nextMana,
+              xp: xpResult.xp,
+              level: xpResult.level,
+              xpToNext: xpResult.xpToNext,
+              stage: xpResult.stage,
+              roomLevel: xpResult.roomLevel,
+            },
+          });
         }
       }
 

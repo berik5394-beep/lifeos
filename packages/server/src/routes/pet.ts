@@ -64,7 +64,7 @@ function determineVisualState(health: number, lastFed: Date): PetVisualState {
   return 'sick';
 }
 
-function getStage(level: number): string {
+export function getStage(level: number): string {
   if (level <= 5) return 'baby';
   if (level <= 15) return 'teen';
   if (level <= 30) return 'adult';
@@ -72,7 +72,7 @@ function getStage(level: number): string {
   return 'legend';
 }
 
-function getRoomLevel(level: number): number {
+export function getRoomLevel(level: number): number {
   if (level <= 5) return 1;
   if (level <= 15) return 2;
   if (level <= 30) return 3;
@@ -80,7 +80,7 @@ function getRoomLevel(level: number): number {
   return 5;
 }
 
-function addXP(pet: { xp: number; level: number; xpToNext: number }, amount: number): {
+export function addXP(pet: { xp: number; level: number; xpToNext: number }, amount: number): {
   level: number;
   xp: number;
   xpToNext: number;
