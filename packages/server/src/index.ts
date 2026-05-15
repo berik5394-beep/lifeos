@@ -37,7 +37,7 @@ import { appInfoRoutes } from './routes/app-info.js';
 import { lifeAnalysisRoutes } from './routes/life-analysis.js';
 import { dictationRoutes } from './routes/dictation.js';
 import { insightsRoutes } from './routes/insights.js';
-import { createTelegramBot, startBot, stopBot } from './services/telegram-bot.js';
+import { startBot, stopBot } from './services/telegram-bot.js';
 import { startRefreshTokenCleanup } from './services/token-cleanup.js';
 import { registerSecurityHeaders, rateLimiter } from './middleware/security.js';
 import { registerErrorHandler } from './middleware/error-handler.js';
@@ -214,15 +214,12 @@ const start = async (): Promise<void> => {
     // Keeps the refreshToken table bounded so auth/refresh stays fast.
     tokenCleanupTimer = startRefreshTokenCleanup(app);
 
-    // Start Telegram bot if token is configured
-    if (process.env.TELEGRAM_BOT_TOKEN) {
-      try {
-        telegramBot = createTelegramBot();
-        await startBot(telegramBot);
-        app.log.info('Telegram бот запущен');
-      } catch (err) {
-        app.log.error(err, 'Не удалось запустить Telegram бота');
-      }
+    // Start Telegram bot if token is configured. startBot() сам проверяет
+    // наличие токена и запускает polling в фоне (launch() не await'ится).
+    try {
+      telegramBot = await startBot();
+    } catch (err) {
+      app.log.error(err, 'Не удалось запустить Telegram бота');
     }
   } catch (err) {
     app.log.error(err);
@@ -254,7 +251,7 @@ const shutdown = async (signal: string): Promise<void> => {
       tokenCleanupTimer = null;
     }
     if (telegramBot) {
-      stopBot(telegramBot);
+      stopBot();
     }
     await app.close();
     await prisma.$disconnect();
