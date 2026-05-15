@@ -265,7 +265,35 @@ async function sendJarvis(
   // БЕЗ parse_mode: ответ Claude (+ web search URLs) содержит непарные
   // _ * [ ( ` — строгий Markdown-парсер Telegram падает с
   // "can't parse entities". AI-контент шлём как plain text.
-  await ctx.reply(msg);
+  //
+  // Telegram hard limit — 4096 символов на сообщение. Агентные ответы с
+  // web search бывают длинными → режем на части по границам абзацев,
+  // иначе Telegram отклонит весь ответ с 400.
+  for (const chunk of splitForTelegram(msg)) {
+    await ctx.reply(chunk);
+  }
+}
+
+const TG_LIMIT = 4000; // запас от 4096 на всякий случай
+
+/**
+ * Режет длинный текст на куски ≤ TG_LIMIT, стараясь рвать по двойным
+ * переносам (абзацы), затем по одиночным, в крайнем случае — жёстко.
+ */
+function splitForTelegram(text: string): string[] {
+  if (text.length <= TG_LIMIT) return [text];
+  const chunks: string[] = [];
+  let rest = text;
+  while (rest.length > TG_LIMIT) {
+    let cut = rest.lastIndexOf('\n\n', TG_LIMIT);
+    if (cut < TG_LIMIT * 0.5) cut = rest.lastIndexOf('\n', TG_LIMIT);
+    if (cut < TG_LIMIT * 0.5) cut = rest.lastIndexOf('. ', TG_LIMIT);
+    if (cut < TG_LIMIT * 0.5) cut = TG_LIMIT; // жёстко если нет границ
+    chunks.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest.length > 0) chunks.push(rest);
+  return chunks;
 }
 
 let activeBot: Telegraf | null = null;
