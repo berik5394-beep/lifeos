@@ -156,13 +156,21 @@ function deterministicIntent(text: string): VoiceIntent | null {
     const today = new Date();
     let date = today.toISOString().split('T')[0];
     let cleanTitle = title;
-    if (/\bзавтра\b/i.test(title)) {
+    // НЕ \b — Cyrillic word boundary в JS не работает (\w = [A-Za-z0-9_]).
+    // Слова достаточно характерные, ловим без границы.
+    // послезавтра проверяем ПЕРВЫМ — оно содержит подстроку "завтра".
+    if (/послезавтра/i.test(title)) {
+      const tm = new Date(today);
+      tm.setDate(tm.getDate() + 2);
+      date = tm.toISOString().split('T')[0];
+      cleanTitle = title.replace(/\s*послезавтра\s*/i, ' ').trim();
+    } else if (/завтра/i.test(title)) {
       const tm = new Date(today);
       tm.setDate(tm.getDate() + 1);
       date = tm.toISOString().split('T')[0];
-      cleanTitle = title.replace(/\bзавтра\b/i, '').trim();
-    } else if (/\bсегодня\b/i.test(title)) {
-      cleanTitle = title.replace(/\bсегодня\b/i, '').trim();
+      cleanTitle = title.replace(/\s*завтра\s*/i, ' ').trim();
+    } else if (/сегодня/i.test(title)) {
+      cleanTitle = title.replace(/\s*сегодня\s*/i, ' ').trim();
     }
     return {
       action: 'create_task',
