@@ -197,8 +197,10 @@ export function createTelegramBot(): Telegraf {
       const fileId = ctx.message.voice.file_id;
       const audioB64 = await downloadTelegramFile(bot, fileId);
       const duration = ctx.message.voice.duration;
-      // Telegram voice = OGG Opus (.oga). Groq Whisper это принимает.
-      const result = await processDictation(userId, audioB64, 'oga', duration);
+      // Telegram voice = OGG Opus. Groq Whisper принимает расширения
+      // [flac mp3 mp4 mpeg mpga m4a ogg opus wav webm] — НЕ .oga.
+      // Используем .ogg (подтверждено: .oga даёт 400 invalid_request).
+      const result = await processDictation(userId, audioB64, 'ogg', duration);
 
       const parts: string[] = [result.spokenResponse];
       if (result.tasksCreated.length > 0) {
