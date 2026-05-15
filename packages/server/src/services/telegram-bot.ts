@@ -314,6 +314,26 @@ export async function startBot(): Promise<Telegraf | null> {
   return bot;
 }
 
+/**
+ * Отправить сообщение конкретному chatId через активного бота.
+ * Используется планировщиком для ЗЕРКАЛА проактивных уведомлений
+ * (primary-канал — Expo Push в приложение; это secondary).
+ * Возвращает true если отправлено.
+ */
+export async function sendTelegramTo(
+  chatId: string | number,
+  text: string,
+): Promise<boolean> {
+  if (!activeBot) return false;
+  try {
+    await activeBot.telegram.sendMessage(chatId, text);
+    return true;
+  } catch (err) {
+    console.warn('[push] telegram mirror failed:', err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
 export function stopBot(): void {
   if (activeBot) {
     activeBot.stop('SIGTERM');

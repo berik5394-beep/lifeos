@@ -1,7 +1,17 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { validate } from '../middleware/validate.js';
 import { generateProactiveNotifications } from '../services/proactive-notifications.js';
+
+const registerTokenSchema = z.object({
+  // Expo push token: ExponentPushToken[...] / ExpoPushToken[...]
+  token: z
+    .string()
+    .regex(/^Expo(nent)?PushToken\[.+\]$/, 'Невалидный Expo push token')
+    .max(256),
+});
 
 // ---------------------------------------------------------------------------
 // Helper: today's date (midnight, no time component)
@@ -191,5 +201,35 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
       count: notifications.length,
       generatedAt: new Date().toISOString(),
     };
+  });
+
+  /**
+   * POST /notifications/register-token
+   * Мобильное приложение регистрирует свой Expo push token при старте.
+   * Это primary-канал проактивных уведомлений (app-first).
+   */
+  app.post(
+    '/notifications/register-token',
+    { preHandler: validate(registerTokenSchema) },
+    async (request, reply) => {
+      const { token } = request.body as z.infer<typeof registerTokenSchema>;
+      await prisma.user.update({
+        where: { id: request.userId },
+        data: { expoPushToken: token },
+      });
+      return reply.send({ ok: true });
+    },
+  );
+
+  /**
+   * DELETE /notifications/register-token
+   * Отписка (logout / выключил уведомления) — чистим токен.
+   */
+  app.delete('/notifications/register-token', async (request, reply) => {
+    await prisma.user.update({
+      where: { id: request.userId },
+      data: { expoPushToken: null },
+    });
+    return reply.send({ ok: true });
   });
 }

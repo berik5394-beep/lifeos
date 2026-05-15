@@ -39,6 +39,7 @@ import { dictationRoutes } from './routes/dictation.js';
 import { insightsRoutes } from './routes/insights.js';
 import { startBot, stopBot } from './services/telegram-bot.js';
 import { startRefreshTokenCleanup } from './services/token-cleanup.js';
+import { startProactiveScheduler, stopProactiveScheduler } from './services/proactive-scheduler.js';
 import { registerSecurityHeaders, rateLimiter } from './middleware/security.js';
 import { registerErrorHandler } from './middleware/error-handler.js';
 import { attachLogger } from './lib/logger.js';
@@ -221,6 +222,10 @@ const start = async (): Promise<void> => {
     } catch (err) {
       app.log.error(err, 'Не удалось запустить Telegram бота');
     }
+
+    // Фаза 4.1: планировщик проактивности. Тикает каждые 10 мин, шлёт
+    // напоминания в приложение (Expo Push) + зеркало в Telegram.
+    startProactiveScheduler();
   } catch (err) {
     app.log.error(err);
     process.exit(1);
@@ -253,6 +258,7 @@ const shutdown = async (signal: string): Promise<void> => {
     if (telegramBot) {
       stopBot();
     }
+    stopProactiveScheduler();
     await app.close();
     await prisma.$disconnect();
     app.log.info('graceful shutdown complete');

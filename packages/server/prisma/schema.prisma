@@ -51,6 +51,26 @@ model User {
   uiComplexity            String   @default("standard")
   subscriptionTier        String   @default("free")
   subscriptionExpiresAt   DateTime?
+  // Expo push token мобильного приложения (основной канал проактивных
+  // уведомлений). App-first: пушим в приложение, бота зеркалим.
+  expoPushToken           String?
+  sentNotifications       SentNotification[]
+}
+
+// Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
+// не должен слать одно и то же повторно. Уникальность по (user, type,
+// scheduledFor) — если запись есть, уведомление уже отправлено.
+model SentNotification {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         String   // event_reminder_1h | budget_alert | habit_nudge | ...
+  scheduledFor DateTime
+  sentAt       DateTime @default(now())
+  channel      String   @default("push") // push | telegram | both
+
+  @@unique([userId, type, scheduledFor])
+  @@index([userId, sentAt])
 }
 
 // Хранилище refresh-токенов для ротации и отзыва.

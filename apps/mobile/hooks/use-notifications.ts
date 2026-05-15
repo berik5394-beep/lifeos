@@ -87,6 +87,20 @@ export function useNotifications(): UseNotificationsResult {
       const token = await requestPermissions().catch(() => null);
       if (mounted) setExpoPushToken(token);
 
+      // Регистрируем push-токен на сервере — primary канал проактивных
+      // уведомлений (app-first). Сервер шлёт сюда напоминания через
+      // Expo Push, даже когда приложение закрыто.
+      if (token) {
+        const authToken = useAuthStore.getState().token;
+        if (authToken) {
+          api
+            .post('/notifications/register-token', { token }, authToken)
+            .catch(() => {
+              /* не критично — повторим при следующем запуске */
+            });
+        }
+      }
+
       // Read user's wake-up time from local storage (default 08:00)
       const wakeUpTime = storage.getString('wakeUpTime') ?? '08:00';
 
