@@ -11,6 +11,7 @@ import {
 import { runAgent } from './claude-agent.js';
 import { getRelevantMemories } from './memory-service.js';
 import { trackInterests } from './interest-service.js';
+import { executeAction } from './action-executor.js';
 
 /**
  * JARVIS Orchestrator — единый мозг. Любое сообщение (текст или
@@ -252,6 +253,66 @@ export async function handleMessage(
         'про кого запомнить. Можешь голосовым или текстом.',
       intent: 'start_dictation',
     };
+  }
+
+  // ---- Исполняемые действия → action-executor ---------------------------
+  // Фаза 1.1: соединяем мозг с executor. Раньше "отметь привычку" /
+  // "добавь расход" через основной путь НЕ работали (оркестратор знал
+  // только plan_travel/dictation/chat). Теперь intent-parser распознал
+  // действие → выполняем его реально, а не отвечаем болтовнёй.
+  const EXECUTABLE = new Set([
+    'create_task',
+    'complete_task',
+    'complete_habit',
+    'complete_multiple_habits',
+    'add_expense',
+    'add_income',
+    'create_event',
+  ]);
+  if (EXECUTABLE.has(intent.action)) {
+    try {
+      let replyText: string;
+      if (intent.action === 'complete_multiple_habits') {
+        // executor ждёт habitIds, парсер даёт имена → резолвим через
+        // complete_habit по имени в цикле (executor сам ищет по name).
+        const names = (intent.habitNames as string[] | undefined) ?? [];
+        const msgs: string[] = [];
+        for (const name of names) {
+          const r = await executeAction('complete_habit', { name }, userId);
+          msgs.push(r.message);
+        }
+        replyText = msgs.length ? msgs.join('\n') : 'Не понял какие привычки отметить.';
+      } else {
+        // Маппинг полей intent-parser → executeAction input.
+        const input: Record<string, unknown> = { ...intent };
+        delete input.action;
+        if (intent.action === 'complete_task' && intent.taskTitle) {
+          input.title = intent.taskTitle;
+        }
+        if (intent.action === 'complete_habit' && intent.habitName) {
+          input.name = intent.habitName;
+        }
+        const r = await executeAction(intent.action, input, userId);
+        replyText = r.message;
+      }
+      // Фаза 1.5: логируем решение мозга (вход → интент → действие).
+      console.log(
+        `[jarvis] user=${userId} intent=${intent.action} executed → "${replyText.slice(0, 80)}"`,
+      );
+      void trackInterests(userId, text);
+      await saveTurn(userId, text, replyText);
+      return { reply: replyText, intent: intent.action };
+    } catch (err) {
+      console.warn(
+        `[jarvis] executeAction failed user=${userId} intent=${intent.action}:`,
+        err instanceof Error ? err.message : err,
+      );
+      // Падать не даём — отвечаем по-человечески, не 500.
+      return {
+        reply: 'Не получилось выполнить — попробуй сформулировать иначе?',
+        intent: intent.action,
+      };
+    }
   }
 
   // ---- Всё остальное: JARVIS-чат (web search + память + история) --------
