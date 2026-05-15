@@ -95,6 +95,84 @@ function deterministicIntent(text: string): VoiceIntent | null {
       return { action: 'plan_travel', query: text };
     }
   }
+
+  // ── Детерминированные исполняемые действия ───────────────────────────
+  // Claude в intent-parser ненадёжно классифицирует эти частые команды
+  // (возвращает unknown) — та же беда что была с plan_travel. Регекс
+  // надёжнее, 0мс, 0$. Извлекаем параметры прямо здесь.
+
+  // add_income: "получил/заработал зарплату 350000", "доход 50000 от ..."
+  let m =
+    text.match(/^(?:запиши\s+)?(?:доход|получил|заработал|пришла зарплата|зарплата)\s+(?:на\s+)?(\d[\d\s]*)\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:от|за|—|-)?\s*(.*)$/i);
+  if (m) {
+    const amount = Number(m[1].replace(/\s/g, ''));
+    if (Number.isFinite(amount) && amount > 0) {
+      return { action: 'add_income', amount, source: m[2].trim() || 'доход' };
+    }
+  }
+
+  // add_expense: "потратил 5000 на еду", "запиши расход 5000 тенге на еду",
+  // "расход 3000 продукты", "5000 на такси"
+  m =
+    text.match(/^(?:запиши\s+)?(?:расход|потратил[аи]?|трата|купил[аи]?\s+на)\s+(?:на\s+)?(\d[\d\s]*)\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:на|за|—|-)?\s*(.*)$/i) ||
+    text.match(/^(\d[\d\s]{2,})\s*(?:тенге|тг|₸)?\s+на\s+(.+)$/i);
+  if (m) {
+    const amount = Number(m[1].replace(/\s/g, ''));
+    if (Number.isFinite(amount) && amount > 0) {
+      const rest = m[2].trim();
+      return {
+        action: 'add_expense',
+        amount,
+        category: rest || 'other',
+        description: rest,
+      };
+    }
+  }
+
+  // complete_habit: "отметь привычку бег", "отметь бег", "выполнил чтение",
+  // "сделал зарядку" (одна привычка)
+  m = text.match(/^(?:отметь|выполнил[аи]?|сделал[аи]?|закрой)\s+(?:привычку\s+)?(.+)$/i);
+  if (m) {
+    const rest = m[1].trim();
+    // несколько через "и"/","/"+" → complete_multiple_habits
+    if (/\s+и\s+|,|\+/.test(rest)) {
+      const habitNames = rest
+        .split(/\s+и\s+|,|\+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (habitNames.length > 1) {
+        return { action: 'complete_multiple_habits', habitNames };
+      }
+    }
+    return { action: 'complete_habit', habitName: rest };
+  }
+
+  // create_task: "создай задачу купить хлеб завтра", "добавь задачу X",
+  // "напомни купить молоко"
+  m = text.match(/^(?:созда[йять]+|добавь|поставь)\s+задачу\s+(.+)$/i) ||
+      text.match(/^напомни(?:ть)?\s+(?:мне\s+)?(.+)$/i);
+  if (m) {
+    const title = m[1].trim();
+    const today = new Date();
+    let date = today.toISOString().split('T')[0];
+    let cleanTitle = title;
+    if (/\bзавтра\b/i.test(title)) {
+      const tm = new Date(today);
+      tm.setDate(tm.getDate() + 1);
+      date = tm.toISOString().split('T')[0];
+      cleanTitle = title.replace(/\bзавтра\b/i, '').trim();
+    } else if (/\bсегодня\b/i.test(title)) {
+      cleanTitle = title.replace(/\bсегодня\b/i, '').trim();
+    }
+    return {
+      action: 'create_task',
+      title: cleanTitle || title,
+      date,
+      category: 'personal',
+      priority: 'medium',
+    };
+  }
+
   return null;
 }
 
