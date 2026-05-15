@@ -77,7 +77,19 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     }
   }
 
-  const finalText = textParts.join('\n').trim();
+  // Чистка артефактов web_search: между text-блоками остаются строки-
+  // обрывки сносок (одинокие ".", "·", цифры в скобках, пустые строки).
+  // Юзер жаловался на "странные точки" — убираем.
+  const finalText = textParts
+    .join('\n')
+    // строки только из пунктуации/пробелов → удалить
+    .replace(/^[\s.·•*\-–—()[\]\d]{0,3}$/gm, '')
+    // 3+ переноса → 2
+    .replace(/\n{3,}/g, '\n\n')
+    // пробел перед точкой/запятой
+    .replace(/ +([.,!?])/g, '$1')
+    .trim();
+
   if (!finalText) {
     throw new AiModelError(new Error('Empty Claude response (no text blocks)'));
   }
