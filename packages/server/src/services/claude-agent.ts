@@ -77,17 +77,40 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     }
   }
 
-  // Чистка артефактов web_search: между text-блоками остаются строки-
-  // обрывки сносок (одинокие ".", "·", цифры в скобках, пустые строки).
-  // Юзер жаловался на "странные точки" — убираем.
-  const finalText = textParts
+  // Чистка артефактов web_search. Claude со сносками рвёт предложения на
+  // строки + вставляет огрызки ("," "." "·" на своей строке). Юзер видел
+  // "странные точки" и предложения в разнобой. Нормализуем:
+  let cleaned = textParts
     .join('\n')
-    // строки только из пунктуации/пробелов → удалить
-    .replace(/^[\s.·•*\-–—()[\]\d]{0,3}$/gm, '')
-    // 3+ переноса → 2
+    // строки только из пунктуации/пробелов/цифр → пусто
+    .replace(/^[\s.·•*\-–—()[\]\d,;:]{0,4}$/gm, '');
+
+  // Склейка разорванных предложений: если строка начинается с строчной
+  // буквы или продолжающей пунктуации (,;:)) — это хвост предыдущей,
+  // а не новый абзац. Соединяем.
+  const lines = cleaned.split('\n');
+  const merged: string[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line === '') {
+      if (merged.length && merged[merged.length - 1] !== '') merged.push('');
+      continue;
+    }
+    const prev = merged.length ? merged[merged.length - 1] : '';
+    const isContinuation = /^[a-zа-яё,;:)\-—]/.test(line);
+    const prevOpen = prev && !/[.!?:»)]$/.test(prev) && prev !== '';
+    if (prev && prev !== '' && isContinuation && prevOpen) {
+      merged[merged.length - 1] = `${prev}${line.startsWith(',') || line.startsWith(';') || line.startsWith(':') ? '' : ' '}${line}`;
+    } else {
+      merged.push(line);
+    }
+  }
+
+  const finalText = merged
+    .join('\n')
     .replace(/\n{3,}/g, '\n\n')
-    // пробел перед точкой/запятой
-    .replace(/ +([.,!?])/g, '$1')
+    .replace(/ +([.,!?;:])/g, '$1')
+    .replace(/ {2,}/g, ' ')
     .trim();
 
   if (!finalText) {
