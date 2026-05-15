@@ -10,6 +10,7 @@ import {
 } from './smart-booking.js';
 import { runAgent } from './claude-agent.js';
 import { getRelevantMemories } from './memory-service.js';
+import { trackInterests } from './interest-service.js';
 
 /**
  * JARVIS Orchestrator — единый мозг. Любое сообщение (текст или
@@ -238,6 +239,7 @@ export async function handleMessage(
       }
     }
 
+    void trackInterests(userId, text);
     await saveTurn(userId, text, reply);
     return { reply, bookingUrl: url, intent: 'plan_travel' };
   }
@@ -308,6 +310,9 @@ ${styleHint}
 
   // Фоновое извлечение задач/фактов — не блокируем ответ.
   const captured = await captureInBackground(userId, text);
+
+  // Трекинг интересов (спорт/финансы/...) — fire-and-forget, не ждём.
+  void trackInterests(userId, text);
 
   await saveTurn(userId, text, reply);
 
