@@ -15,6 +15,7 @@ import {
 } from '../services/streak-service.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { getRelevantMemories } from '../services/memory-service.js';
+import { handleMessage } from '../services/jarvis-orchestrator.js';
 
 // AI chat is expensive (Claude API + web search) — limit per minute and per hour
 const chatRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'ai-chat' });
@@ -345,326 +346,29 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
   // --- AI Chat ---
 
+  // AI Chat — теперь через единый JARVIS-оркестратор (тот же мозг что у
+  // Telegram-бота): web search, консьерж-бронирование, intent routing,
+  // память + история диалога. Раньше мобилка использовала упрощённый
+  // путь без web search и оркестратора — была "тупее" бота. Теперь равны.
   app.post('/voice/chat', {
     preHandler: [chatRateLimit, aiDailyLimiter, validate(chatSchema)],
   }, async (request, reply) => {
     const { text } = request.body as z.infer<typeof chatSchema>;
-    const userId = request.userId;
-
     try {
-      // 1. Get user
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          name: true,
-          assistantStyle: true,
-          assistantGender: true,
-          currency: true,
-        },
-      });
-
-      if (!user) {
-        return reply.status(404).send({ message: 'Пользователь не найден' });
-      }
-
-      // 2. Track user interests from message
-      const detectedTopics = detectTopics(text);
-      if (detectedTopics.length > 0) {
-        await trackInterests(userId, detectedTopics);
-      }
-
-      // 3. Get user's top interests
-      const topInterests = await prisma.userInterest.findMany({
-        where: { userId },
-        orderBy: { score: 'desc' },
-        take: 5,
-      });
-
-      // 4. Get last 2 messages ONLY (1 user + 1 assistant) to avoid topic mixing
-      const recentMessages = await prisma.chatMessage.findMany({
-        where: { userId },
-        orderBy: { createdAt: 'desc' },
-        take: 2,
-        select: {
-          role: true,
-          content: true,
-        },
-      });
-
-      // Only include history if the last exchange is clearly related to current question
-      // For now, keep minimal context
-      const conversationHistory = recentMessages.reverse();
-
-      // 5. Build full user context
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-      const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-
-      const [
-        todayTasks,
-        activeHabits,
-        todayHabitLogs,
-        upcomingEvents,
-        expenseAgg,
-        budgetAgg,
-        yearlyGoals,
-      ] = await Promise.all([
-        prisma.task.findMany({
-          where: { userId, date: today },
-          select: { title: true, completed: true },
-        }),
-        prisma.habit.findMany({
-          where: { userId, active: true },
-          select: { id: true },
-        }),
-        prisma.habitLog.findMany({
-          where: { userId, date: today, completed: true },
-          select: { id: true },
-        }),
-        prisma.calendarEvent.findMany({
-          where: {
-            userId,
-            date: { gte: today, lt: tomorrow },
-          },
-          select: { title: true, startTime: true, date: true },
-          orderBy: { startTime: 'asc' },
-        }),
-        prisma.expense.aggregate({
-          where: { userId, date: { gte: monthStart, lt: monthEnd } },
-          _sum: { amount: true },
-        }),
-        prisma.budgetLimit.aggregate({
-          where: {
-            userId,
-            month: today.getMonth() + 1,
-            year: today.getFullYear(),
-          },
-          _sum: { monthlyLimit: true },
-        }),
-        prisma.yearlyGoal.findMany({
-          where: { userId, year: today.getFullYear() },
-          select: { area: true, goalText: true, progress: true },
-        }),
-      ]);
-
-      const spentThisMonth = expenseAgg._sum.amount ?? 0;
-      const budgetLimit = budgetAgg._sum.monthlyLimit ?? 0;
-
-      const currentStreak = await calculateStreak(userId);
-      const weekProgress = await calculateWeekProgress(userId, today);
-
-      const yearlyGoalsSummary = yearlyGoals.length > 0
-        ? yearlyGoals.map((g) => `${g.area}: ${g.goalText} (${Math.round(g.progress)}%)`).join('; ')
-        : 'Не заданы';
-
-      // JARVIS long-term memory: query-aware retrieval (Фаза 2a).
-      // Текст пользователя передаём как query → Postgres FTS вытащит
-      // релевантные памяти (про Серика, маму, спорт и т.д.) с приоритетом
-      // совпадений, fallback на importance.
-      const memories = await getRelevantMemories(userId, text, 20);
-
-      const context: AssistantContext = {
-        userName: user.name,
-        assistantStyle: user.assistantStyle as 'friendly' | 'strict' | 'calm' | 'toxic',
-        assistantGender: user.assistantGender,
-        todayTasks: todayTasks.map((t) => ({ title: t.title, completed: t.completed })),
-        habitsProgress: {
-          total: activeHabits.length,
-          completed: todayHabitLogs.length,
-        },
-        upcomingEvents: upcomingEvents.map((e) => ({
-          title: e.title,
-          startTime: e.startTime,
-          date: e.date.toISOString().split('T')[0],
-        })),
-        spentThisMonth,
-        budgetLimit,
-        currentStreak,
-        weekProgress,
-        yearlyGoalsSummary,
-        memories,
-      };
-
-      // 6. Build system prompt with interests + chat rules
-      const basePrompt = buildAssistantPrompt(context);
-
-      const interestsBlock = topInterests.length > 0
-        ? `\nИНТЕРЕСЫ ПОЛЬЗОВАТЕЛЯ (по частоте обращений): ${topInterests.map(i => `${i.topic} (${Math.round(i.score)} раз)`).join(', ')}. Учитывай эти интересы, когда они релевантны.`
-        : '';
-
-      const chatPrompt = `${basePrompt}${interestsBlock}
-
-ПРАВИЛА ДЕЙСТВИЙ В ЧАТЕ:
-Если пользователь ЯВНО просит создать задачу, записать расход, создать событие и т.д. — добавь в конец ответа ACTION-тег.
-Формат: [ACTION:тип:{"ключ":"значение"}]
-Возможные типы: create_task, complete_task, complete_habit, add_expense, add_income, create_event
-Примеры:
-[ACTION:create_task:{"title":"Купить продукты","date":"2026-04-08","category":"shopping","priority":"medium"}]
-[ACTION:add_expense:{"amount":5000,"category":"food","description":"Обед в кафе"}]
-[ACTION:create_event:{"title":"Встреча с Асланом","date":"2026-04-08","time":"15:00"}]
-[ACTION:complete_habit:{"name":"Зарядка"}]
-Добавляй ACTION ТОЛЬКО при явной просьбе. Никогда не предлагай создать задачу, если не просили.
-
-КОНТЕКСТ ДИАЛОГА: отвечай СТРОГО на последнее сообщение. Каждый вопрос — независимый.
-
-ФОРМАТ: это мобильный чат. Пиши plain text без markdown. Без ** * ## нумерации списков. Максимум 5 предложений.`;
-
-      // 7. Send to Claude API with web_search tool
-      // IMPORTANT: Send ONLY the current message to avoid topic mixing
-      // Previous context is in system prompt via user data
-      const messages: Anthropic.MessageParam[] = [
-        { role: 'user', content: text },
-      ];
-
-      const tools: Anthropic.Tool[] = [
-        {
-          name: 'web_search',
-          description:
-            'Поиск актуальной информации в интернете. ИСПОЛЬЗУЙ АКТИВНО когда: ' +
-            '(1) пользователь задаёт вопрос о фактах, которых ты не знаешь точно; ' +
-            '(2) нужны текущие данные — цены, курсы, новости, события; ' +
-            '(3) вопрос о рецептах, калорийности, составе продуктов; ' +
-            '(4) советы по спорту, тренировкам, технике упражнений; ' +
-            '(5) советы по финансам, инвестициям, экономии; ' +
-            '(6) мотивация, цитаты, научные исследования; ' +
-            '(7) организация времени, продуктивность, методики; ' +
-            '(8) пользователь явно просит "найди", "поищи", "узнай". ' +
-            'Предпочитай искать, а не гадать.',
-          input_schema: {
-            type: 'object' as const,
-            properties: {
-              query: {
-                type: 'string',
-                description: 'Поисковый запрос. Формулируй на том языке, на котором скорее найдётся ответ.',
-              },
-            },
-            required: ['query'],
-          },
-        },
-      ];
-
-      // Multi-turn tool-use loop: Claude can call web_search up to N times
-      // before producing the final answer. Prevents one-shot limitation
-      // where a follow-up search would help.
-      const MAX_TOOL_TURNS = 3;
-      const conversation: Anthropic.MessageParam[] = [...messages];
-      let rawResponseText = '';
-      let turns = 0;
-
-      while (turns < MAX_TOOL_TURNS) {
-        const aiResponse = await anthropic.messages.create({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1024,
-          system: chatPrompt,
-          messages: conversation,
-          tools,
-        });
-
-        if (aiResponse.stop_reason !== 'tool_use') {
-          const textBlock = aiResponse.content.find(
-            (b): b is Anthropic.TextBlock => b.type === 'text'
-          );
-          rawResponseText = textBlock?.text || 'Не удалось сформировать ответ.';
-          break;
-        }
-
-        // Collect ALL tool_use blocks in this turn and run them
-        const toolUseBlocks = aiResponse.content.filter(
-          (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
-        );
-        if (toolUseBlocks.length === 0) {
-          // stop_reason was tool_use but no blocks — bail with best-effort text
-          const textBlock = aiResponse.content.find(
-            (b): b is Anthropic.TextBlock => b.type === 'text'
-          );
-          rawResponseText = textBlock?.text || 'Не удалось сформировать ответ.';
-          break;
-        }
-
-        const toolResults: Anthropic.ToolResultBlockParam[] = [];
-        for (const toolBlock of toolUseBlocks) {
-          if (toolBlock.name === 'web_search') {
-            const searchQuery = (toolBlock.input as { query: string }).query;
-            app.log.info(`AI web search: "${searchQuery}"`);
-            const searchResults = await webSearch(searchQuery);
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: toolBlock.id,
-              content: searchResults,
-            });
-          } else {
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: toolBlock.id,
-              content: 'Инструмент недоступен.',
-              is_error: true,
-            });
-          }
-        }
-
-        conversation.push({ role: 'assistant', content: aiResponse.content });
-        conversation.push({ role: 'user', content: toolResults });
-        turns += 1;
-      }
-
-      if (!rawResponseText) {
-        rawResponseText = 'Не удалось получить ответ после нескольких поисков. Попробуй переформулировать.';
-      }
-
-      // 8. Parse and execute actions
-      const { cleanText, actions } = parseActions(rawResponseText);
-      const finalText = stripMarkdown(cleanText);
-
-      let actionResults: string[] = [];
-      if (actions.length > 0) {
-        actionResults = await executeActions(userId, actions);
-      }
-
-      // 9. Save messages to DB
-      await prisma.chatMessage.createMany({
-        data: [
-          {
-            userId,
-            role: 'user',
-            content: text,
-          },
-          {
-            userId,
-            role: 'assistant',
-            content: finalText,
-            actions: actions.length > 0 ? JSON.parse(JSON.stringify(actions)) : undefined,
-          },
-        ],
-      });
-
-      // 10. Return response
-      return reply.send({
-        message: finalText,
-        ...(actions.length > 0 ? { actions } : {}),
-        ...(actionResults.length > 0 ? { actionResults } : {}),
-        context: {
-          tasksToday: todayTasks.length,
-          tasksCompleted: todayTasks.filter((t) => t.completed).length,
-          habitsTotal: activeHabits.length,
-          habitsCompleted: todayHabitLogs.length,
-          spentThisMonth,
-          budgetLimit,
-          currentStreak,
-          weekProgress,
-        },
-      });
+      const res = await handleMessage(request.userId, text);
+      let message = res.reply;
+      if (res.bookingUrl) message += `\n\n\u{1F517} ${res.bookingUrl}`;
+      const cap: string[] = [];
+      if (res.capturedTasks) cap.push(`\u{1F4DD} +${res.capturedTasks} \u0432 \u0437\u0430\u0434\u0430\u0447\u0438`);
+      if (res.capturedMemories) cap.push('\u{1F9E0} \u0437\u0430\u043f\u043e\u043c\u043d\u0438\u043b');
+      if (cap.length > 0) message += `\n\n\u2014 ${cap.join(' \u00b7 ')}`;
+      return reply.send({ message, intent: res.intent });
     } catch (err) {
       app.log.error(err);
-      return reply.status(500).send({
-        message: 'Ошибка обработки чата',
-      });
+      return reply.status(500).send({ message: 'Ошибка обработки чата' });
     }
   });
+
 
   // --- Chat History ---
 
