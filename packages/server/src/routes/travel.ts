@@ -203,7 +203,7 @@ export async function travelRoutes(app: FastifyInstance): Promise<void> {
         destinationKnown: !!destMemory,
       };
 
-      const spokenResponse = await narrateBooking(intent, context);
+      const spokenResponse = await narrateBooking(intent, context, url);
 
       // Сохраняем намерение в TravelPlan для истории (если flight/hotel и
       // достаточная уверенность). Такси не сохраняем — слишком эфемерно.

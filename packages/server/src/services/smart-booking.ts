@@ -191,52 +191,72 @@ export interface BookingContext {
   destinationKnown: boolean;
 }
 
+/**
+ * Агентное бронирование: JARVIS реально ИЩЕТ в интернете актуальные цены
+ * (web search), даёт ссылку с предзаполнением, и — главное — задаёт
+ * уточняющие вопросы как настоящий ассистент (обратный билет? отель?
+ * такси?). Это не "блокнот", а помощник который ведёт диалог.
+ */
 export async function narrateBooking(
   intent: BookingIntent,
   context: BookingContext,
+  bookingUrl: string | null,
 ): Promise<string> {
   if (intent.type === 'unknown' || intent.confidence < 0.4) {
-    return 'Не до конца понял запрос. Уточни — куда и когда?';
+    return 'Не до конца понял — куда и когда летим/едем? Скажи город и дату.';
   }
 
-  const systemPrompt = `Ты — JARVIS, тёплый дружелюбный ассистент. Юзер только что попросил тебя помочь с бронированием. Озвучь короткую реакцию (1-3 предложения), как будто ты — друг, который смотрит вместе с ним вариант и комментирует.
+  const systemPrompt = `Ты — JARVIS, личный ассистент пользователя ${context.userName}. Не блокнот, а помощник который ДЕЙСТВУЕТ и ДУМАЕТ наперёд.
 
-Правила:
-1. ОЧЕНЬ коротко. 1-3 предложения максимум.
-2. Без формальностей. Тон друга.
-3. Если есть события в день поездки — упомяни конкретно ("успеешь до встречи в 14:00").
-4. Если место знакомое (destinationKnown=true) — мягко намекни ("опять в Астану").
-5. НЕ говори "Я нашёл ссылку" / "Перейдите по ссылке" — это пошло. Просто комментируй ситуацию.
-6. Заверши вопросом или мягким призывом ("посмотри что есть?", "забронируй когда выберешь").
+Юзер попросил помочь с поездкой/бронированием. Твоя задача:
 
-Возвращай ТОЛЬКО текст реплики без JSON, без markdown.`;
+1. **НАЙДИ в интернете** актуальную цену через web search (цена ${intent.type === 'flight' ? 'авиабилета' : intent.type === 'hotel' ? 'отеля' : 'поездки'}). Используй web_search — это ОБЯЗАТЕЛЬНО, не отвечай по памяти.
+2. Дай конкретный ориентир по цене ("прямые рейсы ${intent.fromCity || ''}–${intent.toCity || intent.city || ''} сейчас от X тенге, утренние дороже").
+3. Учти расписание юзера: ${
+    context.eventsOnDate.length > 0
+      ? `в день поездки есть — ${context.eventsOnDate.map((e) => `${e.title}${e.startTime ? ' в ' + e.startTime : ''}`).join(', ')}. Порекомендуй рейс/время с учётом этого (успеть/не опоздать).`
+      : 'событий в этот день нет.'
+  }
+4. **ЗАДАЙ уточняющие вопросы** как настоящий ассистент (выбери релевантные):
+   - Для рейса: "Обратный билет нужен — когда летишь назад?", "Бронируем отель в ${intent.toCity || intent.city || 'городе'}?", "Такси до аэропорта заказать?"
+   - Для отеля: "На сколько ночей?", "Бюджет на ночь?", "Ближе к центру или к месту встречи?"
+   - Для такси: "Когда подавать машину?", "Эконом или комфорт?"
+5. Ссылку на поиск НЕ вставляй в текст сам — система добавит её отдельно. Можешь сослаться "по ссылке ниже посмотри варианты".
 
-  const userContext = [
+Тон: тёплый, по-человечески, как друг который реально помогает. 3-6 предложений. Без markdown, без JSON, без списков-буллетов — живая речь.`;
+
+  const ctx = [
     `Тип: ${intent.type}`,
     intent.fromCity ? `Откуда: ${intent.fromCity}` : null,
-    intent.toCity ? `Куда: ${intent.toCity || intent.city}` : intent.city ? `Город: ${intent.city}` : null,
-    intent.departDate ? `Дата: ${intent.departDate}` : null,
+    intent.toCity || intent.city ? `Куда: ${intent.toCity || intent.city}` : null,
+    intent.departDate ? `Дата вылета/выезда: ${intent.departDate}` : null,
+    intent.returnDate ? `Обратно: ${intent.returnDate}` : null,
     intent.checkIn ? `Заезд: ${intent.checkIn}` : null,
     intent.checkOut ? `Выезд: ${intent.checkOut}` : null,
+    intent.passengers ? `Пассажиров: ${intent.passengers}` : null,
     context.eventsOnDate.length > 0
-      ? `События в этот день: ${context.eventsOnDate.map((e) => `${e.title}${e.startTime ? ' в ' + e.startTime : ''}`).join(', ')}`
-      : 'Событий в этот день нет.',
-    `Юзер был там раньше: ${context.destinationKnown ? 'да' : 'не помню'}`,
-    `Имя юзера: ${context.userName}`,
+      ? `События в день поездки: ${context.eventsOnDate
+          .map((e) => `${e.title}${e.startTime ? ' в ' + e.startTime : ''}`)
+          .join(', ')}`
+      : 'Событий в день поездки нет.',
+    context.destinationKnown ? 'Юзер уже бывал в этом месте.' : null,
+    bookingUrl ? `Ссылка на поиск (НЕ цитируй её, система добавит сама): ${bookingUrl}` : null,
   ]
     .filter(Boolean)
     .join('\n');
 
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 200,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userContext }],
-  });
-
-  const content = response.content[0];
-  if (!content || content.type !== 'text') {
-    return 'Открываю поиск, посмотри что есть.';
+  try {
+    const { runAgent } = await import('./claude-agent.js');
+    return await runAgent({
+      system: systemPrompt,
+      userMessage: `Запрос: "${intent.rawText}"\n\nКонтекст:\n${ctx}`,
+      webSearch: true,
+      maxSearches: 3,
+      maxTokens: 700,
+    });
+  } catch {
+    // Если web search/Claude упал — не падаем целиком, даём базовый ответ.
+    const dest = intent.toCity || intent.city || 'туда';
+    return `Окей, ищу варианты ${dest}${intent.departDate ? ` на ${intent.departDate}` : ''}. Глянь по ссылке ниже. Обратный билет нужен? Отель бронируем?`;
   }
-  return content.text.trim();
 }

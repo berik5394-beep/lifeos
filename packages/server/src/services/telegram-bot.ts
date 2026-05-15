@@ -3,14 +3,8 @@ import type { Context } from 'telegraf';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
-import { processDictation } from './dictation-service.js';
-import { getAssistantReply } from './assistant-service.js';
-import {
-  parseBookingIntent,
-  buildBookingUrl,
-  narrateBooking,
-  type BookingContext,
-} from './smart-booking.js';
+import { transcribeAudio } from './dictation-service.js';
+import { handleMessage } from './jarvis-orchestrator.js';
 
 /**
  * LifeOS Telegram Bot — полноценный JARVIS в Telegram.
@@ -182,7 +176,10 @@ export function createTelegramBot(): Telegraf {
     }
   });
 
-  // Голосовые сообщения → диктофон
+  // Голосовое → транскрипция → ОРКЕСТРАТОР (не всегда диктофон!).
+  // Раньше голос всегда шёл в processDictation (просто запись задач) —
+  // это и делало бота "блокнотом". Теперь: расшифровали → отдали мозгу,
+  // он сам решает (booking / вопрос с web-поиском / запись).
   bot.on('voice', async (ctx) => {
     const chatId = String(ctx.chat.id);
     const from = ctx.from;
@@ -196,38 +193,26 @@ export function createTelegramBot(): Telegraf {
       await ctx.sendChatAction('typing');
       const fileId = ctx.message.voice.file_id;
       const audioB64 = await downloadTelegramFile(bot, fileId);
-      const duration = ctx.message.voice.duration;
-      // Telegram voice = OGG Opus. Groq Whisper принимает расширения
-      // [flac mp3 mp4 mpeg mpga m4a ogg opus wav webm] — НЕ .oga.
-      // Используем .ogg (подтверждено: .oga даёт 400 invalid_request).
-      const result = await processDictation(userId, audioB64, 'ogg', duration);
-
-      const parts: string[] = [result.spokenResponse];
-      if (result.tasksCreated.length > 0) {
-        parts.push(
-          '\n📝 Задачи:\n' +
-            result.tasksCreated.map((t) => `• ${t.title}`).join('\n'),
-        );
+      // Telegram voice = OGG Opus. Groq принимает .ogg (не .oga).
+      const transcript = await transcribeAudio(audioB64, 'ogg');
+      if (!transcript || transcript.trim().length < 2) {
+        await ctx.reply('Не расслышал. Повтори, пожалуйста?');
+        return;
       }
-      if (result.memoriesCreated.length > 0) {
-        parts.push(
-          '\n🧠 Запомнил:\n' +
-            result.memoriesCreated.map((m) => `• ${m.content}`).join('\n'),
-        );
-      }
-      await ctx.reply(parts.join('\n'));
+      const res = await handleMessage(userId, transcript);
+      await sendJarvis(ctx, res);
     } catch (err) {
       console.error('TG voice error:', err);
       await ctx.reply('Не смог обработать запись. Попробуй ещё раз?');
     }
   });
 
-  // Текст → JARVIS chat (+ booking если intent)
+  // Текст → ОРКЕСТРАТОР (тот же мозг что и голос).
   bot.on('text', async (ctx) => {
     const chatId = String(ctx.chat.id);
     const from = ctx.from;
     const text = ctx.message.text.trim();
-    if (text.startsWith('/')) return; // команды обрабатываются отдельно
+    if (text.startsWith('/')) return;
 
     try {
       const userId = await findOrCreateUser(
@@ -237,7 +222,7 @@ export function createTelegramBot(): Telegraf {
         from.username,
       );
 
-      // Быстрые команды без AI
+      // Быстрые команды без AI (дёшево, мгновенно)
       if (QUICK_TASKS.test(text)) {
         await ctx.reply(await quickTasks(userId));
         return;
@@ -248,39 +233,8 @@ export function createTelegramBot(): Telegraf {
       }
 
       await ctx.sendChatAction('typing');
-      const reply = await getAssistantReply(userId, text);
-
-      // Если это booking-намерение — добавим ссылку + контекстную озвучку
-      if (reply.intent.action === 'plan_travel') {
-        const todayIso = new Date().toISOString().slice(0, 10);
-        const bIntent = await parseBookingIntent(text, todayIso);
-        const url = buildBookingUrl(bIntent);
-        const targetDate = bIntent.departDate || bIntent.checkIn || todayIso;
-        const [user, events] = await Promise.all([
-          prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
-          prisma.calendarEvent.findMany({
-            where: { userId, date: new Date(targetDate + 'T00:00:00Z') },
-            select: { title: true, date: true, startTime: true },
-            take: 10,
-          }),
-        ]);
-        const bCtx: BookingContext = {
-          userName: user?.name || 'друг',
-          eventsOnDate: events.map((e) => ({
-            title: e.title,
-            date: e.date.toISOString().slice(0, 10),
-            startTime: e.startTime,
-          })),
-          destinationKnown: false,
-        };
-        const narration = await narrateBooking(bIntent, bCtx);
-        await ctx.reply(
-          `${narration}${url ? `\n\n🔗 ${url}` : ''}`,
-        );
-        return;
-      }
-
-      await ctx.reply(reply.text);
+      const res = await handleMessage(userId, text);
+      await sendJarvis(ctx, res);
     } catch (err) {
       console.error('TG text error:', err);
       await ctx.reply('Что-то пошло не так. Попробуй ещё раз через секунду.');
@@ -288,6 +242,27 @@ export function createTelegramBot(): Telegraf {
   });
 
   return bot;
+}
+
+/**
+ * Единый рендер ответа JARVIS в Telegram: текст + (опц.) ссылка booking +
+ * лёгкая пометка что записал в фоне (если что-то извлёк).
+ */
+async function sendJarvis(
+  ctx: Context,
+  res: import('./jarvis-orchestrator.js').JarvisResponse,
+): Promise<void> {
+  let msg = res.reply;
+  if (res.bookingUrl) {
+    msg += `\n\n🔗 ${res.bookingUrl}`;
+  }
+  const captured: string[] = [];
+  if (res.capturedTasks) captured.push(`📝 +${res.capturedTasks} в задачи`);
+  if (res.capturedMemories) captured.push(`🧠 запомнил`);
+  if (captured.length > 0) {
+    msg += `\n\n_${captured.join(' · ')}_`;
+  }
+  await ctx.reply(msg, { parse_mode: 'Markdown' });
 }
 
 let activeBot: Telegraf | null = null;
