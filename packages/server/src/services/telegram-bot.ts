@@ -260,9 +260,12 @@ async function sendJarvis(
   if (res.capturedTasks) captured.push(`📝 +${res.capturedTasks} в задачи`);
   if (res.capturedMemories) captured.push(`🧠 запомнил`);
   if (captured.length > 0) {
-    msg += `\n\n_${captured.join(' · ')}_`;
+    msg += `\n\n— ${captured.join(' · ')}`;
   }
-  await ctx.reply(msg, { parse_mode: 'Markdown' });
+  // БЕЗ parse_mode: ответ Claude (+ web search URLs) содержит непарные
+  // _ * [ ( ` — строгий Markdown-парсер Telegram падает с
+  // "can't parse entities". AI-контент шлём как plain text.
+  await ctx.reply(msg);
 }
 
 let activeBot: Telegraf | null = null;
