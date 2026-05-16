@@ -12,7 +12,6 @@ import {
   Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { useIntegrationStore } from '@/stores/integration-store';
 import { Card, Button, SectionHeader } from '@/components/ui';
@@ -36,14 +35,6 @@ import { useHealthSync } from '@/hooks/use-health-sync';
 import { exportCSV, exportPDFReport, exportStory, saveCSVToFile } from '@/services/export';
 
 WebBrowser.maybeCompleteAuthSession();
-
-const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? '';
-
-const GOOGLE_DISCOVERY = {
-  authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-  tokenEndpoint: 'https://oauth2.googleapis.com/token',
-  revocationEndpoint: 'https://oauth2.googleapis.com/revoke',
-};
 
 /* ───────── Integration group header ───────── */
 interface IntegrationGroupHeaderProps {
@@ -80,55 +71,49 @@ const ConnectedBadge = memo(function ConnectedBadge() {
 function GoogleCalendarSection() {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
-  const { isConnected, connectGoogleCalendar, syncGoogleCalendar, disconnect, isLoading } =
-    useIntegrationStore();
+  const {
+    isConnected,
+    getGoogleAuthUrl,
+    syncGoogleCalendar,
+    disconnect,
+    fetchIntegrations,
+    isLoading,
+  } = useIntegrationStore();
   const connected = isConnected('google-calendar');
 
-  // Phase 3.1: PKCE auth-code flow. Мобилка получает только `code`
-  // (без секрета), сервер меняет его на токены своим client_secret.
-  // access_type=offline + prompt=consent — чтобы Google вернул
-  // refresh_token (нужен для фоновой синхронизации). Scope полный
-  // calendar (не readonly) — синхронизация двусторонняя.
-  const redirectUri = useMemo(() => AuthSession.makeRedirectUri(), []);
-  const [request, response, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: GOOGLE_CLIENT_ID,
-      scopes: ['https://www.googleapis.com/auth/calendar'],
-      redirectUri,
-      responseType: AuthSession.ResponseType.Code,
-      usePKCE: true,
-      extraParams: { access_type: 'offline', prompt: 'consent' },
-    },
-    GOOGLE_DISCOVERY,
-  );
-
-  useEffect(() => {
-    if (
-      response?.type === 'success' &&
-      response.params.code &&
-      request?.codeVerifier
-    ) {
-      connectGoogleCalendar(
-        response.params.code,
-        redirectUri,
-        request.codeVerifier,
-      ).catch(() => {
-        Alert.alert('Ошибка', 'Не удалось подключить Google Calendar');
-      });
-    }
-  }, [response, request, redirectUri, connectGoogleCalendar]);
-
+  // Phase 3.1: серверный OAuth-redirect. Web-клиент Google не принимает
+  // кастомную схему мобилки (lifeos://), а Expo-прокси в SDK54 удалён.
+  // Поэтому: просим у сервера auth-url → открываем системный браузер →
+  // Google редиректит на наш /callback → сервер меняет code на токены
+  // своим client_secret (он наружу не выходит) и deep-link'ом
+  // (lifeos://settings/integrations) возвращает в приложение.
   const handleConnect = useCallback(async () => {
-    if (!GOOGLE_CLIENT_ID) {
-      // Если OAuth не настроен — предложить синхронизацию через календарь устройства
-      Alert.alert(
-        'Google Calendar',
-        'Для синхронизации используйте календарь устройства ниже — он автоматически подключится к вашим Google-аккаунтам.',
+    try {
+      const url = await getGoogleAuthUrl();
+      if (!url) {
+        Alert.alert('Google Calendar', 'Сервер не вернул ссылку авторизации. Попробуй позже.');
+        return;
+      }
+      const result = await WebBrowser.openAuthSessionAsync(
+        url,
+        'lifeos://settings/integrations',
       );
-      return;
+      // Сервер уже сохранил токены к моменту deep-link'а — просто
+      // перечитываем список интеграций, чтобы UI показал «подключено».
+      if (result.type === 'success' || result.type === 'dismiss') {
+        await fetchIntegrations();
+        if (useIntegrationStore.getState().isConnected('google-calendar')) {
+          Alert.alert('Готово', 'Google Calendar подключён');
+        }
+      }
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message.includes('503')
+          ? 'Google Calendar ещё не настроен на сервере'
+          : 'Не удалось начать авторизацию Google';
+      Alert.alert('Ошибка', msg);
     }
-    promptAsync();
-  }, [promptAsync]);
+  }, [getGoogleAuthUrl, fetchIntegrations]);
 
   const handleSync = useCallback(async () => {
     try {
@@ -181,7 +166,7 @@ function GoogleCalendarSection() {
         <Button
           title="Подключить Google Calendar"
           onPress={handleConnect}
-          disabled={!request || isLoading}
+          disabled={isLoading}
           style={styles.connectButton}
         />
       )}

@@ -14,11 +14,7 @@ interface IntegrationState {
   integrations: Integration[];
   isLoading: boolean;
   fetchIntegrations: () => Promise<void>;
-  connectGoogleCalendar: (
-    code: string,
-    redirectUri: string,
-    codeVerifier: string,
-  ) => Promise<void>;
+  getGoogleAuthUrl: () => Promise<string | null>;
   syncGoogleCalendar: () => Promise<void>;
   connectTelegram: (chatId: string, username?: string) => Promise<void>;
   disconnect: (provider: string) => Promise<void>;
@@ -43,30 +39,17 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
     }
   },
 
-  connectGoogleCalendar: async (
-    code: string,
-    redirectUri: string,
-    codeVerifier: string,
-  ) => {
+  // Phase 3.1: серверный OAuth-redirect. Берём у сервера ссылку
+  // авторизации (PKCE+state живут на сервере) — мобилка только
+  // открывает её в браузере. Токенов клиент не видит.
+  getGoogleAuthUrl: async (): Promise<string | null> => {
     const token = useAuthStore.getState().token;
-    if (!token) return;
-
-    set({ isLoading: true });
-    try {
-      const integration = await api.post<Integration>(
-        '/integrations/google-calendar/connect',
-        { code, redirectUri, codeVerifier },
-        token,
-      );
-      set((state) => ({
-        integrations: [...state.integrations, integration],
-        isLoading: false,
-      }));
-    } catch (err) {
-      console.error('Ошибка подключения Google Calendar:', err);
-      set({ isLoading: false });
-      throw err;
-    }
+    if (!token) return null;
+    const res = await api.get<{ url: string }>(
+      '/integrations/google-calendar/auth-url',
+      token,
+    );
+    return res.url ?? null;
   },
 
   syncGoogleCalendar: async () => {

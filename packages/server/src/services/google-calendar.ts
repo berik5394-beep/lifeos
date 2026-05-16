@@ -18,6 +18,9 @@
  * (дефолт KZ из CLAUDE.md) при пуше в Google.
  */
 
+import { createHash, randomBytes } from 'node:crypto';
+
+const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_CAL_BASE = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
 const DEFAULT_TZ = 'Asia/Almaty';
@@ -57,6 +60,83 @@ async function fetchTimeout(url: string, init: RequestInit): Promise<Response> {
   } finally {
     clearTimeout(t);
   }
+}
+
+// -----------------------------------------------------------------------------
+// Серверный OAuth-redirect (Web-клиент не принимает кастомную схему
+// мобилки lifeos://, а Expo-прокси в SDK54 удалён). Поэтому Google
+// редиректит на НАШ сервер: /callback → сервер меняет code на токены
+// своим secret и получает refresh для фоновой синхронизации.
+//
+// PKCE-verifier и привязка state→userId хранятся in-memory с TTL —
+// консистентно с pending-actions.ts / rate-limiter (single-instance
+// Railway). state одноразовый, живёт 10 минут.
+// -----------------------------------------------------------------------------
+
+/** Публичный URL сервера для redirect_uri (должен совпадать с тем, что
+ *  прописан в Authorized redirect URIs Google-клиента). */
+export function callbackUrl(): string {
+  const base =
+    process.env.PUBLIC_API_URL ||
+    'https://lifeos-api-production-736d.up.railway.app';
+  return `${base.replace(/\/$/, '')}/integrations/google-calendar/callback`;
+}
+
+interface OAuthPending {
+  userId: string;
+  verifier: string;
+  createdAt: number;
+}
+const OAUTH_TTL_MS = 10 * 60 * 1000;
+const oauthStates = new Map<string, OAuthPending>();
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of oauthStates.entries()) {
+    if (now - v.createdAt > OAUTH_TTL_MS) oauthStates.delete(k);
+  }
+}, 60_000).unref?.();
+
+function b64url(buf: Buffer): string {
+  return buf
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+/** Старт OAuth: генерим PKCE+state, возвращаем URL для открытия в браузере. */
+export function createAuthUrl(userId: string): string {
+  const { clientId } = creds();
+  const verifier = b64url(randomBytes(48));
+  const challenge = b64url(createHash('sha256').update(verifier).digest());
+  const state = b64url(randomBytes(24));
+  oauthStates.set(state, { userId, verifier, createdAt: Date.now() });
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: callbackUrl(),
+    response_type: 'code',
+    scope: 'https://www.googleapis.com/auth/calendar',
+    access_type: 'offline',
+    prompt: 'consent',
+    include_granted_scopes: 'true',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    state,
+  });
+  return `${GOOGLE_AUTH_URL}?${params.toString()}`;
+}
+
+/** Забирает (и инвалидирует) привязку state→userId+verifier. */
+export function consumeAuthState(
+  state: string,
+): { userId: string; verifier: string } | null {
+  const p = oauthStates.get(state);
+  if (!p) return null;
+  oauthStates.delete(state);
+  if (Date.now() - p.createdAt > OAUTH_TTL_MS) return null;
+  return { userId: p.userId, verifier: p.verifier };
 }
 
 export interface GoogleTokens {

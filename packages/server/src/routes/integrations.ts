@@ -9,16 +9,51 @@ import {
   refreshAccessToken,
   listEvents,
   insertEvent,
+  createAuthUrl,
+  consumeAuthState,
+  callbackUrl,
   GoogleCalendarError,
+  type GoogleTokens,
 } from '../services/google-calendar.js';
 
-// Phase 3.1: мобилка делает OAuth (PKCE) и присылает auth code —
-// client_secret остаётся на сервере (secure pattern), сюда не приходит.
-const googleCalendarSchema = z.object({
-  code: z.string().min(1, 'OAuth code обязателен'),
-  redirectUri: z.string().url('redirectUri должен быть URL'),
-  codeVerifier: z.string().min(20, 'codeVerifier обязателен (PKCE)'),
-});
+/**
+ * Сохраняет токены Google в Integration (шифрованно). refresh_token
+ * Google отдаёт только при первом согласии/prompt=consent — если не
+ * пришёл, не затираем уже сохранённый.
+ */
+async function storeGoogleTokens(
+  userId: string,
+  tokens: GoogleTokens,
+): Promise<boolean> {
+  const existing = await prisma.integration.findUnique({
+    where: { userId_provider: { userId, provider: 'google_calendar' } },
+    select: { refreshToken: true },
+  });
+  const refreshEnc = tokens.refreshToken
+    ? encrypt(tokens.refreshToken)
+    : existing?.refreshToken ?? null;
+  if (!refreshEnc) return false;
+
+  const settings = { expiresAt: tokens.expiresAt };
+  await prisma.integration.upsert({
+    where: { userId_provider: { userId, provider: 'google_calendar' } },
+    update: {
+      accessToken: encrypt(tokens.accessToken),
+      refreshToken: refreshEnc,
+      settings,
+      active: true,
+    },
+    create: {
+      userId,
+      provider: 'google_calendar',
+      accessToken: encrypt(tokens.accessToken),
+      refreshToken: refreshEnc,
+      settings,
+      active: true,
+    },
+  });
+  return true;
+}
 
 function googleErrorReply(
   reply: import('fastify').FastifyReply,
@@ -54,73 +89,17 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  // --- Google Calendar: Connect ---
-
-  app.post('/integrations/google-calendar/connect', {
-    preHandler: validate(googleCalendarSchema),
-  }, async (request, reply) => {
-    const data = request.body as z.infer<typeof googleCalendarSchema>;
-
-    let tokens;
+  // --- Google Calendar: старт OAuth ---
+  // Web-клиент Google не принимает кастомную схему мобилки (lifeos://),
+  // а Expo-прокси в SDK54 удалён → серверный redirect. Мобилка просит
+  // URL здесь, открывает его в системном браузере; Google уводит юзера
+  // и редиректит на /callback (см. ниже, без auth).
+  app.get('/integrations/google-calendar/auth-url', async (request, reply) => {
     try {
-      tokens = await exchangeCode({
-        code: data.code,
-        redirectUri: data.redirectUri,
-        codeVerifier: data.codeVerifier,
-      });
+      return reply.send({ url: createAuthUrl(request.userId) });
     } catch (err) {
       return googleErrorReply(reply, err);
     }
-
-    // Google отдаёт refresh_token только при первом согласии (или с
-    // prompt=consent). При переподключении его может не быть — тогда
-    // сохраняем уже имеющийся, не затираем null'ом.
-    const existing = await prisma.integration.findUnique({
-      where: { userId_provider: { userId: request.userId, provider: 'google_calendar' } },
-      select: { refreshToken: true },
-    });
-    const refreshEnc = tokens.refreshToken
-      ? encrypt(tokens.refreshToken)
-      : existing?.refreshToken ?? null;
-
-    if (!refreshEnc) {
-      return reply.status(400).send({
-        message:
-          'Google не вернул refresh_token. Переподключись с запросом offline-доступа (prompt=consent).',
-      });
-    }
-
-    // БЕЗОПАСНОСТЬ: токены шифруются (AES-256-GCM). settings хранит
-    // expiresAt — чтобы знать когда рефрешить, не дёргая Google зря.
-    const settings = { expiresAt: tokens.expiresAt };
-    const integration = await prisma.integration.upsert({
-      where: {
-        userId_provider: { userId: request.userId, provider: 'google_calendar' },
-      },
-      update: {
-        accessToken: encrypt(tokens.accessToken),
-        refreshToken: refreshEnc,
-        settings,
-        active: true,
-      },
-      create: {
-        userId: request.userId,
-        provider: 'google_calendar',
-        accessToken: encrypt(tokens.accessToken),
-        refreshToken: refreshEnc,
-        settings,
-        active: true,
-      },
-    });
-
-    return reply.status(201).send({
-      id: integration.id,
-      provider: integration.provider,
-      active: integration.active,
-      settings: integration.settings,
-      createdAt: integration.createdAt,
-      message: 'Google Calendar подключён',
-    });
   });
 
   // --- Google Calendar: Sync ---
@@ -318,5 +297,66 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return reply.send({ success: true, message: 'Интеграция отключена' });
+  });
+}
+
+/**
+ * Google OAuth callback — отдельный плагин БЕЗ authMiddleware: сюда
+ * редиректит Google (у браузера юзера нет нашего JWT). Безопасность
+ * держится на одноразовом `state` (привязан к userId на сервере,
+ * TTL 10 мин) — подделать нельзя. Регистрируется в index.ts отдельно.
+ */
+export async function googleCalendarCallbackRoutes(
+  app: FastifyInstance,
+): Promise<void> {
+  app.get('/integrations/google-calendar/callback', async (request, reply) => {
+    const q = request.query as { code?: string; state?: string; error?: string };
+
+    const html = (title: string, body: string) =>
+      reply
+        .header('Content-Type', 'text/html; charset=utf-8')
+        .send(
+          `<!doctype html><html lang="ru"><head><meta charset="utf-8">` +
+            `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+            `<title>${title}</title>` +
+            `<meta http-equiv="refresh" content="2;url=lifeos://settings/integrations?google=${title === 'Готово' ? 'connected' : 'error'}">` +
+            `</head><body style="font-family:-apple-system,system-ui,sans-serif;background:#0F172A;color:#F8FAFC;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center;padding:24px">` +
+            `<div><h2>${title}</h2><p style="color:#94A3B8">${body}</p>` +
+            `<p><a style="color:#6366F1" href="lifeos://settings/integrations">Вернуться в LifeOS</a></p></div>` +
+            `</body></html>`,
+        );
+
+    if (q.error) {
+      return html('Не удалось', `Google вернул ошибку: ${q.error}`);
+    }
+    if (!q.code || !q.state) {
+      return reply.status(400).header('Content-Type', 'text/html; charset=utf-8')
+        .send('<h2>Некорректный запрос</h2>');
+    }
+
+    const pending = consumeAuthState(q.state);
+    if (!pending) {
+      return html('Не удалось', 'Сессия авторизации истекла. Попробуй ещё раз.');
+    }
+
+    try {
+      const tokens = await exchangeCode({
+        code: q.code,
+        redirectUri: callbackUrl(),
+        codeVerifier: pending.verifier,
+      });
+      const ok = await storeGoogleTokens(pending.userId, tokens);
+      if (!ok) {
+        return html(
+          'Не удалось',
+          'Google не вернул refresh-токен. Отзови доступ в аккаунте Google и попробуй снова.',
+        );
+      }
+      return html('Готово', 'Google Calendar подключён. Можешь вернуться в приложение.');
+    } catch (err) {
+      const msg =
+        err instanceof GoogleCalendarError ? err.message : 'Внутренняя ошибка';
+      return html('Не удалось', msg);
+    }
   });
 }
