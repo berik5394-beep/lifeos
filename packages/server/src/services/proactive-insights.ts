@@ -42,7 +42,12 @@ const startOfDay = (d: Date) => {
 /** Данные для правил — выбираются из БД, затем отдаются в чистое ядро. */
 export interface InsightInput {
   staleTasks: Array<{ id: string; title: string; date: Date; priority: string }>;
-  todayEvents: Array<{ title: string; startTime: string | null; location: string | null }>;
+  todayEvents: Array<{
+    title: string;
+    startTime: string | null;
+    endTime: string | null;
+    location: string | null;
+  }>;
   todayHabitLogs: Array<{ habitId: string }>;
   activeHabits: Array<{ id: string; name: string }>;
   monthExpenses: Array<{ category: string; _sum: { amount: number | null } }>;
@@ -51,6 +56,10 @@ export interface InsightInput {
     | { isAlive: boolean; health: number; streak: number; name: string; level: number }
     | null;
   upcomingEvents: Array<{ title: string; date: Date; startTime: string | null }>;
+  /** Сегодняшние задачи со временем — для детекта конфликта с событиями. */
+  todayTasks: Array<{ title: string; time: string | null; completed: boolean }>;
+  /** Ближайшая поездка (≤14 дней) — для финансово-календарного инсайта. */
+  upcomingTrip: { destination: string; dateFrom: Date } | null;
 }
 
 export async function generateInsights(userId: string): Promise<Insight[]> {
@@ -71,6 +80,8 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
     budgetLimits,
     pet,
     upcomingEvents,
+    todayTasks,
+    upcomingTrip,
   ] = await Promise.all([
     // Задачи, которые откладываются 3+ дня (date < сегодня, не выполнены)
     prisma.task.findMany({
@@ -88,7 +99,7 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
       where: { userId, date: today },
       orderBy: { startTime: 'asc' },
       take: 20,
-      select: { title: true, startTime: true, location: true },
+      select: { title: true, startTime: true, endTime: true, location: true },
     }),
     // Выполненные привычки за сегодня
     prisma.habitLog.findMany({
@@ -122,6 +133,21 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
       take: 10,
       select: { title: true, date: true, startTime: true },
     }),
+    // Сегодняшние задачи со временем (для конфликта расписания)
+    prisma.task.findMany({
+      where: { userId, date: today },
+      select: { title: true, time: true, completed: true },
+      take: 50,
+    }),
+    // Ближайшая поездка в пределах 14 дней (финансово-календарный инсайт)
+    prisma.travelPlan.findFirst({
+      where: {
+        userId,
+        dateFrom: { gte: today, lte: new Date(today.getTime() + 86_400_000 * 14) },
+      },
+      orderBy: { dateFrom: 'asc' },
+      select: { destination: true, dateFrom: true },
+    }),
   ]);
 
   return buildInsights(
@@ -140,6 +166,8 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
       })),
       pet,
       upcomingEvents,
+      todayTasks,
+      upcomingTrip,
     },
     now,
   );
@@ -163,6 +191,8 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
     budgetLimits,
     pet,
     upcomingEvents,
+    todayTasks,
+    upcomingTrip,
   } = input;
 
   const insights: Insight[] = [];
@@ -322,6 +352,63 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
       message: `Первое — «${first.title}»${first.startTime ? ` в ${first.startTime}` : ''}${first.location ? `, ${first.location}` : ''}.`,
       actionable: { label: 'Открыть календарь', type: 'open_events' },
     });
+  }
+
+  // ===== CROSS-MODULE (Phase 4.3) =====
+  // JARVIS из фильма соединяет модули: не «задачи отдельно, календарь
+  // отдельно», а «задача в 14:00, но в это же время встреча — перенести?».
+
+  // 1. Конфликт расписания: задача со временем пересекается с событием.
+  const toMin = (t: string): number => {
+    const [h, m] = t.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+  conflictSearch: for (const task of todayTasks) {
+    if (task.completed || !task.time) continue;
+    const tMin = toMin(task.time);
+    for (const ev of todayEvents) {
+      if (!ev.startTime) continue;
+      const start = toMin(ev.startTime);
+      const end = ev.endTime ? toMin(ev.endTime) : start + 60;
+      if (tMin >= start && tMin < end) {
+        insights.push({
+          id: 'schedule_conflict',
+          severity: 'warning',
+          category: 'events',
+          title: 'Конфликт в расписании',
+          message: `Задача «${task.title}» на ${task.time} пересекается со встречей «${ev.title}» (${ev.startTime}${ev.endTime ? `–${ev.endTime}` : ''}). Перенести задачу?`,
+          actionable: { label: 'Открыть день', type: 'open_events' },
+          dismissKey: 'schedule_conflict_today',
+        });
+        break conflictSearch; // одного предупреждения достаточно
+      }
+    }
+  }
+
+  // 2. Финансы + календарь: впереди поездка, а бюджет на исходе.
+  if (upcomingTrip && budgetLimits.length > 0) {
+    const totalLimit = budgetLimits.reduce((s, b) => s + b.monthlyLimit, 0);
+    const totalSpent = monthExpenses.reduce(
+      (s, e) => s + Number(e._sum.amount ?? 0),
+      0,
+    );
+    if (totalLimit > 0 && totalSpent / totalLimit >= 0.8) {
+      const days = Math.max(
+        0,
+        Math.round(
+          (upcomingTrip.dateFrom.getTime() - today.getTime()) / 86_400_000,
+        ),
+      );
+      insights.push({
+        id: 'trip_budget_tight',
+        severity: 'warning',
+        category: 'finance',
+        title: 'Поездка на фоне бюджета',
+        message: `Через ${days} дн. поездка в ${upcomingTrip.destination}, а месячный бюджет уже потрачен на ${Math.round((totalSpent / totalLimit) * 100)}%. Заложи расходы заранее.`,
+        actionable: { label: 'Финансы', type: 'open_finance' },
+        dismissKey: 'trip_budget_tight',
+      });
+    }
   }
 
   // Сортируем: critical → warning → info; внутри severity — по category приоритету

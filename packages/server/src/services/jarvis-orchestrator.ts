@@ -468,6 +468,10 @@ ${styleHint}
       webSearch: true,
       maxSearches: 3,
       maxTokens: 900,
+      // Phase 1.4: даём мозгу локальные инструменты — «глянь календарь
+      // и добавь задачу» теперь реальная цепочка, а не болтовня.
+      localTools: true,
+      userId,
     });
   } catch {
     // Fallback на не-агентный ответ если web-search/Claude упал

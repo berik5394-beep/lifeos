@@ -16,6 +16,8 @@ function emptyInput(): InsightInput {
     budgetLimits: [],
     pet: null,
     upcomingEvents: [],
+    todayTasks: [],
+    upcomingTrip: null,
   };
 }
 
@@ -174,6 +176,78 @@ describe('buildInsights — привычки', () => {
       at(20),
     );
     expect(out.find((x) => x.id === 'habits_all_done')).toBeDefined();
+  });
+});
+
+describe('buildInsights — кросс-модульные (Phase 4.3)', () => {
+  it('задача со временем пересекается со встречей → конфликт', () => {
+    const out = buildInsights(
+      {
+        ...emptyInput(),
+        todayEvents: [
+          { title: 'Созвон', startTime: '14:00', endTime: '15:00', location: null },
+        ],
+        todayTasks: [{ title: 'Отчёт', time: '14:30', completed: false }],
+      },
+      at(10),
+    );
+    expect(out.find((i) => i.id === 'schedule_conflict')?.severity).toBe('warning');
+  });
+
+  it('задача в другое время — конфликта нет', () => {
+    const out = buildInsights(
+      {
+        ...emptyInput(),
+        todayEvents: [
+          { title: 'Созвон', startTime: '14:00', endTime: '15:00', location: null },
+        ],
+        todayTasks: [{ title: 'Отчёт', time: '16:00', completed: false }],
+      },
+      at(10),
+    );
+    expect(out.find((i) => i.id === 'schedule_conflict')).toBeUndefined();
+  });
+
+  it('выполненная задача не считается конфликтом', () => {
+    const out = buildInsights(
+      {
+        ...emptyInput(),
+        todayEvents: [
+          { title: 'Созвон', startTime: '14:00', endTime: '15:00', location: null },
+        ],
+        todayTasks: [{ title: 'Отчёт', time: '14:30', completed: true }],
+      },
+      at(10),
+    );
+    expect(out.find((i) => i.id === 'schedule_conflict')).toBeUndefined();
+  });
+
+  it('поездка скоро + бюджет ≥80% → trip_budget_tight', () => {
+    const trip = new Date(2026, 4, 21); // +5 дней от 16 мая
+    const out = buildInsights(
+      {
+        ...emptyInput(),
+        upcomingTrip: { destination: 'Стамбул', dateFrom: trip },
+        budgetLimits: [{ category: 'food', monthlyLimit: 100000 }],
+        monthExpenses: [{ category: 'food', _sum: { amount: 85000 } }],
+      },
+      at(10),
+    );
+    expect(out.find((i) => i.id === 'trip_budget_tight')?.severity).toBe('warning');
+  });
+
+  it('поездка есть, но бюджет в норме → нет инсайта', () => {
+    const trip = new Date(2026, 4, 21);
+    const out = buildInsights(
+      {
+        ...emptyInput(),
+        upcomingTrip: { destination: 'Стамбул', dateFrom: trip },
+        budgetLimits: [{ category: 'food', monthlyLimit: 100000 }],
+        monthExpenses: [{ category: 'food', _sum: { amount: 30000 } }],
+      },
+      at(10),
+    );
+    expect(out.find((i) => i.id === 'trip_budget_tight')).toBeUndefined();
   });
 });
 
