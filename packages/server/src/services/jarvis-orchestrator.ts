@@ -147,6 +147,17 @@ async function saveTurn(
 /** Денежные/необратимые — требуют явного «да» перед выполнением. */
 const NEEDS_CONFIRM = new Set(['add_expense', 'add_income', 'send_telegram']);
 
+// Fix D: эвристика «сообщению нужны локальные инструменты». Без \b —
+// кириллические границы в JS не работают; ловим по подстрокам корней.
+const TOOL_HINTS =
+  /(задач|календар|встреч|событи|бюджет|потрат|расход|доход|привычк|напомн|почт|письм|gmail|расписан|план(?!ета)|поездк|цел[ьия]|сколько|что у меня|что сегодня|что по|добав|созда|отмет|перенес|свобод)/i;
+
+export function mayNeedLocalTools(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 12) return false; // короткие реплики = болтовня
+  return TOOL_HINTS.test(t);
+}
+
 function confirmationText(action: string, input: Record<string, unknown>): string {
   if (action === 'add_expense') {
     const amount = Number(input.amount);
@@ -474,15 +485,47 @@ ${styleHint}
       webSearch: true,
       maxSearches: 3,
       maxTokens: 900,
-      // Phase 1.4: даём мозгу локальные инструменты — «глянь календарь
-      // и добавь задачу» теперь реальная цепочка, а не болтовня.
-      localTools: true,
+      // Fix D: localTools НЕ на каждом сообщении. Для явной болтовни
+      // («расскажи анекдот») они только грузят запрос (7 схем + риск
+      // web_search+tools combo) без пользы. Включаем когда сообщение
+      // правдоподобно требует данных/действия юзера.
+      localTools: mayNeedLocalTools(text),
       userId,
     });
-  } catch {
-    // Fallback на не-агентный ответ если web-search/Claude упал
-    const r = await getAssistantReply(userId, text);
-    reply = r.text;
+  } catch (agentErr) {
+    // Fix B/A: раньше этот catch был немой — отказ агентного цикла
+    // (в т.ч. возможная несовместимость web_search + custom tools)
+    // был невидим. Теперь логируем И деградируем ступенчато:
+    // 1) повтор БЕЗ localTools (чистый web_search-чат) — изолирует,
+    //    виноват ли tool-combo, и всё равно даёт умный ответ;
+    // 2) только если и это упало — не-агентный getAssistantReply.
+    console.warn(
+      `[jarvis] runAgent(localTools) failed user=${userId}: ${
+        agentErr instanceof Error ? agentErr.message : agentErr
+      } — retry without localTools`,
+    );
+    try {
+      reply = await runAgent({
+        system,
+        userMessage: text,
+        history,
+        webSearch: true,
+        maxSearches: 3,
+        maxTokens: 900,
+      });
+      console.warn(
+        `[jarvis] degraded OK user=${userId}: web_search-only ответ сработал ` +
+          `(значит проблема именно в localTools-комбинации)`,
+      );
+    } catch (webErr) {
+      console.warn(
+        `[jarvis] runAgent(web_search-only) тоже упал user=${userId}: ${
+          webErr instanceof Error ? webErr.message : webErr
+        } — fallback getAssistantReply`,
+      );
+      const r = await getAssistantReply(userId, text);
+      reply = r.text;
+    }
   }
 
   // Фоновое извлечение задач/фактов — не блокируем ответ.

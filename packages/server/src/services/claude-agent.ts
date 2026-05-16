@@ -50,7 +50,11 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     model = 'claude-sonnet-4-20250514',
     localTools = false,
     userId,
-    maxToolRounds = 5,
+    // Fix C: было 5 → до 6 вызовов Claude на один /voice/chat (против
+    // aiDailyLimiter считается как 1 — амплификация стоимости). 3 раунда
+    // покрывают реальные цепочки (календарь→задачи→событие) и режут
+    // worst-case вдвое. Полный учёт раундов в дневной лимит — отдельно.
+    maxToolRounds = 3,
   } = opts;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,6 +94,17 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
       });
     } catch (err) {
       throw new AiModelError(err instanceof Error ? err : new Error(String(err)));
+    }
+
+    // Fix A: web_search может вернуть stop_reason 'pause_turn' (длинный
+    // server-side поиск) — это НЕ конец, надо переслать ответ чтобы
+    // продолжить. Раньше цикл (и старый одно-проходный код) на pause_turn
+    // обрывался → юзер получал обрезанный ответ. Теперь продолжаем.
+    // SDK 0.39 типы не знают 'pause_turn' (как и web_search) — рантайм
+    // его возвращает. Сравниваем через string-каст.
+    if ((response.stop_reason as string) === 'pause_turn' && round < maxToolRounds) {
+      messages.push({ role: 'assistant', content: response.content });
+      continue;
     }
 
     const toolUses = response.content.filter(
