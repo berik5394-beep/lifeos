@@ -145,7 +145,7 @@ async function saveTurn(
 }
 
 /** Денежные/необратимые — требуют явного «да» перед выполнением. */
-const NEEDS_CONFIRM = new Set(['add_expense', 'add_income']);
+const NEEDS_CONFIRM = new Set(['add_expense', 'add_income', 'send_telegram']);
 
 function confirmationText(action: string, input: Record<string, unknown>): string {
   if (action === 'add_expense') {
@@ -157,6 +157,11 @@ function confirmationText(action: string, input: Record<string, unknown>): strin
     const amount = Number(input.amount);
     const src = String(input.source || '').trim();
     return `Записать доход ${amount} ₸${src ? ` (${src})` : ''}? Подтверди — запишу.`;
+  }
+  if (action === 'send_telegram') {
+    const t = String(input.text || '').trim();
+    const preview = t.length > 120 ? t.slice(0, 120) + '…' : t;
+    return `Отправить тебе в Telegram: «${preview}»? Подтверди — отправлю.`;
   }
   return 'Подтверди действие — выполню.';
 }
@@ -344,6 +349,7 @@ export async function handleMessage(
     'add_expense',
     'add_income',
     'create_event',
+    'send_telegram',
   ]);
   if (EXECUTABLE.has(intent.action)) {
     // Фаза 1.2: денежное действие — НЕ выполняем сразу. Предлагаем,

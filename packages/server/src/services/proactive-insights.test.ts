@@ -18,6 +18,7 @@ function emptyInput(): InsightInput {
     upcomingEvents: [],
     todayTasks: [],
     upcomingTrip: null,
+    yearlyGoals: [],
   };
 }
 
@@ -248,6 +249,56 @@ describe('buildInsights — кросс-модульные (Phase 4.3)', () => {
       at(10),
     );
     expect(out.find((i) => i.id === 'trip_budget_tight')).toBeUndefined();
+  });
+});
+
+describe('buildInsights — проактивная память целей (Phase 2.4)', () => {
+  // at(10) = 16 мая 2026 → год пройден на ~37%.
+  it('цель сильно отстаёт от темпа года → warning', () => {
+    const out = buildInsights(
+      {
+        ...emptyInput(),
+        yearlyGoals: [{ area: 'finance', goalText: 'Накопить миллион', progress: 0.05 }],
+      },
+      at(10),
+    );
+    const i = out.find((x) => x.id === 'goal_behind_finance');
+    expect(i?.severity).toBe('warning');
+    expect(i?.message).toContain('Накопить миллион');
+  });
+
+  it('цель идёт в темпе → нет инсайта', () => {
+    const out = buildInsights(
+      {
+        ...emptyInput(),
+        yearlyGoals: [{ area: 'health', goalText: 'Зал 3х/нед', progress: 0.5 }],
+      },
+      at(10),
+    );
+    expect(out.find((x) => x.id.startsWith('goal_behind'))).toBeUndefined();
+  });
+
+  it('прогресс в шкале 0..100 тоже нормализуется', () => {
+    const out = buildInsights(
+      {
+        ...emptyInput(),
+        yearlyGoals: [{ area: 'career', goalText: 'Сменить работу', progress: 4 }],
+      },
+      at(10),
+    );
+    expect(out.find((x) => x.id === 'goal_behind_career')?.severity).toBe('warning');
+  });
+
+  it('в начале года (рано судить) — инсайта нет', () => {
+    const jan = new Date(2026, 0, 10, 10); // ~2.5% года
+    const out = buildInsights(
+      {
+        ...emptyInput(),
+        yearlyGoals: [{ area: 'finance', goalText: 'X', progress: 0 }],
+      },
+      jan,
+    );
+    expect(out.find((x) => x.id.startsWith('goal_behind'))).toBeUndefined();
   });
 });
 

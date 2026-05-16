@@ -108,6 +108,22 @@ describe('deterministicIntent — задачи (регрессия Cyrillic-да
   });
 });
 
+describe('deterministicIntent — send_telegram (Phase 3.6)', () => {
+  it('"отправь мне в телеграм купи молоко" → send_telegram', () => {
+    const r = deterministicIntent('Отправь мне в телеграм купи молоко');
+    expect(r?.action).toBe('send_telegram');
+    expect(r?.text).toBe('купи молоко');
+  });
+  it('"напиши в тг список дел" → send_telegram', () => {
+    const r = deterministicIntent('Напиши в тг список дел');
+    expect(r?.action).toBe('send_telegram');
+    expect(r?.text).toBe('список дел');
+  });
+  it('обычная фраза про телеграм без команды отправки → не перехват', () => {
+    expect(deterministicIntent('что такое телеграм')).toBeNull();
+  });
+});
+
 describe('deterministicIntent — обычный чат не перехватывается', () => {
   it('вопрос без триггеров → null (уйдёт в Claude/чат)', () => {
     expect(deterministicIntent('Как думаешь, стоит ли менять работу?')).toBeNull();

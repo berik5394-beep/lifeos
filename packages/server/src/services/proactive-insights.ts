@@ -60,6 +60,9 @@ export interface InsightInput {
   todayTasks: Array<{ title: string; time: string | null; completed: boolean }>;
   /** Ближайшая поездка (≤14 дней) — для финансово-календарного инсайта. */
   upcomingTrip: { destination: string; dateFrom: Date } | null;
+  /** Годовые цели юзера (Phase 2.4 — проактивная память: сверяем
+   *  заявленную цель с реальным прогрессом vs темп года). */
+  yearlyGoals: Array<{ area: string; goalText: string; progress: number }>;
 }
 
 export async function generateInsights(userId: string): Promise<Insight[]> {
@@ -82,6 +85,7 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
     upcomingEvents,
     todayTasks,
     upcomingTrip,
+    yearlyGoals,
   ] = await Promise.all([
     // Задачи, которые откладываются 3+ дня (date < сегодня, не выполнены)
     prisma.task.findMany({
@@ -148,6 +152,11 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
       orderBy: { dateFrom: 'asc' },
       select: { destination: true, dateFrom: true },
     }),
+    // Годовые цели за текущий год (проактивная память, Phase 2.4)
+    prisma.yearlyGoal.findMany({
+      where: { userId, year: currentYear },
+      select: { area: true, goalText: true, progress: true },
+    }),
   ]);
 
   return buildInsights(
@@ -168,6 +177,7 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
       upcomingEvents,
       todayTasks,
       upcomingTrip,
+      yearlyGoals,
     },
     now,
   );
@@ -193,6 +203,7 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
     upcomingEvents,
     todayTasks,
     upcomingTrip,
+    yearlyGoals,
   } = input;
 
   const insights: Insight[] = [];
@@ -408,6 +419,43 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
         actionable: { label: 'Финансы', type: 'open_finance' },
         dismissKey: 'trip_budget_tight',
       });
+    }
+  }
+
+  // 3. Проактивная память (Phase 2.4): заявленная годовая цель vs темп
+  // года. «Ты сам ставил цель X — год прошёл на N%, а ты на M%».
+  // Это и есть джарвисовское «помню, ты хотел…» на реальных данных.
+  {
+    const yearStart = new Date(now.getFullYear(), 0, 1);
+    const yearEnd = new Date(now.getFullYear() + 1, 0, 1);
+    const elapsed =
+      (now.getTime() - yearStart.getTime()) /
+      (yearEnd.getTime() - yearStart.getTime());
+
+    // Слишком рано (январь) — рано судить об отставании.
+    if (elapsed >= 0.15) {
+      const expectedPct = Math.round(elapsed * 100);
+      const behind = yearlyGoals
+        .map((g) => {
+          // progress может быть 0..1 или 0..100 — нормализуем.
+          const pct = g.progress > 1 ? Math.round(g.progress) : Math.round(g.progress * 100);
+          return { ...g, pct, gap: expectedPct - pct };
+        })
+        .filter((g) => g.gap >= 25)
+        .sort((a, b) => b.gap - a.gap)
+        .slice(0, 2); // не заваливаем — максимум 2 самые отстающие
+
+      for (const g of behind) {
+        insights.push({
+          id: `goal_behind_${g.area}`,
+          severity: 'warning',
+          category: 'tasks',
+          title: 'Годовая цель отстаёт',
+          message: `Ты ставил цель «${g.goalText}» (${g.area}): выполнено ~${g.pct}%, а год прошёл на ${expectedPct}%. Отстаём — давай наверстаем?`,
+          actionable: { label: 'Открыть цели', type: 'open_goals' },
+          dismissKey: `goal_behind_${g.area}_${now.getFullYear()}`,
+        });
+      }
     }
   }
 

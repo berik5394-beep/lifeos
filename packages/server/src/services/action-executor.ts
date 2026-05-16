@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { searchFlights, buildRoute, getWeather, convertCurrency, searchHotels } from './external-apis.js';
+import { searchFlights, buildRoute, getWeather, convertCurrency, searchHotels, sendTelegramMessage } from './external-apis.js';
 
 export interface ActionResult {
   success: boolean;
@@ -254,6 +254,16 @@ export async function executeAction(
           clientAction: 'set_alarm',
           clientData: { time: String(input.time), date: String(input.date || ''), label: String(input.label) },
         };
+      }
+
+      case 'send_telegram': {
+        // Phase 3.6: реальная исходящая отправка себе в Telegram.
+        // Идёт ТОЛЬКО через подтверждение (Phase 1.2) — оркестратор
+        // не исполняет это без явного «да» (исходящий side-effect).
+        const text = String(input.text || '').trim();
+        if (!text) return { success: false, message: 'Нечего отправлять — пустой текст.' };
+        const res = await sendTelegramMessage(userId, text);
+        return { success: true, message: res };
       }
 
       case 'send_message': {
