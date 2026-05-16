@@ -1,35 +1,30 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma.js';
 import {
-  buildAssistantPrompt,
-  buildGoodnightPrompt,
-  buildGoodMorningPrompt,
+  buildJarvisPrompt,
   type AssistantContext,
-} from '../ai/assistant-personality.js';
+  type JarvisPromptOpts,
+} from '../ai/jarvis-prompt.js';
 import { parseIntent } from '../ai/intent-parser.js';
 import { calculateStreak, calculateWeekProgress } from './streak-service.js';
 import { getRelevantMemories } from './memory-service.js';
 
 /**
- * Единая точка генерации ответа JARVIS на текст пользователя.
- *
- * Собирает полный контекст (задачи, привычки, события, финансы, цели,
- * память), выбирает нужный промпт (обычный / утро / ночь) и зовёт Claude.
- *
- * Используется в:
- *  - HTTP route POST /voice/assistant (мобилка)
- *  - Telegram-бот (текстовые сообщения)
- *
- * Возвращает текст + intent (чтобы caller мог сделать доп. действия,
- * например бот — отправить booking-URL если intent === plan_travel).
+ * Сбор полного контекста пользователя + intent. ОДИН сборщик —
+ * используется и assistant-service (fallback), и оркестратором
+ * (основной чат-путь, variant A: полный контекст всегда). Это и
+ * убирает расхождение промтов: все пути берут один контекст и
+ * один билдер (jarvis-prompt).
  */
 
 const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
 
-export interface AssistantReply {
-  text: string;
+export interface GatheredContext {
+  context: AssistantContext;
   intent: { action: string; [key: string]: unknown };
-  context: {
+  /** Для ритуала ночи. */
+  dayCompletionPercent: number;
+  counts: {
     tasksToday: number;
     tasksCompleted: number;
     habitsTotal: number;
@@ -41,10 +36,13 @@ export interface AssistantReply {
   };
 }
 
-export async function getAssistantReply(
+export async function gatherAssistantContext(
   userId: string,
   text: string,
-): Promise<AssistantReply> {
+  /** Уже распарсенный intent (оркестратор парсит раньше) — чтобы не
+   *  дёргать parseIntent дважды (лишний Claude-вызов). */
+  knownIntent?: { action: string; [key: string]: unknown },
+): Promise<GatheredContext | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -55,9 +53,7 @@ export async function getAssistantReply(
       currency: true,
     },
   });
-  if (!user) {
-    throw new Error('Пользователь не найден');
-  }
+  if (!user) return null;
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -108,7 +104,7 @@ export async function getAssistantReply(
       select: { area: true, goalText: true, progress: true },
     }),
     getRelevantMemories(userId, text, 20),
-    parseIntent(text),
+    knownIntent ? Promise.resolve(knownIntent) : parseIntent(text),
   ]);
 
   const habitsProgress = {
@@ -117,6 +113,7 @@ export async function getAssistantReply(
   };
   const spentThisMonth = expenseAgg._sum.amount ?? 0;
   const budgetLimit = budgetAgg._sum.monthlyLimit ?? 0;
+  const tasksCompleted = todayTasks.filter((t) => t.completed).length;
   const yearlyGoalsSummary =
     yearlyGoals.length > 0
       ? yearlyGoals
@@ -126,7 +123,7 @@ export async function getAssistantReply(
 
   const context: AssistantContext = {
     userName: user.name,
-    assistantStyle: user.assistantStyle as 'friendly' | 'strict' | 'calm' | 'toxic',
+    assistantStyle: user.assistantStyle as AssistantContext['assistantStyle'],
     assistantGender: user.assistantGender,
     todayTasks: todayTasks.map((t) => ({ title: t.title, completed: t.completed })),
     habitsProgress,
@@ -143,19 +140,62 @@ export async function getAssistantReply(
     memories,
   };
 
-  let systemPrompt: string;
+  const totalItems = todayTasks.length + habitsProgress.total;
+  const completedItems = tasksCompleted + habitsProgress.completed;
+  const dayCompletionPercent =
+    totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
+
+  return {
+    context,
+    intent,
+    dayCompletionPercent,
+    counts: {
+      tasksToday: todayTasks.length,
+      tasksCompleted,
+      habitsTotal: habitsProgress.total,
+      habitsCompleted: habitsProgress.completed,
+      spentThisMonth,
+      budgetLimit,
+      currentStreak,
+      weekProgress,
+    },
+  };
+}
+
+/** intent → опции ритуала для единого билдера. */
+export function ritualOptsFor(
+  intent: { action: string },
+  dayCompletionPercent: number,
+): JarvisPromptOpts {
   if (intent.action === 'goodnight') {
-    const totalItems = todayTasks.length + habitsProgress.total;
-    const completedItems =
-      todayTasks.filter((t) => t.completed).length + habitsProgress.completed;
-    const dayCompletionPercent =
-      totalItems > 0 ? (completedItems / totalItems) * 100 : 0;
-    systemPrompt = buildGoodnightPrompt(context, dayCompletionPercent);
-  } else if (intent.action === 'good_morning') {
-    systemPrompt = buildGoodMorningPrompt(context);
-  } else {
-    systemPrompt = buildAssistantPrompt(context);
+    return { ritual: 'night', dayCompletionPercent };
   }
+  if (intent.action === 'good_morning') return { ritual: 'morning' };
+  return {};
+}
+
+export interface AssistantReply {
+  text: string;
+  intent: { action: string; [key: string]: unknown };
+  context: GatheredContext['counts'];
+}
+
+/**
+ * Не-агентный ответ (fallback оркестратора, когда runAgent упал).
+ * Тот же единый промт, но без web_search/инструментов — это
+ * сознательно деградированный редкий путь.
+ */
+export async function getAssistantReply(
+  userId: string,
+  text: string,
+): Promise<AssistantReply> {
+  const gathered = await gatherAssistantContext(userId, text);
+  if (!gathered) throw new Error('Пользователь не найден');
+
+  const systemPrompt = buildJarvisPrompt(
+    gathered.context,
+    ritualOptsFor(gathered.intent, gathered.dayCompletionPercent),
+  );
 
   const aiResponse = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
@@ -170,18 +210,5 @@ export async function getAssistantReply(
       ? responseContent.text
       : 'Не удалось сформировать ответ.';
 
-  return {
-    text: responseText,
-    intent,
-    context: {
-      tasksToday: todayTasks.length,
-      tasksCompleted: todayTasks.filter((t) => t.completed).length,
-      habitsTotal: habitsProgress.total,
-      habitsCompleted: habitsProgress.completed,
-      spentThisMonth,
-      budgetLimit,
-      currentStreak,
-      weekProgress,
-    },
-  };
+  return { text: responseText, intent: gathered.intent, context: gathered.counts };
 }

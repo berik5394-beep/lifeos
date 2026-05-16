@@ -1,6 +1,11 @@
 import { prisma } from '../lib/prisma.js';
 import { parseIntent } from '../ai/intent-parser.js';
-import { getAssistantReply } from './assistant-service.js';
+import {
+  getAssistantReply,
+  gatherAssistantContext,
+  ritualOptsFor,
+} from './assistant-service.js';
+import { buildJarvisPrompt } from '../ai/jarvis-prompt.js';
 import { extractFromTranscript } from './dictation-service.js';
 import {
   parseBookingIntent,
@@ -9,7 +14,7 @@ import {
   type BookingContext,
 } from './smart-booking.js';
 import { runAgent } from './claude-agent.js';
-import { getRelevantMemories, captureMemory } from './memory-service.js';
+import { captureMemory } from './memory-service.js';
 import { trackInterests } from './interest-service.js';
 import { executeAction } from './action-executor.js';
 import {
@@ -428,53 +433,24 @@ export async function handleMessage(
     }
   }
 
-  // ---- Всё остальное: JARVIS-чат (web search + память + история) --------
-  const [history, memories, user] = await Promise.all([
+  // ---- Всё остальное: JARVIS-чат (единый промт + web search + tools) ----
+  // Раньше тут жил КОРОТКИЙ inline-промт со styleHint-однострочниками —
+  // он расходился с богатым assistant-personality («два мозга»). Теперь
+  // ОДИН источник правды: gatherAssistantContext (полный контекст,
+  // variant A — всегда) + buildJarvisPrompt (ЯДРО+СТИЛЬ+КОНТЕКСТ,
+  // тот же что в fallback). goodnight/good_morning → ритуальный тон.
+  const [history, gathered] = await Promise.all([
     getRecentHistory(userId, 6),
-    getRelevantMemories(userId, text, 15),
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { name: true, assistantStyle: true },
-    }),
+    gatherAssistantContext(userId, text, intent),
   ]);
 
-  const memoryBlock =
-    memories.length > 0
-      ? '\n\nЧто ты помнишь о юзере:\n' +
-        memories.map((m) => `- ${m.content}`).join('\n')
-      : '';
-
-  const styleHint =
-    user?.assistantStyle === 'toxic'
-      ? 'Стиль: саркастичный, подкалывающий, но за этим — забота.'
-      : user?.assistantStyle === 'strict'
-        ? 'Стиль: строгий, требовательный, без воды.'
-        : user?.assistantStyle === 'calm'
-          ? 'Стиль: спокойный, мудрый, размеренный.'
-          : 'Стиль: тёплый, дружелюбный, поддерживающий.';
-
-  const system = `Ты — JARVIS, личный AI-ассистент пользователя ${user?.name || 'друга'}. Ты ДУМАЕШЬ и ДЕЙСТВУЕШЬ, а не просто болтаешь.
-
-${styleHint}
-
-Юзер из Казахстана. По умолчанию: валюта — тенге (₸), город — Алматы (если не указан другой). Цены/расстояния/сервисы давай в казахстанском контексте, не российском. Рубли только если юзер явно про Россию.
-
-Что ты УМЕЕШЬ делать (не просто советовать — реально выполнять, юзеру достаточно сказать):
-- Создавать задачи и отмечать их выполненными
-- Отмечать привычки (одну или сразу несколько)
-- Записывать расходы и доходы (с подтверждением — спросишь «записать?»)
-- Создавать встречи/события в календаре
-- Подбирать и бронировать перелёты/отели/такси (консьерж)
-- Давать сводку дня/недели, финансовый анализ бюджета
-- Помнить факты о юзере и его людях, искать по памяти
-Поэтому если из разговора видно конкретное действие — предлагай его сделать сам словами юзера ("хочешь, отмечу привычку «бег»?", "записать это как расход 3000 ₸?", "добавить в задачи на завтра?"), а не объясняй как сделать вручную.
-
-Правила:
-1. Если вопрос требует актуальной информации (цены, новости, погода, факты, "что лучше купить", "сколько стоит") — ОБЯЗАТЕЛЬНО используй web search. Не отвечай "не знаю" или по устаревшим данным.
-2. Отвечай конкретно и по делу. Живая речь, без канцелярита и markdown-списков.
-3. Будь проактивным: если видишь что можешь помочь дальше — предложи или спроси ("хочешь добавлю в задачи?", "напомнить?"). Ты МОЖЕШЬ это выполнить — см. список выше.
-4. Помни контекст из истории диалога и из памяти о юзере (ниже). Ссылайся на это естественно.
-5. Коротко: 2-6 предложений обычно достаточно. Глубоко — только если просят разобраться.${memoryBlock}`;
+  const system = gathered
+    ? buildJarvisPrompt(
+        gathered.context,
+        ritualOptsFor(intent, gathered.dayCompletionPercent),
+      )
+    : // юзер не найден в БД — крайне маловероятно (есть auth), но не падаем
+      'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
 
   let reply: string;
   try {
