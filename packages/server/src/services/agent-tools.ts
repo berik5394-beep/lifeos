@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { executeAction } from './action-executor.js';
+import { triageInbox } from './gmail.js';
 
 /**
  * Phase 1.4 — локальные инструменты для агентного цикла JARVIS.
@@ -85,6 +86,12 @@ export const LOCAL_TOOLS = [
       required: ['name'],
     },
   },
+  {
+    name: 'get_email_triage',
+    description:
+      'Разобрать непрочитанные письма Gmail: что важное, что можно проигнорировать. Read-only. Вызывай на «разбери почту», «что в почте», «есть важные письма».',
+    input_schema: { type: 'object', properties: {} },
+  },
 ] as const;
 
 const startOfDay = (d: Date) => {
@@ -149,6 +156,13 @@ export async function runLocalTool(
       case 'complete_habit': {
         const r = await executeAction('complete_habit', { name: input.name }, userId);
         return r.message;
+      }
+      case 'get_email_triage': {
+        const t = await triageInbox(userId);
+        return JSON.stringify({
+          summary: t.summary,
+          important: t.important.map((m) => ({ from: m.from, subject: m.subject })),
+        });
       }
       default:
         return `Неизвестный инструмент: ${name}`;

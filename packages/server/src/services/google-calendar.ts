@@ -19,6 +19,8 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
+import { prisma } from '../lib/prisma.js';
+import { encrypt, decrypt } from '../lib/crypto.js';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -117,7 +119,9 @@ export function createAuthUrl(userId: string): string {
     client_id: clientId,
     redirect_uri: callbackUrl(),
     response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/calendar',
+    scope:
+      'https://www.googleapis.com/auth/calendar ' +
+      'https://www.googleapis.com/auth/gmail.readonly',
     access_type: 'offline',
     prompt: 'consent',
     include_granted_scopes: 'true',
@@ -367,4 +371,42 @@ export async function insertEvent(
 
   const data = (await res.json()) as { id: string };
   return data.id;
+}
+
+/**
+ * Свежий Google access-token для userId (рефреш при протухании +
+ * персист). Один Google-OAuth на calendar+gmail (тот же integration
+ * 'google_calendar', scope расширен). Используется и Calendar-sync,
+ * и Gmail-триажом.
+ */
+export async function getFreshGoogleAccessToken(userId: string): Promise<string> {
+  const integration = await prisma.integration.findUnique({
+    where: { userId_provider: { userId, provider: 'google_calendar' } },
+  });
+  if (!integration || !integration.active) {
+    throw new GoogleCalendarError('Google не подключён', 'auth_failed');
+  }
+  if (!integration.refreshToken) {
+    throw new GoogleCalendarError(
+      'Нет refresh-токена. Переподключи Google.',
+      'auth_failed',
+    );
+  }
+  const settings = (integration.settings as { expiresAt?: number }) || {};
+  if (
+    integration.accessToken &&
+    settings.expiresAt &&
+    settings.expiresAt > Date.now()
+  ) {
+    return decrypt(integration.accessToken);
+  }
+  const refreshed = await refreshAccessToken(decrypt(integration.refreshToken));
+  await prisma.integration.update({
+    where: { userId_provider: { userId, provider: 'google_calendar' } },
+    data: {
+      accessToken: encrypt(refreshed.accessToken),
+      settings: { ...settings, expiresAt: refreshed.expiresAt },
+    },
+  });
+  return refreshed.accessToken;
 }

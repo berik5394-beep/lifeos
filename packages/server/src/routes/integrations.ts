@@ -15,6 +15,7 @@ import {
   GoogleCalendarError,
   type GoogleTokens,
 } from '../services/google-calendar.js';
+import { triageInbox } from '../services/gmail.js';
 
 /**
  * Сохраняет токены Google в Integration (шифрованно). refresh_token
@@ -87,6 +88,16 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
         createdAt: true,
       },
     });
+  });
+
+  // --- Gmail: триаж непрочитанных (Phase 3.2, read-only) ---
+  app.get('/integrations/gmail/triage', async (request, reply) => {
+    try {
+      const result = await triageInbox(request.userId);
+      return reply.send(result);
+    } catch (err) {
+      return googleErrorReply(reply, err);
+    }
   });
 
   // --- Google Calendar: старт OAuth ---
