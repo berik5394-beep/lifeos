@@ -16,6 +16,10 @@ import {
   type GoogleTokens,
 } from '../services/google-calendar.js';
 import { triageInbox } from '../services/gmail.js';
+import {
+  getIntegration,
+  listIntegrationStatus,
+} from '../services/integration-registry.js';
 
 /**
  * Сохраняет токены Google в Integration (шифрованно). refresh_token
@@ -78,6 +82,7 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
   // --- List integrations ---
 
   app.get('/integrations', async (request) => {
+    // Контракт не меняем (старое приложение ждёт массив Integration).
     return prisma.integration.findMany({
       where: { userId: request.userId },
       select: {
@@ -88,6 +93,13 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
         createdAt: true,
       },
     });
+  });
+
+  // Phase 3.3: единый каталог интеграций со статусом и возможностями.
+  // Аддитивно (новый эндпоинт) — ничего не ломает; единый источник
+  // правды вместо строковых литералов провайдеров по коду.
+  app.get('/integrations/catalog', async (request) => {
+    return listIntegrationStatus(request.userId);
   });
 
   // --- Gmail: триаж непрочитанных (Phase 3.2, read-only) ---
@@ -283,30 +295,13 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
   app.delete('/integrations/:provider', async (request, reply) => {
     const { provider } = request.params as { provider: string };
 
-    const integration = await prisma.integration.findUnique({
-      where: {
-        userId_provider: {
-          userId: request.userId,
-          provider,
-        },
-      },
-    });
-
-    if (!integration) {
-      return reply.status(404).send({
-        message: 'Интеграция не найдена',
-      });
+    // Phase 3.3: валидируем провайдера по реестру (раньше принимали
+    // любую строку) и отключаем через дескриптор (идемпотентно).
+    const descriptor = getIntegration(provider);
+    if (!descriptor) {
+      return reply.status(404).send({ message: 'Интеграция не найдена' });
     }
-
-    await prisma.integration.delete({
-      where: {
-        userId_provider: {
-          userId: request.userId,
-          provider,
-        },
-      },
-    });
-
+    await descriptor.disconnect(request.userId);
     return reply.send({ success: true, message: 'Интеграция отключена' });
   });
 }
