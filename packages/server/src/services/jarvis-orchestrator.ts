@@ -9,7 +9,7 @@ import {
   type BookingContext,
 } from './smart-booking.js';
 import { runAgent } from './claude-agent.js';
-import { getRelevantMemories } from './memory-service.js';
+import { getRelevantMemories, captureMemory } from './memory-service.js';
 import { trackInterests } from './interest-service.js';
 import { executeAction } from './action-executor.js';
 import {
@@ -68,7 +68,7 @@ async function captureInBackground(
     const extracted = await extractFromTranscript(text, user?.name || 'друг');
     let tasks = 0;
     let memories = 0;
-    if (extracted.tasks.length > 0 || extracted.memories.length > 0) {
+    if (extracted.tasks.length > 0) {
       await prisma.$transaction(async (tx) => {
         for (const t of extracted.tasks) {
           await tx.task.create({
@@ -86,21 +86,21 @@ async function captureInBackground(
           });
           tasks++;
         }
-        for (const m of extracted.memories) {
-          await tx.memory.create({
-            data: {
-              userId,
-              type: m.type,
-              content: m.content.slice(0, 500),
-              details: m.details?.slice(0, 2000) ?? null,
-              source: 'chat',
-              tags: (m.tags || []).slice(0, 10).map((x) => x.slice(0, 32)),
-              importance: m.importance ?? 5,
-            },
-          });
-          memories++;
-        }
       });
+    }
+    // Память — вне task-транзакции: captureMemory дедуплицирует
+    // (Фаза 2.2), а это собственные запросы — в tx неуместно. Память
+    // best-effort, с задачами не атомарна по смыслу.
+    for (const m of extracted.memories) {
+      await captureMemory(userId, {
+        type: m.type,
+        content: m.content,
+        details: m.details ?? null,
+        source: 'chat',
+        tags: m.tags,
+        importance: m.importance,
+      });
+      memories++;
     }
     return { tasks, memories };
   } catch {

@@ -46,17 +46,18 @@ function resolveIATA(city: string): string {
 // ── Flights (Aviasales / Travelpayouts) ──
 export async function searchFlights(params: {
   from: string; to: string; departDate: string; returnDate?: string; passengers?: number;
-}): Promise<Array<{ airline: string; price: number; currency: string; departure: string; duration: string; stops: number; link: string }>> {
+}): Promise<Array<{ airline: string; price: number; currency: string; departure: string; duration: string; stops: number; link: string; isMock: boolean }>> {
   const token = process.env.AVIASALES_API_TOKEN;
   const origin = resolveIATA(params.from);
   const destination = resolveIATA(params.to);
 
   if (!token) {
-    // Mock data when no API key
+    // Нет ключа → ориентировочные данные. isMock:true — мозг честно
+    // скажет "точные цены когда подключим API", не выдаёт за факт.
     return [
-      { airline: 'Air Astana', price: 85000, currency: 'KZT', departure: `${params.departDate} 06:00`, duration: '4ч 30м', stops: 0, link: '#' },
-      { airline: 'FlyArystan', price: 52000, currency: 'KZT', departure: `${params.departDate} 14:00`, duration: '5ч 00м', stops: 1, link: '#' },
-      { airline: 'Turkish Airlines', price: 110000, currency: 'KZT', departure: `${params.departDate} 22:00`, duration: '4ч 00м', stops: 0, link: '#' },
+      { airline: 'Air Astana', price: 85000, currency: 'KZT', departure: `${params.departDate} 06:00`, duration: '4ч 30м', stops: 0, link: '#', isMock: true },
+      { airline: 'FlyArystan', price: 52000, currency: 'KZT', departure: `${params.departDate} 14:00`, duration: '5ч 00м', stops: 1, link: '#', isMock: true },
+      { airline: 'Turkish Airlines', price: 110000, currency: 'KZT', departure: `${params.departDate} 22:00`, duration: '4ч 00м', stops: 0, link: '#', isMock: true },
     ];
   }
 
@@ -73,6 +74,7 @@ export async function searchFlights(params: {
       duration: `${Math.floor(f.duration / 60)}ч ${f.duration % 60}м`,
       stops: f.transfers,
       link: `https://www.aviasales.ru${f.link}`,
+      isMock: false,
     }));
   } catch (err) {
     console.error('Aviasales API error:', err);
@@ -83,7 +85,7 @@ export async function searchFlights(params: {
 // ── Routes (Google Maps deep link + optional Directions API) ──
 export async function buildRoute(params: {
   from: string; to: string; mode?: string;
-}): Promise<{ distance: string; duration: string; durationMinutes: number; steps: string[]; link: string; message: string }> {
+}): Promise<{ distance: string; duration: string; durationMinutes: number; steps: string[]; link: string; message: string; isMock: boolean }> {
   const mode = params.mode || 'driving';
   const link = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(params.from)}&destination=${encodeURIComponent(params.to)}&travelmode=${mode}`;
   const key = process.env.GOOGLE_MAPS_API_KEY;
@@ -96,6 +98,7 @@ export async function buildRoute(params: {
       steps: [],
       link,
       message: `Маршрут ${params.from} → ${params.to}. Открой ссылку для навигации: ${link}`,
+      isMock: true,
     };
   }
 
@@ -105,7 +108,7 @@ export async function buildRoute(params: {
     const data = await response.json() as { routes: Array<{ legs: Array<{ distance: { text: string }; duration: { text: string; value: number }; steps: Array<{ html_instructions: string }> }> }> };
 
     if (!data.routes?.length) {
-      return { distance: 'неизвестно', duration: 'неизвестно', durationMinutes: 0, steps: [], link, message: `Маршрут ${params.from} → ${params.to}. Открой ссылку для навигации: ${link}` };
+      return { distance: 'неизвестно', duration: 'неизвестно', durationMinutes: 0, steps: [], link, message: `Маршрут ${params.from} → ${params.to}. Открой ссылку для навигации: ${link}`, isMock: true };
     }
 
     const leg = data.routes[0].legs[0];
@@ -116,10 +119,11 @@ export async function buildRoute(params: {
       steps: leg.steps.map((s) => s.html_instructions.replace(/<[^>]*>/g, '')).slice(0, 5),
       link,
       message: `Маршрут ${params.from} → ${params.to} (${leg.distance.text}, ${leg.duration.text}). Навигация: ${link}`,
+      isMock: false,
     };
   } catch (err) {
     console.error('Google Maps API error:', err);
-    return { distance: 'ошибка', duration: 'ошибка', durationMinutes: 0, steps: [], link, message: `Маршрут ${params.from} → ${params.to}. Открой ссылку для навигации: ${link}` };
+    return { distance: 'ошибка', duration: 'ошибка', durationMinutes: 0, steps: [], link, message: `Маршрут ${params.from} → ${params.to}. Открой ссылку для навигации: ${link}`, isMock: true };
   }
 }
 
@@ -303,9 +307,11 @@ export async function convertCurrency(amount: number, from: string, to: string):
 // ── Hotels (Booking.com deep link + mock results) ──
 export async function searchHotels(params: {
   city: string; checkIn: string; checkOut: string; maxPrice?: number;
-}): Promise<{ hotels: Array<{ name: string; price: number; currency: string; rating: number; distance: string }>; link: string; message: string }> {
+}): Promise<{ hotels: Array<{ name: string; price: number; currency: string; rating: number; distance: string }>; link: string; message: string; isMock: boolean }> {
   const link = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(params.city)}&checkin=${params.checkIn}&checkout=${params.checkOut}`;
 
+  // Реального hotel-API нет — это ориентир по диапазону цен, не факт.
+  // isMock:true → мозг честно говорит "точные варианты по ссылке".
   const hotels = [
     { name: `${params.city} Grand Hotel`, price: 25000, currency: 'KZT', rating: 4.5, distance: '1.2 км от центра' },
     { name: `${params.city} Boutique`, price: 35000, currency: 'KZT', rating: 4.7, distance: '0.8 км от центра' },
@@ -316,6 +322,7 @@ export async function searchHotels(params: {
     hotels,
     link,
     message: `Отели в ${params.city} на ${params.checkIn} — ${params.checkOut}. Смотри варианты: ${link}`,
+    isMock: true,
   };
 }
 

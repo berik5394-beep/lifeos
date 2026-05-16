@@ -12,7 +12,9 @@ export interface ProactiveNotification {
     | 'budget_alert'
     | 'habit_nudge'
     | 'inactivity_ping'
-    | 'weekly_summary';
+    | 'weekly_summary'
+    | 'morning_briefing'
+    | 'evening_summary';
   scheduledFor: Date;
 }
 
@@ -363,19 +365,137 @@ async function generateWeeklySummary(
 }
 
 // ---------------------------------------------------------------------------
+// 6. Morning briefing — в персональное wakeUpTime юзера (Фаза 4.2)
+// ---------------------------------------------------------------------------
+// Раньше брифинг был только эндпоинтом /briefing — приходил, лишь если
+// юзер сам открыл приложение. Теперь планировщик САМ пушит его в
+// wakeUpTime. Дедуп по (userId,'morning_briefing',scheduledFor) — один
+// раз в день (scheduledFor = сегодня в wakeUpTime).
+async function generateMorningBriefing(
+  userId: string,
+): Promise<ProactiveNotification[]> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true, wakeUpTime: true },
+  });
+  const scheduledFor = timeToDate(user?.wakeUpTime || '08:00');
+  // Планировщик сам решит «пора/не пора» (scheduledFor<=now и <2ч
+  // просрочки) и дедупнёт раз в день. Здесь просто собираем брифинг.
+  return buildMorning(userId, user?.name ?? 'друг', scheduledFor);
+}
+
+async function buildMorning(
+  userId: string,
+  name: string,
+  scheduledFor: Date,
+): Promise<ProactiveNotification[]> {
+  const today = getToday();
+  const [taskCount, events, habits, habitLogs] = await Promise.all([
+    prisma.task.count({ where: { userId, date: today, completed: false } }),
+    prisma.calendarEvent.findMany({
+      where: { userId, date: today },
+      orderBy: { startTime: 'asc' },
+      select: { title: true, startTime: true },
+      take: 5,
+    }),
+    prisma.habit.count({ where: { userId, active: true } }),
+    prisma.habitLog.count({ where: { userId, date: today, completed: true } }),
+  ]);
+
+  const parts: string[] = [];
+  parts.push(`${taskCount} ${taskCount === 1 ? 'задача' : 'задач'} на сегодня`);
+  if (habits > 0) parts.push(`привычек ${habitLogs}/${habits}`);
+  if (events.length > 0) {
+    const first = events[0];
+    parts.push(
+      `${events.length} ${events.length === 1 ? 'встреча' : 'встречи'}` +
+        (first.startTime ? ` (первая в ${first.startTime} — «${first.title}»)` : ''),
+    );
+  }
+
+  return [
+    {
+      title: `Доброе утро, ${name}!`,
+      body: `${parts.join(', ')}. Открой LifeOS — спланируем день.`,
+      type: 'morning_briefing',
+      scheduledFor,
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// 7. Evening summary — итоги дня в 21:00 (Фаза 4.2)
+// ---------------------------------------------------------------------------
+// CLAUDE.md notif #4: "Вечер (21:00): список невыполненных + итоги дня".
+// Дедуп по (userId,'evening_summary',scheduledFor) → один раз/день.
+async function generateEveningSummary(
+  userId: string,
+): Promise<ProactiveNotification[]> {
+  const now = new Date();
+  const today = getToday();
+  const scheduledFor = new Date(today);
+  scheduledFor.setHours(21, 0, 0, 0);
+
+  // Только вечером (после 21:00). Утром/днём не собираем впустую.
+  if (now < scheduledFor) return [];
+
+  const [tasks, habits, habitLogs] = await Promise.all([
+    prisma.task.findMany({
+      where: { userId, date: today },
+      select: { completed: true },
+    }),
+    prisma.habit.count({ where: { userId, active: true } }),
+    prisma.habitLog.count({ where: { userId, date: today, completed: true } }),
+  ]);
+
+  const total = tasks.length;
+  const done = tasks.filter((t) => t.completed).length;
+  const tasksPct = total > 0 ? (done / total) * 100 : 100;
+  const habitsPct = habits > 0 ? (habitLogs / habits) * 100 : 100;
+  const overall = Math.round((tasksPct + habitsPct) / 2);
+
+  const tone =
+    overall >= 90
+      ? 'Мощный день — ты герой. Отдыхай, заслужил.'
+      : overall >= 60
+        ? 'Хороший день. Завтра — ещё лучше.'
+        : overall >= 30
+          ? 'День был непростым, но ты двигался. Завтра новый шанс.'
+          : 'Тяжёлый день. Главное — не бросил. Завтра чистый лист.';
+
+  return [
+    {
+      title: 'Итоги дня',
+      body: `Задачи ${done}/${total}, привычки ${habitLogs}/${habits} — ${overall}%. ${tone}`,
+      type: 'evening_summary',
+      scheduledFor,
+    },
+  ];
+}
+
+// ---------------------------------------------------------------------------
 // Main: aggregate all proactive notifications for a user
 // ---------------------------------------------------------------------------
 export async function generateProactiveNotifications(
   userId: string,
 ): Promise<ProactiveNotification[]> {
-  const [eventReminders, budgetAlerts, habitNudges, inactivityPing, weeklySummary] =
-    await Promise.all([
-      generateEventReminders(userId),
-      generateBudgetAlerts(userId),
-      generateHabitNudges(userId),
-      generateInactivityPing(userId),
-      generateWeeklySummary(userId),
-    ]);
+  const [
+    eventReminders,
+    budgetAlerts,
+    habitNudges,
+    inactivityPing,
+    weeklySummary,
+    morningBriefing,
+    eveningSummary,
+  ] = await Promise.all([
+    generateEventReminders(userId),
+    generateBudgetAlerts(userId),
+    generateHabitNudges(userId),
+    generateInactivityPing(userId),
+    generateWeeklySummary(userId),
+    generateMorningBriefing(userId),
+    generateEveningSummary(userId),
+  ]);
 
   return [
     ...eventReminders,
@@ -383,5 +503,7 @@ export async function generateProactiveNotifications(
     ...habitNudges,
     ...inactivityPing,
     ...weeklySummary,
+    ...morningBriefing,
+    ...eveningSummary,
   ].sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime());
 }

@@ -175,7 +175,16 @@ export async function executeAction(
           departDate: String(input.departDate),
           returnDate: input.returnDate ? String(input.returnDate) : undefined,
         });
-        return { success: true, data: flights, message: `Найдено ${flights.length} вариантов перелёта` };
+        {
+          const mock = flights.some((f) => f.isMock);
+          return {
+            success: true,
+            data: flights,
+            message: mock
+              ? `Ориентировочно ${flights.length} вариантов (точные цены покажу когда подключим API перелётов — пока примерные)`
+              : `Найдено ${flights.length} вариантов перелёта`,
+          };
+        }
       }
 
       case 'search_hotels': {
@@ -184,7 +193,13 @@ export async function executeAction(
           checkIn: String(input.checkIn), checkOut: String(input.checkOut),
           maxPrice: input.maxPrice ? Number(input.maxPrice) : undefined,
         });
-        return { success: true, data: hotels.hotels, message: `Найдено ${hotels.hotels.length} отелей. ${hotels.link}` };
+        return {
+          success: true,
+          data: hotels.hotels,
+          message: hotels.isMock
+            ? `Ориентир по ценам на отели в ${input.city} (точные варианты — по ссылке): ${hotels.link}`
+            : `Найдено ${hotels.hotels.length} отелей. ${hotels.link}`,
+        };
       }
 
       case 'build_route': {
@@ -194,7 +209,9 @@ export async function executeAction(
         });
         return {
           success: true, data: route,
-          message: `Маршрут: ${route.distance}, время в пути ${route.duration}`,
+          message: route.isMock
+            ? `Маршрут примерно ${route.distance}, ~${route.duration} (точное время — по ссылке в картах)`
+            : `Маршрут: ${route.distance}, время в пути ${route.duration}`,
           clientAction: 'open_maps',
           clientData: { destination: String(input.to), mode: String(input.mode || 'driving') },
         };

@@ -14,7 +14,11 @@ interface IntegrationState {
   integrations: Integration[];
   isLoading: boolean;
   fetchIntegrations: () => Promise<void>;
-  connectGoogleCalendar: (accessToken: string, refreshToken: string) => Promise<void>;
+  connectGoogleCalendar: (
+    code: string,
+    redirectUri: string,
+    codeVerifier: string,
+  ) => Promise<void>;
   syncGoogleCalendar: () => Promise<void>;
   connectTelegram: (chatId: string, username?: string) => Promise<void>;
   disconnect: (provider: string) => Promise<void>;
@@ -39,7 +43,11 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
     }
   },
 
-  connectGoogleCalendar: async (accessToken: string, refreshToken: string) => {
+  connectGoogleCalendar: async (
+    code: string,
+    redirectUri: string,
+    codeVerifier: string,
+  ) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 
@@ -47,7 +55,7 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
     try {
       const integration = await api.post<Integration>(
         '/integrations/google-calendar/connect',
-        { accessToken, refreshToken },
+        { code, redirectUri, codeVerifier },
         token,
       );
       set((state) => ({

@@ -84,24 +84,39 @@ function GoogleCalendarSection() {
     useIntegrationStore();
   const connected = isConnected('google-calendar');
 
+  // Phase 3.1: PKCE auth-code flow. Мобилка получает только `code`
+  // (без секрета), сервер меняет его на токены своим client_secret.
+  // access_type=offline + prompt=consent — чтобы Google вернул
+  // refresh_token (нужен для фоновой синхронизации). Scope полный
+  // calendar (не readonly) — синхронизация двусторонняя.
+  const redirectUri = useMemo(() => AuthSession.makeRedirectUri(), []);
   const [request, response, promptAsync] = AuthSession.useAuthRequest(
     {
       clientId: GOOGLE_CLIENT_ID,
-      scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
-      redirectUri: AuthSession.makeRedirectUri(),
+      scopes: ['https://www.googleapis.com/auth/calendar'],
+      redirectUri,
+      responseType: AuthSession.ResponseType.Code,
+      usePKCE: true,
+      extraParams: { access_type: 'offline', prompt: 'consent' },
     },
     GOOGLE_DISCOVERY,
   );
 
   useEffect(() => {
-    if (response?.type === 'success' && response.authentication) {
-      const { accessToken } = response.authentication;
-      const refreshToken = response.authentication.refreshToken ?? '';
-      connectGoogleCalendar(accessToken, refreshToken).catch(() => {
+    if (
+      response?.type === 'success' &&
+      response.params.code &&
+      request?.codeVerifier
+    ) {
+      connectGoogleCalendar(
+        response.params.code,
+        redirectUri,
+        request.codeVerifier,
+      ).catch(() => {
         Alert.alert('Ошибка', 'Не удалось подключить Google Calendar');
       });
     }
-  }, [response, connectGoogleCalendar]);
+  }, [response, request, redirectUri, connectGoogleCalendar]);
 
   const handleConnect = useCallback(async () => {
     if (!GOOGLE_CLIENT_ID) {

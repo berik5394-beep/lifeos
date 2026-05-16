@@ -278,9 +278,14 @@ model CalendarEvent {
   description String?
   reminder    Int      @default(30)
   source      String   @default("manual")
+  // Phase 3.1: ID события во внешней системе (Google Calendar event id).
+  // NULL = создано локально и ещё не запушено. Дедуп двусторонней
+  // синхронизации идёт по (userId, externalId).
+  externalId  String?
   createdAt   DateTime @default(now())
 
   @@index([userId, date])
+  @@index([userId, externalId])
 }
 
 model BudgetLimit {
