@@ -4,7 +4,8 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
-import { handleMessage } from '../services/jarvis-orchestrator.js';
+import { handleMessage, runConfirmedAction } from '../services/jarvis-orchestrator.js';
+import { takePendingAction, peekPendingAction } from '../services/pending-actions.js';
 
 // AI chat is expensive (Claude API + web search) — limit per minute and per hour
 const chatRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'ai-chat' });
@@ -41,11 +42,50 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       if (res.capturedTasks) cap.push(`\u{1F4DD} +${res.capturedTasks} в задачи`);
       if (res.capturedMemories) cap.push('\u{1F9E0} запомнил');
       if (cap.length > 0) message += `\n\n— ${cap.join(' · ')}`;
-      return reply.send({ message, intent: res.intent });
+      return reply.send({
+        message,
+        intent: res.intent,
+        // Фаза 1.2: если денежное действие ждёт подтверждения —
+        // приложение показывает кнопки «Подтвердить / Отмена».
+        pendingAction: res.pendingAction ?? null,
+      });
     } catch (err) {
       app.log.error(err);
       return reply.status(500).send({ message: 'Ошибка обработки чата' });
     }
+  });
+
+  // --- Подтверждение/отмена денежного действия (Фаза 1.2) ---
+  // Приложение шлёт сюда по нажатию кнопки. Pending хранится на сервере
+  // (in-memory, TTL 5 мин) — клиенту не нужно гонять туда-сюда payload.
+  const confirmSchema = z.object({ confirm: z.boolean() });
+  app.post('/voice/confirm-action', {
+    preHandler: [chatRateLimit, validate(confirmSchema)],
+  }, async (request, reply) => {
+    const { confirm } = request.body as z.infer<typeof confirmSchema>;
+    if (!confirm) {
+      takePendingAction(request.userId);
+      return reply.send({ message: 'Окей, отменил — ничего не записал.', done: true });
+    }
+    const p = takePendingAction(request.userId);
+    if (!p) {
+      return reply.status(409).send({
+        message: 'Нечего подтверждать — предложение устарело. Повтори запрос.',
+        done: false,
+      });
+    }
+    const msg = await runConfirmedAction(request.userId, p.action, p.input);
+    return reply.send({ message: msg, intent: p.action, done: true });
+  });
+
+  // --- Есть ли ожидающее подтверждения действие (для восстановления UI) ---
+  app.get('/voice/pending-action', async (request, reply) => {
+    const p = peekPendingAction(request.userId);
+    return reply.send(
+      p
+        ? { pending: { action: p.action, input: p.input }, confirmationText: p.confirmationText }
+        : { pending: null },
+    );
   });
 
 

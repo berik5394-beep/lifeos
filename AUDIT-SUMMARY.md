@@ -1,6 +1,20 @@
 # LifeOS — Финальный аудит (приоритизированный)
 **Дата:** 2026-04-11
 **Проверяли:** 4 агента (code-review, security, frontend/a11y, architecture)
+
+> **СТАТУС P0 — сверено 2026-05-16: ВСЕ ~12 P0 ЗАКРЫТЫ в коде.**
+> Проверка по текущим файлам:
+> - P0-SEC-1 — `routes/pet.ts` `/pet/unlock-item` через `validateUnlock()` (серверный whitelist + проверка условий, 403 если не выполнено).
+> - P0-SEC-2 — `routes/challenge.ts` `timeSeconds` считается на сервере из `attacker/defenderStartedAt` + MIN/MAX-кламп.
+> - P0-SEC-3 — `routes/challenge.ts:91` guard `opponentUserId === userId`.
+> - P0-SEC-4 — мигрировано на `exceljs` (нет dep `xlsx`), MIME + magic-bytes whitelist в `routes/import.ts`.
+> - P0-PERF-1 — `services/streak-service.ts` (один `findMany`), `voice.ts`/`export.ts` делегируют; дубликаты убраны.
+> - P0-PERF-2 — `routes/arena.ts` один `pet.findMany` (батч), не N+1.
+> - P0-PERF-3 — `GET /pet` read-only расчёт + единственный условный write (`if (needsWrite)`).
+> - P0-BUG-1 — `routes/vision.ts` import-schedule пишет в `notes`/`time`, без `as any`, ошибки логируются.
+> - P0-BUG-2 — `apps/mobile/services/api.ts` `refreshPromise` присваивается/реюзается/чистится (single-flight работает).
+> - P0-A11Y-1 — `accessibilityLabel` проставлены в `components/ui/*`.
+> - P0-A11Y-2 — `textSecondary` поднят `#94A3B8` → `#A8B2D1` (контраст исправлен).
 **Исходные отчёты:**
 - [AUDIT-CODE-REVIEW.md](./AUDIT-CODE-REVIEW.md) — 29 находок
 - [AUDIT-SECURITY.md](./AUDIT-SECURITY.md)

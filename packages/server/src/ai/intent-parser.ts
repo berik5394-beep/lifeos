@@ -64,7 +64,7 @@ const MEMORY_TRIGGERS = [
   /^что ты знаешь про /i,
 ];
 
-function deterministicIntent(text: string): VoiceIntent | null {
+export function deterministicIntent(text: string): VoiceIntent | null {
   const lower = text.toLowerCase();
 
   for (const re of DICTATION_TRIGGERS) {
@@ -102,8 +102,10 @@ function deterministicIntent(text: string): VoiceIntent | null {
   // надёжнее, 0мс, 0$. Извлекаем параметры прямо здесь.
 
   // add_income: "получил/заработал зарплату 350000", "доход 50000 от ..."
+  // (?:[а-яё]+\s+){0,2}? — лениво пропускаем 0-2 слова между глаголом и
+  // суммой ("получил ЗАРПЛАТУ 350000", "заработал НА ФРИЛАНСЕ 50000").
   let m =
-    text.match(/^(?:запиши\s+)?(?:доход|получил|заработал|пришла зарплата|зарплата)\s+(?:на\s+)?(\d[\d\s]*)\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:от|за|—|-)?\s*(.*)$/i);
+    text.match(/^(?:запиши\s+)?(?:доход|получил[аи]?|заработал[аи]?|пришла зарплата|зарплат[ауы]?|преми[яю])\s+(?:[а-яё]+\s+){0,2}?(?:на\s+)?(\d[\d\s]*)\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:от|за|—|-)?\s*(.*)$/i);
   if (m) {
     const amount = Number(m[1].replace(/\s/g, ''));
     if (Number.isFinite(amount) && amount > 0) {

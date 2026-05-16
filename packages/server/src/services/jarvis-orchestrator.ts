@@ -12,6 +12,13 @@ import { runAgent } from './claude-agent.js';
 import { getRelevantMemories } from './memory-service.js';
 import { trackInterests } from './interest-service.js';
 import { executeAction } from './action-executor.js';
+import {
+  peekPendingAction,
+  takePendingAction,
+  setPendingAction,
+  clearPendingAction,
+  readConfirmSignal,
+} from './pending-actions.js';
 
 /**
  * JARVIS Orchestrator — единый мозг. Любое сообщение (текст или
@@ -36,6 +43,13 @@ export interface JarvisResponse {
   capturedTasks?: number;
   capturedMemories?: number;
   intent: string;
+  /**
+   * Фаза 1.2: денежное/необратимое действие НЕ выполнено — ждём
+   * подтверждения. Приложение показывает кнопку «Подтвердить» и шлёт
+   * на /voice/confirm-action. Telegram/голос — юзер отвечает «да/нет».
+   */
+  pendingAction?: { action: string; input: Record<string, unknown> } | null;
+  confirmationText?: string;
 }
 
 /**
@@ -130,10 +144,72 @@ async function saveTurn(
   }
 }
 
+/** Денежные/необратимые — требуют явного «да» перед выполнением. */
+const NEEDS_CONFIRM = new Set(['add_expense', 'add_income']);
+
+function confirmationText(action: string, input: Record<string, unknown>): string {
+  if (action === 'add_expense') {
+    const amount = Number(input.amount);
+    const desc = String(input.description || input.category || '').trim();
+    return `Записать расход ${amount} ₸${desc ? ` (${desc})` : ''}? Подтверди — запишу.`;
+  }
+  if (action === 'add_income') {
+    const amount = Number(input.amount);
+    const src = String(input.source || '').trim();
+    return `Записать доход ${amount} ₸${src ? ` (${src})` : ''}? Подтверди — запишу.`;
+  }
+  return 'Подтверди действие — выполню.';
+}
+
+/**
+ * Выполняет ранее предложенное (и подтверждённое) действие. Используется
+ * и из естественного «да» в оркестраторе, и из /voice/confirm-action.
+ */
+export async function runConfirmedAction(
+  userId: string,
+  action: string,
+  input: Record<string, unknown>,
+): Promise<string> {
+  try {
+    const r = await executeAction(action, input, userId);
+    console.log(
+      `[jarvis] user=${userId} intent=${action} CONFIRMED → "${r.message.slice(0, 80)}"`,
+    );
+    await saveTurn(userId, '(подтверждено)', r.message);
+    return r.message;
+  } catch (err) {
+    console.warn(
+      `[jarvis] confirmed executeAction failed user=${userId} intent=${action}:`,
+      err instanceof Error ? err.message : err,
+    );
+    return 'Не получилось выполнить — попробуй ещё раз?';
+  }
+}
+
 export async function handleMessage(
   userId: string,
   text: string,
 ): Promise<JarvisResponse> {
+  // ---- Фаза 1.2: ждём подтверждения предыдущего денежного действия? ----
+  const pending = peekPendingAction(userId);
+  if (pending) {
+    const signal = readConfirmSignal(text);
+    if (signal === 'confirm') {
+      const p = takePendingAction(userId)!;
+      const reply = await runConfirmedAction(userId, p.action, p.input);
+      return { reply, intent: p.action };
+    }
+    if (signal === 'cancel') {
+      takePendingAction(userId);
+      const reply = 'Окей, отменил — ничего не записал.';
+      await saveTurn(userId, text, reply);
+      return { reply, intent: 'cancel_pending' };
+    }
+    // Не «да» и не «нет» — юзер сменил тему. Протухшее предложение
+    // не держим, чтобы случайное «да» позже не сработало вслепую.
+    clearPendingAction(userId);
+  }
+
   const intent = await parseIntent(text);
 
   // ---- Booking: агентный flow -------------------------------------------
@@ -270,6 +346,26 @@ export async function handleMessage(
     'create_event',
   ]);
   if (EXECUTABLE.has(intent.action)) {
+    // Фаза 1.2: денежное действие — НЕ выполняем сразу. Предлагаем,
+    // сохраняем как pending, ждём «да» (или кнопку в приложении).
+    // Безопасные (create_task/complete_habit/...) — выполняем сразу,
+    // они обратимы.
+    if (NEEDS_CONFIRM.has(intent.action)) {
+      const input: Record<string, unknown> = { ...intent };
+      delete input.action;
+      const ctext = confirmationText(intent.action, input);
+      setPendingAction(userId, intent.action, input, ctext);
+      console.log(
+        `[jarvis] user=${userId} intent=${intent.action} PENDING (awaiting confirm)`,
+      );
+      await saveTurn(userId, text, ctext);
+      return {
+        reply: ctext,
+        pendingAction: { action: intent.action, input },
+        confirmationText: ctext,
+        intent: intent.action,
+      };
+    }
     try {
       let replyText: string;
       if (intent.action === 'complete_multiple_habits') {
@@ -346,10 +442,20 @@ ${styleHint}
 
 Юзер из Казахстана. По умолчанию: валюта — тенге (₸), город — Алматы (если не указан другой). Цены/расстояния/сервисы давай в казахстанском контексте, не российском. Рубли только если юзер явно про Россию.
 
+Что ты УМЕЕШЬ делать (не просто советовать — реально выполнять, юзеру достаточно сказать):
+- Создавать задачи и отмечать их выполненными
+- Отмечать привычки (одну или сразу несколько)
+- Записывать расходы и доходы (с подтверждением — спросишь «записать?»)
+- Создавать встречи/события в календаре
+- Подбирать и бронировать перелёты/отели/такси (консьерж)
+- Давать сводку дня/недели, финансовый анализ бюджета
+- Помнить факты о юзере и его людях, искать по памяти
+Поэтому если из разговора видно конкретное действие — предлагай его сделать сам словами юзера ("хочешь, отмечу привычку «бег»?", "записать это как расход 3000 ₸?", "добавить в задачи на завтра?"), а не объясняй как сделать вручную.
+
 Правила:
 1. Если вопрос требует актуальной информации (цены, новости, погода, факты, "что лучше купить", "сколько стоит") — ОБЯЗАТЕЛЬНО используй web search. Не отвечай "не знаю" или по устаревшим данным.
 2. Отвечай конкретно и по делу. Живая речь, без канцелярита и markdown-списков.
-3. Будь проактивным: если видишь что можешь помочь дальше — предложи или спроси ("хочешь добавлю в задачи?", "напомнить?").
+3. Будь проактивным: если видишь что можешь помочь дальше — предложи или спроси ("хочешь добавлю в задачи?", "напомнить?"). Ты МОЖЕШЬ это выполнить — см. список выше.
 4. Помни контекст из истории диалога и из памяти о юзере (ниже). Ссылайся на это естественно.
 5. Коротко: 2-6 предложений обычно достаточно. Глубоко — только если просят разобраться.${memoryBlock}`;
 

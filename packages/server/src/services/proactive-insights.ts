@@ -38,12 +38,20 @@ const startOfDay = (d: Date) => {
   return x;
 };
 
-const daysAgo = (n: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
-  return d;
-};
+
+/** Данные для правил — выбираются из БД, затем отдаются в чистое ядро. */
+export interface InsightInput {
+  staleTasks: Array<{ id: string; title: string; date: Date; priority: string }>;
+  todayEvents: Array<{ title: string; startTime: string | null; location: string | null }>;
+  todayHabitLogs: Array<{ habitId: string }>;
+  activeHabits: Array<{ id: string; name: string }>;
+  monthExpenses: Array<{ category: string; _sum: { amount: number | null } }>;
+  budgetLimits: Array<{ category: string; monthlyLimit: number }>;
+  pet:
+    | { isAlive: boolean; health: number; streak: number; name: string; level: number }
+    | null;
+  upcomingEvents: Array<{ title: string; date: Date; startTime: string | null }>;
+}
 
 export async function generateInsights(userId: string): Promise<Insight[]> {
   const today = startOfDay(new Date());
@@ -116,12 +124,55 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
     }),
   ]);
 
+  return buildInsights(
+    {
+      staleTasks,
+      todayEvents,
+      todayHabitLogs,
+      activeHabits,
+      monthExpenses: monthExpenses.map((e) => ({
+        category: e.category,
+        _sum: { amount: e._sum.amount ?? null },
+      })),
+      budgetLimits: budgetLimits.map((b) => ({
+        category: b.category,
+        monthlyLimit: b.monthlyLimit,
+      })),
+      pet,
+      upcomingEvents,
+    },
+    now,
+  );
+}
+
+/**
+ * Чистое ядро правил — без БД. Тестируется фикстурами (см.
+ * proactive-insights.test.ts). `now` инъектируется для детерминизма:
+ * event-soon и evening-lag зависят от текущего часа/времени.
+ */
+export function buildInsights(input: InsightInput, now: Date): Insight[] {
+  const today = startOfDay(now);
+  const currentMonth = now.getMonth() + 1;
+  const currentYear = now.getFullYear();
+  const {
+    staleTasks,
+    todayEvents,
+    todayHabitLogs,
+    activeHabits,
+    monthExpenses,
+    budgetLimits,
+    pet,
+    upcomingEvents,
+  } = input;
+
   const insights: Insight[] = [];
 
   // ===== TASKS =====
 
   // Откладываемые задачи — критично если >= 3 дня
-  const veryStale = staleTasks.filter((t) => t.date < daysAgo(2));
+  const twoDaysAgo = new Date(today);
+  twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+  const veryStale = staleTasks.filter((t) => t.date < twoDaysAgo);
   if (veryStale.length > 0) {
     const first = veryStale[0];
     const days = Math.floor((today.getTime() - first.date.getTime()) / 86_400_000);
