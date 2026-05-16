@@ -19,6 +19,7 @@ function emptyInput(): InsightInput {
     todayTasks: [],
     upcomingTrip: null,
     yearlyGoals: [],
+    dismissals: [],
   };
 }
 
@@ -299,6 +300,61 @@ describe('buildInsights — проактивная память целей (Phas
       jan,
     );
     expect(out.find((x) => x.id.startsWith('goal_behind'))).toBeUndefined();
+  });
+});
+
+describe('buildInsights — адаптация на дисмиссы (Phase 4.4)', () => {
+  const conflictInput = () => ({
+    ...emptyInput(),
+    todayEvents: [
+      { title: 'Созвон', startTime: '14:00', endTime: '15:00', location: null },
+    ],
+    todayTasks: [{ title: 'Отчёт', time: '14:30', completed: false }],
+  });
+
+  it('warning при ≥3 дисмиссах — полностью заглушается', () => {
+    const out = buildInsights(
+      {
+        ...conflictInput(),
+        dismissals: [
+          { dismissKey: 'schedule_conflict_today' },
+          { dismissKey: 'schedule_conflict_today' },
+          { dismissKey: 'schedule_conflict_today' },
+        ],
+      },
+      at(10),
+    );
+    expect(out.find((i) => i.id === 'schedule_conflict')).toBeUndefined();
+  });
+
+  it('1–2 дисмисса — на ступень тише, но остаётся', () => {
+    const out = buildInsights(
+      { ...conflictInput(), dismissals: [{ dismissKey: 'schedule_conflict_today' }] },
+      at(10),
+    );
+    const i = out.find((x) => x.id === 'schedule_conflict');
+    expect(i).toBeDefined();
+    expect(i?.severity).toBe('info'); // было warning → понижено
+  });
+
+  it('critical НЕ глушится при ≥3 — только critical→warning', () => {
+    const out = buildInsights(
+      {
+        ...emptyInput(),
+        monthExpenses: [{ category: 'food', _sum: { amount: 12000 } }],
+        budgetLimits: [{ category: 'food', monthlyLimit: 10000 }],
+        dismissals: Array(4).fill({ dismissKey: 'budget_over_food_2026_5' }),
+      },
+      at(10),
+    );
+    const i = out.find((x) => x.id === 'budget_over_food');
+    expect(i).toBeDefined(); // важное не прячем
+    expect(i?.severity).toBe('warning'); // было critical → понижено
+  });
+
+  it('без дисмиссов — инсайт неизменен', () => {
+    const out = buildInsights(conflictInput(), at(10));
+    expect(out.find((i) => i.id === 'schedule_conflict')?.severity).toBe('warning');
   });
 });
 

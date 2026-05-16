@@ -63,6 +63,8 @@ export interface InsightInput {
   /** Годовые цели юзера (Phase 2.4 — проактивная память: сверяем
    *  заявленную цель с реальным прогрессом vs темп года). */
   yearlyGoals: Array<{ area: string; goalText: string; progress: number }>;
+  /** Phase 4.4: дисмиссы инсайтов за окно (адаптация частоты/severity). */
+  dismissals: Array<{ dismissKey: string }>;
 }
 
 export async function generateInsights(userId: string): Promise<Insight[]> {
@@ -86,6 +88,7 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
     todayTasks,
     upcomingTrip,
     yearlyGoals,
+    dismissals,
   ] = await Promise.all([
     // Задачи, которые откладываются 3+ дня (date < сегодня, не выполнены)
     prisma.task.findMany({
@@ -157,6 +160,14 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
       where: { userId, year: currentYear },
       select: { area: true, goalText: true, progress: true },
     }),
+    // Phase 4.4: дисмиссы за последние 14 дней (адаптация инсайтов)
+    prisma.insightDismissal.findMany({
+      where: {
+        userId,
+        createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
+      },
+      select: { dismissKey: true },
+    }),
   ]);
 
   return buildInsights(
@@ -178,6 +189,7 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
       todayTasks,
       upcomingTrip,
       yearlyGoals,
+      dismissals,
     },
     now,
   );
@@ -204,6 +216,7 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
     todayTasks,
     upcomingTrip,
     yearlyGoals,
+    dismissals,
   } = input;
 
   const insights: Insight[] = [];
@@ -458,6 +471,38 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
       }
     }
   }
+
+  // Phase 4.4: адаптация на дисмиссы. Часто смахиваемое — шум для
+  // этого юзера. Считаем по dismissKey за окно (14 дней передаётся в
+  // input). Безопасность: critical НИКОГДА не глушим полностью (бюджет
+  // превышен / питомец умер — это важно, даже если раздражает); максимум
+  // понижаем critical→warning. info/warning при ≥3 — убираем совсем.
+  const dismissCount = new Map<string, number>();
+  for (const d of dismissals) {
+    dismissCount.set(d.dismissKey, (dismissCount.get(d.dismissKey) ?? 0) + 1);
+  }
+  const downgrade: Record<Severity, Severity> = {
+    critical: 'warning',
+    warning: 'info',
+    info: 'info',
+  };
+  const adapted: Insight[] = [];
+  for (const ins of insights) {
+    const c = ins.dismissKey ? (dismissCount.get(ins.dismissKey) ?? 0) : 0;
+    if (c === 0) {
+      adapted.push(ins);
+    } else if (c >= 3) {
+      if (ins.severity === 'critical') {
+        adapted.push({ ...ins, severity: 'warning' }); // не прячем важное
+      }
+      // info/warning при ≥3 дисмиссах — полностью глушим (не push)
+    } else {
+      // 1–2 дисмисса — на ступень тише, но показываем
+      adapted.push({ ...ins, severity: downgrade[ins.severity] });
+    }
+  }
+  insights.length = 0;
+  insights.push(...adapted);
 
   // Сортируем: critical → warning → info; внутри severity — по category приоритету
   const severityRank: Record<Severity, number> = { critical: 0, warning: 1, info: 2 };

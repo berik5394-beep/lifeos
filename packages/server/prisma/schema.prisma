@@ -679,3 +679,17 @@ model DictationSession {
 
   @@index([userId, createdAt])
 }
+
+// Phase 4.4: лог дисмиссов инсайтов. Append-only, без связи с User
+// (минимальная правка; осиротевшие строки при удалении юзера
+// безвредны — это адаптационный лог, не данные). Частота за окно
+// понижает severity / глушит часто смахиваемые подсказки.
+model InsightDismissal {
+  id         String   @id @default(cuid())
+  userId     String
+  dismissKey String
+  createdAt  DateTime @default(now())
+
+  @@index([userId, dismissKey])
+  @@index([userId, createdAt])
+}
