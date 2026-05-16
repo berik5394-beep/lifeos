@@ -94,6 +94,16 @@ export const LOCAL_TOOLS = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'recall_person',
+    description:
+      'Вспомнить человека: контакт (телефон/email/др.) + что юзер про него говорил (память). Read-only. Вызывай на «кто такой X», «телефон X», «напомни про X», «что я говорил про X».',
+    input_schema: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'имя человека' } },
+      required: ['name'],
+    },
+  },
+  {
     name: 'get_goal_progress',
     description:
       'Прогресс по годовым целям: реальный % vs темп года + связанные задачи + что юзер сам говорил про эту цель (память). Вызывай на «как я иду к цели», «что с финансовой целью», «отстаю ли я по здоровью».',
@@ -177,6 +187,36 @@ export async function runLocalTool(
         return JSON.stringify({
           summary: t.summary,
           important: t.important.map((m) => ({ from: m.from, subject: m.subject })),
+        });
+      }
+      case 'recall_person': {
+        // Phase 2.1: структурная связка person ↔ ContactCache. Раньше
+        // память о людях была плоским текстом без связи с контактами —
+        // Джарвис не мог «вспомнить человека» (кто, телефон, контекст).
+        const name = String(input.name || '').trim();
+        if (!name) return JSON.stringify({ error: 'имя не указано' });
+        const [contacts, mem] = await Promise.all([
+          prisma.contactCache.findMany({
+            where: { userId, name: { contains: name, mode: 'insensitive' } },
+            select: { name: true, phone: true, email: true, birthday: true },
+            take: 3,
+          }),
+          getRelevantMemories(userId, name, 6),
+        ]);
+        return JSON.stringify({
+          contacts: contacts.map((c) => ({
+            name: c.name,
+            phone: c.phone,
+            email: c.email,
+            birthday: c.birthday ? c.birthday.toISOString().slice(0, 10) : null,
+          })),
+          remembered: mem
+            .filter(
+              (m) =>
+                m.type === 'person' ||
+                m.content.toLowerCase().includes(name.toLowerCase()),
+            )
+            .map((m) => m.content),
         });
       }
       case 'get_goal_progress': {
