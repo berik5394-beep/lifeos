@@ -37,4 +37,6 @@ EXPOSE 3000
 # с понятной ошибкой (это лучше тихого runtime-краша).
 # `--skip-generate` потому что клиент уже сгенерирован на build-стадии.
 # Для proper релизов с историей миграций позже переедем на `migrate deploy`.
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/index.js"]
+# Phase 2.3: pgvector extension ДО db push (db push расширения не ставит,
+# а колонка vector(512) без расширения не создастся). Идемпотентно.
+CMD ["sh", "-c", "npx prisma db execute --schema=prisma/schema.prisma --file prisma/extensions.sql && npx prisma db push --skip-generate && node dist/index.js"]

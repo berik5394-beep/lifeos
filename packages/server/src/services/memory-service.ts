@@ -1,4 +1,33 @@
 import { prisma } from '../lib/prisma.js';
+import {
+  embedDocument,
+  embedQuery,
+  embeddingsEnabled,
+  toVectorLiteral,
+} from './embeddings.js';
+
+/**
+ * Phase 2.3: считает и сохраняет эмбеддинг записи (best-effort).
+ * Не валит запись если Voyage недоступен — семантика опциональна.
+ */
+async function storeEmbedding(
+  id: string,
+  content: string,
+  details: string | null,
+): Promise<void> {
+  if (!embeddingsEnabled()) return;
+  try {
+    const vec = await embedDocument(details ? `${content}. ${details}` : content);
+    if (!vec) return;
+    await prisma.$executeRawUnsafe(
+      'UPDATE "Memory" SET embedding = $1::vector WHERE id = $2',
+      toVectorLiteral(vec),
+      id,
+    );
+  } catch (err) {
+    console.warn('[memory] embed store failed:', err instanceof Error ? err.message : err);
+  }
+}
 
 /**
  * Получает релевантные воспоминания юзера для подмешивания в промпт ассистента.
@@ -72,23 +101,25 @@ export async function captureMemory(
     if (dup.length > 0) {
       const existing = dup[0];
       const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags])).slice(0, 10);
+      const merged = details ?? existing.details;
       await prisma.memory.update({
         where: { id: existing.id },
         data: {
           // Содержимое оставляем актуальное (последняя формулировка).
           content,
-          details: details ?? existing.details,
+          details: merged,
           tags: mergedTags,
           importance: Math.max(existing.importance, importance),
           // Освежаем — повтор факта = он снова актуален (recency-ранк).
           createdAt: new Date(),
         },
       });
+      await storeEmbedding(existing.id, content, merged);
       return 'updated';
     }
   }
 
-  await prisma.memory.create({
+  const created = await prisma.memory.create({
     data: {
       userId,
       type: m.type,
@@ -99,7 +130,9 @@ export async function captureMemory(
       tags,
       importance,
     },
+    select: { id: true },
   });
+  await storeEmbedding(created.id, content, details);
   return 'created';
 }
 
@@ -124,15 +157,49 @@ export async function getRelevantMemories(
     return rows;
   }
 
-  // Query-aware: FTS + importance + recency.
-  // ts_rank(...) даёт 0 если совпадений нет, поэтому где fts_rank=0 мы всё
-  // равно показываем высоко-importance memory чтобы JARVIS видел контекст
-  // (просто после явных совпадений).
-  //
-  // Параметры:
-  //   $1 — userId
-  //   $2 — query
-  //   $3 — limit
+  // Phase 2.3 — ГИБРИД: FTS + семантика (pgvector cosine) + важность +
+  // свежесть. Семантика ловит смысл без общих слов: «что про здоровье»
+  // найдёт «болела спина после зала». Если эмбеддинг запроса получить
+  // не удалось (нет ключа/сбой) — падаем на чистый FTS (ниже).
+  if (embeddingsEnabled()) {
+    const qvec = await embedQuery(query);
+    if (qvec) {
+      const hybrid = await prisma.$queryRawUnsafe<MemoryRow[]>(
+        `
+        SELECT m.type, m.content, m.importance
+        FROM "Memory" m
+        WHERE m."userId" = $1
+          AND (m."expiresAt" IS NULL OR m."expiresAt" > NOW())
+        ORDER BY (
+          ts_rank(
+            to_tsvector('russian',
+              coalesce(m.content,'') || ' ' ||
+              coalesce(m.details,'') || ' ' ||
+              coalesce(array_to_string(m.tags,' '),'')
+            ),
+            plainto_tsquery('russian', $2)
+          ) * 5.0
+          + (m.importance::float / 10.0)
+          + exp(- extract(epoch from (NOW() - m."createdAt")) / (86400.0 * 30.0))
+          -- семантическая близость: 1 - cosine_distance, NULL→0 (старые
+          -- досемантические записи не штрафуем — их несёт FTS).
+          + COALESCE(1 - (m.embedding <=> $4::vector), 0) * 3.0
+        ) DESC,
+          m.importance DESC,
+          m."createdAt" DESC
+        LIMIT $3;
+        `,
+        userId,
+        query,
+        limit,
+        toVectorLiteral(qvec),
+      );
+      return hybrid;
+    }
+  }
+
+  // Fallback: FTS + importance + recency (без семантики).
+  // Параметры: $1 userId, $2 query, $3 limit
   const result = await prisma.$queryRaw<MemoryRow[]>`
     SELECT
       m.type,

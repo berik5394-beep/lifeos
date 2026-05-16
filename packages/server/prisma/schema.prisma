@@ -648,6 +648,11 @@ model Memory {
   importance Int      @default(5)
   // Некоторые факты устаревают (например "завтра встреча")
   expiresAt  DateTime?
+  // Phase 2.3: семантический эмбеддинг (Voyage voyage-3-lite, 512d).
+  // Тип pgvector — Prisma его нативно не знает, поэтому Unsupported:
+  // читаем/пишем только через $queryRaw/$executeRaw. NULL у старых
+  // записей (досемантических) — гибридный ранкинг это учитывает.
+  embedding  Unsupported("vector(512)")?
   createdAt  DateTime @default(now())
 
   @@index([userId, type])
