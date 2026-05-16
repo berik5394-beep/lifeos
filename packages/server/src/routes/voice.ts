@@ -4,25 +4,22 @@ import { writeFile, unlink, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import crypto from 'node:crypto';
-import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { processVoiceCommand } from '../ai/voice-pipeline.js';
 import { prisma } from '../lib/prisma.js';
 import {
-  buildAssistantPrompt,
-  buildGoodnightPrompt,
-  buildGoodMorningPrompt,
-  type AssistantContext,
-} from '../ai/assistant-personality.js';
-import { parseIntent } from '../ai/intent-parser.js';
-import {
   calculateStreak,
   calculateWeekProgress,
 } from '../services/streak-service.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
-import { getRelevantMemories } from '../services/memory-service.js';
+// Phase 1.1 (дозакрытие): /voice/assistant раньше был ВТОРЫМ мозгом —
+// свой контекст, свой промпт (assistant-personality), прямой Claude
+// БЕЗ памяти-дедупа/web_search/инструментов/подтверждений/логов.
+// Теперь ответ идёт через единый оркестратор. Контракт ответа
+// ({response, reply, context}) сохранён — старое приложение не ломается.
+import { handleMessage } from '../services/jarvis-orchestrator.js';
 
 // Voice assistant/transcribe are expensive (Groq Whisper + Claude API) — cap per IP
 const assistantRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'voice-assistant' });
@@ -31,10 +28,6 @@ const processRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'vo
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY || '',
-});
-
-const anthropic = new Anthropic({
-  apiKey: process.env.CLAUDE_API_KEY || '',
 });
 
 const voiceSchema = z.object({
@@ -133,27 +126,8 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
         completed: todayHabitLogs.length,
       };
 
-      // 4. Get upcoming events (next 24h)
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-
-      const upcomingEvents = await prisma.calendarEvent.findMany({
-        where: {
-          userId,
-          date: {
-            gte: today,
-            lt: tomorrow,
-          },
-        },
-        select: {
-          title: true,
-          startTime: true,
-          date: true,
-        },
-        orderBy: { startTime: 'asc' },
-      });
-
-      // 5. Get this month's expense total + budget limits sum
+      // Get this month's expense total + budget limits sum (для context,
+      // который мобилка показывает на экране ассистента)
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
       const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
 
@@ -180,76 +154,26 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
       const spentThisMonth = expenseAgg._sum.amount ?? 0;
       const budgetLimit = budgetAgg._sum.monthlyLimit ?? 0;
 
-      // 6. Calculate current streak (consecutive days with >50% habits completed)
+      // Streak / week progress — для context (экран ассистента)
       const currentStreak = await calculateStreak(userId);
-
-      // 7. Calculate week progress (tasks completed this week / total)
       const weekProgress = await calculateWeekProgress(userId, today);
 
-      // 8. Get yearly goals summary
-      const yearlyGoals = await prisma.yearlyGoal.findMany({
-        where: { userId, year: today.getFullYear() },
-        select: { area: true, goalText: true, progress: true },
-      });
-
-      const yearlyGoalsSummary = yearlyGoals.length > 0
-        ? yearlyGoals.map((g) => `${g.area}: ${g.goalText} (${Math.round(g.progress)}%)`).join('; ')
-        : 'Не заданы';
-
-      // JARVIS memories — query-aware retrieval (текст юзера → Postgres FTS).
-      const memories = await getRelevantMemories(userId, text, 20);
-
-      // Build context
-      const context: AssistantContext = {
-        userName: user.name,
-        assistantStyle: user.assistantStyle as 'friendly' | 'strict' | 'calm' | 'toxic',
-        assistantGender: user.assistantGender,
-        todayTasks: todayTasks.map((t) => ({ title: t.title, completed: t.completed })),
-        habitsProgress,
-        upcomingEvents: upcomingEvents.map((e) => ({
-          title: e.title,
-          startTime: e.startTime,
-          date: e.date.toISOString().split('T')[0],
-        })),
-        spentThisMonth,
-        budgetLimit,
-        currentStreak,
-        weekProgress,
-        yearlyGoalsSummary,
-        memories,
-      };
-
-      // 9-11. Determine which prompt to use
-      const intent = await parseIntent(text);
-      let systemPrompt: string;
-
-      if (intent.action === 'goodnight') {
-        const totalItems = todayTasks.length + habitsProgress.total;
-        const completedItems = todayTasks.filter((t) => t.completed).length + habitsProgress.completed;
-        const dayCompletionPercent = totalItems > 0
-          ? (completedItems / totalItems) * 100
-          : 0;
-        systemPrompt = buildGoodnightPrompt(context, dayCompletionPercent);
-      } else if (intent.action === 'good_morning') {
-        systemPrompt = buildGoodMorningPrompt(context);
-      } else {
-        systemPrompt = buildAssistantPrompt(context);
+      // ЕДИНЫЙ МОЗГ: ответ генерит оркестратор (память+дедуп+семантика,
+      // web_search, агентные инструменты, gate подтверждений, decision
+      // logs, стиль ассистента, утро/вечер/ночь — всё там). Раньше тут
+      // был параллельный второй мозг с собственным промптом и прямым
+      // Claude — это и была headline-проблема плана (Столп 1).
+      const jarvis = await handleMessage(userId, text);
+      let responseText = jarvis.reply;
+      // Денежное/исходящее действие ждёт подтверждения — мобилка этого
+      // экрана не знает про pendingAction, поэтому добавляем понятную
+      // приписку (подтвердить можно ответив «да» следующим сообщением —
+      // оркестратор это поймает по pending-store).
+      if (jarvis.pendingAction && jarvis.confirmationText) {
+        responseText = jarvis.confirmationText;
       }
 
-      // 12. Send to Claude API
-      const aiResponse = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 512,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: text }],
-      });
-
-      const responseContent = aiResponse.content[0];
-      const responseText = responseContent.type === 'text'
-        ? responseContent.text
-        : 'Не удалось сформировать ответ.';
-
-      // 13. Return response with context
+      // Return response with context
       const responseContext: AssistantResponseContext = {
         tasksToday: todayTasks.length,
         tasksCompleted: todayTasks.filter((t) => t.completed).length,
