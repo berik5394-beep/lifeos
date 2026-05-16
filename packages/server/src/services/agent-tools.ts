@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { executeAction } from './action-executor.js';
 import { triageInbox } from './gmail.js';
+import { getRelevantMemories } from './memory-service.js';
 
 /**
  * Phase 1.4 — локальные инструменты для агентного цикла JARVIS.
@@ -92,6 +93,20 @@ export const LOCAL_TOOLS = [
       'Разобрать непрочитанные письма Gmail: что важное, что можно проигнорировать. Read-only. Вызывай на «разбери почту», «что в почте», «есть важные письма».',
     input_schema: { type: 'object', properties: {} },
   },
+  {
+    name: 'get_goal_progress',
+    description:
+      'Прогресс по годовым целям: реальный % vs темп года + связанные задачи + что юзер сам говорил про эту цель (память). Вызывай на «как я иду к цели», «что с финансовой целью», «отстаю ли я по здоровью».',
+    input_schema: {
+      type: 'object',
+      properties: {
+        area: {
+          type: 'string',
+          description: 'finance | health | career | spirituality (опц., иначе все)',
+        },
+      },
+    },
+  },
 ] as const;
 
 const startOfDay = (d: Date) => {
@@ -162,6 +177,85 @@ export async function runLocalTool(
         return JSON.stringify({
           summary: t.summary,
           important: t.important.map((m) => ({ from: m.from, subject: m.subject })),
+        });
+      }
+      case 'get_goal_progress': {
+        // Phase 2.5: связываем память ↔ YearlyGoal ↔ Task. Раньше мозг
+        // на «как я иду к цели» отвечал по памяти ИЛИ по факту, не
+        // соединяя. Теперь один инструмент собирает всё.
+        const now = new Date();
+        const year = now.getFullYear();
+        const yearStart = new Date(year, 0, 1);
+        const yearEnd = new Date(year + 1, 0, 1);
+        const elapsedPct = Math.round(
+          ((now.getTime() - yearStart.getTime()) /
+            (yearEnd.getTime() - yearStart.getTime())) *
+            100,
+        );
+        const area = input.area ? String(input.area).toLowerCase().trim() : null;
+
+        const goals = await prisma.yearlyGoal.findMany({
+          where: {
+            userId,
+            year,
+            ...(area ? { area: { equals: area, mode: 'insensitive' } } : {}),
+          },
+          select: { area: true, goalText: true, progress: true },
+        });
+
+        // Цель-область → категория задач (пересечение доменов).
+        const AREA_TO_CAT: Record<string, string> = {
+          finance: 'finance',
+          health: 'health',
+          career: 'work',
+          spirituality: 'personal',
+        };
+        const cats = Array.from(
+          new Set(
+            goals
+              .map((g) => AREA_TO_CAT[g.area.toLowerCase()])
+              .filter((c): c is string => !!c),
+          ),
+        );
+        const taskStats: Record<string, { completed: number; total: number }> = {};
+        await Promise.all(
+          cats.map(async (cat) => {
+            const [total, completed] = await Promise.all([
+              prisma.task.count({
+                where: { userId, category: cat, date: { gte: yearStart } },
+              }),
+              prisma.task.count({
+                where: {
+                  userId,
+                  category: cat,
+                  completed: true,
+                  date: { gte: yearStart },
+                },
+              }),
+            ]);
+            taskStats[cat] = { completed, total };
+          }),
+        );
+
+        const memQuery =
+          area || goals.map((g) => g.goalText).join(' ') || 'цель';
+        const remembered = await getRelevantMemories(userId, memQuery, 5);
+
+        return JSON.stringify({
+          yearElapsedPct: elapsedPct,
+          goals: goals.map((g) => {
+            const pct = g.progress > 1 ? Math.round(g.progress) : Math.round(g.progress * 100);
+            const gap = elapsedPct - pct;
+            return {
+              area: g.area,
+              goal: g.goalText,
+              progressPct: pct,
+              expectedPct: elapsedPct,
+              status: gap >= 25 ? 'отстаёт' : gap <= -10 ? 'с опережением' : 'в графике',
+              relatedTasks: taskStats[AREA_TO_CAT[g.area.toLowerCase()]] ?? null,
+            };
+          }),
+          remembered: remembered.map((m) => m.content),
         });
       }
       default:
