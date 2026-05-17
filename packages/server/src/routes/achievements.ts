@@ -79,6 +79,81 @@ function checkAutoUnlock(key: string, pet: { streak: number; level: number; stag
   }
 }
 
+/**
+ * C.16: бейджи, которым нужны данные сверх pet (steps/бюджет/
+ * привычка-чтение). Раньше checkAutoUnlock ловил только iron_will —
+ * 7 бейджей были мертвы в UI. Здесь — те, что РЕАЛЬНО триггерятся
+ * по имеющимся данным. early_bird/night_owl/social/comeback не
+ * реализованы намеренно: нет источника (нет таймстампов открытия
+ * приложения / времени записи в дневник / счётчика шар / счётчика
+ * воскрешений) — это отдельные фичи трекинга, не «бейдж».
+ */
+async function checkDataBadges(userId: string): Promise<string[]> {
+  const earned: string[] = [];
+
+  // marathoner — 20 000 шагов за любой день (StepLog.steps).
+  const bigDay = await prisma.stepLog.findFirst({
+    where: { userId, steps: { gte: 20000 } },
+    select: { id: true },
+  });
+  if (bigDay) earned.push('badge_marathoner');
+
+  // frugal — уложился в бюджет 3 полных месяца подряд (по каждому
+  // месяцу: сумма расходов <= сумма лимитов; лимиты должны быть заданы).
+  const now = new Date();
+  let frugalMonths = 0;
+  for (let i = 1; i <= 3; i++) {
+    const mStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+    const [spent, limit] = await Promise.all([
+      prisma.expense.aggregate({
+        where: { userId, date: { gte: mStart, lt: mEnd } },
+        _sum: { amount: true },
+      }),
+      prisma.budgetLimit.aggregate({
+        where: {
+          userId,
+          month: mStart.getMonth() + 1,
+          year: mStart.getFullYear(),
+        },
+        _sum: { monthlyLimit: true },
+      }),
+    ]);
+    const lim = limit._sum.monthlyLimit ?? 0;
+    if (lim > 0 && (spent._sum.amount ?? 0) <= lim) frugalMonths++;
+  }
+  if (frugalMonths === 3) earned.push('badge_frugal');
+
+  // bookworm — привычка про чтение, 60+ выполнений за ~70 дней.
+  const readHabits = await prisma.habit.findMany({
+    where: {
+      userId,
+      active: true,
+      OR: [
+        { name: { contains: 'чтени', mode: 'insensitive' } },
+        { name: { contains: 'книг', mode: 'insensitive' } },
+        { name: { contains: 'read', mode: 'insensitive' } },
+      ],
+    },
+    select: { id: true },
+  });
+  if (readHabits.length > 0) {
+    const since = new Date();
+    since.setDate(since.getDate() - 70);
+    const reads = await prisma.habitLog.count({
+      where: {
+        userId,
+        completed: true,
+        habitId: { in: readHabits.map((h) => h.id) },
+        date: { gte: since },
+      },
+    });
+    if (reads >= 60) earned.push('badge_bookworm');
+  }
+
+  return earned;
+}
+
 export async function achievementRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
@@ -106,6 +181,13 @@ export async function achievementRoutes(app: FastifyInstance): Promise<void> {
     const toUnlock: string[] = [];
     for (const key of Object.keys(ACHIEVEMENTS)) {
       if (!unlockedMap.has(key) && checkAutoUnlock(key, petData)) {
+        toUnlock.push(key);
+      }
+    }
+    // C.16: data-driven бейджи (steps/бюджет/чтение) — раньше не
+    // разблокировались вообще.
+    for (const key of await checkDataBadges(userId)) {
+      if (!unlockedMap.has(key) && !toUnlock.includes(key)) {
         toUnlock.push(key);
       }
     }
