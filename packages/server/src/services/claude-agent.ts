@@ -144,6 +144,9 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
   // "странные точки" и предложения в разнобой. Нормализуем:
   let cleaned = textParts
     .join('\n')
+    // сноски web_search: [1], [12], ¹²³ — мусор в чате, режем
+    .replace(/\s*\[\d{1,3}\]/g, '')
+    .replace(/[¹²³⁰-⁹]+/g, '')
     // строки только из пунктуации/пробелов/цифр → пусто
     .replace(/^[\s.·•*\-–—()[\]\d,;:]{0,4}$/gm, '');
 
@@ -168,12 +171,22 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     }
   }
 
-  const finalText = merged
+  let finalText = merged
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .replace(/ +([.,!?;:])/g, '$1')
     .replace(/ {2,}/g, ' ')
     .trim();
+
+  // Обрыв по лимиту токенов («…вы сами предлага») — не показываем
+  // огрызок: режем до последней границы предложения, если она есть
+  // достаточно далеко (не уничтожаем короткий валидный ответ).
+  if (response.stop_reason === 'max_tokens') {
+    const m = finalText.match(/^[\s\S]*[.!?…»)](?=\s|$)/);
+    if (m && m[0].length >= finalText.length * 0.6) {
+      finalText = m[0].trim();
+    }
+  }
 
   if (!finalText) {
     throw new AiModelError(new Error('Empty Claude response (no text blocks)'));
