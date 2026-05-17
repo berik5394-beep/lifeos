@@ -363,6 +363,9 @@ export async function handleMessage(
             { title: `Забронировать отель — ${destName}`, date: clamp(7), priority: 'high' },
             { title: `Оформить тревел-страховку — ${destName}`, date: clamp(5), priority: 'medium' },
             { title: `eSIM / SIM для ${destName}`, date: clamp(2), priority: 'medium' },
+            { title: `Bolt/Grab + привязать карту, офлайн-карты — ${destName}`, date: clamp(3), priority: 'medium' },
+            { title: `Снять/обменять наличные + чек-лист вещей — ${destName}`, date: clamp(2), priority: 'low' },
+            { title: `Онлайн-регистрация на рейс — открой за 24ч`, date: clamp(1), priority: 'high' },
             { title: `Трансфер в аэропорт — вылет в ${destName}`, date: clamp(0), priority: 'high' },
           ];
           const remind = clamp(1);
@@ -444,8 +447,9 @@ export async function handleMessage(
           });
           reply +=
             `\n\n📋 Собрал план: загранпаспорт/виза, билеты, отель, ` +
-            `страховка, eSIM, трансфер — задачи с датами под вылет. ` +
-            `Вылет и возврат добавил в календарь.`;
+            `страховка, eSIM, Bolt/Grab+карта, наличные, онлайн-чекин, ` +
+            `трансфер — задачи с датами под вылет. Вылет и возврат — ` +
+            `в календаре.`;
         }
       } catch (err) {
         // план — best-effort, не валим ответ, но больше не молча
