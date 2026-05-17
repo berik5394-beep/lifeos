@@ -1,6 +1,6 @@
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { Tool, ToolContext } from './_types.js';
-import { auditToolCall } from '../services/tool-audit.js';
+import { auditToolCall, type AuditSink } from '../services/tool-audit.js';
 import { getToday } from './get-today.js';
 import { getWeatherTool } from './get-weather.js';
 import { getBudgetTool } from './get-budget.js';
@@ -81,11 +81,16 @@ export async function runRegistryTool(
   name: string,
   rawInput: unknown,
   ctx: ToolContext,
+  sink?: AuditSink,
 ): Promise<unknown> {
   const tool = registry.get(name);
   if (!tool) throw new ToolNotFoundError(`Unknown tool: ${name}`);
   const parsed = tool.schema.parse(rawInput ?? {});
-  return auditToolCall(ctx.userId, name, parsed, () =>
-    tool.handler(parsed, ctx),
+  return auditToolCall(
+    ctx.userId,
+    name,
+    parsed,
+    () => tool.handler(parsed, ctx),
+    sink,
   );
 }
