@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { generateProactiveNotifications } from './proactive-notifications.js';
+import { runPetStreakSweep } from './pet-streak-service.js';
 import { deliverNotification } from './push-service.js';
 
 /**
@@ -30,6 +31,18 @@ async function tick(): Promise<void> {
   let delivered = 0;
 
   try {
+    // A.1: дневной пересчёт Pet.streak (идемпотентно, раз/день через
+    // streakDate). Для ВСЕХ живых питомцев, не только push-юзеров —
+    // мета-игра не должна зависеть от канала доставки.
+    try {
+      await runPetStreakSweep();
+    } catch (err) {
+      console.warn(
+        '[scheduler] pet-streak sweep failed:',
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     // Только юзеры с хоть каким-то каналом доставки: expo push token
     // ИЛИ привязанный telegram. Остальных нет смысла обрабатывать.
     const tgUserIds = (

@@ -340,6 +340,10 @@ model Pet {
   xpToNext       Int       @default(100)
   stage          String    @default("baby")
   streak         Int       @default(0)
+  // A.1: дата, за которую стрик последний раз оценён (раз/день,
+  // идемпотентно). Раньше Pet.streak НИКОГДА не писался → вся
+  // мета-игра (костюмы/бейджи/powerScore) была мертва.
+  streakDate     DateTime? @db.Date
   mana           Int       @default(0)
   maxMana        Int       @default(100)
   isAlive        Boolean   @default(true)
