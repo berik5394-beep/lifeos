@@ -21,9 +21,18 @@ import { validate } from '../middleware/validate.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import {
   buildInitialContext,
-  processConversationMessage,
   generateGreeting,
 } from '../services/conversation-engine.js';
+// Унификация «третьего мозга»: обработка сообщений диалога теперь
+// идёт через единый оркестратор (тот же мозг, что чат/Telegram/
+// /voice/assistant): единый промт (без markdown, KZ-валюта,
+// решительность), агентные инструменты, travel-концьерж,
+// подтверждения, память. conversation-engine.processConversationMessage
+// был расходящимся промтом без этого — отсюда markdown-мусор и
+// «советует вместо того, чтобы сделать» в проде. Контракт ответа
+// {response, actions, suggestions} сохранён. generateGreeting/
+// buildInitialContext оставлены только для /start (benign one-shot).
+import { handleMessage } from '../services/jarvis-orchestrator.js';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY || '',
@@ -188,20 +197,25 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      // Build fresh context (actions may have changed state)
-      const context = await buildInitialContext(userId);
-      if (!context) {
-        return reply.status(404).send({ message: 'Пользователь не найден' });
-      }
-
-      // Process through conversation engine
-      const result = await processConversationMessage(userId, sessionId, text, context);
+      // Единый мозг (web search + агентные инструменты + travel-
+      // концьерж + память + подтверждения). pendingAction (деньги/
+      // исходящее) отдаём текстом — юзер подтверждает «да»
+      // следующим сообщением (pending-store оркестратора поймает).
+      const jarvis = await handleMessage(userId, text);
+      const response =
+        jarvis.pendingAction && jarvis.confirmationText
+          ? jarvis.confirmationText
+          : jarvis.reply +
+            (jarvis.bookingUrl ? `\n\n\u{1F517} ${jarvis.bookingUrl}` : '');
 
       return reply.send({
         transcription: text,
-        response: result.text,
-        actions: result.actions,
-        suggestions: result.suggestions,
+        response,
+        // Контракт сохранён (массивы — массивы). Действия мозг уже
+        // исполнил серверно (EXECUTABLE/подтверждение); клиенту
+        // отдельные actions не нужны.
+        actions: [],
+        suggestions: [],
       });
     } catch (err) {
       app.log.error(err);
@@ -226,19 +240,17 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ message: 'Сессия не найдена или завершена' });
       }
 
-      // Build fresh context
-      const context = await buildInitialContext(userId);
-      if (!context) {
-        return reply.status(404).send({ message: 'Пользователь не найден' });
-      }
-
-      // Process
-      const result = await processConversationMessage(userId, sessionId, text, context);
+      const jarvis = await handleMessage(userId, text);
+      const response =
+        jarvis.pendingAction && jarvis.confirmationText
+          ? jarvis.confirmationText
+          : jarvis.reply +
+            (jarvis.bookingUrl ? `\n\n\u{1F517} ${jarvis.bookingUrl}` : '');
 
       return reply.send({
-        response: result.text,
-        actions: result.actions,
-        suggestions: result.suggestions,
+        response,
+        actions: [],
+        suggestions: [],
       });
     } catch (err) {
       app.log.error(err);
