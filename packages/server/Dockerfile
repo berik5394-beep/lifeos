@@ -11,6 +11,7 @@ RUN npx prisma generate
 
 COPY tsconfig.json ./
 COPY src ./src
+COPY assets ./assets
 RUN npm run build
 
 # ── Production stage ─────────────────────────────────────────
@@ -24,6 +25,9 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+# A.6: шрифт с кириллицей для реального PDF-экспорта (pdfkit-Helvetica
+# не умеет русский). Путь рантайма — process.cwd()/assets.
+COPY --from=builder /app/assets ./assets
 
 # Regenerate Prisma client for production
 RUN npx prisma generate

@@ -4,6 +4,122 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { calculateStreak } from '../services/streak-service.js';
+import PDFDocument from 'pdfkit';
+import { join } from 'node:path';
+
+// A.6: реальный экспорт. Раньше /export/pdf и /export/story
+// возвращали JSON («success»), а файла не было — обман. Теперь —
+// настоящий PDF (pdfkit + кириллический DejaVuSans) и настоящая
+// картинка-Story (SVG, вектор, без native-deps).
+
+const FONT_PATH = join(process.cwd(), 'assets', 'DejaVuSans.ttf');
+
+interface ReportData {
+  period: string;
+  startDate: string;
+  endDate: string;
+  tasks: { total: number; completed: number; completionRate: number };
+  habits: { activeCount: number; totalCompletions: number };
+  finance: {
+    totalExpenses: number;
+    totalIncomes: number;
+    balance: number;
+    topCategories: { category: string; amount: number }[];
+  };
+}
+
+export function renderReportPdf(rd: ReportData): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    const chunks: Buffer[] = [];
+    doc.on('data', (c: Buffer) => chunks.push(c));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    // Кириллица: pdfkit-Helvetica её не умеет → встроенный DejaVuSans.
+    // Если файла нет (локальный запуск без assets) — дефолтный шрифт,
+    // PDF всё равно валиден (не падаем).
+    try {
+      doc.font(FONT_PATH);
+    } catch {
+      /* fallback: встроенный шрифт pdfkit */
+    }
+    doc.fontSize(22).fillColor('#0F172A').text('LifeOS — отчёт', { align: 'center' });
+    doc.moveDown(0.4);
+    doc
+      .fontSize(11)
+      .fillColor('#64748B')
+      .text(
+        `Период: ${rd.period === 'month' ? 'месяц' : 'год'} (${rd.startDate} — ${rd.endDate})`,
+        { align: 'center' },
+      );
+    doc.moveDown(1.5);
+
+    const section = (title: string, lines: string[]) => {
+      doc.fillColor('#0F172A').fontSize(15).text(title);
+      doc.moveDown(0.2).fillColor('#334155').fontSize(12);
+      for (const l of lines) doc.text(l);
+      doc.moveDown(1);
+    };
+
+    section('Задачи', [
+      `Выполнено ${rd.tasks.completed} из ${rd.tasks.total} (${rd.tasks.completionRate}%)`,
+    ]);
+    section('Привычки', [
+      `Активных: ${rd.habits.activeCount}`,
+      `Отметок за период: ${rd.habits.totalCompletions}`,
+    ]);
+    section('Финансы', [
+      `Доходы: ${Math.round(rd.finance.totalIncomes)} ₸`,
+      `Расходы: ${Math.round(rd.finance.totalExpenses)} ₸`,
+      `Баланс: ${Math.round(rd.finance.balance)} ₸`,
+    ]);
+    if (rd.finance.topCategories.length > 0) {
+      section(
+        'Топ категорий трат',
+        rd.finance.topCategories.map(
+          (c) => `— ${c.category}: ${Math.round(c.amount)} ₸`,
+        ),
+      );
+    }
+    doc
+      .moveDown(1)
+      .fontSize(9)
+      .fillColor('#94A3B8')
+      .text('Сгенерировано LifeOS', { align: 'center' });
+    doc.end();
+  });
+}
+
+function esc(s: string): string {
+  return s.replace(/[<>&]/g, (c) =>
+    c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&amp;',
+  );
+}
+
+/** Story 1080×1920 как настоящая картинка (SVG-вектор, без canvas). */
+export function renderStorySvg(
+  title: string,
+  rows: { label: string; value: string }[],
+): string {
+  const items = rows
+    .map(
+      (r, i) =>
+        `<text x="90" y="${760 + i * 150}" font-size="40" fill="#94A3B8">${esc(r.label)}</text>` +
+        `<text x="990" y="${760 + i * 150}" font-size="56" fill="#F8FAFC" font-weight="bold" text-anchor="end">${esc(r.value)}</text>`,
+    )
+    .join('');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#0F172A"/><stop offset="1" stop-color="#1E293B"/>
+  </linearGradient></defs>
+  <rect width="1080" height="1920" fill="url(#bg)"/>
+  <text x="540" y="420" font-size="64" fill="#6366F1" font-weight="bold" text-anchor="middle" font-family="sans-serif">LifeOS</text>
+  <text x="540" y="540" font-size="48" fill="#F8FAFC" text-anchor="middle" font-family="sans-serif">${esc(title)}</text>
+  <g font-family="sans-serif">${items}</g>
+  <text x="540" y="1830" font-size="32" fill="#475569" text-anchor="middle" font-family="sans-serif">lifeos.app</text>
+</svg>`;
+}
 
 const pdfReportSchema = z.object({
   period: z.enum(['month', 'year']),
@@ -224,10 +340,14 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
       },
     };
 
-    return reply.send({
-      reportData,
-      message: 'Отчёт сгенерирован',
-    });
+    const pdf = await renderReportPdf(reportData);
+    return reply
+      .header('Content-Type', 'application/pdf')
+      .header(
+        'Content-Disposition',
+        `attachment; filename="lifeos-report-${reportData.startDate}.pdf"`,
+      )
+      .send(pdf);
   });
 
   // --- Instagram Story Data ---
@@ -285,20 +405,16 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
     // Streak — delegated to streak-service (single findMany vs 365 counts)
     const streak = await calculateStreak(userId);
 
-    return reply.send({
-      title: 'Мой прогресс в LifeOS',
-      stats: {
-        tasksCompletedToday: todayCompletedTasks,
-        tasksTotalToday: todayTasks,
-        tasksCompletedWeek: weekCompletedTasks,
-        tasksTotalWeek: weekTasks,
-        habitsCompletedToday: todayHabitLogs,
-        habitsTotalToday: activeHabits,
-        habitsStreak: streak,
-        stepsToday: todaySteps?.steps ?? 0,
-        distanceToday: todaySteps?.distanceKm ?? 0,
-      },
-      style: 'dark',
-    });
+    const svg = renderStorySvg('Мой прогресс', [
+      { label: 'Задачи сегодня', value: `${todayCompletedTasks}/${todayTasks}` },
+      { label: 'Задачи за неделю', value: `${weekCompletedTasks}/${weekTasks}` },
+      { label: 'Привычки сегодня', value: `${todayHabitLogs}/${activeHabits}` },
+      { label: 'Серия', value: `${streak} дн` },
+      { label: 'Шаги сегодня', value: `${todaySteps?.steps ?? 0}` },
+    ]);
+    return reply
+      .header('Content-Type', 'image/svg+xml; charset=utf-8')
+      .header('Content-Disposition', 'inline; filename="lifeos-story.svg"')
+      .send(svg);
   });
 }
