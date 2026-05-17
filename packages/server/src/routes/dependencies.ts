@@ -9,6 +9,37 @@ const addDependencySchema = z.object({
   prerequisiteTaskId: z.string().min(1, 'ID задачи-предшественника обязателен').max(64),
 });
 
+/**
+ * B.2: детект цикла. Ребро (dependentTaskId зависит от
+ * prerequisiteTaskId) = "prereq должен завершиться раньше dependent".
+ * Добавление ребра newDependent→newPrereq создаёт цикл, если из
+ * newPrereq уже достижим newDependent по цепочке "зависит от".
+ * Чистая функция — тестируется без БД (аудит просил DFS перед create).
+ */
+export function wouldCreateCycle(
+  edges: { dependentTaskId: string; prerequisiteTaskId: string }[],
+  newDependent: string,
+  newPrereq: string,
+): boolean {
+  if (newDependent === newPrereq) return true;
+  const dependsOn = new Map<string, string[]>();
+  for (const e of edges) {
+    const arr = dependsOn.get(e.dependentTaskId);
+    if (arr) arr.push(e.prerequisiteTaskId);
+    else dependsOn.set(e.dependentTaskId, [e.prerequisiteTaskId]);
+  }
+  const seen = new Set<string>();
+  const stack = [newPrereq];
+  while (stack.length > 0) {
+    const node = stack.pop() as string;
+    if (node === newDependent) return true;
+    if (seen.has(node)) continue;
+    seen.add(node);
+    for (const next of dependsOn.get(node) ?? []) stack.push(next);
+  }
+  return false;
+}
+
 export async function dependencyRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
@@ -33,6 +64,29 @@ export async function dependencyRoutes(app: FastifyInstance): Promise<void> {
       where: { id: prerequisiteTaskId, userId: request.userId },
     });
     if (!prereq) throw new NotFoundError('Задача-предшественник');
+
+    // B.2: дубликат пары (нет unique-constraint в схеме — проверяем
+    // в коде, чтобы не плодить дубли; миграцию unique-индекса не
+    // делаем — на существующих дублях db push упал бы).
+    const existingDup = await prisma.taskDependency.findFirst({
+      where: { dependentTaskId: id, prerequisiteTaskId },
+      select: { id: true },
+    });
+    if (existingDup) {
+      throw new ValidationError('Такая зависимость уже существует');
+    }
+
+    // B.2: цикл. Грузим рёбра юзера (через relation на dependentTask)
+    // и проверяем DFS перед созданием.
+    const edges = await prisma.taskDependency.findMany({
+      where: { dependentTask: { userId: request.userId } },
+      select: { dependentTaskId: true, prerequisiteTaskId: true },
+    });
+    if (wouldCreateCycle(edges, id, prerequisiteTaskId)) {
+      throw new ValidationError(
+        'Это создаст циклическую зависимость между задачами',
+      );
+    }
 
     const dep = await prisma.taskDependency.create({
       data: {
