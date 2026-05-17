@@ -9,6 +9,11 @@ import { parseIntent } from '../ai/intent-parser.js';
 import { calculateStreak, calculateWeekProgress } from './streak-service.js';
 import { getRelevantMemories } from './memory-service.js';
 import { getWeather } from './external-apis.js';
+import {
+  localDayStartUTC,
+  localDayStartUTCOffset,
+  localDateStr,
+} from '../lib/tz.js';
 
 /**
  * Сбор полного контекста пользователя + intent. ОДИН сборщик —
@@ -52,16 +57,21 @@ export async function gatherAssistantContext(
       assistantGender: true,
       wakeUpTime: true,
       currency: true,
+      timezone: true,
     },
   });
   if (!user) return null;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  // B.5 модуль №1: «сегодня» по таймзоне юзера, не серверный UTC
+  // (раньше после 19:00 в Алматы контекст показывал «завтра»).
+  // @db.Date хранит дату как UTC-полночь → tz-окно дня её содержит,
+  // выборки корректны без правки write-side.
+  const tz = user.timezone || 'Asia/Almaty';
+  const today = localDayStartUTC(tz);
+  const tomorrow = localDayStartUTCOffset(tz, -1); // следующий лок. день
+  const [ly, lm] = localDateStr(tz).split('-').map(Number);
+  const monthStart = new Date(Date.UTC(ly, lm - 1, 1));
+  const monthEnd = new Date(Date.UTC(ly, lm, 1));
 
   const [
     todayTasks,
@@ -100,23 +110,25 @@ export async function gatherAssistantContext(
       _sum: { amount: true },
     }),
     prisma.budgetLimit.aggregate({
-      where: { userId, month: today.getMonth() + 1, year: today.getFullYear() },
+      where: { userId, month: lm, year: ly },
       _sum: { monthlyLimit: true },
     }),
     calculateStreak(userId),
     calculateWeekProgress(userId, today),
     prisma.yearlyGoal.findMany({
-      where: { userId, year: today.getFullYear() },
+      where: { userId, year: ly },
       select: { area: true, goalText: true, progress: true },
     }),
     getRelevantMemories(userId, text, 20),
     knownIntent ? Promise.resolve(knownIntent) : parseIntent(text),
     // meta#9: план на эту неделю (WeeklyGoal, weekStart = понедельник)
     (() => {
-      const m = new Date(today);
-      m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); // Mon of this week
+      // Понедельник недели по ЛОКАЛЬНОЙ дате юзера (weekStart @db.Date
+      // = UTC-полночь понедельника). Считаем в UTC от лок. даты.
+      const d = new Date(Date.UTC(ly, lm - 1, Number(localDateStr(tz).slice(8, 10))));
+      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
       return prisma.weeklyGoal.findMany({
-        where: { userId, weekStart: m },
+        where: { userId, weekStart: d },
         select: { goalText: true, completed: true },
         orderBy: { order: 'asc' },
         take: 10,
