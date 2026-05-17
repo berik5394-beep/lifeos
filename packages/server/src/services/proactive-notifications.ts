@@ -26,6 +26,21 @@ function getToday(): Date {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
+/**
+ * #4-фикс: «фоновые пинки» (бюджет/привычки/бездействие) раньше
+ * ставили scheduledFor=now → дедуп (userId,type,scheduledFor)
+ * каждый 10-мин тик новый → один и тот же «питомец скучает»
+ * улетал 16 раз. Стабильный СЛОТ на день (одно и то же значение
+ * весь день) делает дедуп реальным: максимум 1 раз/день/тип.
+ * Доставится первым тиком в окне [слот .. слот+2ч] (планировщик
+ * сам режет просрочку >2ч), дальше — дедуп.
+ */
+export function daySlot(hour: number): Date {
+  const d = getToday();
+  d.setHours(hour, 0, 0, 0);
+  return d;
+}
+
 function getMonthRange(): { start: Date; end: Date } {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -156,7 +171,7 @@ async function generateBudgetAlerts(
         title: 'Бюджет на пределе',
         body: `\u26A0\uFE0F Ты потратил ${Math.round(ratio * 100)}% бюджета на ${label}. Осталось ${remaining}\u20B8 на ${daysLeft} дней`,
         type: 'budget_alert',
-        scheduledFor: now,
+        scheduledFor: daySlot(10), // #4: стабильный слот → 1/день
       });
     }
   }
@@ -212,7 +227,7 @@ async function generateHabitNudges(
     title: 'Не забудь о привычках',
     body: `Ты ещё не отметил: ${namesList}${suffix}.${streakText}`,
     type: 'habit_nudge',
-    scheduledFor: now,
+    scheduledFor: daySlot(14), // #4: стабильный слот → 1/день
   });
 
   return notifications;
@@ -277,7 +292,7 @@ async function generateInactivityPing(
     title: 'Мы скучаем!',
     body,
     type: 'inactivity_ping',
-    scheduledFor: now,
+    scheduledFor: daySlot(12), // #4: стабильный слот → 1/день
   });
 
   return notifications;
