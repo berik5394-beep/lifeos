@@ -40,7 +40,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       if (res.bookingUrl) message += `\n\n\u{1F517} ${res.bookingUrl}`;
       const cap: string[] = [];
       if (res.capturedTasks) cap.push(`\u{1F4DD} +${res.capturedTasks} в задачи`);
-      if (res.capturedMemories) cap.push('\u{1F9E0} запомнил');
+      if (res.capturedMemories) cap.push(`\u{1F9E0} +${res.capturedMemories} в память`);
       if (cap.length > 0) message += `\n\n— ${cap.join(' · ')}`;
       return reply.send({
         message,

@@ -105,6 +105,12 @@ export const LOCAL_TOOLS = [
     },
   },
   {
+    name: 'get_trip',
+    description:
+      'Активные/ближайшие поездки юзера (TravelPlan): куда, даты вылета/возврата, статус, ссылка брони. ОБЯЗАТЕЛЬНО вызывай на «когда у меня вылет», «куда я лечу», «что с поездкой», «бронь» — не отвечай «нет данных» не проверив.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'get_weather',
     description:
       'Погода и прогноз в городе (по умолчанию Алматы). Вызывай на «какая погода», «что надеть», «во сколько выезжать» — особенно если у юзера сегодня встреча/поездка.',
@@ -229,6 +235,43 @@ export async function runLocalTool(
                 m.content.toLowerCase().includes(name.toLowerCase()),
             )
             .map((m) => m.content),
+        });
+      }
+      case 'get_trip': {
+        // #1: «запомнил поездку», но «когда вылет» → «нет данных».
+        // Корень: поездка в TravelPlan, а мозг туда не смотрел.
+        const today = startOfDay(new Date());
+        const horizon = new Date(today.getTime() - 86_400_000); // вчера, чтобы свежие тоже
+        const trips = await prisma.travelPlan.findMany({
+          where: {
+            userId,
+            status: { in: ['planning', 'booked', 'in_progress'] },
+            dateFrom: { gte: horizon },
+          },
+          orderBy: { dateFrom: 'asc' },
+          take: 3,
+          select: {
+            destination: true,
+            dateFrom: true,
+            dateTo: true,
+            status: true,
+            routes: true,
+          },
+        });
+        if (trips.length === 0) {
+          return JSON.stringify({ trips: [], note: 'Активных поездок в плане нет.' });
+        }
+        return JSON.stringify({
+          trips: trips.map((t) => ({
+            destination: t.destination,
+            departure: t.dateFrom.toISOString().slice(0, 10),
+            return: t.dateTo ? t.dateTo.toISOString().slice(0, 10) : null,
+            status: t.status,
+            bookingUrl:
+              t.routes && typeof t.routes === 'object' && 'bookingUrl' in t.routes
+                ? (t.routes as { bookingUrl?: string }).bookingUrl
+                : null,
+          })),
         });
       }
       case 'get_weather': {

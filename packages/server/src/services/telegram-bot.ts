@@ -258,7 +258,7 @@ async function sendJarvis(
   }
   const captured: string[] = [];
   if (res.capturedTasks) captured.push(`📝 +${res.capturedTasks} в задачи`);
-  if (res.capturedMemories) captured.push(`🧠 запомнил`);
+  if (res.capturedMemories) captured.push(`🧠 +${res.capturedMemories} в память`);
   if (captured.length > 0) {
     msg += `\n\n— ${captured.join(' · ')}`;
   }

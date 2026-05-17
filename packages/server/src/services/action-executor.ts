@@ -95,19 +95,60 @@ export async function executeAction(
 
       // ═══ СОБЫТИЯ / КАЛЕНДАРЬ ═══
       case 'create_event': {
+        const title = String(input.title);
+        const date = new Date(String(input.date));
+        const startTime = input.startTime ? String(input.startTime) : null;
+        const endTime = input.endTime ? String(input.endTime) : null;
+        // #1/#2: анти-дубль. Раньше каждая «встреча с Сериком»
+        // создавала НОВУЮ строку → 3 конфликтующих события
+        // (17↔18, 14↔15). Теперь: если есть событие с похожим
+        // названием в окне ±3 дня — ОБНОВЛЯЕМ его (перенос/уточнение
+        // времени), а не плодим. Один авторитетный ряд.
+        const windowStart = new Date(date);
+        windowStart.setDate(windowStart.getDate() - 3);
+        const windowEnd = new Date(date);
+        windowEnd.setDate(windowEnd.getDate() + 3);
+        const existingEv = await prisma.calendarEvent.findFirst({
+          where: {
+            userId,
+            title: { contains: title.slice(0, 40), mode: 'insensitive' },
+            date: { gte: windowStart, lte: windowEnd },
+          },
+          orderBy: { date: 'desc' },
+        });
+        if (existingEv) {
+          const updated = await prisma.calendarEvent.update({
+            where: { id: existingEv.id },
+            data: {
+              title,
+              date,
+              startTime,
+              endTime,
+              location: input.location ? String(input.location) : existingEv.location,
+              description: input.description
+                ? String(input.description)
+                : existingEv.description,
+            },
+          });
+          return {
+            success: true,
+            data: updated,
+            message: `Обновил встречу «${title}»: ${String(input.date)}${startTime ? ' в ' + startTime : ''} (была одна запись — не плодил дубль)`,
+          };
+        }
         const event = await prisma.calendarEvent.create({
           data: {
             userId,
-            title: String(input.title),
-            date: new Date(String(input.date)),
-            startTime: input.startTime ? String(input.startTime) : null,
-            endTime: input.endTime ? String(input.endTime) : null,
+            title,
+            date,
+            startTime,
+            endTime,
             location: input.location ? String(input.location) : null,
             description: input.description ? String(input.description) : null,
             source: 'voice',
           },
         });
-        return { success: true, data: event, message: `Встреча "${input.title}" создана на ${input.date}${input.startTime ? ' в ' + String(input.startTime) : ''}` };
+        return { success: true, data: event, message: `Встреча "${title}" создана на ${String(input.date)}${startTime ? ' в ' + startTime : ''}` };
       }
 
       case 'get_free_slots': {
