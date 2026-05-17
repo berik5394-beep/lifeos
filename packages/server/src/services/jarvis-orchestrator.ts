@@ -18,7 +18,7 @@ import { runAgent } from './claude-agent.js';
 import { captureMemory } from './memory-service.js';
 import { trackInterests } from './interest-service.js';
 import { executeAction } from './action-executor.js';
-import { runRegistryTool } from '../tools/index.js';
+import { runRegistryTool, registry, toolConfirmRequired } from '../tools/index.js';
 import {
   peekPendingAction,
   takePendingAction,
@@ -152,7 +152,11 @@ async function saveTurn(
 }
 
 /** Денежные/необратимые — требуют явного «да» перед выполнением. */
-const NEEDS_CONFIRM = new Set(['add_expense', 'add_income', 'send_telegram']);
+// SSOT Step 6: confirm-решение — производное от реестра (needsConfirm
+// живёт на tool). Здесь остаётся ТОЛЬКО legacy, ещё не в реестре:
+// send_telegram (мигрирует/убирается на Шаге 9). add_expense/
+// add_income больше НЕ тут — их гейт на самом инструменте.
+const LEGACY_CONFIRM = new Set(['send_telegram']);
 
 // Fix D: эвристика «сообщению нужны локальные инструменты». Без \b —
 // кириллические границы в JS не работают; ловим по подстрокам корней.
@@ -194,15 +198,27 @@ export async function runConfirmedAction(
   input: Record<string, unknown>,
 ): Promise<string> {
   try {
-    const r = await executeAction(action, input, userId);
+    // SSOT Step 6: подтверждённое денежное действие исполняется
+    // через РЕЕСТР (аудит ToolCall + zod), а не legacy switch.
+    // send_telegram ещё не в реестре → legacy executeAction.
+    let message: string;
+    if (registry.has(action)) {
+      const out = (await runRegistryTool(action, input, { userId })) as {
+        message?: string;
+      };
+      message = out.message ?? 'Готово.';
+    } else {
+      const r = await executeAction(action, input, userId);
+      message = r.message;
+    }
     console.log(
-      `[jarvis] user=${userId} intent=${action} CONFIRMED → "${r.message.slice(0, 80)}"`,
+      `[jarvis] user=${userId} intent=${action} CONFIRMED → "${message.slice(0, 80)}"`,
     );
-    await saveTurn(userId, '(подтверждено)', r.message);
-    return r.message;
+    await saveTurn(userId, '(подтверждено)', message);
+    return message;
   } catch (err) {
     console.warn(
-      `[jarvis] confirmed executeAction failed user=${userId} intent=${action}:`,
+      `[jarvis] confirmed action failed user=${userId} intent=${action}:`,
       err instanceof Error ? err.message : err,
     );
     return 'Не получилось выполнить — попробуй ещё раз?';
@@ -515,13 +531,24 @@ export async function handleMessage(
     'send_telegram',
   ]);
   if (EXECUTABLE.has(intent.action)) {
-    // Фаза 1.2: денежное действие — НЕ выполняем сразу. Предлагаем,
-    // сохраняем как pending, ждём «да» (или кнопку в приложении).
-    // Безопасные (create_task/complete_habit/...) — выполняем сразу,
-    // они обратимы.
-    if (NEEDS_CONFIRM.has(intent.action)) {
-      const input: Record<string, unknown> = { ...intent };
-      delete input.action;
+    const input: Record<string, unknown> = { ...intent };
+    delete input.action;
+    if (intent.action === 'complete_task' && intent.taskTitle) {
+      input.title = intent.taskTitle;
+    }
+    if (intent.action === 'complete_habit' && intent.habitName) {
+      input.name = intent.habitName;
+    }
+    // SSOT Step 6: нужно ли подтверждение — спрашиваем у РЕЕСТРА
+    // (needsConfirm на самом tool). Только не-реестровый legacy
+    // (send_telegram) решается локальным набором. Деньги
+    // (add_expense/add_income) гейтятся своим needsConfirm:true.
+    const needsConfirm = registry.has(intent.action)
+      ? toolConfirmRequired(intent.action, input)
+      : LEGACY_CONFIRM.has(intent.action);
+    // Денежное/необратимое — НЕ выполняем сразу: pending + ждём «да».
+    // Обратимые (create_task/complete_habit/...) — сразу.
+    if (needsConfirm) {
       const ctext = confirmationText(intent.action, input);
       await setPendingAction(userId, intent.action, input, ctext);
       console.log(
@@ -538,15 +565,7 @@ export async function handleMessage(
     try {
       // SSOT Шаг 5: write-tools идут через РЕЕСТР (zod-валидация +
       // аудит ToolCall), не через legacy action-executor switch.
-      // Маппинг полей intent-parser → схема tool.
-      const input: Record<string, unknown> = { ...intent };
-      delete input.action;
-      if (intent.action === 'complete_task' && intent.taskTitle) {
-        input.title = intent.taskTitle;
-      }
-      if (intent.action === 'complete_habit' && intent.habitName) {
-        input.name = intent.habitName;
-      }
+      // input уже собран и смаппен выше (до confirm-решения).
       const out = (await runRegistryTool(
         intent.action,
         input,

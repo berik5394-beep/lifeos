@@ -25,6 +25,9 @@ const DEPRECATED_BY_REGISTRY = new Set([
   'complete_multiple_habits',
   'create_event',
   'journal_entry',
+  // Шаг 6 — деньги тоже в реестре (needsConfirm на tool)
+  'add_expense',
+  'add_income',
 ]);
 
 export async function executeAction(

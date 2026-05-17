@@ -11,6 +11,8 @@ import { completeHabitTool } from './complete-habit.js';
 import { completeMultipleHabitsTool } from './complete-multiple-habits.js';
 import { createEventTool } from './create-event.js';
 import { journalEntryTool } from './journal-entry.js';
+import { addExpenseTool } from './add-expense.js';
+import { addIncomeTool } from './add-income.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -34,6 +36,9 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   completeMultipleHabitsTool,
   createEventTool,
   journalEntryTool,
+  // деньги, needsConfirm:true (Шаг 6)
+  addExpenseTool,
+  addIncomeTool,
 ];
 
 export const registry: ReadonlyMap<string, Tool> = new Map(
@@ -82,6 +87,22 @@ export function confirmAlwaysNames(): string[] {
 /** Имена реестра — для drift-guard и роутинга. */
 export function registryToolNames(): string[] {
   return [...registry.keys()].sort();
+}
+
+/**
+ * Нужно ли подтверждение для этого вызова tool. Источник правды —
+ * сам tool (boolean ИЛИ функция от input). Tool не в реестре →
+ * false (решение о confirm для legacy остаётся у вызывающего).
+ */
+export function toolConfirmRequired(
+  name: string,
+  input: unknown,
+): boolean {
+  const tool = registry.get(name);
+  if (!tool) return false;
+  return typeof tool.needsConfirm === 'function'
+    ? tool.needsConfirm(input)
+    : tool.needsConfirm;
 }
 
 export class ToolNotFoundError extends Error {}
