@@ -56,3 +56,15 @@ one "доход" message, observe PENDING, then exactly one "да", confirm a
 single CONFIRMED. Assert the normal path does NOT auto-confirm without
 an explicit separate "да". If reproduced, investigate Telegram update
 de-duplication in telegram-bot.ts and/or a race in handleMessage.
+
+### ISSUE-4 — RESOLVED (2026-05-17, clean prod re-verify)
+
+Controlled single-sequence re-verify on deployed foundation:
+`Запиши доход 77777 тенге` (once) → exactly one `intent=add_income
+PENDING` at 15:15:28, ZERO CONFIRMED over an 18s window (no
+auto-confirm). Then `да` (once) → exactly one `intent=add_income
+CONFIRMED → "Доход 77777 ₸ записан"` at 15:17:08. PENDING=1,
+CONFIRMED=1. Conclusion: the 15:07:18 9µs PENDING→CONFIRMED was NOT
+a code defect — it was the user's double-send interleaved with a
+prior pending. Normal money path is safe (no confirm without an
+explicit separate "да"). Money-safety gate for Step 6 satisfied.
