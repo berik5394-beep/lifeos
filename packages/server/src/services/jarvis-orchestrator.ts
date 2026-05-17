@@ -275,65 +275,184 @@ export async function handleMessage(
       destinationKnown: !!destMemory,
     };
 
-    const reply = await narrateBooking(bIntent, bCtx, url, bHistory);
+    let reply = await narrateBooking(bIntent, bCtx, url, bHistory);
 
-    // Сохраняем/обновляем план поездки + ставим напоминание, чтобы JARVIS
-    // вёл поездку до конца, а не просто ответил один раз.
+    // Концьерж строит ПЛАН, а не просто отвечает: TravelPlan + дат-
+    // чеклист (виза/билеты/отель/страховка/eSIM/трансфер) + события
+    // вылет/возврат + чек конфликтов календаря. Анти-дубль: follow-up
+    // «купи билеты» больше НЕ плодит второй план (раньше плодил, тем
+    // более теперь когда conversation-путь реэнтерит plan_travel).
     if (
       bIntent.confidence >= 0.5 &&
       (bIntent.type === 'flight' || bIntent.type === 'hotel') &&
       (bIntent.departDate || bIntent.checkIn)
     ) {
       const dateFrom = (bIntent.departDate || bIntent.checkIn) as string;
+      const dateToStr: string | undefined =
+        bIntent.returnDate || bIntent.checkOut || undefined;
       const destName = (bIntent.toCity || bIntent.city || 'поездка').slice(0, 128);
+      const depUTC = new Date(dateFrom + 'T00:00:00Z');
+      const retUTC = dateToStr ? new Date(dateToStr + 'T00:00:00Z') : null;
+      const todayUTC = new Date(
+        new Date().toISOString().slice(0, 10) + 'T00:00:00Z',
+      );
       try {
-        await prisma.$transaction(async (tx) => {
-          await tx.travelPlan.create({
-            data: {
+        // Анти-дубль: уже есть planning-план в это окно на это направление?
+        const existingPlan = await prisma.travelPlan.findFirst({
+          where: {
+            userId,
+            destination: destName,
+            status: 'planning',
+            dateFrom: depUTC,
+          },
+          select: { id: true },
+        });
+
+        // №6: конфликты на даты поездки (события/несделанные задачи
+        // в окне [вылет..возврат]).
+        const windowEnd = retUTC ?? depUTC;
+        const [conflictEvents, conflictTasks] = await Promise.all([
+          prisma.calendarEvent.findMany({
+            where: { userId, date: { gte: depUTC, lte: windowEnd } },
+            select: { title: true, date: true },
+            take: 5,
+          }),
+          prisma.task.findMany({
+            where: {
               userId,
-              destination: destName,
-              dateFrom: new Date(dateFrom + 'T00:00:00Z'),
-              dateTo:
-                bIntent.returnDate || bIntent.checkOut
-                  ? new Date(
-                      ((bIntent.returnDate || bIntent.checkOut) as string) +
-                        'T00:00:00Z',
-                    )
-                  : null,
-              purpose: bIntent.rawText.slice(0, 200),
-              status: 'planning',
-              routes: { bookingUrl: url, intent: JSON.parse(JSON.stringify(bIntent)) },
+              completed: false,
+              date: { gte: depUTC, lte: windowEnd },
             },
-          });
-          // Напоминание за день до поездки
-          const remindDate = new Date(dateFrom + 'T00:00:00Z');
-          remindDate.setDate(remindDate.getDate() - 1);
-          if (remindDate.getTime() > Date.now()) {
-            await tx.task.create({
+            select: { title: true, date: true },
+            take: 5,
+          }),
+        ]);
+        const conflicts = [
+          ...conflictEvents.map((e) => ({ t: e.title, d: e.date })),
+          ...conflictTasks.map((t) => ({ t: t.title, d: t.date })),
+        ];
+        if (conflicts.length > 0) {
+          const list = conflicts
+            .slice(0, 3)
+            .map(
+              (c) => `«${c.t}» (${c.d.toISOString().slice(0, 10)})`,
+            )
+            .join(', ');
+          reply +=
+            `\n\n⚠️ На даты поездки уже есть: ${list}` +
+            (conflicts.length > 3 ? ` и ещё ${conflicts.length - 3}` : '') +
+            '. Перенести или подвинуть поездку?';
+        }
+
+        if (!existingPlan) {
+          // Дат-чеклист: смещения в днях ДО вылета. Прошедшие даты
+          // подтягиваем на сегодня (просроченная подготовка тоже видна).
+          const clamp = (offsetDays: number): Date => {
+            const d = new Date(depUTC);
+            d.setUTCDate(d.getUTCDate() - offsetDays);
+            return d.getTime() < todayUTC.getTime() ? todayUTC : d;
+          };
+          const checklist: Array<{
+            title: string;
+            date: Date;
+            priority: string;
+            notes?: string;
+          }> = [
+            { title: `Проверить загранпаспорт и визу — ${destName}`, date: clamp(14), priority: 'critical' },
+            { title: `Купить билеты — ${destName}`, date: clamp(10), priority: 'high', notes: url ?? undefined },
+            { title: `Забронировать отель — ${destName}`, date: clamp(7), priority: 'high' },
+            { title: `Оформить тревел-страховку — ${destName}`, date: clamp(5), priority: 'medium' },
+            { title: `eSIM / SIM для ${destName}`, date: clamp(2), priority: 'medium' },
+            { title: `Трансфер в аэропорт — вылет в ${destName}`, date: clamp(0), priority: 'high' },
+          ];
+          const remind = clamp(1);
+
+          await prisma.$transaction(async (tx) => {
+            await tx.travelPlan.create({
               data: {
                 userId,
-                title: `Поездка в ${destName} завтра — проверь бронь`,
-                category: 'personal',
-                priority: 'high',
-                date: remindDate,
-                notes: `JARVIS: ${bIntent.rawText.slice(0, 200)}`,
+                destination: destName,
+                dateFrom: depUTC,
+                dateTo: retUTC,
+                purpose: bIntent.rawText.slice(0, 200),
+                status: 'planning',
+                routes: {
+                  bookingUrl: url,
+                  intent: JSON.parse(JSON.stringify(bIntent)),
+                },
               },
             });
-          }
-          // Запоминаем сам факт поездки
-          await tx.memory.create({
-            data: {
-              userId,
-              type: 'event',
-              content: `Планируется поездка в ${destName} (${dateFrom})`,
-              source: 'chat',
-              tags: ['поездка', destName.toLowerCase()],
-              importance: 6,
-            },
+            for (const item of checklist) {
+              await tx.task.create({
+                data: {
+                  userId,
+                  title: item.title.slice(0, 200),
+                  category: 'personal',
+                  priority: item.priority,
+                  date: item.date,
+                  notes: item.notes
+                    ? item.notes.slice(0, 500)
+                    : `JARVIS: поездка ${destName} ${dateFrom}`,
+                },
+              });
+            }
+            // Напоминание за день
+            if (remind.getTime() > todayUTC.getTime()) {
+              await tx.task.create({
+                data: {
+                  userId,
+                  title: `Поездка в ${destName} завтра — проверь бронь`,
+                  category: 'personal',
+                  priority: 'high',
+                  date: remind,
+                  notes: `JARVIS: ${bIntent.rawText.slice(0, 200)}`,
+                },
+              });
+            }
+            // События поездки в календарь
+            await tx.calendarEvent.create({
+              data: {
+                userId,
+                title: `✈️ Вылет в ${destName}`,
+                date: depUTC,
+                description: bIntent.rawText.slice(0, 200),
+                source: 'voice',
+              },
+            });
+            if (retUTC) {
+              await tx.calendarEvent.create({
+                data: {
+                  userId,
+                  title: `✈️ Возвращение из ${destName}`,
+                  date: retUTC,
+                  source: 'voice',
+                },
+              });
+            }
+            await tx.memory.create({
+              data: {
+                userId,
+                type: 'event',
+                content: `Планируется поездка в ${destName} (${dateFrom}${
+                  dateToStr ? '–' + dateToStr : ''
+                })`,
+                source: 'chat',
+                tags: ['поездка', destName.toLowerCase()],
+                importance: 6,
+              },
+            });
           });
-        });
-      } catch {
-        /* план/напоминание — best-effort, не валим ответ */
+          reply +=
+            `\n\n📋 Собрал план: загранпаспорт/виза, билеты, отель, ` +
+            `страховка, eSIM, трансфер — задачи с датами под вылет. ` +
+            `Вылет и возврат добавил в календарь.`;
+        }
+      } catch (err) {
+        // план — best-effort, не валим ответ, но больше не молча
+        console.warn(
+          `[jarvis] travel-plan persist failed user=${userId}:`,
+          err instanceof Error ? err.message : err,
+        );
       }
     }
 
