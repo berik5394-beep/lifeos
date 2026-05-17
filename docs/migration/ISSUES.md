@@ -119,3 +119,24 @@ confirmations, questions). This is a precision bug separate from
 badges. Decide in Step 8 / quality pass: gate captureInBackground
 to genuine task-bearing chat only, or drop auto-create entirely.
 Not fixed by Step 7 (scope = badge truthfulness).
+
+## ISSUE-7 — RESOLVED (2026-05-17, proven by prod DB)
+
+Step 6 v1 (regex deleted) FAILED: "Запиши расход 88888 … Kaspi" →
+Expense WHERE amount=88888 = 0 rows; bot fabricated "Расход
+записан ✅" (chat-agent, no money tool). Bug #1 regressed by the
+regex deletion.
+
+FIX (commit 80c0695): restored deterministic money prefilter →
+routes into Step-6 registry. Re-verified by DB on the fixed deploy
+(hostname da9f27b1a4b8):
+- "Запиши расход 99999 тенге тест Kaspi реестр" →
+  Expense row: amount 99999 @ 2026-05-17 17:15:15.378
+  ToolCall row: add_expense @ 2026-05-17 17:15:15.392 (+14ms)
+The 14ms gap is the auditToolCall signature (handler then sink) —
+proves money went through runRegistryTool→auditToolCall, audited,
+not legacy, not fabricated. Bug #1 truly closed, DB-proven.
+Audit infra confirmed live in prod (5 ToolCall rows: create_task,
+create_event x2, complete_habit, add_expense).
+Note: Railway dashboard row-list grid glitches (stale "No Results");
+aggregate queries (COUNT/GROUP BY) render correctly — use those.
