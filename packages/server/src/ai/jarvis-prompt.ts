@@ -28,6 +28,9 @@ export interface AssistantContext {
   currentStreak: number;
   weekProgress: number;
   yearlyGoalsSummary: string;
+  /** Погода на сегодня — подмешивается только если есть событие
+   *  сегодня (проактивно: «одевайся легко / выезжай раньше»). */
+  weatherToday?: string;
   memories?: { type: string; content: string; importance: number }[];
 }
 
@@ -126,6 +129,11 @@ export function renderContext(ctx: AssistantContext): string {
   }
   if (ctx.weekProgress > 0) {
     L.push(`Прогресс недели: ${Math.round(ctx.weekProgress * 100)}%`);
+  }
+  if (ctx.weatherToday) {
+    L.push(
+      `Погода сегодня: ${ctx.weatherToday} — учитывай при сборах/одежде/времени выезда на встречи.`,
+    );
   }
   if (ctx.yearlyGoalsSummary && ctx.yearlyGoalsSummary !== 'Не заданы') {
     L.push(`Годовые цели: ${ctx.yearlyGoalsSummary}`);

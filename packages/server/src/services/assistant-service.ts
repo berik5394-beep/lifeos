@@ -8,6 +8,7 @@ import {
 import { parseIntent } from '../ai/intent-parser.js';
 import { calculateStreak, calculateWeekProgress } from './streak-service.js';
 import { getRelevantMemories } from './memory-service.js';
+import { getWeather } from './external-apis.js';
 
 /**
  * Сбор полного контекста пользователя + intent. ОДИН сборщик —
@@ -139,6 +140,21 @@ export async function gatherAssistantContext(
     yearlyGoalsSummary,
     memories,
   };
+
+  // Проактивная погода: ТОЛЬКО если сегодня есть событие — тогда
+  // «одевайся легко / выезжай раньше» рождается само, без случайного
+  // web_search. Best-effort: сеть не должна валить/тормозить чат
+  // (Open-Meteo, без ключа; getWeather сам с таймаутом).
+  if (upcomingEvents.length > 0) {
+    try {
+      const w = await getWeather('Алматы');
+      if (w.description && !w.description.includes('ошибка')) {
+        context.weatherToday = `${w.temp}°C, ${w.description}, ветер ${w.wind} км/ч`;
+      }
+    } catch {
+      /* погода — не критично, пропускаем */
+    }
+  }
 
   const totalItems = todayTasks.length + habitsProgress.total;
   const completedItems = tasksCompleted + habitsProgress.completed;

@@ -90,6 +90,13 @@ describe('renderContext — пустые секции опускаются', () 
     expect(c).toContain('Серия: 5 дней');
     expect(c).toContain('80%');
   });
+  it('погода подмешивается только если задана (проактивно при событии)', () => {
+    expect(renderContext(ctx())).not.toContain('Погода сегодня');
+    const c = renderContext(ctx({ weatherToday: '22°C, ясно, ветер 3 км/ч' }));
+    expect(c).toContain('Погода сегодня: 22°C, ясно');
+    expect(c).toContain('одежде/времени выезда');
+  });
+
   it('память (top-15) попадает в контекст', () => {
     const c = renderContext(
       ctx({ memories: [{ type: 'person', content: 'Серик — брат', importance: 8 }] }),

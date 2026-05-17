@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { executeAction } from './action-executor.js';
 import { triageInbox } from './gmail.js';
 import { getRelevantMemories } from './memory-service.js';
+import { getWeather } from './external-apis.js';
 
 /**
  * Phase 1.4 — локальные инструменты для агентного цикла JARVIS.
@@ -101,6 +102,17 @@ export const LOCAL_TOOLS = [
       type: 'object',
       properties: { name: { type: 'string', description: 'имя человека' } },
       required: ['name'],
+    },
+  },
+  {
+    name: 'get_weather',
+    description:
+      'Погода и прогноз в городе (по умолчанию Алматы). Вызывай на «какая погода», «что надеть», «во сколько выезжать» — особенно если у юзера сегодня встреча/поездка.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        city: { type: 'string', description: 'город (опц., по умолчанию Алматы)' },
+      },
     },
   },
   {
@@ -217,6 +229,17 @@ export async function runLocalTool(
                 m.content.toLowerCase().includes(name.toLowerCase()),
             )
             .map((m) => m.content),
+        });
+      }
+      case 'get_weather': {
+        const w = await getWeather(String(input.city || 'Алматы'));
+        return JSON.stringify({
+          city: w.cityName,
+          temp: w.temp,
+          feelsLike: w.feelsLike,
+          description: w.description,
+          wind: w.wind,
+          forecast: w.forecast,
         });
       }
       case 'get_goal_progress': {
