@@ -68,3 +68,20 @@ CONFIRMED=1. Conclusion: the 15:07:18 9µs PENDING→CONFIRMED was NOT
 a code defect — it was the user's double-send interleaved with a
 prior pending. Normal money path is safe (no confirm without an
 explicit separate "да"). Money-safety gate for Step 6 satisfied.
+
+## ISSUE-5 — intent-parser: "Закрой задачу X" → complete_habit (Step 8)
+
+Prod 2026-05-17 ~16:06: "Закрой задачу тест реестра" classified as
+`complete_habit` (deterministic regex `^(?:отметь|выполнил|сделал|
+закрой)\s+(?:привычку\s+)?(.+)$` swallows "закрой задачу …" before
+complete_task). Pre-existing parser bug, NOT Step 5 (Step 5 routed
+it through the registry cleanly, 0 deprecated). Fix belongs to
+Step 8 (booking-routing / intent-parser shrink): "закрой/заверши
+задачу X" must map to complete_task, not complete_habit.
+
+## ISSUE-6 — fake badge confirmed live (Step 7)
+
+Prod 2026-05-17 ~16:0x: a `create_event` action returned the badge
+"📝 +1 в задачи" (wrong noun, wrong source). Confirms bug #5 is
+still live: badges come from captureInBackground NLP, not real
+tool_use / ToolCall. Step 7 fixes (badges read /audit/counts).
