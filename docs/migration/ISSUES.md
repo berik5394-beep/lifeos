@@ -140,3 +140,20 @@ Audit infra confirmed live in prod (5 ToolCall rows: create_task,
 create_event x2, complete_habit, add_expense).
 Note: Railway dashboard row-list grid glitches (stale "No Results");
 aggregate queries (COUNT/GROUP BY) render correctly — use those.
+
+## ISSUE-5 — RESOLVED (Step 8); intent-parser.ts KEPT (decision by test)
+
+Fix: added complete_task deterministic rule BEFORE complete_habit —
+"закрой/заверши/закончи/выполни задачу X" → complete_task (was
+mis-caught as complete_habit "задачу X"). Regression tests cover
+"Закрой бег"→complete_habit and "Создай задачу"→create_task intact.
+
+Step 8 decision: booking-routing.test.ts (10 booking phrases) PASSES
+→ deterministic booking-prefilter is a proven correctness layer
+(Claude systematically misclassifies booking↔create_task; Step 6
+also proved deleting the deterministic money layer regressed #1).
+Test even exposed+fixed a prefilter gap ("найди МНЕ отель" → added
+BOOK_VERB + NOUN-guard rule). DECISION: intent-parser.ts is NOT
+deleted/shrunk — it stays. Step 9 deletion scope = conversation-
+engine.ts, action-executor switch, manual CAPABILITY_TEXT,
+NEEDS_CONFIRM array ONLY (NOT intent-parser.ts).

@@ -95,6 +95,14 @@ export function deterministicIntent(text: string): VoiceIntent | null {
       return { action: 'plan_travel', query: text };
     }
   }
+  // Booking-глагол + travel-сущность в ЛЮБОМ порядке/со словами между
+  // (тест выявил дыру: «найди МНЕ отель» мимо точных пар TRAVEL_VERBS).
+  // NOUN-гард тот же — «купи продукты»/«закажи пиццу» НЕ travel.
+  const BOOK_VERB =
+    /(?:^|\s)(?:забронир[а-яё]*|закаж[а-яё]*|заказать|купи[а-яё]*|купить|найд[а-яё]*|подбер[а-яё]*|нужн[а-яё]*|возьми|оформ[а-яё]*)(?=\s|$|[,.!?])/i;
+  if (BOOK_VERB.test(lower) && TRAVEL_NOUNS.test(text)) {
+    return { action: 'plan_travel', query: text };
+  }
 
   // ── Детерминированные исполняемые действия ───────────────────────────
   // Claude в intent-parser ненадёжно классифицирует эти частые команды
@@ -146,6 +154,19 @@ export function deterministicIntent(text: string): VoiceIntent | null {
         description: rest,
       };
     }
+  }
+
+  // complete_task: "закрой/заверши/закончи/выполни задачу X", "отметь
+  // задачу X". ISSUE-5: раньше «закрой задачу отчёт» ловилось
+  // complete_habit-регексом ниже как привычка «задачу отчёт» →
+  // "Привычка не найдена". Слово «задачу» обязательно и проверяется
+  // ПЕРВЫМ, чтобы не пересекаться с привычками и с create_task
+  // (там глаголы созда/добавь/поставь).
+  m = text.match(
+    /^(?:закрой|заверши(?:ть)?|законч(?:и|ить)|выполни(?:л[аи]?|ть)?|отметь)\s+задачу\s+(.+)$/i,
+  );
+  if (m) {
+    return { action: 'complete_task', taskTitle: m[1].trim() };
   }
 
   // complete_habit: "отметь привычку бег", "отметь бег", "выполнил чтение",
