@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { mayNeedLocalTools } from './jarvis-orchestrator.js';
+import {
+  mayNeedLocalTools,
+  DEGRADED_ACTIONABLE_REFUSAL,
+} from './jarvis-orchestrator.js';
 
 /**
  * Fix D: localTools не должны включаться на болтовню (лишняя
@@ -35,4 +38,31 @@ describe('mayNeedLocalTools', () => {
   it('короткая реплика (<12 символов) всегда без инструментов', () => {
     expect(mayNeedLocalTools('задач?')).toBe(false);
   });
+});
+
+/**
+ * ISSUE-1 — страховка перед 9A.8. Контракт: при падении tool-пути
+ * сообщение, требующее инструментов, ДОЛЖНО получить честный отказ
+ * (mayNeedLocalTools=true → отказ), а не деградированную выдумку.
+ * Болтовня/инфо (false) деградирует нормально.
+ */
+describe('ISSUE-1 degraded-mode honest-refusal contract', () => {
+  it('отказ явно говорит, что действие НЕ выполнено', () => {
+    expect(DEGRADED_ACTIONABLE_REFUSAL).toMatch(/НЕ выполнен/i);
+    expect(DEGRADED_ACTIONABLE_REFUSAL.length).toBeGreaterThan(20);
+  });
+
+  it.each([
+    'добавь задачу купить хлеб завтра',
+    'сколько я потратил в этом месяце',
+    'разбери почту',
+    'запиши расход 5000 на еду',
+  ])('actionable «%s» → mayNeedLocalTools=true → при деградации отказ', (t) => {
+    expect(mayNeedLocalTools(t)).toBe(true);
+  });
+
+  it.each(['расскажи анекдот', 'как дела', 'привет'])(
+    'болтовня «%s» → false → деградирует нормально (web_search ок)',
+    (t) => expect(mayNeedLocalTools(t)).toBe(false),
+  );
 });

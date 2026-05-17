@@ -186,6 +186,14 @@ const LEGACY_CONFIRM = new Set(['send_telegram']);
 const TOOL_HINTS =
   /(задач|календар|встреч|событи|бюджет|потрат|расход|доход|привычк|напомн|почт|письм|gmail|расписан|план(?!ета)|поездк|цел[ьия]|сколько|что у меня|что сегодня|что по|добав|созда|отмет|перенес|свобод|кто так|телефон|контакт|номер|что я говорил про|помнишь про|погод|надеть|надену|одет|оденусь|выезж|вылет|лечу|бронь|билет|когда у меня)/i;
 
+/**
+ * ISSUE-1: честный отказ когда tool-путь упал, а запрос требовал
+ * инструментов. Лучше «не смог», чем тихая выдумка «нашёл/записал».
+ */
+export const DEGRADED_ACTIONABLE_REFUSAL =
+  'Извини, сейчас не получается это выполнить — сбой на моей стороне, ' +
+  'не у тебя. Действие НЕ выполнено. Попробуй, пожалуйста, ещё раз через минуту.';
+
 export function mayNeedLocalTools(text: string): boolean {
   const t = text.trim();
   if (t.length < 12) return false; // короткие реплики = болтовня
@@ -665,27 +673,41 @@ export async function handleMessage(
         agentErr instanceof Error ? agentErr.message : agentErr
       } — retry without localTools`,
     );
-    try {
-      reply = await runAgent({
-        system,
-        userMessage: text,
-        history,
-        webSearch: true,
-        maxSearches: 3,
-        maxTokens: 900,
-      });
+    // ISSUE-1: если сообщение требовало инструментов юзера (данные/
+    // действие — mayNeedLocalTools=true), а tool-путь упал, то
+    // деградированный (web_search-only / не-агентный) ответ ЭТИХ
+    // инструментов НЕ имеет и МОЖЕТ выдумать «нашёл/записал/сделал».
+    // Это страховка перед 9A.8: при поломке агент-цикла честный
+    // отказ, а не тихая фабрикация. Чистая болтовня/инфо (tools не
+    // нужны) деградирует как раньше — web_search легитимен.
+    if (mayNeedLocalTools(text)) {
       console.warn(
-        `[jarvis] degraded OK user=${userId}: web_search-only ответ сработал ` +
-          `(значит проблема именно в localTools-комбинации)`,
+        `[jarvis] degraded+actionable user=${userId} → честный отказ (ISSUE-1), не фабрикуем`,
       );
-    } catch (webErr) {
-      console.warn(
-        `[jarvis] runAgent(web_search-only) тоже упал user=${userId}: ${
-          webErr instanceof Error ? webErr.message : webErr
-        } — fallback getAssistantReply`,
-      );
-      const r = await getAssistantReply(userId, text);
-      reply = r.text;
+      reply = DEGRADED_ACTIONABLE_REFUSAL;
+    } else {
+      try {
+        reply = await runAgent({
+          system,
+          userMessage: text,
+          history,
+          webSearch: true,
+          maxSearches: 3,
+          maxTokens: 900,
+        });
+        console.warn(
+          `[jarvis] degraded OK user=${userId}: web_search-only ответ сработал ` +
+            `(сообщение не требовало tools — фабрикации нет)`,
+        );
+      } catch (webErr) {
+        console.warn(
+          `[jarvis] runAgent(web_search-only) тоже упал user=${userId}: ${
+            webErr instanceof Error ? webErr.message : webErr
+          } — fallback getAssistantReply`,
+        );
+        const r = await getAssistantReply(userId, text);
+        reply = r.text;
+      }
     }
   }
 
