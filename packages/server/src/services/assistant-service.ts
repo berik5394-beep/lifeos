@@ -75,15 +75,20 @@ export async function gatherAssistantContext(
     yearlyGoals,
     memories,
     intent,
+    weeklyGoals,
   ] = await Promise.all([
     prisma.task.findMany({
       where: { userId, date: today },
       select: { title: true, completed: true },
     }),
-    prisma.habit.findMany({ where: { userId, active: true }, select: { id: true } }),
+    // meta#9: имя нужно, чтобы сказать «не отметил ЙОГУ», а не «1 из 4»
+    prisma.habit.findMany({
+      where: { userId, active: true },
+      select: { id: true, name: true },
+    }),
     prisma.habitLog.findMany({
       where: { userId, date: today, completed: true },
-      select: { id: true },
+      select: { habitId: true },
     }),
     prisma.calendarEvent.findMany({
       where: { userId, date: { gte: today, lt: tomorrow } },
@@ -106,12 +111,39 @@ export async function gatherAssistantContext(
     }),
     getRelevantMemories(userId, text, 20),
     knownIntent ? Promise.resolve(knownIntent) : parseIntent(text),
+    // meta#9: план на эту неделю (WeeklyGoal, weekStart = понедельник)
+    (() => {
+      const m = new Date(today);
+      m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); // Mon of this week
+      return prisma.weeklyGoal.findMany({
+        where: { userId, weekStart: m },
+        select: { goalText: true, completed: true },
+        orderBy: { order: 'asc' },
+        take: 10,
+      });
+    })(),
   ]);
 
   const habitsProgress = {
     total: activeHabits.length,
     completed: todayHabitLogs.length,
   };
+  // meta#9: какие именно привычки сегодня НЕ закрыты (по имени) +
+  // план недели — мозг должен сам напоминать про йогу/духовное/
+  // недельные цели, а не молчать «1 из 4».
+  const doneHabitIds = new Set(todayHabitLogs.map((l) => l.habitId));
+  const pendingHabits = activeHabits
+    .filter((h) => !doneHabitIds.has(h.id))
+    .map((h) => h.name)
+    .slice(0, 8);
+  const weeklyPlan =
+    weeklyGoals.length > 0
+      ? `${weeklyGoals.filter((g) => g.completed).length}/${weeklyGoals.length} — ` +
+        weeklyGoals
+          .map((g) => `${g.completed ? '✓' : '○'} ${g.goalText}`)
+          .slice(0, 6)
+          .join('; ')
+      : undefined;
   const spentThisMonth = expenseAgg._sum.amount ?? 0;
   const budgetLimit = budgetAgg._sum.monthlyLimit ?? 0;
   const tasksCompleted = todayTasks.filter((t) => t.completed).length;
@@ -138,6 +170,8 @@ export async function gatherAssistantContext(
     currentStreak,
     weekProgress,
     yearlyGoalsSummary,
+    pendingHabits,
+    weeklyPlan,
     memories,
   };
 

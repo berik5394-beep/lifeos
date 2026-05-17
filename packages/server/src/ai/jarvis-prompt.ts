@@ -28,6 +28,11 @@ export interface AssistantContext {
   currentStreak: number;
   weekProgress: number;
   yearlyGoalsSummary: string;
+  /** meta#9: имена активных привычек, НЕ отмеченных сегодня —
+   *  чтобы мозг сам сказал «не отметил йогу/чтение», а не молчал. */
+  pendingHabits?: string[];
+  /** meta#9: план на эту неделю (WeeklyGoal): «N/M — тексты». */
+  weeklyPlan?: string;
   /** Погода на сегодня — подмешивается только если есть событие
    *  сегодня (проактивно: «одевайся легко / выезжай раньше»). */
   weatherToday?: string;
@@ -111,7 +116,13 @@ export function renderContext(ctx: AssistantContext): string {
       `Привычки: ${ctx.habitsProgress.completed} из ${ctx.habitsProgress.total}`,
     );
   }
+  if (ctx.pendingHabits && ctx.pendingHabits.length > 0) {
+    L.push(
+      `Сегодня НЕ отмечено: ${ctx.pendingHabits.join(', ')} — напомни, если к месту (йога/духовное/чтение тоже считаются).`,
+    );
+  }
   if (ctx.currentStreak > 0) L.push(`Серия: ${ctx.currentStreak} дней`);
+  if (ctx.weeklyPlan) L.push(`План на неделю: ${ctx.weeklyPlan}`);
   if (ctx.upcomingEvents.length > 0) {
     L.push(
       `Ближайшие события: ${ctx.upcomingEvents

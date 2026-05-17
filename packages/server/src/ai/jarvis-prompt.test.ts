@@ -90,6 +90,23 @@ describe('renderContext — пустые секции опускаются', () 
     expect(c).toContain('Серия: 5 дней');
     expect(c).toContain('80%');
   });
+  it('meta#9: незакрытые привычки по имени + план недели в контексте', () => {
+    const c = renderContext(
+      ctx({
+        pendingHabits: ['Йога', 'Чтение'],
+        weeklyPlan: '1/3 — ✓ зал; ○ книга; ○ медитация',
+      }),
+    );
+    expect(c).toContain('Сегодня НЕ отмечено: Йога, Чтение');
+    expect(c).toContain('йога/духовное/чтение тоже считаются');
+    expect(c).toContain('План на неделю: 1/3');
+  });
+  it('meta#9: пусто — секции опускаются', () => {
+    const c = renderContext(ctx());
+    expect(c).not.toContain('Сегодня НЕ отмечено');
+    expect(c).not.toContain('План на неделю');
+  });
+
   it('погода подмешивается только если задана (проактивно при событии)', () => {
     expect(renderContext(ctx())).not.toContain('Погода сегодня');
     const c = renderContext(ctx({ weatherToday: '22°C, ясно, ветер 3 км/ч' }));
