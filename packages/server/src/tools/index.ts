@@ -5,6 +5,12 @@ import { getToday } from './get-today.js';
 import { getWeatherTool } from './get-weather.js';
 import { getBudgetTool } from './get-budget.js';
 import { getFreeSlotsTool } from './get-free-slots.js';
+import { createTaskTool } from './create-task.js';
+import { completeTaskTool } from './complete-task.js';
+import { completeHabitTool } from './complete-habit.js';
+import { completeMultipleHabitsTool } from './complete-multiple-habits.js';
+import { createEventTool } from './create-event.js';
+import { journalEntryTool } from './journal-entry.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -16,10 +22,18 @@ import { getFreeSlotsTool } from './get-free-slots.js';
 
 // Шаг 3 (read-only). Write/деньги — Шаги 5/6.
 const ALL_TOOLS: ReadonlyArray<Tool> = [
+  // read-only (Шаг 3)
   getToday,
   getWeatherTool,
   getBudgetTool,
   getFreeSlotsTool,
+  // write, не-деньги (Шаг 5)
+  createTaskTool,
+  completeTaskTool,
+  completeHabitTool,
+  completeMultipleHabitsTool,
+  createEventTool,
+  journalEntryTool,
 ];
 
 export const registry: ReadonlyMap<string, Tool> = new Map(

@@ -9,11 +9,35 @@ export interface ActionResult {
   clientData?: Record<string, unknown>;
 }
 
+/**
+ * @deprecated SSOT Step 5: write-tools (create_task, complete_task,
+ * complete_habit, complete_multiple_habits, create_event,
+ * journal_entry) переехали в src/tools реестр (zod + аудит). Эти
+ * кейсы помечены deprecated и кричат в лог — если warning виден
+ * после Шага 5, значит какой-то путь всё ещё ходит через legacy,
+ * его надо найти и переключить. Полное удаление switch — Шаг 9.
+ * (add_expense/add_income/send_telegram остаются здесь до Шага 6.)
+ */
+const DEPRECATED_BY_REGISTRY = new Set([
+  'create_task',
+  'complete_task',
+  'complete_habit',
+  'complete_multiple_habits',
+  'create_event',
+  'journal_entry',
+]);
+
 export async function executeAction(
   actionName: string,
   input: Record<string, unknown>,
   userId: string,
 ): Promise<ActionResult> {
+  if (DEPRECATED_BY_REGISTRY.has(actionName)) {
+    console.warn(
+      `[deprecated] action-executor.${actionName} вызван напрямую — ` +
+        `должен идти через src/tools реестр (SSOT Step 5). Найди и переключи путь.`,
+    );
+  }
   try {
     switch (actionName) {
 

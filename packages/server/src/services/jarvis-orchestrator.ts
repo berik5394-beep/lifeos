@@ -18,6 +18,7 @@ import { runAgent } from './claude-agent.js';
 import { captureMemory } from './memory-service.js';
 import { trackInterests } from './interest-service.js';
 import { executeAction } from './action-executor.js';
+import { runRegistryTool } from '../tools/index.js';
 import {
   peekPendingAction,
   takePendingAction,
@@ -535,30 +536,23 @@ export async function handleMessage(
       };
     }
     try {
-      let replyText: string;
-      if (intent.action === 'complete_multiple_habits') {
-        // executor ждёт habitIds, парсер даёт имена → резолвим через
-        // complete_habit по имени в цикле (executor сам ищет по name).
-        const names = (intent.habitNames as string[] | undefined) ?? [];
-        const msgs: string[] = [];
-        for (const name of names) {
-          const r = await executeAction('complete_habit', { name }, userId);
-          msgs.push(r.message);
-        }
-        replyText = msgs.length ? msgs.join('\n') : 'Не понял какие привычки отметить.';
-      } else {
-        // Маппинг полей intent-parser → executeAction input.
-        const input: Record<string, unknown> = { ...intent };
-        delete input.action;
-        if (intent.action === 'complete_task' && intent.taskTitle) {
-          input.title = intent.taskTitle;
-        }
-        if (intent.action === 'complete_habit' && intent.habitName) {
-          input.name = intent.habitName;
-        }
-        const r = await executeAction(intent.action, input, userId);
-        replyText = r.message;
+      // SSOT Шаг 5: write-tools идут через РЕЕСТР (zod-валидация +
+      // аудит ToolCall), не через legacy action-executor switch.
+      // Маппинг полей intent-parser → схема tool.
+      const input: Record<string, unknown> = { ...intent };
+      delete input.action;
+      if (intent.action === 'complete_task' && intent.taskTitle) {
+        input.title = intent.taskTitle;
       }
+      if (intent.action === 'complete_habit' && intent.habitName) {
+        input.name = intent.habitName;
+      }
+      const out = (await runRegistryTool(
+        intent.action,
+        input,
+        { userId },
+      )) as { message?: string };
+      const replyText = out.message ?? 'Готово.';
       // Фаза 1.5: логируем решение мозга (вход → интент → действие).
       console.log(
         `[jarvis] user=${userId} intent=${intent.action} executed → "${replyText.slice(0, 80)}"`,
@@ -568,7 +562,7 @@ export async function handleMessage(
       return { reply: replyText, intent: intent.action };
     } catch (err) {
       console.warn(
-        `[jarvis] executeAction failed user=${userId} intent=${intent.action}:`,
+        `[jarvis] runRegistryTool failed user=${userId} intent=${intent.action}:`,
         err instanceof Error ? err.message : err,
       );
       // Падать не даём — отвечаем по-человечески, не 500.

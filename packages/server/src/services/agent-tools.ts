@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { executeAction } from './action-executor.js';
+import { runRegistryTool } from '../tools/index.js';
 import { triageInbox } from './gmail.js';
 import { getRelevantMemories } from './memory-service.js';
 import { getWeather } from './external-apis.js';
@@ -194,17 +195,27 @@ export async function runLocalTool(
         const r = await executeAction('get_budget_analysis', {}, userId);
         return JSON.stringify(r.data ?? r.message);
       }
+      // SSOT Шаг 5: write-tools агентного цикла → реестр (zod+аудит),
+      // не legacy executeAction (иначе сыпется deprecated-warning).
       case 'create_task': {
-        const r = await executeAction('create_task', input, userId);
-        return r.message;
+        const r = (await runRegistryTool('create_task', input, { userId })) as {
+          message?: string;
+        };
+        return r.message ?? 'Готово.';
       }
       case 'create_event': {
-        const r = await executeAction('create_event', input, userId);
-        return r.message;
+        const r = (await runRegistryTool('create_event', input, { userId })) as {
+          message?: string;
+        };
+        return r.message ?? 'Готово.';
       }
       case 'complete_habit': {
-        const r = await executeAction('complete_habit', { name: input.name }, userId);
-        return r.message;
+        const r = (await runRegistryTool(
+          'complete_habit',
+          { name: input.name },
+          { userId },
+        )) as { message?: string };
+        return r.message ?? 'Готово.';
       }
       case 'get_email_triage': {
         const t = await triageInbox(userId);
