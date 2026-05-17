@@ -3,6 +3,8 @@ import type { Tool, ToolContext } from './_types.js';
 import { auditToolCall } from '../services/tool-audit.js';
 import { getToday } from './get-today.js';
 import { getWeatherTool } from './get-weather.js';
+import { getBudgetTool } from './get-budget.js';
+import { getFreeSlotsTool } from './get-free-slots.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -16,6 +18,8 @@ import { getWeatherTool } from './get-weather.js';
 const ALL_TOOLS: ReadonlyArray<Tool> = [
   getToday,
   getWeatherTool,
+  getBudgetTool,
+  getFreeSlotsTool,
 ];
 
 export const registry: ReadonlyMap<string, Tool> = new Map(
