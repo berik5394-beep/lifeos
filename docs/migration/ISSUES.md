@@ -157,3 +157,16 @@ BOOK_VERB + NOUN-guard rule). DECISION: intent-parser.ts is NOT
 deleted/shrunk — it stays. Step 9 deletion scope = conversation-
 engine.ts, action-executor switch, manual CAPABILITY_TEXT,
 NEEDS_CONFIRM array ONLY (NOT intent-parser.ts).
+
+## ISSUE-8 — RESOLVED (quality gate)
+
+Root: captureInBackground ran extractFromTranscript on EVERY
+chat-fall-through message → questions/chitchat became junk
+tasks/memories. (The 88888-class money pollution was already
+removed by the Step 6 fix: money commands now early-return via
+EXECUTABLE and never reach captureInBackground.)
+Fix: looksCaptureWorthy() deterministic gate (no LLM/DB) — skip
+questions (ends with ?, interrogative starts), <12-char replies,
+assistant-directed chitchat (мотивируй/расскажи/привет/как дела).
+Genuine ambient capture ("купи продукты", "надо позвонить врачу",
+fact statements) preserved. 16 unit tests. suite 283/283.
