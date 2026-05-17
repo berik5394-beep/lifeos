@@ -70,7 +70,9 @@ export async function transcribeAudio(audioB64: string, format: string): Promise
       ? transcription
       : (transcription as { text?: string }).text || '';
   } finally {
-    await unlink(tmp).catch(() => {});
+    await unlink(tmp).catch((e) =>
+      console.warn('[dictation] tmp cleanup failed:', e instanceof Error ? e.message : e),
+    );
   }
 }
 

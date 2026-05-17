@@ -76,8 +76,15 @@ export function decrypt(ciphertextB64: string): string {
     const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
     return decrypted.toString('utf8');
   } catch {
-    // Если расшифровать не удалось — возвращаем оригинал.
-    // Это безопасно: legacy plain-text токены продолжат работать.
+    // C.12: раньше было ТИХО — самая опасная дыра (аудит): при
+    // ротации ENCRYPTION_KEY все токены молча «не расшифровались»
+    // и возвращались как шифртекст, ломая интеграции незаметно.
+    // Логируем флаг (без секретов: ни ключа, ни шифртекста).
+    console.warn(
+      '[crypto] decrypt failed — returning input as-is. ' +
+        'Возможна ротация ENCRYPTION_KEY или legacy plain-text значение.',
+    );
+    // Поведение не меняем: legacy plain-text значения продолжат работать.
     return ciphertextB64;
   }
 }

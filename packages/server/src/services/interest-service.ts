@@ -46,7 +46,11 @@ export async function trackInterests(userId: string, message: string): Promise<v
         }),
       ),
     );
-  } catch {
-    /* трекинг — не критично */
+  } catch (err) {
+    // C.12: трекинг не критичен (не валим запрос), но молчать нельзя.
+    console.warn(
+      '[interest] trackInterests failed:',
+      err instanceof Error ? err.message : err,
+    );
   }
 }

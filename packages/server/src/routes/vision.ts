@@ -354,7 +354,13 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
       try {
         const text = aiResponse.content[0].type === 'text' ? aiResponse.content[0].text : '';
         analysis = JSON.parse(text.replace(/```json?\s*/g, '').replace(/```/g, '').trim());
-      } catch {
+      } catch (err) {
+        // C.12: парс AI-ответа упал → молча шёл фолбэк, не видно
+        // что Claude вернул не-JSON.
+        console.warn(
+          '[vision] food-analysis JSON parse failed, using fallback:',
+          err instanceof Error ? err.message : err,
+        );
         analysis = {
           summary: `За ${daysTracked} дней среднее потребление: ${dailyAvg.calories} ккал/день.`,
           insights: [`Топ еда: ${topFoods.map(f => f.name).join(', ')}`],

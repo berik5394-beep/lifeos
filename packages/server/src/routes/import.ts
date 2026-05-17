@@ -209,7 +209,12 @@ async function analyzeWithClaude(
     }
 
     return JSON.parse(jsonMatch[0]) as { purpose: string; items: unknown[] };
-  } catch {
+  } catch (err) {
+    // C.12: раньше тихо → импорт «молча не понял» без следа.
+    console.warn(
+      '[import] analyzeWithClaude failed, purpose=unknown:',
+      err instanceof Error ? err.message : err,
+    );
     return { purpose: 'unknown', items: parsedData };
   }
 }
@@ -319,8 +324,13 @@ export async function materializeImport(
         });
         r.habits++;
       }
-    } catch {
-      // битая строка — пропускаем, не валим весь импорт
+    } catch (err) {
+      // битая строка — пропускаем, не валим весь импорт (но логируем,
+      // иначе «материализовалось 3 из 50» необъяснимо).
+      console.warn(
+        `[import] materialize skip row (${purpose}):`,
+        err instanceof Error ? err.message : err,
+      );
     }
   }
   return r;

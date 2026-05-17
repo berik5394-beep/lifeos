@@ -86,7 +86,9 @@ export async function executeAction(
               create: { habitId, userId, date: today, completed: true },
             });
             count++;
-          } catch { /* skip invalid */ }
+          } catch (e) {
+            console.warn('[action-executor] habit upsert skip:', e instanceof Error ? e.message : e);
+          }
         }
         return { success: true, message: `Отмечено привычек: ${count} ✅` };
       }
@@ -317,8 +319,12 @@ export async function executeAction(
         return { success: false, message: `Неизвестное действие: ${actionName}` };
     }
   } catch (err: unknown) {
+    // C.12: раньше err.message уходил ЮЗЕРУ (info disclosure —
+    // SQL/Prisma внутренности в чат). Логируем полную ошибку на
+    // сервере, юзеру — обобщённо.
     const msg = err instanceof Error ? err.message : String(err);
-    return { success: false, message: `Ошибка: ${msg}` };
+    console.warn(`[action-executor] ${actionName} failed: ${msg}`);
+    return { success: false, message: 'Не получилось выполнить действие.' };
   }
 }
 

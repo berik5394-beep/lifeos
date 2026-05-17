@@ -64,7 +64,12 @@ async function sendExpoPush(
       if (json.data.message?.includes('DeviceNotRegistered')) {
         await prisma.user
           .updateMany({ where: { expoPushToken: token }, data: { expoPushToken: null } })
-          .catch(() => {});
+          .catch((e) =>
+            console.warn(
+              '[push] failed to clear dead token:',
+              e instanceof Error ? e.message : e,
+            ),
+          );
       }
       return false;
     }
