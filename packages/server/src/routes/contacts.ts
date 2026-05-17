@@ -36,28 +36,88 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       const userId = request.userId;
       const { contacts } = request.body as z.infer<typeof syncSchema>;
 
-      // Отдельный try на каждый upsert: один битый контакт не должен
-      // рушить всю синхронизацию. Логируем через request.log чтобы не
-      // терять сигнал от Prisma (уникальные ключи, слишком длинные поля).
-      let synced = 0;
+      // D/E: раньше — upsert на КАЖДЫЙ контакт (до ~2000 round-trips
+      // на синк). Теперь: 1 findMany существующих + 1 createMany для
+      // новых + точечные update только реально изменившихся.
+      // Резилентность сохранена: createMany(skipDuplicates) + fallback
+      // по строкам, update в try/catch.
+      const phoneIds = contacts.map((c) => c.phoneId);
+      const existing = await prisma.contactCache.findMany({
+        where: { userId, phoneId: { in: phoneIds } },
+        select: { phoneId: true, name: true, phone: true, email: true, birthday: true },
+      });
+      const existingMap = new Map(existing.map((e) => [e.phoneId, e]));
+
+      const toCreate: typeof contacts = [];
+      const toUpdate: typeof contacts = [];
+      const seen = new Set<string>();
       for (const c of contacts) {
+        if (seen.has(c.phoneId)) continue; // дедуп внутри батча
+        seen.add(c.phoneId);
+        const ex = existingMap.get(c.phoneId);
+        if (!ex) {
+          toCreate.push(c);
+        } else {
+          const bd = c.birthday ? new Date(c.birthday).getTime() : null;
+          const exBd = ex.birthday ? ex.birthday.getTime() : null;
+          if (
+            ex.name !== c.name ||
+            ex.phone !== (c.phone ?? null) ||
+            ex.email !== (c.email ?? null) ||
+            exBd !== bd
+          ) {
+            toUpdate.push(c);
+          }
+        }
+      }
+
+      let synced = 0;
+      if (toCreate.length > 0) {
         try {
-          await prisma.contactCache.upsert({
-            where: { userId_phoneId: { userId, phoneId: c.phoneId } },
-            update: {
-              name: c.name,
-              phone: c.phone,
-              email: c.email,
-              birthday: c.birthday ? new Date(c.birthday) : null,
-              lastSynced: new Date(),
-            },
-            create: {
+          const res = await prisma.contactCache.createMany({
+            data: toCreate.map((c) => ({
               userId,
               phoneId: c.phoneId,
               name: c.name,
               phone: c.phone,
               email: c.email,
               birthday: c.birthday ? new Date(c.birthday) : null,
+            })),
+            skipDuplicates: true,
+          });
+          synced += res.count;
+        } catch (err) {
+          // fallback по строкам — один битый контакт не валит весь батч
+          request.log.warn({ err }, 'contact sync: batch create failed, row fallback');
+          for (const c of toCreate) {
+            try {
+              await prisma.contactCache.create({
+                data: {
+                  userId,
+                  phoneId: c.phoneId,
+                  name: c.name,
+                  phone: c.phone,
+                  email: c.email,
+                  birthday: c.birthday ? new Date(c.birthday) : null,
+                },
+              });
+              synced++;
+            } catch (e2) {
+              request.log.warn({ err: e2, phoneId: c.phoneId }, 'contact sync: skip invalid');
+            }
+          }
+        }
+      }
+      for (const c of toUpdate) {
+        try {
+          await prisma.contactCache.update({
+            where: { userId_phoneId: { userId, phoneId: c.phoneId } },
+            data: {
+              name: c.name,
+              phone: c.phone,
+              email: c.email,
+              birthday: c.birthday ? new Date(c.birthday) : null,
+              lastSynced: new Date(),
             },
           });
           synced++;
