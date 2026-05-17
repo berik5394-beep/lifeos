@@ -182,7 +182,14 @@ async function analyzeWithClaude(
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2048,
       system:
-        'Analyze this parsed data and determine what it contains. Return JSON: { purpose: "meetings"|"expenses"|"tasks"|"habits", items: [...] }. Each item should have fields appropriate for its type.',
+        'Определи, что содержат эти данные, и верни СТРОГО валидный JSON ' +
+        '{ "purpose": "meetings"|"expenses"|"tasks"|"habits"|"unknown", "items": [...] }. ' +
+        'Поля items СТРОГО по типу (даты только YYYY-MM-DD, время HH:MM):\n' +
+        '- meetings: {"title":str,"date":"YYYY-MM-DD","startTime"?:"HH:MM","endTime"?:"HH:MM","location"?:str,"description"?:str}\n' +
+        '- tasks: {"title":str,"date":"YYYY-MM-DD","time"?:"HH:MM","category"?:str,"priority"?:"low"|"medium"|"high"|"critical","notes"?:str}\n' +
+        '- expenses: {"date":"YYYY-MM-DD","category":str,"description":str,"amount":number}\n' +
+        '- habits: {"name":str,"category"?:str,"frequency"?:str}\n' +
+        'Если непонятно — purpose:"unknown". Только JSON, без пояснений.',
       messages: [
         {
           role: 'user',
@@ -205,6 +212,118 @@ async function analyzeWithClaude(
   } catch {
     return { purpose: 'unknown', items: parsedData };
   }
+}
+
+// A.5 — материализация импорта. Раньше import.ts писал только в
+// ImportedFile.parsedData (JSON-поле) и НИКОГДА не создавал
+// Task/CalendarEvent/Expense/Habit. Юзер видел «загружено 12 встреч»,
+// в календаре — пусто. Теперь распарсенные items реально создаются
+// (защитно: битые строки пропускаются, кап 200, даты валидируются).
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export function safeDate(v: unknown): Date | null {
+  if (typeof v === 'string' && ISO_DATE.test(v)) {
+    const d = new Date(v + 'T00:00:00Z');
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+export function hhmm(v: unknown): string | null {
+  return typeof v === 'string' && HHMM.test(v) ? v : null;
+}
+function str(v: unknown, max: number): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s ? s.slice(0, max) : null;
+}
+function startOfTodayUTC(): Date {
+  return new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
+}
+
+export interface MaterializeResult {
+  events: number;
+  tasks: number;
+  expenses: number;
+  habits: number;
+}
+
+export async function materializeImport(
+  userId: string,
+  purpose: string,
+  items: unknown[],
+): Promise<MaterializeResult> {
+  const r: MaterializeResult = { events: 0, tasks: 0, expenses: 0, habits: 0 };
+  if (!['meetings', 'tasks', 'expenses', 'habits'].includes(purpose)) return r;
+
+  for (const raw of items.slice(0, 200)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const it = raw as Record<string, unknown>;
+    try {
+      if (purpose === 'meetings') {
+        const title = str(it.title, 512);
+        const date = safeDate(it.date);
+        if (!title || !date) continue;
+        await prisma.calendarEvent.create({
+          data: {
+            userId,
+            title,
+            date,
+            startTime: hhmm(it.startTime),
+            endTime: hhmm(it.endTime),
+            location: str(it.location, 512),
+            description: str(it.description, 4096),
+            source: 'imported',
+          },
+        });
+        r.events++;
+      } else if (purpose === 'tasks') {
+        const title = str(it.title, 500);
+        if (!title) continue;
+        await prisma.task.create({
+          data: {
+            userId,
+            title,
+            date: safeDate(it.date) ?? startOfTodayUTC(),
+            time: hhmm(it.time),
+            category: (str(it.category, 32) ?? 'personal').toLowerCase(),
+            priority: (str(it.priority, 16) ?? 'medium').toLowerCase(),
+            notes: str(it.notes, 2000),
+          },
+        });
+        r.tasks++;
+      } else if (purpose === 'expenses') {
+        const amount = Number(it.amount);
+        if (!Number.isFinite(amount) || amount <= 0) continue;
+        await prisma.expense.create({
+          data: {
+            userId,
+            date: safeDate(it.date) ?? startOfTodayUTC(),
+            amount,
+            category: (str(it.category, 32) ?? 'other').toLowerCase(),
+            description: str(it.description, 500) ?? '',
+          },
+        });
+        r.expenses++;
+      } else if (purpose === 'habits') {
+        const name = str(it.name ?? it.title, 200);
+        if (!name) continue;
+        await prisma.habit.create({
+          data: {
+            userId,
+            name,
+            category: (str(it.category, 32) ?? 'personal').toLowerCase(),
+            frequency: (str(it.frequency, 32) ?? 'daily').toLowerCase(),
+          },
+        });
+        r.habits++;
+      }
+    } catch {
+      // битая строка — пропускаем, не валим весь импорт
+    }
+  }
+  return r;
 }
 
 export async function importRoutes(app: FastifyInstance): Promise<void> {
@@ -321,12 +440,29 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
+    // A.5: реально создаём сущности (раньше «загружено N» врало —
+    // в календаре/задачах было пусто). Возвращаем РЕАЛЬНЫЕ счётчики.
+    const materialized = await materializeImport(
+      request.userId,
+      analysis.purpose,
+      analysis.items,
+    );
+    const createdTotal =
+      materialized.events +
+      materialized.tasks +
+      materialized.expenses +
+      materialized.habits;
+
     return reply.status(201).send({
       id: imported.id,
       fileName: imported.fileName,
       fileType: imported.fileType,
       purpose: analysis.purpose,
       itemCount: analysis.items.length,
+      created: createdTotal,
+      materialized,
+      // Честно: если ничего не создано (unknown/pdf) — клиент видит 0
+      // и не показывает ложное «успешно добавлено».
       items: analysis.items.slice(0, 10),
     });
   });
