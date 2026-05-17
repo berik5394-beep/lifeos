@@ -11,6 +11,7 @@ import {
   parseBookingIntent,
   buildBookingUrl,
   narrateBooking,
+  tripReadiness,
   type BookingContext,
 } from './smart-booking.js';
 import { runAgent } from './claude-agent.js';
@@ -243,7 +244,7 @@ export async function handleMessage(
     // История диалога — критично: на "бюджет 100к" booking-агент должен
     // знать про какую поездку (continuity). Раньше не передавалась → агент
     // начинал заново и переспрашивал.
-    const [user, events, destMemory, bHistory] = await Promise.all([
+    const [user, events, destMemory, bHistory, purchaseFlag] = await Promise.all([
       prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
       prisma.calendarEvent.findMany({
         where: { userId, date: new Date(targetDate + 'T00:00:00Z') },
@@ -263,6 +264,11 @@ export async function handleMessage(
           })
         : Promise.resolve(null),
       getRecentHistory(userId, 8),
+      // #6: уже объясняли про ручную покупку? (метка в памяти)
+      prisma.memory.findFirst({
+        where: { userId, tags: { has: 'purchase_explained' } },
+        select: { id: true },
+      }),
     ]);
 
     const bCtx: BookingContext = {
@@ -273,6 +279,7 @@ export async function handleMessage(
         startTime: e.startTime,
       })),
       destinationKnown: !!destMemory,
+      purchaseExplained: !!purchaseFlag,
     };
 
     let reply = await narrateBooking(bIntent, bCtx, url, bHistory);
@@ -282,10 +289,14 @@ export async function handleMessage(
     // вылет/возврат + чек конфликтов календаря. Анти-дубль: follow-up
     // «купи билеты» больше НЕ плодит второй план (раньше плодил, тем
     // более теперь когда conversation-путь реэнтерит plan_travel).
+    // Сценарный gate (структурно, не «промпт может быть»): пока
+    // tripReadiness не ready — НЕ персистим план/чеклист/события
+    // (иначе «угадал курорт, не угадал человека»).
     if (
       bIntent.confidence >= 0.5 &&
       (bIntent.type === 'flight' || bIntent.type === 'hotel') &&
-      (bIntent.departDate || bIntent.checkIn)
+      (bIntent.departDate || bIntent.checkIn) &&
+      tripReadiness(bIntent).ready
     ) {
       const dateFrom = (bIntent.departDate || bIntent.checkIn) as string;
       const dateToStr: string | undefined =
@@ -458,6 +469,18 @@ export async function handleMessage(
           err instanceof Error ? err.message : err,
         );
       }
+    }
+
+    // #6: пометить, что про ручную покупку объяснили — чтобы в
+    // следующий раз не повторять PCI-лекцию. Один раз, best-effort.
+    if (!purchaseFlag) {
+      void captureMemory(userId, {
+        type: 'preference',
+        content: 'Юзеру объяснено: покупка билетов ручная (диплинк, не авто)',
+        source: 'chat',
+        tags: ['purchase_explained'],
+        importance: 4,
+      }).catch(() => {});
     }
 
     void trackInterests(userId, text);
