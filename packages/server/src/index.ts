@@ -13,6 +13,7 @@ import { journalRoutes } from './routes/journal.js';
 import { eventRoutes } from './routes/events.js';
 import { importRoutes } from './routes/import.js';
 import { chatRoutes } from './routes/chat.js';
+import { auditRoutes } from './routes/audit.js';
 import { integrationRoutes, googleCalendarCallbackRoutes } from './routes/integrations.js';
 import { exportRoutes } from './routes/export.js';
 import { petRoutes } from './routes/pet.js';
@@ -178,6 +179,7 @@ await app.register(journalRoutes);
 await app.register(eventRoutes);
 await app.register(importRoutes);
 await app.register(chatRoutes);
+await app.register(auditRoutes);
 await app.register(integrationRoutes);
 // Google OAuth callback — без authMiddleware (Google редиректит браузер
 // юзера без нашего JWT; защищён одноразовым state). Регистрируется

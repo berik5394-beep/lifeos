@@ -701,3 +701,23 @@ model InsightDismissal {
   @@index([userId, dismissKey])
   @@index([userId, createdAt])
 }
+
+// SSOT migration Step 1: append-only audit of every executed tool.
+// Single source of truth for "did this tool actually run". Badges,
+// honesty tests and Step-0-class evidence read aggregates from here,
+// never from LLM-generated text. Append-only, no User relation
+// (orphan rows on user delete are harmless — this is an audit log,
+// not user data), mirrors InsightDismissal precedent.
+model ToolCall {
+  id         String   @id @default(cuid())
+  userId     String
+  toolName   String
+  inputJson  Json
+  outputJson Json?
+  durationMs Int
+  error      String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, toolName, createdAt])
+}
