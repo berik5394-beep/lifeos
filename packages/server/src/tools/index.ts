@@ -1,5 +1,8 @@
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import type { Tool } from './_types.js';
+import type { Tool, ToolContext } from './_types.js';
+import { auditToolCall } from '../services/tool-audit.js';
+import { getToday } from './get-today.js';
+import { getWeatherTool } from './get-weather.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -9,9 +12,10 @@ import type { Tool } from './_types.js';
  * пуст ПО ЗАМЫСЛУ — обкатываем инфраструктуру и drift-guard.
  */
 
-// Шаг 3+: import { getToday } from './get-today.js'; ...
+// Шаг 3 (read-only). Write/деньги — Шаги 5/6.
 const ALL_TOOLS: ReadonlyArray<Tool> = [
-  // (пусто на Шаге 2 — наполняется на Шагах 3/5/6)
+  getToday,
+  getWeatherTool,
 ];
 
 export const registry: ReadonlyMap<string, Tool> = new Map(
@@ -60,4 +64,24 @@ export function confirmAlwaysNames(): string[] {
 /** Имена реестра — для drift-guard и роутинга. */
 export function registryToolNames(): string[] {
   return [...registry.keys()].sort();
+}
+
+export class ToolNotFoundError extends Error {}
+
+/**
+ * Единая точка исполнения tool из реестра: валидация входа zod-схемой
+ * + аудит (ровно одна строка ToolCall на вызов). Confirm-гейт
+ * подключается на Шаге 4 (read-only tools — needsConfirm:false).
+ */
+export async function runRegistryTool(
+  name: string,
+  rawInput: unknown,
+  ctx: ToolContext,
+): Promise<unknown> {
+  const tool = registry.get(name);
+  if (!tool) throw new ToolNotFoundError(`Unknown tool: ${name}`);
+  const parsed = tool.schema.parse(rawInput ?? {});
+  return auditToolCall(ctx.userId, name, parsed, () =>
+    tool.handler(parsed, ctx),
+  );
 }
