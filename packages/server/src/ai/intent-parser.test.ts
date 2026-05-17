@@ -56,19 +56,29 @@ describe('deterministicIntent — travel', () => {
   });
 });
 
-describe('deterministicIntent — финансы (SSOT Step 6: regex УДАЛЁН)', () => {
-  // Детерминированный money-путь намеренно убран: узкий regex ловил
-  // лишь часть фраз, остальное проваливалось мимо → выдумка #1.
-  // Теперь add_expense/add_income классифицирует Claude parseIntent,
-  // исполняет аудируемый реестр с needsConfirm:true. deterministic
-  // на money-фразах ОБЯЗАН вернуть null (нет money-shortcut).
-  it.each([
-    'Потратил 5000 на еду',
-    'Расход 12 000 такси',
-    'Получил зарплату 350000',
-    '40000 — комиссия Kaspi Gold за перевод',
-  ])('«%s» → deterministic null (уходит в Claude→реестр)', (t) => {
-    expect(deterministicIntent(t)).toBeNull();
+describe('deterministicIntent — финансы (Step 6 ОТКАТ: regex ВОЗВРАЩЁН)', () => {
+  // Удаление regex провалено эмпирически (88888 не записан, бот
+  // выдумал). Детерминированный money-prefilter возвращён → деньги
+  // НЕ доходят до чат-агента, идут в реестр с подтверждением.
+  it('"потратил 5000 на еду" → add_expense', () => {
+    const r = deterministicIntent('Потратил 5000 на еду');
+    expect(r?.action).toBe('add_expense');
+    expect(r?.amount).toBe(5000);
+  });
+  it('пробелы в числе: "расход 12 000 такси" → add_expense', () => {
+    const r = deterministicIntent('Расход 12 000 такси');
+    expect(r?.action).toBe('add_expense');
+    expect(r?.amount).toBe(12000);
+  });
+  it('"получил зарплату 350000" → add_income', () => {
+    const r = deterministicIntent('Получил зарплату 350000');
+    expect(r?.action).toBe('add_income');
+    expect(r?.amount).toBe(350000);
+  });
+  it('РЕГРЕСС-ТЕСТ #1: "Запиши расход 88888 тенге комиссия Kaspi" → add_expense (НЕ чат-агент)', () => {
+    const r = deterministicIntent('Запиши расход 88888 тенге комиссия Kaspi');
+    expect(r?.action).toBe('add_expense');
+    expect(r?.amount).toBe(88888);
   });
 });
 
