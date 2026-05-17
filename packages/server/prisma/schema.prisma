@@ -16,6 +16,10 @@ model User {
   assistantStyle  String   @default("friendly")
   assistantGender String   @default("female")
   wakeUpTime      String   @default("07:00")
+  // B.5: таймзона юзера для корректного «сегодня» (аудит 2.7 —
+  // сейчас весь date-math на серверном UTC, для Алматы UTC+5 после
+  // 19:00 локально считается «завтра»). Дефолт — Алматы (KZ-приложение).
+  timezone        String   @default("Asia/Almaty")
   settings        Json     @default("{}")
   createdAt       DateTime @default(now())
 
