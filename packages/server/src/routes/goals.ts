@@ -4,8 +4,13 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseYear, invalidDateReply } from '../middleware/validate.js';
 
+// B.3: enum/диапазоны (аудит 3.12). area из CLAUDE.md (goalAreas),
+// year ограничен, weekStart — строгий ISO (раньше z.string() →
+// new Date(garbage) = Invalid Date молча).
+const GOAL_AREA = z.enum(['finance', 'spirituality', 'career', 'health']);
+
 const createWeeklyGoalSchema = z.object({
-  weekStart: z.string(),
+  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD'),
   goalText: z.string().min(1, 'Текст цели обязателен'),
 });
 
@@ -16,14 +21,14 @@ const updateWeeklyGoalSchema = z.object({
 });
 
 const createYearlyGoalSchema = z.object({
-  year: z.number(),
-  area: z.string(),
+  year: z.number().int().min(2000).max(2100),
+  area: GOAL_AREA,
   goalText: z.string().min(1, 'Текст цели обязателен'),
 });
 
 const updateYearlyGoalSchema = z.object({
   goalText: z.string().optional(),
-  area: z.string().optional(),
+  area: GOAL_AREA.optional(),
   progress: z.number().min(0).max(100).optional(),
 });
 

@@ -111,6 +111,19 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
     preHandler: validate(createTaskSchema),
   }, async (request, reply) => {
     const data = request.body as z.infer<typeof createTaskSchema>;
+    // B.3 (IDOR): parentId раньше писался без проверки владения —
+    // можно было вложить свою задачу в ЧУЖУЮ. Проверяем ownership.
+    if (data.parentId) {
+      const parent = await prisma.task.findFirst({
+        where: { id: data.parentId, userId: request.userId },
+        select: { id: true },
+      });
+      if (!parent) {
+        return reply
+          .status(404)
+          .send({ message: 'Родительская задача не найдена' });
+      }
+    }
     const task = await prisma.task.create({
       data: {
         title: data.title,

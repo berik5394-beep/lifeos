@@ -256,6 +256,25 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     const data = request.body as z.infer<typeof telegramConnectSchema>;
 
+    // B.3 (IDOR): раньше можно было подсунуть ЧУЖОЙ chatId — и пуши
+    // этого аккаунта уходили бы в чужой чат (или перехват привязки).
+    // Полноценный flow с кодом от бота — отдельная задача (3.10);
+    // здесь минимальная защита: один chatId не привязывается к
+    // разным аккаунтам.
+    const chatOwner = await prisma.integration.findFirst({
+      where: {
+        provider: 'telegram',
+        settings: { path: ['chatId'], equals: data.chatId },
+        userId: { not: request.userId },
+      },
+      select: { id: true },
+    });
+    if (chatOwner) {
+      return reply.status(409).send({
+        message: 'Этот Telegram уже привязан к другому аккаунту',
+      });
+    }
+
     const settings: Record<string, string> = {
       chatId: data.chatId,
     };

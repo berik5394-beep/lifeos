@@ -4,15 +4,27 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth as validateMonth, invalidDateReply } from '../middleware/validate.js';
 
+// B.3: enum-валидация категории (аудит 3.12 — раньше любая строка).
+// Список из CLAUDE.md (expenseCategories).
+const EXPENSE_CATEGORY = z.enum([
+  'food',
+  'transport',
+  'entertainment',
+  'clothing',
+  'health',
+  'home',
+  'other',
+]);
+
 const createExpenseSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD'),
-  category: z.string().max(64),
+  category: EXPENSE_CATEGORY,
   description: z.string().min(1, 'Описание обязательно').max(500),
   amount: z.number().positive('Сумма должна быть положительной'),
 });
 
 const createBudgetSchema = z.object({
-  category: z.string().min(1, 'Категория обязательна'),
+  category: EXPENSE_CATEGORY,
   monthlyLimit: z.number().positive('Лимит должен быть положительным'),
   month: z.number().int().min(1).max(12),
   year: z.number().int().min(2020).max(2100),
