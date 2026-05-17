@@ -39,3 +39,20 @@ degradation catch (~lines 617–651).
 
 ## ISSUE-2 — Frankfurter currency API 404 (spawned separately)
 ## ISSUE-3 — Voyage embeddings 429 / no payment method (ops/billing, not code)
+
+## ISSUE-4 — Unexplained PENDING→CONFIRMED in 9µs (money-safety, verify before Step 6)
+
+Prod 2026-05-17T15:07:18Z: a single "Запиши доход 50000 тенге" produced
+`intent=add_income PENDING` then `intent=add_income CONFIRMED` 9µs apart,
+with no separate "да". FSM logic cannot produce this from one message
+(confirm regex is anchored — "Запиши доход…" is not a confirm). User
+reported sending the income message twice and was unsure whether to
+confirm — likely interleaved manual sends and/or Telegram update
+double-delivery, but UNCONFIRMED. Restart test #1 (15:07:37 pending →
+15:10:50 restart → 15:11:30 confirm) is clean and unaffected.
+
+REQUIRED before Step 6 (money): a clean controlled re-verify — exactly
+one "доход" message, observe PENDING, then exactly one "да", confirm a
+single CONFIRMED. Assert the normal path does NOT auto-confirm without
+an explicit separate "да". If reproduced, investigate Telegram update
+de-duplication in telegram-bot.ts and/or a race in handleMessage.
