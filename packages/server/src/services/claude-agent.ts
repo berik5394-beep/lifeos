@@ -1,6 +1,52 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AiModelError } from '../lib/errors.js';
 import { LOCAL_TOOLS, runLocalTool } from './agent-tools.js';
+import { convertCurrency } from './external-apis.js';
+
+/**
+ * #6 — детерминированная защита от рублей. Промт говорит «только ₸»,
+ * но web_search тащит рос. сайты и модель не всегда слушается (видно
+ * в проде раз за разом). Поэтому ПОСТ-обработка: если в финальном
+ * тексте остались ₽/руб — конвертим по реальному курсу (Frankfurter,
+ * бесплатно) и заменяем. Структурно, а не «надеемся на промт».
+ * Сетевой вызов только если ₽ реально найдены.
+ */
+export function hasRub(text: string): boolean {
+  return /₽|руб/i.test(text);
+}
+
+/** Чистая замена ₽-сумм на ₸ по курсу. Тестируется без сети (#6). */
+export function convertRubInText(
+  text: string,
+  rate: number,
+): { text: string; touched: boolean } {
+  const RUB = /(\d[\d\s  ]*\d|\d)\s*(?:₽|руб(?:\.|лей|ля|ль)?|рубл(?:ей|я|ь))/gi;
+  let touched = false;
+  const out = text.replace(RUB, (_m: string, numRaw: string) => {
+    const n = Number(String(numRaw).replace(/[\s  ]/g, ''));
+    if (!Number.isFinite(n) || n <= 0) return _m;
+    touched = true;
+    const v = String(Math.round(n * rate)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return `≈ ${v} ₸`;
+  });
+  return {
+    text: touched
+      ? `${out}\n\n(цены приведены к ₸ по курсу ~${rate.toFixed(2)}₸/₽)`
+      : out,
+    touched,
+  };
+}
+
+async function enforceTenge(text: string): Promise<string> {
+  if (!hasRub(text)) return text;
+  try {
+    const r = await convertCurrency(1, 'RUB', 'KZT');
+    if (!Number.isFinite(r.rate) || r.rate <= 0) return text;
+    return convertRubInText(text, r.rate).text;
+  } catch {
+    return text; // курс недостал — текст не трогаем (лучше мусора)
+  }
+}
 
 /**
  * Общий хелпер для агентных Claude-вызовов с web_search.
@@ -191,5 +237,5 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
   if (!finalText) {
     throw new AiModelError(new Error('Empty Claude response (no text blocks)'));
   }
-  return finalText;
+  return enforceTenge(finalText); // #6: добиваем рубли детерминированно
 }
