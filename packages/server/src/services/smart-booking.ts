@@ -1,4 +1,26 @@
 import Anthropic from '@anthropic-ai/sdk';
+
+/**
+ * #7 — справочник ПРОВЕРЕННЫХ доменов. Разбор: модель парротит
+ * web_search и выдаёт ложь — s7.ru для Air Astana (это сайт
+ * российской S7!), несуществующие пути flyarystan. Фикс: даём
+ * канонический список и правило «URL бери ТОЛЬКО отсюда или из
+ * предзаполненного deeplink, сам НЕ конструируй».
+ */
+export const VERIFIED_PARTNERS = [
+  'Air Astana — airastana.com',
+  'FlyArystan — flyarystan.com',
+  'SCAT — scat.kz',
+  'Qazaq Air — flyqazaq.com',
+  'Aviata (агрегатор билетов KZ) — aviata.kz',
+  'Chocotravel (билеты/туры KZ) — chocotravel.com',
+  'Aviasales (агрегатор) — aviasales.kz',
+  'Booking (отели) — booking.com',
+  'Agoda (отели, Азия) — agoda.com',
+  'Ostrovok (отели) — ostrovok.ru',
+  'Yandex Go (такси) — taxi.yandex.kz',
+  'inDrive (такси) — indrive.com',
+].join('; ');
 import { AiModelError } from '../lib/errors.js';
 
 /**
@@ -301,7 +323,7 @@ ${purchaseNote}
 
 6. **План день-в-день** (если поездка осмысленная): короткий ориентир по дням (прилёт+трансфер с ценой → активности с ценами если web_search дал → выезд). Помечай «ориентировочно».
 
-7. **Ссылки = действие.** «Ссылку с забитыми параметрами кину ниже». Нашёл прямой сайт/контакт — назови.
+7. **Ссылки = действие, но БЕЗ выдумок.** «Ссылку с забитыми параметрами кину ниже» (систему добавит deeplink). Если называешь прямой сайт — ТОЛЬКО из проверенного справочника: ${VERIFIED_PARTNERS}. НИКОГДА не конструируй URL сам и не повторяй ссылку из web_search не сверившись (частая ложь: s7.ru ≠ Air Astana). Не уверен в URL — назови бренд словами («ищи на aviata.kz»), без ссылки.
 
 8. **Расписание:** ${
     context.eventsOnDate.length > 0

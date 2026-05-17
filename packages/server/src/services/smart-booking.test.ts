@@ -1,5 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { tripReadiness, type BookingIntent } from './smart-booking.js';
+import {
+  tripReadiness,
+  VERIFIED_PARTNERS,
+  type BookingIntent,
+} from './smart-booking.js';
+
+/** #7 — справочник доменов: правильный Air Astana, без ложного s7.ru. */
+describe('VERIFIED_PARTNERS', () => {
+  it('Air Astana = airastana.com, НЕ s7.ru', () => {
+    expect(VERIFIED_PARTNERS).toContain('airastana.com');
+    expect(VERIFIED_PARTNERS).not.toContain('s7.ru');
+  });
+  it('есть KZ-агрегатор и отели', () => {
+    expect(VERIFIED_PARTNERS).toContain('aviata.kz');
+    expect(VERIFIED_PARTNERS).toContain('booking.com');
+  });
+});
 
 /**
  * Сценарный gate — детерминированное ядро дисциплины концьержа.
