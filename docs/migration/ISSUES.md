@@ -106,3 +106,16 @@ around the 88888 test, confirm `intent=add_expense PENDING` then
 `CONFIRMED` via registry, 0 deprecated, and check Expense table for
 duplicate 88888. Until then Step 6 is "behavior verified, internal
 verification pending" — NOT a green checkmark.
+
+## ISSUE-8 — captureInBackground creates junk tasks/memories from any chat (Step 8/quality)
+
+Root finding behind the fake badge: captureInBackground runs NLP
+extraction on EVERY chat message and ACTUALLY creates Task/Memory
+rows — so "Запиши расход 88888 …" produced a bogus task + memory
+(that's what the old "+1 в задачи" counted). Step 7 removes the
+fabricated BADGE (now audit-truthful), but captureInBackground still
+pollutes tasks/memories from non-task messages (expense commands,
+confirmations, questions). This is a precision bug separate from
+badges. Decide in Step 8 / quality pass: gate captureInBackground
+to genuine task-bearing chat only, or drop auto-create entirely.
+Not fixed by Step 7 (scope = badge truthfulness).

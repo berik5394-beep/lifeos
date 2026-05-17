@@ -19,6 +19,7 @@ import { captureMemory } from './memory-service.js';
 import { trackInterests } from './interest-service.js';
 import { executeAction } from './action-executor.js';
 import { runRegistryTool, registry, toolConfirmRequired } from '../tools/index.js';
+import { getToolCounts } from './tool-audit.js';
 import {
   peekPendingAction,
   takePendingAction,
@@ -46,9 +47,12 @@ export interface JarvisResponse {
   reply: string;
   /** URL для бронирования если это booking-запрос */
   bookingUrl?: string | null;
-  /** Что извлекли в фоне (для показа "записал N задач") */
-  capturedTasks?: number;
-  capturedMemories?: number;
+  /**
+   * SSOT Step 7: бейдж — РЕАЛЬНОЕ число исполненных за этот ход
+   * инструментов из аудита ToolCall, НЕ из NLP-выдумки
+   * captureInBackground. Невозможно соврать: 0 действий → нет бейджа.
+   */
+  auditedActions?: number;
   intent: string;
   /**
    * Фаза 1.2: денежное/необратимое действие НЕ выполнено — ждём
@@ -229,6 +233,9 @@ export async function handleMessage(
   userId: string,
   text: string,
 ): Promise<JarvisResponse> {
+  // SSOT Step 7: засекаем начало хода — бейдж считаем из ToolCall,
+  // созданных за этот ход (факт), а не из NLP-выдумки.
+  const turnStart = new Date();
   // ---- Фаза 1.2: ждём подтверждения предыдущего денежного действия? ----
   const pending = await peekPendingAction(userId);
   if (pending) {
@@ -663,18 +670,25 @@ export async function handleMessage(
     }
   }
 
-  // Фоновое извлечение задач/фактов — не блокируем ответ.
-  const captured = await captureInBackground(userId, text);
+  // Фоновое извлечение задач/фактов (ambient-фича). Возврат НЕ
+  // используем для бейджа — SSOT Step 7: бейдж только из аудита.
+  await captureInBackground(userId, text);
 
   // Трекинг интересов (спорт/финансы/...) — fire-and-forget, не ждём.
   void trackInterests(userId, text);
 
   await saveTurn(userId, text, reply);
 
+  // Бейдж = реальные исполненные за ход инструменты (ToolCall).
+  // Только успешные (getToolCounts фильтрует error=null). 0 → нет бейджа.
+  const acted = (await getToolCounts(userId, turnStart)).reduce(
+    (s, r) => s + r.count,
+    0,
+  );
+
   return {
     reply,
-    capturedTasks: captured.tasks,
-    capturedMemories: captured.memories,
+    auditedActions: acted,
     intent: intent.action,
   };
 }

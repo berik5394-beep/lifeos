@@ -38,10 +38,11 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       const res = await handleMessage(request.userId, text);
       let message = res.reply;
       if (res.bookingUrl) message += `\n\n\u{1F517} ${res.bookingUrl}`;
-      const cap: string[] = [];
-      if (res.capturedTasks) cap.push(`\u{1F4DD} +${res.capturedTasks} в задачи`);
-      if (res.capturedMemories) cap.push(`\u{1F9E0} +${res.capturedMemories} в память`);
-      if (cap.length > 0) message += `\n\n— ${cap.join(' · ')}`;
+      // SSOT Step 7: бейдж — ТОЛЬКО реальные исполненные инструменты
+      // из аудита ToolCall. Никакого NLP-«+N в задачи» из воздуха.
+      if (res.auditedActions && res.auditedActions > 0) {
+        message += `\n\n— \u{2705} выполнено действий: ${res.auditedActions}`;
+      }
       return reply.send({
         message,
         intent: res.intent,

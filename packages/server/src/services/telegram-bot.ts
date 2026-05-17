@@ -256,11 +256,10 @@ async function sendJarvis(
   if (res.bookingUrl) {
     msg += `\n\n🔗 ${res.bookingUrl}`;
   }
-  const captured: string[] = [];
-  if (res.capturedTasks) captured.push(`📝 +${res.capturedTasks} в задачи`);
-  if (res.capturedMemories) captured.push(`🧠 +${res.capturedMemories} в память`);
-  if (captured.length > 0) {
-    msg += `\n\n— ${captured.join(' · ')}`;
+  // SSOT Step 7: бейдж — только реальные исполненные инструменты
+  // (ToolCall-аудит), не NLP-выдумка captureInBackground.
+  if (res.auditedActions && res.auditedActions > 0) {
+    msg += `\n\n— ✅ выполнено действий: ${res.auditedActions}`;
   }
   // БЕЗ parse_mode: ответ Claude (+ web search URLs) содержит непарные
   // _ * [ ( ` — строгий Markdown-парсер Telegram падает с
