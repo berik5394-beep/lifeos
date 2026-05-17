@@ -721,3 +721,16 @@ model ToolCall {
   @@index([userId, createdAt])
   @@index([userId, toolName, createdAt])
 }
+
+// SSOT migration Step 4 — confirm-FSM на Postgres (не in-memory
+// singleton: тот терялся при рестарте Railway → юзер сказал «да»,
+// а подтверждать уже нечего). Один pending на юзера (userId @unique:
+// новое предложение перетирает старое). TTL 5 мин проверяется при
+// чтении; протухшее удаляется лениво. Переживает рестарт процесса.
+model PendingAction {
+  userId           String   @id
+  action           String
+  inputJson        Json
+  confirmationText String
+  createdAt        DateTime @default(now())
+}

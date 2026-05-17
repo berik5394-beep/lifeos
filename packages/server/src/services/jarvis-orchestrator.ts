@@ -213,23 +213,23 @@ export async function handleMessage(
   text: string,
 ): Promise<JarvisResponse> {
   // ---- Фаза 1.2: ждём подтверждения предыдущего денежного действия? ----
-  const pending = peekPendingAction(userId);
+  const pending = await peekPendingAction(userId);
   if (pending) {
     const signal = readConfirmSignal(text);
     if (signal === 'confirm') {
-      const p = takePendingAction(userId)!;
+      const p = (await takePendingAction(userId))!;
       const reply = await runConfirmedAction(userId, p.action, p.input);
       return { reply, intent: p.action };
     }
     if (signal === 'cancel') {
-      takePendingAction(userId);
+      await takePendingAction(userId);
       const reply = 'Окей, отменил — ничего не записал.';
       await saveTurn(userId, text, reply);
       return { reply, intent: 'cancel_pending' };
     }
     // Не «да» и не «нет» — юзер сменил тему. Протухшее предложение
     // не держим, чтобы случайное «да» позже не сработало вслепую.
-    clearPendingAction(userId);
+    await clearPendingAction(userId);
   }
 
   const intent = await parseIntent(text);
@@ -522,7 +522,7 @@ export async function handleMessage(
       const input: Record<string, unknown> = { ...intent };
       delete input.action;
       const ctext = confirmationText(intent.action, input);
-      setPendingAction(userId, intent.action, input, ctext);
+      await setPendingAction(userId, intent.action, input, ctext);
       console.log(
         `[jarvis] user=${userId} intent=${intent.action} PENDING (awaiting confirm)`,
       );

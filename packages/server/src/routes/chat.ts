@@ -64,10 +64,10 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     const { confirm } = request.body as z.infer<typeof confirmSchema>;
     if (!confirm) {
-      takePendingAction(request.userId);
+      await takePendingAction(request.userId);
       return reply.send({ message: 'Окей, отменил — ничего не записал.', done: true });
     }
-    const p = takePendingAction(request.userId);
+    const p = await takePendingAction(request.userId);
     if (!p) {
       return reply.status(409).send({
         message: 'Нечего подтверждать — предложение устарело. Повтори запрос.',
@@ -80,7 +80,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
   // --- Есть ли ожидающее подтверждения действие (для восстановления UI) ---
   app.get('/voice/pending-action', async (request, reply) => {
-    const p = peekPendingAction(request.userId);
+    const p = await peekPendingAction(request.userId);
     return reply.send(
       p
         ? { pending: { action: p.action, input: p.input }, confirmationText: p.confirmationText }

@@ -1,79 +1,122 @@
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
+
 /**
- * Фаза 1.2 — gate подтверждения необратимых/денежных действий.
+ * Confirm-FSM (SSOT Step 4). Денежные/необратимые действия не
+ * выполняются сразу — сначала «записать?», юзер подтверждает «да»
+ * (Telegram/голос) или кнопкой (/voice/confirm-action).
  *
- * Джарвис действует, но под контролем: денежные команды (add_expense,
- * add_income) НЕ выполняются сразу — сначала спрашиваем «записать?».
- * Юзер подтверждает кнопкой (приложение → /voice/confirm-action) или
- * естественным «да/нет» (Telegram, голос — через оркестратор).
+ * Хранилище — Postgres (таблица PendingAction), НЕ in-memory.
+ * Прежний `const store = new Map` жил в процессе и терялся при
+ * рестарте Railway: юзер говорил «да», а подтверждать уже нечего —
+ * деньги молча не записывались. Теперь pending переживает рестарт.
  *
- * Хранилище — in-memory с TTL. Это сознательно консистентно с уже
- * принятой в проекте архитектурой single-instance (in-memory rate-limiter
- * в middleware/security.ts, планировщик в proactive-scheduler.ts тоже
- * исходят из одного инстанса Railway). Если появится горизонтальное
- * масштабирование — заменить на Redis/таблицу, интерфейс не изменится.
+ * TTL 5 минут проверяется ПРИ ЧТЕНИИ (lazy expire + delete) —
+ * подтверждение это «прямо сейчас», протухшее не должно сработать.
+ * Отдельный sweeper не нужен: строк максимум одна на юзера, она
+ * перетирается новым предложением или удаляется при peek/take.
  *
- * TTL 5 минут: подтверждение — это «прямо сейчас», не «через час».
- * Протухшее предложение не должно неожиданно сработать.
+ * Store инъектируем (порт) — FSM/TTL тестируются без БД, а
+ * «переживает рестарт» моделируется персистентным фейк-портом.
  */
+
+export const PENDING_TTL_MS = 5 * 60 * 1000;
 
 export interface PendingAction {
   action: string;
   input: Record<string, unknown>;
-  /** Человеческий текст что именно подтверждаем (для повторного показа). */
   confirmationText: string;
+  /** epoch ms — для TTL. */
   createdAt: number;
 }
 
-const TTL_MS = 5 * 60 * 1000;
+export interface PendingStore {
+  save(userId: string, rec: PendingAction): Promise<void>;
+  load(userId: string): Promise<PendingAction | null>;
+  remove(userId: string): Promise<void>;
+}
 
-const store = new Map<string, PendingAction>();
+const prismaPendingStore: PendingStore = {
+  async save(userId, rec) {
+    const data = {
+      action: rec.action,
+      inputJson: rec.input as Prisma.InputJsonValue,
+      confirmationText: rec.confirmationText,
+      createdAt: new Date(rec.createdAt),
+    };
+    await prisma.pendingAction.upsert({
+      where: { userId },
+      update: data,
+      create: { userId, ...data },
+    });
+  },
+  async load(userId) {
+    const row = await prisma.pendingAction.findUnique({ where: { userId } });
+    if (!row) return null;
+    return {
+      action: row.action,
+      input: (row.inputJson ?? {}) as Record<string, unknown>,
+      confirmationText: row.confirmationText,
+      createdAt: row.createdAt.getTime(),
+    };
+  },
+  async remove(userId) {
+    // deleteMany — не бросает, если строки нет (идемпотентно).
+    await prisma.pendingAction.deleteMany({ where: { userId } });
+  },
+};
 
-// Периодическая чистка протухших, чтобы Map не рос вечно (как в
-// security.ts с rate-limit бакетами).
-setInterval(() => {
-  const now = Date.now();
-  for (const [userId, p] of store.entries()) {
-    if (now - p.createdAt > TTL_MS) store.delete(userId);
-  }
-}, 60_000).unref?.();
-
-export function setPendingAction(
+export async function setPendingAction(
   userId: string,
   action: string,
   input: Record<string, unknown>,
   confirmationText: string,
-): void {
-  store.set(userId, { action, input, confirmationText, createdAt: Date.now() });
+  store: PendingStore = prismaPendingStore,
+): Promise<void> {
+  await store.save(userId, {
+    action,
+    input,
+    confirmationText,
+    createdAt: Date.now(),
+  });
 }
 
-/** Возвращает свежий pending (или null если нет/протух). Не удаляет. */
-export function peekPendingAction(userId: string): PendingAction | null {
-  const p = store.get(userId);
+/** Свежий pending (или null если нет/протух). Протухший удаляет. */
+export async function peekPendingAction(
+  userId: string,
+  store: PendingStore = prismaPendingStore,
+): Promise<PendingAction | null> {
+  const p = await store.load(userId);
   if (!p) return null;
-  if (Date.now() - p.createdAt > TTL_MS) {
-    store.delete(userId);
+  if (Date.now() - p.createdAt > PENDING_TTL_MS) {
+    await store.remove(userId);
     return null;
   }
   return p;
 }
 
-/** Забирает и удаляет pending (для подтверждения/отмены). */
-export function takePendingAction(userId: string): PendingAction | null {
-  const p = peekPendingAction(userId);
-  if (p) store.delete(userId);
+/** Забирает и удаляет pending (подтверждение/отмена). */
+export async function takePendingAction(
+  userId: string,
+  store: PendingStore = prismaPendingStore,
+): Promise<PendingAction | null> {
+  const p = await peekPendingAction(userId, store);
+  if (p) await store.remove(userId);
   return p;
 }
 
-export function clearPendingAction(userId: string): void {
-  store.delete(userId);
+export async function clearPendingAction(
+  userId: string,
+  store: PendingStore = prismaPendingStore,
+): Promise<void> {
+  await store.remove(userId);
 }
 
 // -----------------------------------------------------------------------------
-// Распознавание «да/нет» в свободной речи (Telegram, голос).
-// ВАЖНО: не используем \b — в JS \w = [A-Za-z0-9_], кириллическая граница
-// слова не срабатывает (та же проблема что в intent-parser/booking).
-// Триггерим ТОЛЬКО на короткое чистое подтверждение/отказ — чтобы
-// «да я кстати ещё хотел...» не сработало как слепое подтверждение.
+// Распознавание «да/нет» в свободной речи (Telegram, голос). Чистая
+// функция (без БД). НЕ \b — в JS \w=[A-Za-z0-9_], кириллическая
+// граница не срабатывает. Только короткое чистое да/нет — чтобы
+// «да я кстати ещё...» не было слепым подтверждением.
 // -----------------------------------------------------------------------------
 
 const AFFIRM =
