@@ -85,3 +85,24 @@ Prod 2026-05-17 ~16:0x: a `create_event` action returned the badge
 "📝 +1 в задачи" (wrong noun, wrong source). Confirms bug #5 is
 still live: badges come from captureInBackground NLP, not real
 tool_use / ToolCall. Step 7 fixes (badges read /audit/counts).
+
+## ISSUE-7 — Step 6 internal verification DEFERRED (Railway rate-limit)
+
+Step 6 (money via registry) is BEHAVIORALLY verified in prod via
+authoritative bot replies: free-form "Запиши расход 88888 … Kaspi"
+→ bot ASKED confirmation (no fabrication, no auto-write) → "да" →
+"Расход записан ✅". Bug #1 user-facing lie pattern is gone.
+
+NOT yet verified (Railway CLI rate-limited / empty; bot text is
+Claude-rephrased so path not inferable from wording):
+- that it went through the audited registry path (ToolCall row written)
+- zero `[deprecated] action-executor.add_expense`
+- no auto-confirm before "да"
+- possible DUPLICATE 88888 expense ("бот: уже второй раз с такой
+  суммой") — data-integrity check.
+
+TODO when Railway rate-limit clears: pull `railway logs --since`
+around the 88888 test, confirm `intent=add_expense PENDING` then
+`CONFIRMED` via registry, 0 deprecated, and check Expense table for
+duplicate 88888. Until then Step 6 is "behavior verified, internal
+verification pending" — NOT a green checkmark.
