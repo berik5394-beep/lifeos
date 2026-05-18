@@ -170,3 +170,20 @@ questions (ends with ?, interrogative starts), <12-char replies,
 assistant-directed chitchat (мотивируй/расскажи/привет/как дела).
 Genuine ambient capture ("купи продукты", "надо позвонить врачу",
 fact statements) preserved. 16 unit tests. suite 283/283.
+
+## ISSUE-8 — HARDENED (assistant-control commands no longer captured)
+
+Found via real chat: user said "Поставь будильник на 7 утра" inside
+an app-control bundle ("Открой экран… Экспортируй… Отправь в
+телеграм… Перенеси задачу…"). Bot verbally declined alarm, but
+captureInBackground NLP-created a junk task "Будильник 7 утра
+(высокий приоритет)" — which then surfaced via get_tasks. NOT
+fabrication, NOT optimization — ISSUE-8 pollution; the looksCaptureWorthy
+gate (questions/chitchat/short) did NOT cover imperative
+assistant-control bundles. Fix: ASSISTANT_CONTROL denylist
+(будильник, открой экран, экспортир, в телеграм/whatsapp, в колонк,
+фокус-режим, покажи календарь, открой приложение) → skip capture.
+Personal ambient ("купи продукты", "надо позвонить") unaffected.
+8 new tests; suite 301/301. NOTE: pre-existing junk task rows
+created BEFORE the gate remain in DB — need one-time cleanup
+(see migration/CLEANUP.sql; user runs review→delete, not auto).
