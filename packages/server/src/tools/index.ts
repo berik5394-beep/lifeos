@@ -98,6 +98,37 @@ export function anthropicSchemas(): AnthropicToolSchema[] {
   }));
 }
 
+/**
+ * SECURITY INVARIANT: agent-loop schemas exclude every tool with
+ * needsConfirm != false. Reason: the agent-loop is autonomous
+ * (Claude picks tools without the user mid-confirm). Sensitive
+ * actions (money: add_expense/add_income; external sends) MUST stay
+ * on the orchestrator's confirm path, never executed silently by
+ * the autonomous loop. If you add a tool that needs confirm — it is
+ * AUTOMATICALLY excluded here (one registry, two projections: full
+ * for the orchestrator, confirm-free for the agent). Do NOT add a
+ * bypass without reviewing the security model. This comment must
+ * survive refactors — the filter IS the invariant, not an accident.
+ */
+export function agentToolSchemas(): AnthropicToolSchema[] {
+  return [...registry.values()]
+    .filter((t) => t.needsConfirm === false)
+    .map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: toAnthropicInputSchema(t.schema),
+    }));
+}
+
+/** Имена tools, разрешённых автономному агент-циклу (см. инвариант). */
+export function agentToolNames(): Set<string> {
+  return new Set(
+    [...registry.values()]
+      .filter((t) => t.needsConfirm === false)
+      .map((t) => t.name),
+  );
+}
+
 /** Бывший рукописный CAPABILITY_TEXT — теперь автоген из реестра. */
 export function capabilityText(): string {
   const vals = [...registry.values()];

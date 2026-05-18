@@ -40,6 +40,11 @@ export interface Tool<TIn = unknown, TOut = unknown> {
    * (иначе «забыл синхронизировать NEEDS_CONFIRM»). boolean — всегда;
    * функция от input — условно (напр. расход > 100k).
    */
+  // TODO (не сейчас): `!needsConfirm` сейчас служит и security-прокси
+  // «можно ли автономному агент-циклу» (agentToolSchemas). Когда
+  // появится tool, где confirm (UX) и agent-disabled (security)
+  // должны быть НЕЗАВИСИМЫ — выделить отдельное поле
+  // `availableToAgent: boolean`, развязав эти два вопроса.
   needsConfirm: boolean | ((input: TIn) => boolean);
   sideEffects: ToolSideEffects;
   handler: (input: TIn, ctx: ToolContext) => Promise<TOut>;
