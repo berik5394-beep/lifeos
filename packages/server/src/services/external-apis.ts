@@ -29,103 +29,11 @@ async function fetchWithTimeout(
   }
 }
 
-// ── City → IATA mapping (KZ cities focus) ──
-const CITY_IATA: Record<string, string> = {
-  'астана': 'NQZ', 'нур-султан': 'NQZ', 'алматы': 'ALA', 'шымкент': 'CIT',
-  'караганда': 'KGF', 'актау': 'SCO', 'атырау': 'GUW', 'павлодар': 'PWQ',
-  'стамбул': 'IST', 'анталья': 'AYT', 'москва': 'MOW', 'санкт-петербург': 'LED',
-  'дубай': 'DXB', 'бангкок': 'BKK', 'бали': 'DPS', 'пхукет': 'HKT',
-  'тбилиси': 'TBS', 'батуми': 'BUS', 'бишкек': 'FRU', 'ташкент': 'TAS',
-  'лондон': 'LON', 'париж': 'PAR', 'нью-йорк': 'NYC', 'токио': 'TYO',
-};
-
-function resolveIATA(city: string): string {
-  return CITY_IATA[city.toLowerCase().trim()] || city.toUpperCase();
-}
-
-// ── Flights (Aviasales / Travelpayouts) ──
-export async function searchFlights(params: {
-  from: string; to: string; departDate: string; returnDate?: string; passengers?: number;
-}): Promise<Array<{ airline: string; price: number; currency: string; departure: string; duration: string; stops: number; link: string; isMock: boolean }>> {
-  const token = process.env.AVIASALES_API_TOKEN;
-  const origin = resolveIATA(params.from);
-  const destination = resolveIATA(params.to);
-
-  if (!token) {
-    // Нет ключа → ориентировочные данные. isMock:true — мозг честно
-    // скажет "точные цены когда подключим API", не выдаёт за факт.
-    return [
-      { airline: 'Air Astana', price: 85000, currency: 'KZT', departure: `${params.departDate} 06:00`, duration: '4ч 30м', stops: 0, link: '#', isMock: true },
-      { airline: 'FlyArystan', price: 52000, currency: 'KZT', departure: `${params.departDate} 14:00`, duration: '5ч 00м', stops: 1, link: '#', isMock: true },
-      { airline: 'Turkish Airlines', price: 110000, currency: 'KZT', departure: `${params.departDate} 22:00`, duration: '4ч 00м', stops: 0, link: '#', isMock: true },
-    ];
-  }
-
-  try {
-    const url = `https://api.travelpayouts.com/aviasales/v3/prices_for_dates?origin=${origin}&destination=${destination}&departure_at=${params.departDate}${params.returnDate ? '&return_at=' + params.returnDate : ''}&sorting=price&limit=5&token=${token}`;
-    const response = await fetchWithTimeout(url);
-    const data = await response.json() as { data?: Array<{ airline: string; price: number; departure_at: string; duration: number; transfers: number; link: string }> };
-
-    return (data.data || []).slice(0, 5).map((f) => ({
-      airline: f.airline || 'Unknown',
-      price: f.price,
-      currency: 'KZT',
-      departure: f.departure_at,
-      duration: `${Math.floor(f.duration / 60)}ч ${f.duration % 60}м`,
-      stops: f.transfers,
-      link: `https://www.aviasales.ru${f.link}`,
-      isMock: false,
-    }));
-  } catch (err) {
-    console.error('Aviasales API error:', err);
-    return [];
-  }
-}
-
-// ── Routes (Google Maps deep link + optional Directions API) ──
-export async function buildRoute(params: {
-  from: string; to: string; mode?: string;
-}): Promise<{ distance: string; duration: string; durationMinutes: number; steps: string[]; link: string; message: string; isMock: boolean }> {
-  const mode = params.mode || 'driving';
-  const link = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(params.from)}&destination=${encodeURIComponent(params.to)}&travelmode=${mode}`;
-  const key = process.env.GOOGLE_MAPS_API_KEY;
-
-  if (!key) {
-    return {
-      distance: '~15 км',
-      duration: '~25 мин',
-      durationMinutes: 25,
-      steps: [],
-      link,
-      message: `Маршрут ${params.from} → ${params.to}. Открой ссылку для навигации: ${link}`,
-      isMock: true,
-    };
-  }
-
-  try {
-    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(params.from)}&destination=${encodeURIComponent(params.to)}&mode=${mode}&language=ru&key=${key}`;
-    const response = await fetchWithTimeout(url);
-    const data = await response.json() as { routes: Array<{ legs: Array<{ distance: { text: string }; duration: { text: string; value: number }; steps: Array<{ html_instructions: string }> }> }> };
-
-    if (!data.routes?.length) {
-      return { distance: 'неизвестно', duration: 'неизвестно', durationMinutes: 0, steps: [], link, message: `Маршрут ${params.from} → ${params.to}. Открой ссылку для навигации: ${link}`, isMock: true };
-    }
-
-    const leg = data.routes[0].legs[0];
-    return {
-      distance: leg.distance.text,
-      duration: leg.duration.text,
-      durationMinutes: Math.round(leg.duration.value / 60),
-      steps: leg.steps.map((s) => s.html_instructions.replace(/<[^>]*>/g, '')).slice(0, 5),
-      link,
-      message: `Маршрут ${params.from} → ${params.to} (${leg.distance.text}, ${leg.duration.text}). Навигация: ${link}`,
-      isMock: false,
-    };
-  } catch (err) {
-    console.error('Google Maps API error:', err);
-    return { distance: 'ошибка', duration: 'ошибка', durationMinutes: 0, steps: [], link, message: `Маршрут ${params.from} → ${params.to}. Открой ссылку для навигации: ${link}`, isMock: true };
-  }
-}
+// SSOT P0 mock-labels: searchFlights/searchHotels/buildRoute удалены
+// целиком (мёртвый mock — никто не зовёт, моб. travel-экран переедет
+// на smart-book c реальными API позже). Не существующий код не врёт:
+// удаление сильнее любых isMock-меток. CITY_IATA/resolveIATA жили
+// только ради searchFlights — тоже удалены.
 
 // ── Weather (Open-Meteo — free, no API key) ──
 
@@ -302,28 +210,6 @@ export async function convertCurrency(amount: number, from: string, to: string):
       formatted: `${amount} ${fromCode} ≈ ${converted} ${toCode} (оффлайн курс)`,
     };
   }
-}
-
-// ── Hotels (Booking.com deep link + mock results) ──
-export async function searchHotels(params: {
-  city: string; checkIn: string; checkOut: string; maxPrice?: number;
-}): Promise<{ hotels: Array<{ name: string; price: number; currency: string; rating: number; distance: string }>; link: string; message: string; isMock: boolean }> {
-  const link = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(params.city)}&checkin=${params.checkIn}&checkout=${params.checkOut}`;
-
-  // Реального hotel-API нет — это ориентир по диапазону цен, не факт.
-  // isMock:true → мозг честно говорит "точные варианты по ссылке".
-  const hotels = [
-    { name: `${params.city} Grand Hotel`, price: 25000, currency: 'KZT', rating: 4.5, distance: '1.2 км от центра' },
-    { name: `${params.city} Boutique`, price: 35000, currency: 'KZT', rating: 4.7, distance: '0.8 км от центра' },
-    { name: `${params.city} Premium`, price: 55000, currency: 'KZT', rating: 4.9, distance: '0.3 км от центра' },
-  ];
-
-  return {
-    hotels,
-    link,
-    message: `Отели в ${params.city} на ${params.checkIn} — ${params.checkOut}. Смотри варианты: ${link}`,
-    isMock: true,
-  };
 }
 
 // ── Send Telegram message ──

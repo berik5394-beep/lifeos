@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
-import { searchFlights, searchHotels, buildRoute, getWeather, convertCurrency } from '../services/external-apis.js';
+import { getWeather, convertCurrency } from '../services/external-apis.js';
 import { NotFoundError, ValidationError } from '../lib/errors.js';
 import {
   parseBookingIntent,
@@ -13,39 +13,13 @@ import {
   type BookingContext,
 } from '../services/smart-booking.js';
 
-// Travel-роуты стучатся в платные external API (Amadeus flights, Booking
-// hotels, Google Maps directions). Каждый вызов — реальные деньги. Без
-// лимита кривой ретрай на клиенте может выставить нам счёт на сотни $.
-// Search-роуты — 10/мин на юзера, weather/currency — 30/мин (они дешевле).
-const searchLimiter = rateLimiter({ max: 10, windowMs: 60_000, keyPrefix: 'travel:search' });
+// weather/currency — дешёвые util-вызовы, 30/мин на юзера.
 const utilLimiter = rateLimiter({ max: 30, windowMs: 60_000, keyPrefix: 'travel:util' });
 
-// ---------------------------------------------------------------------------
-// Схемы валидации. Ограничение длин строк — защита от payload-abuse и мусорных
-// запросов к платным внешним API (Amadeus, Booking, Google Maps).
-// ---------------------------------------------------------------------------
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'дата должна быть в формате YYYY-MM-DD');
-
-const searchFlightsSchema = z.object({
-  from: z.string().min(2).max(64),
-  to: z.string().min(2).max(64),
-  departDate: isoDate,
-  returnDate: isoDate.optional(),
-  passengers: z.number().int().min(1).max(9).optional(),
-});
-
-const searchHotelsSchema = z.object({
-  city: z.string().min(2).max(64),
-  checkIn: isoDate,
-  checkOut: isoDate,
-  maxPrice: z.number().positive().max(100_000_000).optional(),
-});
-
-const buildRouteSchema = z.object({
-  from: z.string().min(2).max(128),
-  to: z.string().min(2).max(128),
-  mode: z.enum(['driving', 'walking', 'transit', 'bicycling']).optional(),
-});
+// SSOT P0 mock-labels: search-flights/search-hotels/build-route
+// эндпоинты + их схемы (и isoDate, и searchLimiter, жившие только
+// ради них) удалены вместе с mock-функциями (никто не зовёт;
+// travel-экран переедет на smart-book с реальными API).
 
 // JARVIS smart-book: естественный запрос → ссылка на агрегатор + умная озвучка
 const smartBookSchema = z.object({
@@ -59,39 +33,6 @@ const smartBookLimiter = rateLimiter({ max: 10, windowMs: 60_000, keyPrefix: 'sm
 
 export async function travelRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
-
-  // Search flights
-  app.post(
-    '/travel/search-flights',
-    { preHandler: [searchLimiter, validate(searchFlightsSchema)] },
-    async (request, reply) => {
-      const body = request.body as z.infer<typeof searchFlightsSchema>;
-      const flights = await searchFlights(body);
-      return reply.send(flights);
-    },
-  );
-
-  // Search hotels
-  app.post(
-    '/travel/search-hotels',
-    { preHandler: [searchLimiter, validate(searchHotelsSchema)] },
-    async (request, reply) => {
-      const body = request.body as z.infer<typeof searchHotelsSchema>;
-      const hotels = await searchHotels(body);
-      return reply.send(hotels);
-    },
-  );
-
-  // Build route
-  app.post(
-    '/travel/build-route',
-    { preHandler: [searchLimiter, validate(buildRouteSchema)] },
-    async (request, reply) => {
-      const body = request.body as z.infer<typeof buildRouteSchema>;
-      const route = await buildRoute(body);
-      return reply.send(route);
-    },
-  );
 
   // Travel plans CRUD
   app.get('/travel/plans', async (request, reply) => {
