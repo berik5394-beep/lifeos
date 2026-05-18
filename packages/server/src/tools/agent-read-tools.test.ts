@@ -93,3 +93,18 @@ describe('9A.5 — get_weekly_plan в реестре', () => {
     expect(t!.schema.safeParse({}).success).toBe(true);
   });
 });
+
+describe('9A.6 — get_trip в реестре', () => {
+  const t = registry.get('get_trip');
+
+  it('зарегистрирован, read-only, без confirm, travel', () => {
+    expect(t, 'get_trip в реестре').toBeDefined();
+    expect(t!.needsConfirm).toBe(false);
+    expect(t!.sideEffects).toBe('read');
+    expect(t!.category).toBe('travel');
+  });
+
+  it('zod: пустой вход ок (input_schema {})', () => {
+    expect(t!.schema.safeParse({}).success).toBe(true);
+  });
+});
