@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   mayNeedLocalTools,
+  isTelegramDataRequest,
   DEGRADED_ACTIONABLE_REFUSAL,
 } from './jarvis-orchestrator.js';
 
@@ -64,5 +65,35 @@ describe('ISSUE-1 degraded-mode honest-refusal contract', () => {
   it.each(['расскажи анекдот', 'как дела', 'привет'])(
     'болтовня «%s» → false → деградирует нормально (web_search ок)',
     (t) => expect(mayNeedLocalTools(t)).toBe(false),
+  );
+});
+
+/**
+ * ISSUE-2: send_telegram должен резолвить дата-запрос мозгом, а не
+ * слать литерал. Классификатор решает: резолвить (true) или слать
+ * как есть (false). Confirm-гейт — подстраховка на ложные срабатывания.
+ */
+describe('isTelegramDataRequest', () => {
+  it.each([
+    'список задач на сегодня',
+    'мой бюджет на месяц',
+    'что у меня сегодня',
+    'план на неделю',
+    'сколько я потратил',
+    'итоги дня',
+    'прогресс по целям',
+    'какие встречи завтра',
+  ])('дата-запрос «%s» → true (резолвим мозгом)', (t) =>
+    expect(isTelegramDataRequest(t)).toBe(true),
+  );
+
+  it.each([
+    'напомни купить хлеб',
+    'позвонить маме в 5',
+    'купи продукты',
+    'привет',
+    'спасибо большое',
+  ])('литеральная заметка «%s» → false (шлём как есть)', (t) =>
+    expect(isTelegramDataRequest(t)).toBe(false),
   );
 });

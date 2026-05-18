@@ -201,6 +201,20 @@ export function mayNeedLocalTools(text: string): boolean {
   return TOOL_HINTS.test(t);
 }
 
+/**
+ * ISSUE-2: «отправь мне в телеграм <X>». Если X — это ЗАПРОС-ВЬЮ
+ * данных («список задач», «бюджет», «что у меня сегодня»), его надо
+ * РЕЗОЛВИТЬ мозгом и слать результат, а не литеральную фразу.
+ * Литеральные заметки («напомни купить хлеб», «позвонить маме») —
+ * шлём как есть. Детерминированный классификатор (как
+ * intent-parser/capture-gate; кириллица — по корням, без \b).
+ */
+export function isTelegramDataRequest(text: string): boolean {
+  return /(задач|^дела |\sдела\b|список дел|расписани|календар|встреч|событи|бюджет|финанс|потрат|расход|доход|план(?!ета)|на недел|цел[ьияей]|итог|сводк|что у меня|что сегодня|что по|сколько (?:я |потрат|осталось|накоп)|прогресс|статус дня)/i.test(
+    text.trim(),
+  );
+}
+
 function confirmationText(action: string, input: Record<string, unknown>): string {
   if (action === 'add_expense') {
     const amount = Number(input.amount);
@@ -567,6 +581,48 @@ export async function handleMessage(
     }
     if (intent.action === 'complete_habit' && intent.habitName) {
       input.name = intent.habitName;
+    }
+    // ISSUE-2: send_telegram с дата-запросом («список задач»,
+    // «бюджет») — РЕЗОЛВИМ тем же мозгом (он рендерит get_tasks/
+    // get_calendar/get_budget в прозу) и шлём РЕЗУЛЬТАТ, а не
+    // литеральную фразу. Литеральные заметки шлём как есть.
+    // Резолв ДО confirm — превью покажет реальное содержимое.
+    if (intent.action === 'send_telegram') {
+      const raw = String(input.text ?? '').trim();
+      if (isTelegramDataRequest(raw)) {
+        let resolved = '';
+        try {
+          resolved = await runAgent({
+            system:
+              'Ты собираешь КРАТКОЕ сообщение для отправки ' +
+              'пользователю в его Telegram по запросу ниже. Возьми ' +
+              'данные через инструменты (задачи/календарь/бюджет/' +
+              'план/цели). Только факты, без воды, без markdown, на ' +
+              'русском. Нет данных — честно напиши «нет данных», ' +
+              'НИЧЕГО не выдумывай.',
+            userMessage: raw,
+            webSearch: false,
+            localTools: true,
+            userId,
+            maxTokens: 700,
+            maxToolRounds: 3,
+          });
+        } catch {
+          resolved = '';
+        }
+        const body = resolved.trim();
+        if (!body) {
+          // ISSUE-1 класс: НЕ шлём пустое/выдуманное — честный отказ,
+          // действие НЕ выполнено, pending не ставим.
+          const reply =
+            'Не смог собрать данные для отправки в Telegram — ' +
+            'сбой на моей стороне. Ничего не отправил, попробуй ещё ' +
+            'раз через минуту.';
+          await saveTurn(userId, text, reply);
+          return { reply, intent: 'send_telegram' };
+        }
+        input.text = body;
+      }
     }
     // SSOT 9B.2: нужно ли подтверждение — ЕДИНСТВЕННЫЙ источник
     // правды реестр (needsConfirm на самом tool). Все EXECUTABLE
