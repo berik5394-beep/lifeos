@@ -47,6 +47,32 @@ describe('Phase 5 P1 — planner-дерево на 4 сущностях', () => 
   });
 });
 
+describe('Phase 5 P2 — YearlyGoal pacing (E + custom)', () => {
+  const b = modelBlock('YearlyGoal');
+  it('target/pacingMode(default uniform)/pacingPlan присутствуют', () => {
+    expect(b).toMatch(/target\s+Float\?/);
+    expect(b).toMatch(/pacingMode\s+String\s+@default\("uniform"\)/);
+    expect(b).toMatch(/pacingPlan\s+Json\?/);
+  });
+  it('миграция p2_yearlygoal_pacing аддитивно добавляет поля', () => {
+    const dir = join(root, 'prisma/migrations');
+    const mig = readdirSync(dir).find((d) =>
+      d.includes('p2_yearlygoal_pacing'),
+    );
+    expect(mig).toBeTruthy();
+    const sql = readFileSync(join(dir, mig!, 'migration.sql'), 'utf-8');
+    expect(sql).toMatch(
+      /ALTER TABLE "YearlyGoal" ADD COLUMN IF NOT EXISTS "target"/,
+    );
+    expect(sql).toMatch(/"pacingMode" TEXT NOT NULL DEFAULT 'uniform'/);
+    expect(sql).toMatch(
+      /ALTER TABLE "YearlyGoal" ADD COLUMN IF NOT EXISTS "pacingPlan"/,
+    );
+    // ISSUE-X инвариант: миграция НЕ деструктивна (db push-safe).
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+  });
+});
+
 describe('Phase 5 P1 — Insight (рефлектор)', () => {
   const ins = modelBlock('Insight');
   it('обязательные поля присутствуют', () => {

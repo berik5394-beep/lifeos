@@ -243,6 +243,18 @@ model YearlyGoal {
   progress Float   @default(0)
   habits   Habit[]
 
+  // Phase 5 P2 — pacing для декомпозиции (Option E + custom).
+  // target — числовая величина цели если есть (50 книг, 1_000_000 ₸,
+  // 10 кг); null = неизмеримая прозой.
+  // pacingMode 'uniform' = равномерно, квартал/неделя СЧИТАЮТСЯ на
+  // лету (хранить нечего). 'custom' = неравномерная кривая (вес,
+  // спорт, деньги с нестабильным доходом) → планировщик пишет явные
+  // milestone'ы в pacingPlan (JSON, БЕЗ отдельной таблицы Milestone;
+  // если понадобится — мигрируем из JSON одной командой).
+  target     Float?
+  pacingMode String @default("uniform")
+  pacingPlan Json?
+
   // Phase 5 P1 — корень дерева обычно (planParentId=null,
   // derivedFrom='user'); планировщик вешает на него WeeklyGoal/
   // Habit/Task через их planParentId. Поля для единообразия и
