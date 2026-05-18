@@ -108,3 +108,33 @@ describe('9A.6 — get_trip в реестре', () => {
     expect(t!.schema.safeParse({}).success).toBe(true);
   });
 });
+
+describe('9A.7 — get_goal_progress в реестре (последний agent-tool)', () => {
+  const t = registry.get('get_goal_progress');
+
+  it('зарегистрирован, read-only, без confirm', () => {
+    expect(t, 'get_goal_progress в реестре').toBeDefined();
+    expect(t!.needsConfirm).toBe(false);
+    expect(t!.sideEffects).toBe('read');
+  });
+
+  it('zod: area опционален (форма claude-agent)', () => {
+    const s = t!.schema;
+    expect(s.safeParse({}).success).toBe(true);
+    expect(s.safeParse({ area: 'finance' }).success).toBe(true);
+  });
+
+  it('ВСЕ 7 agent-tools 9A в реестре (готовность к 9A.8)', () => {
+    for (const n of [
+      'get_tasks',
+      'get_calendar',
+      'get_email_triage',
+      'recall_person',
+      'get_weekly_plan',
+      'get_trip',
+      'get_goal_progress',
+    ]) {
+      expect(registry.has(n), `${n} должен быть в реестре`).toBe(true);
+    }
+  });
+});

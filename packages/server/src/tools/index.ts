@@ -19,6 +19,7 @@ import { getEmailTriageTool } from './get-email-triage.js';
 import { recallPersonTool } from './recall-person.js';
 import { getWeeklyPlanTool } from './get-weekly-plan.js';
 import { getTripTool } from './get-trip.js';
+import { getGoalProgressTool } from './get-goal-progress.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -52,6 +53,7 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   recallPersonTool,
   getWeeklyPlanTool,
   getTripTool,
+  getGoalProgressTool,
 ];
 
 export const registry: ReadonlyMap<string, Tool> = new Map(
