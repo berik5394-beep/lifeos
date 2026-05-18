@@ -53,14 +53,16 @@ model User {
   memories               Memory[]
   dictationSessions      DictationSession[]
   uiComplexity           String                @default("standard")
-  // P0 billing: фейковая подписка (роут/код) УДАЛЕНА — это и был
-  // настоящий фикс (лживый эндпоинт убран, subscription.ts нет).
-  // НО колонки оставлены МЁРТВЫМИ (никто не читает): деплой —
-  // `prisma db push` БЕЗ --accept-data-loss (Dockerfile), а DROP
-  // этих колонок = data-loss → push exit≠0 → `&& node` не стартует
-  // → healthcheck падает (инцидент 2026-05-18). Реальный DROP —
-  // позже, через безопасный `migrate deploy`, НЕ через db push.
+  /// @deprecated P0 billing: фейковая подписка (роут+subscription.ts)
+  /// УДАЛЕНА — это и есть P0-фикс, код НЕ трогаем. Колонки —
+  /// ОРФАНЫ, никто не читает. Оставлены живыми т.к. деплой =
+  /// `prisma db push` без --accept-data-loss (Dockerfile): DROP =
+  /// data-loss → push exit≠0 → `&& node` не стартует → healthcheck
+  /// падает (инцидент 2026-05-18). Реальный DROP блокирован до
+  /// ISSUE-X (cutover db push → migrate deploy); см. ISSUE-Y в
+  /// docs/migration/ISSUES.md. НЕ читать, НЕ писать эти поля.
   subscriptionTier       String                @default("free")
+  /// @deprecated орфан, см. subscriptionTier выше / ISSUE-Y.
   subscriptionExpiresAt  DateTime?
   // Expo push token мобильного приложения (основной канал проактивных
   // уведомлений). App-first: пушим в приложение, бота зеркалим.
