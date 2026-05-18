@@ -102,6 +102,8 @@ export const LOCAL_TOOLS = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    // @deprecated 9A.4 — реализация в tools/recall-person.ts.
+    // Схема тут до 9A.8 (свич claude-agent на anthropicSchemas).
     name: 'recall_person',
     description:
       'Вспомнить человека: контакт (телефон/email/др.) + что юзер про него говорил (память). Read-only. Вызывай на «кто такой X», «телефон X», «напомни про X», «что я говорил про X».',
@@ -218,34 +220,13 @@ export async function runLocalTool(
         return JSON.stringify(r);
       }
       case 'recall_person': {
-        // Phase 2.1: структурная связка person ↔ ContactCache. Раньше
-        // память о людях была плоским текстом без связи с контактами —
-        // Джарвис не мог «вспомнить человека» (кто, телефон, контекст).
-        const name = String(input.name || '').trim();
-        if (!name) return JSON.stringify({ error: 'имя не указано' });
-        const [contacts, mem] = await Promise.all([
-          prisma.contactCache.findMany({
-            where: { userId, name: { contains: name, mode: 'insensitive' } },
-            select: { name: true, phone: true, email: true, birthday: true },
-            take: 3,
-          }),
-          getRelevantMemories(userId, name, 6),
-        ]);
-        return JSON.stringify({
-          contacts: contacts.map((c) => ({
-            name: c.name,
-            phone: c.phone,
-            email: c.email,
-            birthday: c.birthday ? c.birthday.toISOString().slice(0, 10) : null,
-          })),
-          remembered: mem
-            .filter(
-              (m) =>
-                m.type === 'person' ||
-                m.content.toLowerCase().includes(name.toLowerCase()),
-            )
-            .map((m) => m.content),
-        });
+        // 9A.4: мигрировано в реестр (tools/recall-person.ts).
+        // Свич схем claude-agent на SSOT — 9A.8.
+        console.warn(
+          `[deprecated 9A] runLocalTool.recall_person → registry (user=${userId})`,
+        );
+        const r = await runRegistryTool('recall_person', input, { userId });
+        return JSON.stringify(r);
       }
       case 'get_weekly_plan': {
         const m = startOfDay(new Date());

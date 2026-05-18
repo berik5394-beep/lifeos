@@ -16,6 +16,7 @@ import { addIncomeTool } from './add-income.js';
 import { getTasksTool } from './get-tasks.js';
 import { getCalendarTool } from './get-calendar.js';
 import { getEmailTriageTool } from './get-email-triage.js';
+import { recallPersonTool } from './recall-person.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -46,6 +47,7 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   getTasksTool,
   getCalendarTool,
   getEmailTriageTool,
+  recallPersonTool,
 ];
 
 export const registry: ReadonlyMap<string, Tool> = new Map(

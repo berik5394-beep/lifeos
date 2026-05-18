@@ -62,3 +62,20 @@ describe('9A.3 — get_email_triage в реестре', () => {
     expect(t!.schema.safeParse({}).success).toBe(true);
   });
 });
+
+describe('9A.4 — recall_person в реестре', () => {
+  const t = registry.get('recall_person');
+
+  it('зарегистрирован, read-only, без confirm, memory', () => {
+    expect(t, 'recall_person в реестре').toBeDefined();
+    expect(t!.needsConfirm).toBe(false);
+    expect(t!.sideEffects).toBe('read');
+    expect(t!.category).toBe('memory');
+  });
+
+  it('zod: name обязателен (форма claude-agent)', () => {
+    const s = t!.schema;
+    expect(s.safeParse({ name: 'Серик' }).success).toBe(true);
+    expect(s.safeParse({}).success).toBe(false);
+  });
+});
