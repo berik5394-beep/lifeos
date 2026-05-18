@@ -26,14 +26,24 @@ export const getWeatherTool = defineTool({
   sideEffects: 'external',
   examples: ['какая погода', 'что надеть завтра', 'погода в Астане'],
   handler: async (input) => {
-    const w = await getWeather(input.city || 'Алматы');
-    return {
-      city: w.cityName,
-      temp: w.temp,
-      feelsLike: w.feelsLike,
-      description: w.description,
-      wind: w.wind,
-      forecast: w.forecast,
-    };
+    const city = input.city || 'Алматы';
+    // SSOT P0 mock-labels: getWeather теперь честно падает (не отдаёт
+    // 0°C / чужой город как настоящие). Ловим → честный текст агенту,
+    // а не сырое «Ошибка инструмента» и не выдуманная погода.
+    try {
+      const w = await getWeather(city);
+      return {
+        city: w.cityName,
+        temp: w.temp,
+        feelsLike: w.feelsLike,
+        description: w.description,
+        wind: w.wind,
+        forecast: w.forecast,
+      };
+    } catch {
+      return {
+        error: `Не смог получить погоду для «${city}» — сервис погоды сейчас недоступен. Скажи об этом честно, не придумывай прогноз.`,
+      };
+    }
   },
 });

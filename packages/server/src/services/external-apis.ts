@@ -6,7 +6,7 @@
  * from tying up the event loop when upstream services are slow/down.
  */
 
-import { logger } from '../lib/logger.js';
+import { ExternalApiError } from '../lib/errors.js';
 
 const DEFAULT_TIMEOUT_MS = 8_000;
 
@@ -93,8 +93,14 @@ async function resolveCoords(city: string): Promise<{ lat: number; lon: number; 
     // fall through to default
   }
 
-  // Default: Almaty
-  return { lat: 43.24, lon: 76.95, name: city };
+  // SSOT P0 mock-labels: РАНЬШЕ при неудачном геокодинге возвращали
+  // координаты АЛМАТЫ под именем запрошенного города → «погода в
+  // Париже» = погода Алматы с подписью «Париж». Это ложь bug-#1
+  // класса. Теперь честно падаем — пусть вызывающий скажет «не
+  // смог», а не покажет чужую погоду как настоящую.
+  throw new ExternalApiError(
+    `Не удалось определить город для погоды: ${city}`,
+  );
 }
 
 interface OpenMeteoResponse {
@@ -162,10 +168,12 @@ export async function getWeather(city: string): Promise<{
     };
   } catch (err) {
     console.error('Open-Meteo API error:', err);
-    return {
-      temp: 0, feelsLike: 0, description: 'ошибка получения данных', humidity: 0, wind: 0,
-      forecast: '', cityName: city,
-    };
+    // SSOT P0 mock-labels: не возвращаем temp:0 как «данные» —
+    // 0°C, выглядящий настоящим, это ложь. Честно падаем; вызывающий
+    // (tool/контекст/роут) сам решит как сказать «погода недоступна».
+    throw err instanceof ExternalApiError
+      ? err
+      : new ExternalApiError(`Не удалось получить погоду: ${city}`);
   }
 }
 
@@ -198,17 +206,17 @@ export async function convertCurrency(amount: number, from: string, to: string):
     };
   } catch (err) {
     console.error('Frankfurter API error:', err);
-    // Fallback rates (approximate, as of 2025)
-    const fallbackToUsd: Record<string, number> = { USD: 1, KZT: 0.00204, EUR: 1.08, RUB: 0.0104, GBP: 1.27, TRY: 0.031 };
-    const fromRate = fallbackToUsd[fromCode] ?? 1;
-    const toRate = fallbackToUsd[toCode] ?? 1;
-    const rate = toRate / fromRate;
-    const converted = Math.round(amount * rate * 100) / 100;
-    return {
-      converted,
-      rate: Math.round(rate * 10000) / 10000,
-      formatted: `${amount} ${fromCode} ≈ ${converted} ${toCode} (оффлайн курс)`,
-    };
+    // SSOT P0 mock-labels: РАНЬШЕ при сбое API отдавали курс из
+    // ХАРДКОД-таблицы «approximate, as of 2025» (в 2026 уже устарела)
+    // с мягкой подписью «(оффлайн курс)» — но .rate/.converted читают
+    // ЧИСЛОМ (enforceTenge и др.), подпись теряется → выдуманный курс
+    // как настоящий. Удалили таблицу целиком, честно падаем. Не
+    // существующий fallback не врёт.
+    throw err instanceof ExternalApiError
+      ? err
+      : new ExternalApiError(
+          `Курс ${fromCode}→${toCode} сейчас недоступен`,
+        );
   }
 }
 
