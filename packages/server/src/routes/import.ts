@@ -18,7 +18,14 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 const MAX_ROWS_PARSED = 5000; // hard cap on rows we'll process
 
 // Allowed MIME types for each extension (validated against magic bytes too)
-const ALLOWED_EXTENSIONS = new Set(['xlsx', 'xls', 'csv', 'ics', 'pdf']);
+// SSOT P0 import: pdf УБРАН. Раньше .pdf принимался, но текст НЕ
+// извлекался — в ответ уезжал лживый note «PDF содержимое сохранено»
+// (bug-#1 класс: подразумевает успех, которого нет). Реальный путь
+// для «расписание картинкой» уже есть и работает — vision
+// (/vision/analyze-schedule, /vision/import-schedule, Claude Vision).
+// Честный отказ + направление туда лучше фейк-успеха и хрупкого
+// PDF-парсера ради редкого кейса, уже решённого через фото.
+const ALLOWED_EXTENSIONS = new Set(['xlsx', 'xls', 'csv', 'ics']);
 
 /**
  * Magic-byte sniff. Returns the inferred extension or null if unrecognized.
@@ -363,6 +370,14 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
       .slice(0, 200);
 
     const ext = getFileExtension(safeName);
+    if (ext === 'pdf') {
+      // Честный отказ вместо фейк-успеха: направляем на рабочий путь.
+      throw new ValidationError(
+        'PDF пока не поддерживается. Пришли скрин или фото расписания ' +
+          '— я читаю по фото — либо экспортируй в Excel (.xlsx) или CSV.',
+        { allowed: Array.from(ALLOWED_EXTENSIONS) },
+      );
+    }
     if (!ALLOWED_EXTENSIONS.has(ext)) {
       throw new ValidationError(`Неподдерживаемый формат файла: .${ext}`, {
         allowed: Array.from(ALLOWED_EXTENSIONS),
@@ -392,7 +407,6 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
       xls: ['xlsx'],
       csv: ['csv-or-ics'],
       ics: ['csv-or-ics'],
-      pdf: ['pdf'],
     };
     if (!extToSniff[ext]?.includes(sniffed)) {
       throw new ValidationError('Содержимое файла не соответствует его расширению', {
@@ -420,11 +434,6 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
         case 'ics': {
           parsedData = parseICS(buffer.toString('utf-8'));
           fileType = 'ics';
-          break;
-        }
-        case 'pdf': {
-          parsedData = [{ type: 'pdf', fileName: safeName, note: 'PDF содержимое сохранено' }];
-          fileType = 'pdf';
           break;
         }
       }

@@ -33,8 +33,11 @@ describe('materializeImport — гейтинг без БД', () => {
     const r = await materializeImport('u1', 'unknown', [{ title: 'x', date: '2026-05-17' }]);
     expect(r).toEqual({ events: 0, tasks: 0, expenses: 0, habits: 0 });
   });
-  it('pdf-плейсхолдер purpose unknown → нули', async () => {
-    const r = await materializeImport('u1', 'pdf', [{ note: 'PDF' }]);
+  it('нераспознанный purpose (не в whitelist) → нули, без БД', async () => {
+    // SSOT P0 import: pdf-заглушка удалена (честный отказ в роуте до
+    // парсинга). Гейт materializeImport остаётся защитой: любой
+    // purpose вне meetings/tasks/expenses/habits ничего не пишет.
+    const r = await materializeImport('u1', 'whatever', [{ note: 'x' }]);
     expect(r).toEqual({ events: 0, tasks: 0, expenses: 0, habits: 0 });
   });
 });
