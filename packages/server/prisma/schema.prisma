@@ -53,6 +53,15 @@ model User {
   memories               Memory[]
   dictationSessions      DictationSession[]
   uiComplexity           String                @default("standard")
+  // P0 billing: фейковая подписка (роут/код) УДАЛЕНА — это и был
+  // настоящий фикс (лживый эндпоинт убран, subscription.ts нет).
+  // НО колонки оставлены МЁРТВЫМИ (никто не читает): деплой —
+  // `prisma db push` БЕЗ --accept-data-loss (Dockerfile), а DROP
+  // этих колонок = data-loss → push exit≠0 → `&& node` не стартует
+  // → healthcheck падает (инцидент 2026-05-18). Реальный DROP —
+  // позже, через безопасный `migrate deploy`, НЕ через db push.
+  subscriptionTier       String                @default("free")
+  subscriptionExpiresAt  DateTime?
   // Expo push token мобильного приложения (основной канал проактивных
   // уведомлений). App-first: пушим в приложение, бота зеркалим.
   expoPushToken          String?
