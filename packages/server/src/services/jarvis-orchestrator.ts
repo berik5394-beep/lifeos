@@ -17,8 +17,7 @@ import {
 import { runAgent } from './claude-agent.js';
 import { captureMemory } from './memory-service.js';
 import { trackInterests } from './interest-service.js';
-import { executeAction } from './action-executor.js';
-import { runRegistryTool, registry, toolConfirmRequired } from '../tools/index.js';
+import { runRegistryTool, toolConfirmRequired } from '../tools/index.js';
 import { getToolCounts } from './tool-audit.js';
 import {
   peekPendingAction,
@@ -183,13 +182,6 @@ async function saveTurn(
   }
 }
 
-/** Денежные/необратимые — требуют явного «да» перед выполнением. */
-// SSOT Step 6: confirm-решение — производное от реестра (needsConfirm
-// живёт на tool). Здесь остаётся ТОЛЬКО legacy, ещё не в реестре:
-// send_telegram (мигрирует/убирается на Шаге 9). add_expense/
-// add_income больше НЕ тут — их гейт на самом инструменте.
-const LEGACY_CONFIRM = new Set(['send_telegram']);
-
 // Fix D: эвристика «сообщению нужны локальные инструменты». Без \b —
 // кириллические границы в JS не работают; ловим по подстрокам корней.
 const TOOL_HINTS =
@@ -238,19 +230,13 @@ export async function runConfirmedAction(
   input: Record<string, unknown>,
 ): Promise<string> {
   try {
-    // SSOT Step 6: подтверждённое денежное действие исполняется
-    // через РЕЕСТР (аудит ToolCall + zod), а не legacy switch.
-    // send_telegram ещё не в реестре → legacy executeAction.
-    let message: string;
-    if (registry.has(action)) {
-      const out = (await runRegistryTool(action, input, { userId })) as {
-        message?: string;
-      };
-      message = out.message ?? 'Готово.';
-    } else {
-      const r = await executeAction(action, input, userId);
-      message = r.message;
-    }
+    // SSOT 9B.2: ВСЁ подтверждённое исполняется через РЕЕСТР
+    // (аудит ToolCall + zod). legacy action-executor удалён —
+    // send_telegram теперь тоже tool реестра (needsConfirm:true).
+    const out = (await runRegistryTool(action, input, { userId })) as {
+      message?: string;
+    };
+    const message = out.message ?? 'Готово.';
     console.log(
       `[jarvis] user=${userId} intent=${action} CONFIRMED → "${message.slice(0, 80)}"`,
     );
@@ -558,7 +544,7 @@ export async function handleMessage(
     };
   }
 
-  // ---- Исполняемые действия → action-executor ---------------------------
+  // ---- Исполняемые действия → реестр (runRegistryTool) ------------------
   // Фаза 1.1: соединяем мозг с executor. Раньше "отметь привычку" /
   // "добавь расход" через основной путь НЕ работали (оркестратор знал
   // только plan_travel/dictation/chat). Теперь intent-parser распознал
@@ -582,13 +568,11 @@ export async function handleMessage(
     if (intent.action === 'complete_habit' && intent.habitName) {
       input.name = intent.habitName;
     }
-    // SSOT Step 6: нужно ли подтверждение — спрашиваем у РЕЕСТРА
-    // (needsConfirm на самом tool). Только не-реестровый legacy
-    // (send_telegram) решается локальным набором. Деньги
-    // (add_expense/add_income) гейтятся своим needsConfirm:true.
-    const needsConfirm = registry.has(intent.action)
-      ? toolConfirmRequired(intent.action, input)
-      : LEGACY_CONFIRM.has(intent.action);
+    // SSOT 9B.2: нужно ли подтверждение — ЕДИНСТВЕННЫЙ источник
+    // правды реестр (needsConfirm на самом tool). Все EXECUTABLE
+    // теперь в реестре (деньги + send_telegram → needsConfirm:true,
+    // обратимые → false). legacy LEGACY_CONFIRM удалён.
+    const needsConfirm = toolConfirmRequired(intent.action, input);
     // Денежное/необратимое — НЕ выполняем сразу: pending + ждём «да».
     // Обратимые (create_task/complete_habit/...) — сразу.
     if (needsConfirm) {
@@ -606,9 +590,9 @@ export async function handleMessage(
       };
     }
     try {
-      // SSOT Шаг 5: write-tools идут через РЕЕСТР (zod-валидация +
-      // аудит ToolCall), не через legacy action-executor switch.
-      // input уже собран и смаппен выше (до confirm-решения).
+      // SSOT: write-tools идут через РЕЕСТР (zod-валидация + аудит
+      // ToolCall) — единственный путь исполнения, legacy switch
+      // удалён. input уже собран и смаппен выше (до confirm-решения).
       const out = (await runRegistryTool(
         intent.action,
         input,

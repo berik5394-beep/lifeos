@@ -20,6 +20,7 @@ import { recallPersonTool } from './recall-person.js';
 import { getWeeklyPlanTool } from './get-weekly-plan.js';
 import { getTripTool } from './get-trip.js';
 import { getGoalProgressTool } from './get-goal-progress.js';
+import { sendTelegramTool } from './send-telegram.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -46,6 +47,8 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   // деньги, needsConfirm:true (Шаг 6)
   addExpenseTool,
   addIncomeTool,
+  // external, needsConfirm:true (9B.2) — авто-исключён из агент-цикла
+  sendTelegramTool,
   // agent-only read-tools, миграция 9A (claude-agent свич — 9A.8)
   getTasksTool,
   getCalendarTool,

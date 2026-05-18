@@ -37,8 +37,17 @@ describe('add_expense / add_income — деньги, gated', () => {
     expect(names).not.toContain('create_task');
   });
 
-  it('неизвестный tool → toolConfirmRequired false (legacy решает сам)', () => {
-    expect(toolConfirmRequired('send_telegram', {})).toBe(false);
+  it('неизвестный tool → toolConfirmRequired false (нет в реестре)', () => {
+    expect(toolConfirmRequired('totally_unknown_xyz', {})).toBe(false);
+  });
+
+  it('send_telegram (9B.2) — в реестре, external, needsConfirm=true', () => {
+    const t = registry.get('send_telegram');
+    expect(t, 'send_telegram в реестре').toBeDefined();
+    expect(t!.needsConfirm).toBe(true);
+    expect(t!.sideEffects).toBe('external');
+    expect(toolConfirmRequired('send_telegram', { text: 'hi' })).toBe(true);
+    expect(confirmAlwaysNames()).toContain('send_telegram');
   });
 });
 
