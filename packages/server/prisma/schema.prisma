@@ -8,10 +8,10 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String
-  passwordHash String
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String
+  passwordHash    String
   currency        String   @default("₸")
   assistantStyle  String   @default("friendly")
   assistantGender String   @default("female")
@@ -23,42 +23,40 @@ model User {
   settings        Json     @default("{}")
   createdAt       DateTime @default(now())
 
-  habits         Habit[]
-  habitLogs      HabitLog[]
-  tasks          Task[]
-  weeklyGoals    WeeklyGoal[]
-  yearlyGoals    YearlyGoal[]
-  expenses       Expense[]
-  incomes        Income[]
-  journalEntries JournalEntry[]
-  stepLogs       StepLog[]
-  importedFiles  ImportedFile[]
-  events         CalendarEvent[]
-  budgetLimits   BudgetLimit[]
-  chatMessages   ChatMessage[]
-  integrations   Integration[]
-  pet            Pet?
-  achievements   Achievement[]
-  interests      UserInterest[]
-  arenaProfile   ArenaProfile?
-  nutritionLogs  NutritionLog[]
-  refreshTokens  RefreshToken[]
-  conversationSessions ConversationSession[]
-  travelPlans          TravelPlan[]
-  contactCache         ContactCache[]
-  documentVault        DocumentVault[]
-  tags                    Tag[]
-  sharedSpaceMemberships  SharedSpaceMember[]
-  ownedSpaces             SharedSpace[] @relation("OwnedSpaces")
-  memories                Memory[]
-  dictationSessions       DictationSession[]
-  uiComplexity            String   @default("standard")
-  subscriptionTier        String   @default("free")
-  subscriptionExpiresAt   DateTime?
+  habits                 Habit[]
+  habitLogs              HabitLog[]
+  tasks                  Task[]
+  weeklyGoals            WeeklyGoal[]
+  yearlyGoals            YearlyGoal[]
+  expenses               Expense[]
+  incomes                Income[]
+  journalEntries         JournalEntry[]
+  stepLogs               StepLog[]
+  importedFiles          ImportedFile[]
+  events                 CalendarEvent[]
+  budgetLimits           BudgetLimit[]
+  chatMessages           ChatMessage[]
+  integrations           Integration[]
+  pet                    Pet?
+  achievements           Achievement[]
+  interests              UserInterest[]
+  arenaProfile           ArenaProfile?
+  nutritionLogs          NutritionLog[]
+  refreshTokens          RefreshToken[]
+  conversationSessions   ConversationSession[]
+  travelPlans            TravelPlan[]
+  contactCache           ContactCache[]
+  documentVault          DocumentVault[]
+  tags                   Tag[]
+  sharedSpaceMemberships SharedSpaceMember[]
+  ownedSpaces            SharedSpace[]         @relation("OwnedSpaces")
+  memories               Memory[]
+  dictationSessions      DictationSession[]
+  uiComplexity           String                @default("standard")
   // Expo push token мобильного приложения (основной канал проактивных
   // уведомлений). App-first: пушим в приложение, бота зеркалим.
-  expoPushToken           String?
-  sentNotifications       SentNotification[]
+  expoPushToken          String?
+  sentNotifications      SentNotification[]
 }
 
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
@@ -68,7 +66,7 @@ model SentNotification {
   id           String   @id @default(cuid())
   userId       String
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type         String   // event_reminder_1h | budget_alert | habit_nudge | ...
+  type         String // event_reminder_1h | budget_alert | habit_nudge | ...
   scheduledFor DateTime
   sentAt       DateTime @default(now())
   channel      String   @default("push") // push | telegram | both
@@ -83,35 +81,35 @@ model SentNotification {
 // Если кто-то попытается использовать уже отозванный токен → отозвать ВСЕ
 // (это значит refresh-токен утёк, нужно разлогинить пользователя везде).
 model RefreshToken {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   // Хэш токена (SHA-256), не сам токен — даже при компрометации БД злоумышленник
   // не сможет использовать токены без знания исходных значений.
-  tokenHash String   @unique
+  tokenHash  String   @unique
   // Когда токен истекает (после этой даты он автоматически невалиден)
-  expiresAt DateTime
+  expiresAt  DateTime
   // Был ли токен использован/отозван
-  revoked   Boolean  @default(false)
+  revoked    Boolean  @default(false)
   // ID токена, которым этот был заменён (для аудита цепочки ротации)
   replacedBy String?
   // Метаданные клиента (для аудита подозрительной активности)
-  ip        String?
-  userAgent String?
-  createdAt DateTime @default(now())
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
 
   @@index([userId])
   @@index([expiresAt])
 }
 
 model UserInterest {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  topic     String
-  score     Float    @default(1)
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  topic         String
+  score         Float    @default(1)
   lastMentioned DateTime @default(now())
-  createdAt DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   @@unique([userId, topic])
   @@index([userId])
@@ -150,28 +148,28 @@ model HabitLog {
 }
 
 model Task {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  title     String
-  category  String
-  priority  String
-  date      DateTime @db.Date
-  time      String?
-  completed Boolean  @default(false)
-  notes     String?
-  createdAt DateTime @default(now())
+  id               String           @id @default(cuid())
+  userId           String
+  user             User             @relation(fields: [userId], references: [id])
+  title            String
+  category         String
+  priority         String
+  date             DateTime         @db.Date
+  time             String?
+  completed        Boolean          @default(false)
+  notes            String?
+  createdAt        DateTime         @default(now())
   parentId         String?
-  parent           Task?    @relation("TaskSubtasks", fields: [parentId], references: [id])
-  subtasks         Task[]   @relation("TaskSubtasks")
+  parent           Task?            @relation("TaskSubtasks", fields: [parentId], references: [id])
+  subtasks         Task[]           @relation("TaskSubtasks")
   estimatedMinutes Int?
   recurrence       String?
-  kanbanStatus     String   @default("todo")
+  kanbanStatus     String           @default("todo")
   urgency          Int?
   importance       Int?
   aiScore          Float?
   sharedSpaceId    String?
-  sharedSpace      SharedSpace? @relation(fields: [sharedSpaceId], references: [id])
+  sharedSpace      SharedSpace?     @relation(fields: [sharedSpaceId], references: [id])
   taskTags         TaskTag[]
   dependsOn        TaskDependency[] @relation("DependentTask")
   dependedBy       TaskDependency[] @relation("PrerequisiteTask")
@@ -369,29 +367,29 @@ model Pet {
 }
 
 model PetItem {
-  id          String   @id @default(cuid())
-  petId       String
-  pet         Pet      @relation(fields: [petId], references: [id])
-  itemKey     String
-  name        String
-  slot        String
-  rarity      String   @default("common")
-  bonus       String?
-  bonusValue  Float    @default(0)
-  unlockedAt  DateTime @default(now())
+  id         String   @id @default(cuid())
+  petId      String
+  pet        Pet      @relation(fields: [petId], references: [id])
+  itemKey    String
+  name       String
+  slot       String
+  rarity     String   @default("common")
+  bonus      String?
+  bonusValue Float    @default(0)
+  unlockedAt DateTime @default(now())
 
   @@unique([petId, itemKey])
   @@index([petId])
 }
 
 model Achievement {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  type        String
-  key         String
-  unlockedAt  DateTime @default(now())
-  claimed     Boolean  @default(false)
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  type       String
+  key        String
+  unlockedAt DateTime @default(now())
+  claimed    Boolean  @default(false)
 
   @@unique([userId, key])
   @@index([userId])
@@ -400,53 +398,53 @@ model Achievement {
 // ===== PVP ARENA SYSTEM =====
 
 model ArenaProfile {
-  id             String    @id @default(cuid())
-  userId         String    @unique
-  user           User      @relation(fields: [userId], references: [id])
-  trophies       Int       @default(0)
-  wins           Int       @default(0)
-  losses         Int       @default(0)
-  draws          Int       @default(0)
-  winStreak      Int       @default(0)
-  bestWinStreak  Int       @default(0)
-  rank           String    @default("bronze")
-  powerScore     Float     @default(0)
-  lastBattleAt   DateTime?
-  seasonWins     Int       @default(0)
-  seasonLosses   Int       @default(0)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id])
+  trophies      Int       @default(0)
+  wins          Int       @default(0)
+  losses        Int       @default(0)
+  draws         Int       @default(0)
+  winStreak     Int       @default(0)
+  bestWinStreak Int       @default(0)
+  rank          String    @default("bronze")
+  powerScore    Float     @default(0)
+  lastBattleAt  DateTime?
+  seasonWins    Int       @default(0)
+  seasonLosses  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   battlesAsAttacker Battle[] @relation("attacker")
   battlesAsDefender Battle[] @relation("defender")
 }
 
 model Battle {
-  id              String   @id @default(cuid())
-  attackerId      String
-  attacker        ArenaProfile @relation("attacker", fields: [attackerId], references: [id])
-  defenderId      String
-  defender        ArenaProfile @relation("defender", fields: [defenderId], references: [id])
-  winnerId        String?
-  
-  attackerPower   Float
-  defenderPower   Float
-  attackerRoll    Float
-  defenderRoll    Float
-  
-  attackerChar    String
-  defenderChar    String
-  attackerLevel   Int
-  defenderLevel   Int
-  
-  trophyChange    Int      @default(0)
-  xpReward        Int      @default(0)
-  
-  battleType      String   @default("power")  // "power" | "challenge"
-  challengeId     String?
-  log             String?
-  
-  createdAt       DateTime @default(now())
+  id         String       @id @default(cuid())
+  attackerId String
+  attacker   ArenaProfile @relation("attacker", fields: [attackerId], references: [id])
+  defenderId String
+  defender   ArenaProfile @relation("defender", fields: [defenderId], references: [id])
+  winnerId   String?
+
+  attackerPower Float
+  defenderPower Float
+  attackerRoll  Float
+  defenderRoll  Float
+
+  attackerChar  String
+  defenderChar  String
+  attackerLevel Int
+  defenderLevel Int
+
+  trophyChange Int @default(0)
+  xpReward     Int @default(0)
+
+  battleType  String  @default("power") // "power" | "challenge"
+  challengeId String?
+  log         String?
+
+  createdAt DateTime @default(now())
 
   @@index([attackerId])
   @@index([defenderId])
@@ -460,19 +458,19 @@ model Challenge {
   battleId          String?
   attackerId        String
   defenderId        String
-  exercise          String    // "squats" | "pushups" | "plank" | "burpees" | "jumps"
-  exerciseName      String    // Russian display name
-  targetReps        Int       // Base target (e.g. 50 squats)
-  attackerTarget    Int       // Adjusted by equipment (easier if better gear)
-  defenderTarget    Int       // Adjusted by equipment
+  exercise          String // "squats" | "pushups" | "plank" | "burpees" | "jumps"
+  exerciseName      String // Russian display name
+  targetReps        Int // Base target (e.g. 50 squats)
+  attackerTarget    Int // Adjusted by equipment (easier if better gear)
+  defenderTarget    Int // Adjusted by equipment
   manaCost          Int       @default(20)
   status            String    @default("pending") // "pending" | "active" | "completed" | "expired"
   attackerStartedAt DateTime? // Server-recorded start time (anti-cheat)
   defenderStartedAt DateTime?
   attackerDone      Boolean   @default(false)
   defenderDone      Boolean   @default(false)
-  attackerTime      Int?      // seconds to complete (server-computed)
-  defenderTime      Int?      // seconds to complete (server-computed)
+  attackerTime      Int? // seconds to complete (server-computed)
+  defenderTime      Int? // seconds to complete (server-computed)
   attackerVerified  Boolean   @default(false) // AI camera verification passed
   defenderVerified  Boolean   @default(false)
   winnerId          String?
@@ -508,73 +506,78 @@ model NutritionLog {
 // ===== JARVIS VOICE CONVERSATION SYSTEM =====
 
 model ConversationSession {
-  id              String   @id @default(cuid())
+  id              String                @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   contextSnapshot Json
-  status          String   @default("active") // "active", "ended"
+  status          String                @default("active") // "active", "ended"
   endedAt         DateTime?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime              @default(now())
   messages        ConversationMessage[]
+
   @@index([userId])
 }
 
 model ConversationMessage {
-  id        String   @id @default(cuid())
+  id        String              @id @default(cuid())
   sessionId String
   session   ConversationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  role      String   // "user", "assistant"
+  role      String // "user", "assistant"
   content   String
   actions   Json?
-  createdAt DateTime @default(now())
+  createdAt DateTime            @default(now())
+
   @@index([sessionId])
 }
 
 model TravelPlan {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  destination   String
-  dateFrom      DateTime @db.Date
-  dateTo        DateTime? @db.Date
-  purpose       String?
-  budget        Float?
-  currency      String   @default("₸")
-  status        String   @default("planning") // "planning", "booked", "in_progress", "completed"
-  flights       Json?
-  hotels        Json?
-  routes        Json?
-  packingList   Json?
-  documents     Json?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  destination String
+  dateFrom    DateTime  @db.Date
+  dateTo      DateTime? @db.Date
+  purpose     String?
+  budget      Float?
+  currency    String    @default("₸")
+  status      String    @default("planning") // "planning", "booked", "in_progress", "completed"
+  flights     Json?
+  hotels      Json?
+  routes      Json?
+  packingList Json?
+  documents   Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
   @@index([userId])
 }
 
 model ContactCache {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  phoneId     String
-  name        String
-  phone       String?
-  email       String?
-  birthday    DateTime? @db.Date
-  lastSynced  DateTime @default(now())
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneId    String
+  name       String
+  phone      String?
+  email      String?
+  birthday   DateTime? @db.Date
+  lastSynced DateTime  @default(now())
+
   @@unique([userId, phoneId])
   @@index([userId, name])
 }
 
 model DocumentVault {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String   // "passport", "id_card", "driver_license", "insurance", "visa"
-  title       String
-  data        Json
-  imageUri    String?
-  expiresAt   DateTime?
-  createdAt   DateTime @default(now())
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // "passport", "id_card", "driver_license", "insurance", "visa"
+  title     String
+  data      Json
+  imageUri  String?
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
   @@index([userId])
 }
 
@@ -586,6 +589,7 @@ model TaskDependency {
   dependentTask      Task   @relation("DependentTask", fields: [dependentTaskId], references: [id], onDelete: Cascade)
   prerequisiteTaskId String
   prerequisiteTask   Task   @relation("PrerequisiteTask", fields: [prerequisiteTaskId], references: [id], onDelete: Cascade)
+
   @@unique([dependentTaskId, prerequisiteTaskId])
 }
 
@@ -597,6 +601,7 @@ model Tag {
   color     String    @default("#6366f1")
   createdAt DateTime  @default(now())
   taskTags  TaskTag[]
+
   @@unique([userId, name])
   @@index([userId])
 }
@@ -607,15 +612,16 @@ model TaskTag {
   task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
   tagId  String
   tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
   @@unique([taskId, tagId])
 }
 
 model SharedSpace {
-  id        String   @id @default(cuid())
+  id        String              @id @default(cuid())
   name      String
   ownerId   String
-  owner     User     @relation("OwnedSpaces", fields: [ownerId], references: [id])
-  createdAt DateTime @default(now())
+  owner     User                @relation("OwnedSpaces", fields: [ownerId], references: [id])
+  createdAt DateTime            @default(now())
   members   SharedSpaceMember[]
   tasks     Task[]
 }
@@ -628,6 +634,7 @@ model SharedSpaceMember {
   user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   role          String      @default("member")
   joinedAt      DateTime    @default(now())
+
   @@unique([sharedSpaceId, userId])
 }
 
@@ -637,9 +644,9 @@ model SharedSpaceMember {
 // Фаза 2 добавит embedding (pgvector) — пока чисто структурированное хранилище
 // с тегами и важностью для упрощённого поиска.
 model Memory {
-  id         String   @id @default(cuid())
+  id         String                      @id @default(cuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   // "fact" | "decision" | "event" | "person" | "place" | "preference" | "emotion"
   type       String
   // Короткая суть ("Серик переехал в Астану", "Решили встретиться в субботу")
@@ -653,7 +660,7 @@ model Memory {
   // Теги для фильтрации ("family", "work", "health", "travel")
   tags       String[]
   // 1-10, насколько важно. Используется при выборе top-K для контекста.
-  importance Int      @default(5)
+  importance Int                         @default(5)
   // Некоторые факты устаревают (например "завтра встреча")
   expiresAt  DateTime?
   // Phase 2.3: семантический эмбеддинг (Voyage voyage-3-lite, 512d).
@@ -661,7 +668,7 @@ model Memory {
   // читаем/пишем только через $queryRaw/$executeRaw. NULL у старых
   // записей (досемантических) — гибридный ранкинг это учитывает.
   embedding  Unsupported("vector(512)")?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime                    @default(now())
 
   @@index([userId, type])
   @@index([userId, createdAt])
