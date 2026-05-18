@@ -187,3 +187,45 @@ Personal ambient ("купи продукты", "надо позвонить") un
 8 new tests; suite 301/301. NOTE: pre-existing junk task rows
 created BEFORE the gate remain in DB — need one-time cleanup
 (see migration/CLEANUP.sql; user runs review→delete, not auto).
+
+## ISSUE-X — deploy pipeline cutover: `prisma db push` → `prisma migrate deploy`
+
+**Severity:** high (latent footgun) — opened 2026-05-18 after a real
+deploy incident.
+
+**Incident:** the P0-billing commit dropped User.subscriptionTier/
+subscriptionExpiresAt from schema.prisma. The Railway deploy CMD
+(Dockerfile) is `... && npx prisma db push --skip-generate && node
+dist/index.js`. `db push` without `--accept-data-loss` in a
+non-interactive container REFUSES a destructive column drop and exits
+non-zero → `&&` blocks `node` → server never listens → Network/
+Healthcheck fails → Railway keeps the previous deploy. The whole batch
+(billing/Pet.streak/import) + Phase 5 P1 rode the same broken push, so
+prod was stuck on a 2h-old commit while branch commits looked "done".
+Fixed by reverting the destructive op (1ef5125: restore the columns
+as orphans; deploy went green, "database already in sync").
+
+**Required:** move the deploy from `db push` to `prisma migrate
+deploy` (apply committed migration files with history), so destructive
+changes are explicit, reviewed, and ordered — not silently blocked at
+runtime. Until then: NEVER remove a column/table from schema.prisma
+(any destructive schema change) — additive only. `--accept-data-loss`
+is explicitly rejected (footgun: a stray schema deletion would silently
+drop prod data, e.g. User.email, on the next deploy).
+
+**Do NOT do this now** — refactoring the deploy pipeline during/just
+after a deploy incident adds crisis to crisis. Schedule when prod is
+stable and Phase 5 P2/P3 are not mid-flight. Our hand-written
+IF-EXISTS migrations must be reconciled with Prisma's _prisma_migrations
+history as part of the cutover (resolve/baseline), or migrate deploy
+will fail on drift.
+
+## ISSUE-Y — DROP orphan subscription columns (depends on ISSUE-X)
+
+User.subscriptionTier/subscriptionExpiresAt are dead (no code reads
+them — subscription.ts and the lying route were deleted in the P0
+billing fix, which STANDS). They are kept in schema.prisma ONLY so
+`db push` stays non-destructive (see ISSUE-X). Marked `/// @deprecated`
+in schema. The actual `ALTER TABLE "User" DROP COLUMN` must wait until
+ISSUE-X (migrate deploy cutover) is done, then ship as one explicit
+reviewed migration. Blocked-by: ISSUE-X. Do not attempt via db push.
