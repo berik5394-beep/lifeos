@@ -229,3 +229,60 @@ billing fix, which STANDS). They are kept in schema.prisma ONLY so
 in schema. The actual `ALTER TABLE "User" DROP COLUMN` must wait until
 ISSUE-X (migrate deploy cutover) is done, then ship as one explicit
 reviewed migration. Blocked-by: ISSUE-X. Do not attempt via db push.
+
+## ISSUE-2 (Phase 5 era) — send_telegram sends the literal phrase, not resolved content
+
+**Severity:** P1 — breaks a flagship use-case ("look, JARVIS sends me
+my day"). Found in prod 2026-05-18 by Berik.
+
+Repro: «отправь мне в телеграм список задач на сегодня» → bot asks
+confirm «Отправить тебе в Telegram: "список задач на сегодня"?» →
+«да» → Telegram receives the literal text "список задач на сегодня",
+NOT the actual task list.
+
+Root: send_telegram tool puts the raw user phrase into the message
+body. It does not resolve intents like "список задач / расписание /
+финансы" by first calling the matching read-tool (get_tasks/
+get_calendar/get_budget) and sending THAT rendered result.
+
+Required: when the send target is a data view, the brain must first
+call the read-tool, render the result, and put the rendered result in
+the Telegram body. Likely fix in the orchestrator/agent path (compose
+result before send_telegram), not in send_telegram itself (keep that
+tool dumb: it sends the text it's given). Honesty note: still must go
+through the confirm gate (9B.2 invariant) — fixing this must NOT make
+send autonomous.
+
+## ISSUE-3 (Phase 5 era) — PENDING confirm-action leaked into Task list
+
+**Severity:** P1 — pollutes the task list, erodes trust over time.
+
+Observed: «Записать расход 2000 тенге на обед» (a PENDING money
+confirm-action from a voice message, id cmpb8eluz...) appeared as a
+Task in get_tasks output. Same class seen across many rows in the
+2026-05-18 cleanup ("Записать расход…", "Записать доход…",
+"Отправить Серику в телеграм…", "Экспортировать…", "Подвести итоги
+дня" — all commands materialized as Task rows).
+
+Candidate causes (need diagnosis, do NOT guess-fix):
+1. intent-parser misclassifies "запиши расход …" as create_task
+   instead of add_expense on the voice path.
+2. captureInBackground (ISSUE-8 family) NLP-extracts the command as a
+   task despite the ASSISTANT_CONTROL/looksCaptureWorthy gate (gate
+   may not cover money/command phrasings on the voice route).
+3. double-write: confirming a pending also create_task's.
+Diagnose with voice-pipeline + intent-parser logs around a controlled
+"запиши расход N" voice message; assert exactly one Expense PENDING
+and ZERO Task created. Related: ISSUE-8 (capture pollution) — likely
+the same root on the voice path.
+
+## ISSUE-4 (cosmetic) — "выполнено только 0" grammar
+
+**Severity:** P2 — UX polish (App Store review bait).
+
+When completed-count is 0 the bot says «Из них выполнено только 0:».
+Add a system-prompt rule: if N=0 phrase as «ни одной ещё не
+выполнено» / «пока ничего», never «только 0». Also: voice answers
+still too long (~25s TTS). Add to the voice prompt: max ~3 sentences
+/ ~15s speaking time; for detail say "открой приложение / хочешь
+полный список". Prep for mobile UX.
