@@ -36,6 +36,8 @@ export const LOCAL_TOOLS = [
     },
   },
   {
+    // @deprecated 9A.2 — реализация в tools/get-calendar.ts (реестр).
+    // Схема тут до 9A.8 (свич claude-agent на anthropicSchemas).
     name: 'get_calendar',
     description: 'События календаря юзера в диапазоне дат. Для проверки занятости/конфликтов.',
     input_schema: {
@@ -170,21 +172,13 @@ export async function runLocalTool(
         return JSON.stringify(r);
       }
       case 'get_calendar': {
-        const events = await prisma.calendarEvent.findMany({
-          where: {
-            userId,
-            date: {
-              gte: new Date(String(input.from) + 'T00:00:00Z'),
-              lte: new Date(String(input.to) + 'T00:00:00Z'),
-            },
-          },
-          select: { title: true, date: true, startTime: true, endTime: true, location: true },
-          orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
-          take: 100,
-        });
-        return JSON.stringify(
-          events.map((e) => ({ ...e, date: e.date.toISOString().slice(0, 10) })),
+        // 9A.2: мигрировано в реестр (tools/get-calendar.ts). Свич
+        // схем claude-agent на SSOT — 9A.8.
+        console.warn(
+          `[deprecated 9A] runLocalTool.get_calendar → registry (user=${userId})`,
         );
+        const r = await runRegistryTool('get_calendar', input, { userId });
+        return JSON.stringify(r);
       }
       case 'get_budget': {
         const r = await executeAction('get_budget_analysis', {}, userId);

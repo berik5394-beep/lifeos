@@ -28,3 +28,23 @@ describe('9A.1 — get_tasks в реестре', () => {
     expect(s.safeParse({ includeCompleted: 'yes' }).success).toBe(false);
   });
 });
+
+describe('9A.2 — get_calendar в реестре', () => {
+  const t = registry.get('get_calendar');
+
+  it('зарегистрирован, read-only, без confirm, calendar', () => {
+    expect(t, 'get_calendar в реестре').toBeDefined();
+    expect(t!.needsConfirm).toBe(false);
+    expect(t!.sideEffects).toBe('read');
+    expect(t!.category).toBe('calendar');
+  });
+
+  it('zod: from/to обязательны (форма claude-agent)', () => {
+    const s = t!.schema;
+    expect(s.safeParse({ from: '2026-05-18', to: '2026-05-25' }).success).toBe(
+      true,
+    );
+    expect(s.safeParse({ from: '2026-05-18' }).success).toBe(false);
+    expect(s.safeParse({}).success).toBe(false);
+  });
+});
