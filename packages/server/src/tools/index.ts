@@ -13,6 +13,7 @@ import { createEventTool } from './create-event.js';
 import { journalEntryTool } from './journal-entry.js';
 import { addExpenseTool } from './add-expense.js';
 import { addIncomeTool } from './add-income.js';
+import { getTasksTool } from './get-tasks.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -39,6 +40,8 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   // деньги, needsConfirm:true (Шаг 6)
   addExpenseTool,
   addIncomeTool,
+  // agent-only read-tools, миграция 9A (claude-agent свич — 9A.8)
+  getTasksTool,
 ];
 
 export const registry: ReadonlyMap<string, Tool> = new Map(

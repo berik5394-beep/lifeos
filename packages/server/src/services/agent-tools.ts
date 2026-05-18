@@ -22,6 +22,8 @@ import { getWeather } from './external-apis.js';
 // Anthropic tool schema (SDK 0.39 типы кастомных инструментов знает).
 export const LOCAL_TOOLS = [
   {
+    // @deprecated 9A.1 — реализация в tools/get-tasks.ts (реестр).
+    // Схема тут оставлена до 9A.8 (свич claude-agent на anthropicSchemas).
     name: 'get_tasks',
     description:
       'Список задач юзера на дату или диапазон. Используй чтобы понять загрузку дня перед планированием.',
@@ -159,20 +161,13 @@ export async function runLocalTool(
   try {
     switch (name) {
       case 'get_tasks': {
-        const date = input.date
-          ? new Date(String(input.date) + 'T00:00:00Z')
-          : startOfDay(new Date());
-        const tasks = await prisma.task.findMany({
-          where: {
-            userId,
-            date,
-            ...(input.includeCompleted ? {} : { completed: false }),
-          },
-          select: { title: true, time: true, priority: true, completed: true },
-          orderBy: { time: 'asc' },
-          take: 50,
-        });
-        return JSON.stringify(tasks);
+        // 9A.1: мигрировано в реестр (tools/get-tasks.ts). Делегируем
+        // туда (zod+аудит). Свич схем claude-agent на SSOT — 9A.8.
+        console.warn(
+          `[deprecated 9A] runLocalTool.get_tasks → registry (user=${userId})`,
+        );
+        const r = await runRegistryTool('get_tasks', input, { userId });
+        return JSON.stringify(r);
       }
       case 'get_calendar': {
         const events = await prisma.calendarEvent.findMany({
