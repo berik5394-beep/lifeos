@@ -40,11 +40,16 @@ describe('автоген строго отражает реестр', () => {
   });
 
   it('capabilityText: упомянутые tool === имена реестра', () => {
-    const mentioned = capabilityText()
-      .split('\n')
-      .map((l) => l.match(/^- ([a-z_]+):/)?.[1])
-      .filter((x): x is string => !!x)
-      .sort();
+    // 9B.1: формат — прозовое правило (имена через запятую в двух
+    // частях: обратимые / денежные-confirm), не `- name:` список.
+    // Инвариант тот же: каждое имя реестра упомянуто, дрейфа нет.
+    const text = capabilityText();
+    const nameSet = new Set(names);
+    const mentioned = [
+      ...new Set(
+        (text.match(/[a-z_]+/g) ?? []).filter((w) => nameSet.has(w)),
+      ),
+    ].sort();
     expect(mentioned).toEqual(names);
   });
 

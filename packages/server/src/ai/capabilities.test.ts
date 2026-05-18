@@ -1,31 +1,44 @@
 import { describe, it, expect } from 'vitest';
-import { CAPABILITY_TEXT, CONSTRAINTS_TEXT } from './capabilities.js';
+import { CONSTRAINTS_TEXT } from './capabilities.js';
+import { capabilityText } from '../tools/index.js';
 
 /**
- * #5 — список умений не должен расходиться с реальным реестром.
- * Этот тест — drift-guard: добавил инструмент в LOCAL_TOOLS, не
- * описав в capabilities → CI падает (а не юзер ловит «бронирую
- * билеты» vs «не покупаю»).
+ * #5 — список умений/ограничений не должен расходиться с реальностью.
+ *
+ * SSOT 9B.1: блок ДЕЙСТВИЯ теперь автоген из реестра
+ * (`capabilityText()`), рукописный CAPABILITY_TEXT/DOCUMENTED_TOOLS
+ * удалён — drift невозможен by design (источник правды — реестр,
+ * см. также registry-consistency.test.ts). Здесь проверяем: (1)
+ * CONSTRAINTS_TEXT (рукописный, «чего НЕ делаю») честен; (2)
+ * capabilityText() выводит поведенческое правило обратимо/confirm
+ * АВТОРИТЕТНО из needsConfirm — деньги НЕ в «делай сразу».
  */
-/**
- * SSOT 9A.8: LOCAL_TOOLS удалён — старый drift-guard
- * (LOCAL_TOOLS↔DOCUMENTED_TOOLS) снят. Его роль теперь у
- * registry-consistency.test.ts + schema-anthropic-compat.test.ts
- * (источник правды — реестр). CAPABILITY_TEXT/CONSTRAINTS_TEXT пока
- * рукописные — автоген из реестра запланирован в 9B; здесь остаётся
- * проверка их содержания.
- */
-describe('capabilities text — честность (до 9B-автогена)', () => {
-  it('CONSTRAINTS честно отрицает покупку/картинки/журнал звонков (#5/#8)', () => {
+describe('CONSTRAINTS_TEXT — честное отрицание (#5/#8)', () => {
+  it('честно отрицает покупку/картинки/журнал звонков', () => {
     expect(CONSTRAINTS_TEXT).toMatch(/НЕ покупаешь|не покупаешь/);
     expect(CONSTRAINTS_TEXT).toMatch(/оплачива/);
     expect(CONSTRAINTS_TEXT).toMatch(/картинк/);
     expect(CONSTRAINTS_TEXT).toMatch(/звонк/);
   });
+});
 
-  it('CAPABILITY покрывает ключевое (поездки, подтверждение денег)', () => {
-    expect(CAPABILITY_TEXT).toMatch(/поездк/);
-    expect(CAPABILITY_TEXT).toMatch(/подтвержден/);
-    expect(CAPABILITY_TEXT.length).toBeGreaterThan(100);
+describe('capabilityText() — автоген из реестра (#5)', () => {
+  it('даёт поведенческое правило обратимо/подтверждение, не пустой', () => {
+    const t = capabilityText();
+    expect(t.length).toBeGreaterThan(100);
+    expect(t).toMatch(/обратим/);
+    expect(t).toMatch(/подтвержден/);
+  });
+
+  it('деньги (add_expense/add_income) — в confirm-части, НЕ в «делай сразу»', () => {
+    const t = capabilityText();
+    const split = t.indexOf('Денежные/необратимые');
+    expect(split).toBeGreaterThan(0);
+    const doNowPart = t.slice(0, split);
+    const confirmPart = t.slice(split);
+    for (const money of ['add_expense', 'add_income']) {
+      expect(confirmPart).toContain(money);
+      expect(doNowPart).not.toContain(money);
+    }
   });
 });

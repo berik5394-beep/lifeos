@@ -129,13 +129,37 @@ export function agentToolNames(): Set<string> {
   );
 }
 
-/** Бывший рукописный CAPABILITY_TEXT — теперь автоген из реестра. */
+/**
+ * Промпт-блок ДЕЙСТВИЯ — автоген из реестра (бывший рукописный
+ * CAPABILITY_TEXT). Не сырой дамп: поведенческое правило выводится
+ * из needsConfirm АВТОРИТЕТНО (реестр = истина → промпт не может
+ * соврать ни про набор tools, ни про режим). Обратимые
+ * (needsConfirm=false) — делай сразу; всё, что требует confirm
+ * (true или функция), — сначала подтверждение. Добавил tool —
+ * правило применится само, дрейфа нет. (CONSTRAINTS_TEXT остаётся
+ * рукописным в capabilities.ts — «чего НЕ делаю» из реестра не
+ * выводится.)
+ */
 export function capabilityText(): string {
   const vals = [...registry.values()];
-  if (vals.length === 0) {
-    return 'Инструменты пока не подключены.';
-  }
-  return vals.map((t) => `- ${t.name}: ${t.description}`).join('\n');
+  if (vals.length === 0) return 'Инструменты пока не подключены.';
+  const confirm = vals
+    .filter((t) => t.needsConfirm !== false)
+    .map((t) => t.name)
+    .sort();
+  const doNow = vals
+    .filter((t) => t.needsConfirm === false)
+    .map((t) => t.name)
+    .sort();
+  return (
+    `Умеешь (реально, через инструменты): ${doNow.join(', ')}. ` +
+    `Эти обратимы — делай сразу, не переспрашивай «создать?». ` +
+    (confirm.length
+      ? `Денежные/необратимые (${confirm.join(
+          ', ',
+        )}) — сначала подтверждение, дождись «да».`
+      : '')
+  );
 }
 
 /**
