@@ -66,15 +66,35 @@ export interface AnthropicToolSchema {
   input_schema: Record<string, unknown>;
 }
 
+/**
+ * zod → Anthropic tool input_schema. ЕДИНЫЙ источник проекции
+ * (anthropicSchemas + agentToolSchemas).
+ *
+ * 9A.8 incident: target:'openApi3' давал draft-4 `exclusiveMinimum:
+ * true` (boolean) для z.number().positive()/.min — Anthropic требует
+ * draft 2020-12 (там exclusiveMinimum — ЧИСЛО) → 400, агент-цикл
+ * умирал. Default (jsonSchema7) даёт числовой exclusiveMinimum
+ * (валиден и в 2020-12), но добавляет top-level `$schema:draft-07` —
+ * срезаем (Anthropic валидирует как 2020-12 независимо; лишний
+ * $schema — шум/риск). Guard: schema-anthropic-compat.test.ts.
+ */
+function toAnthropicInputSchema(
+  schema: Parameters<typeof zodToJsonSchema>[0],
+): Record<string, unknown> {
+  const js = zodToJsonSchema(schema, { $refStrategy: 'none' }) as Record<
+    string,
+    unknown
+  >;
+  delete js.$schema;
+  return js;
+}
+
 /** Anthropic tool schemas — автоген из zod-схем реестра. */
 export function anthropicSchemas(): AnthropicToolSchema[] {
   return [...registry.values()].map((t) => ({
     name: t.name,
     description: t.description,
-    input_schema: zodToJsonSchema(t.schema, {
-      target: 'openApi3',
-      $refStrategy: 'none',
-    }) as Record<string, unknown>,
+    input_schema: toAnthropicInputSchema(t.schema),
   }));
 }
 
