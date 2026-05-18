@@ -19,20 +19,18 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
-import {
-  buildInitialContext,
-  generateGreeting,
-} from '../services/conversation-engine.js';
-// Унификация «третьего мозга»: обработка сообщений диалога теперь
-// идёт через единый оркестратор (тот же мозг, что чат/Telegram/
-// /voice/assistant): единый промт (без markdown, KZ-валюта,
-// решительность), агентные инструменты, travel-концьерж,
-// подтверждения, память. conversation-engine.processConversationMessage
-// был расходящимся промтом без этого — отсюда markdown-мусор и
-// «советует вместо того, чтобы сделать» в проде. Контракт ответа
-// {response, actions, suggestions} сохранён. generateGreeting/
-// buildInitialContext оставлены только для /start (benign one-shot).
+// SSOT 9B.3: conversation-engine.ts удалён целиком (мёртвый
+// processConversationMessage + дублирующий контекст/приветствие).
+// Диалог идёт через единый оркестратор (тот же мозг, что чат/
+// Telegram/voice): единый промт, агентные инструменты, travel-
+// концьерж, подтверждения, память. /start-приветствие —
+// детерминированное, на едином AssistantContext
+// (gatherAssistantContext + buildStartGreeting). Контракт ответа
+// {response, actions, suggestions} / {sessionId, greeting, ...}
+// сохранён байт-в-байт.
 import { handleMessage } from '../services/jarvis-orchestrator.js';
+import { gatherAssistantContext } from '../services/assistant-service.js';
+import { buildStartGreeting } from '../services/conversation-greeting.js';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY || '',
@@ -121,20 +119,32 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
     const userId = request.userId;
 
     try {
-      // Build full user context
-      const context = await buildInitialContext(userId);
-      if (!context) {
+      // Единый контекст (тот же, что весь мозг). Пустой text —
+      // /start ничего не «спрашивает», только собирает контекст.
+      const gathered = await gatherAssistantContext(userId, '');
+      if (!gathered) {
         return reply.status(404).send({ message: 'Пользователь не найден' });
       }
 
-      // Generate greeting (null if not first session today)
-      const greeting = await generateGreeting(userId, context);
+      // Первая ли это сессия за сегодня — гейт приветствия (1:1 с
+      // прежним generateGreeting: не первая → greeting = null).
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const existingSession = await prisma.conversationSession.findFirst({
+        where: { userId, createdAt: { gte: today, lt: tomorrow } },
+        select: { id: true },
+      });
 
-      // Create conversation session
+      const greeting = buildStartGreeting(gathered, !existingSession);
+
       const session = await prisma.conversationSession.create({
         data: {
           userId,
-          contextSnapshot: JSON.parse(JSON.stringify(context)),
+          // contextSnapshot нигде не читается — храним лёгкий
+          // снимок counts (аудит/дебаг), не тяжёлый UserContext.
+          contextSnapshot: JSON.parse(JSON.stringify(gathered.counts)),
           status: 'active',
         },
       });
@@ -143,16 +153,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         sessionId: session.id,
         greeting: greeting?.text || null,
         suggestions: greeting?.suggestions || [],
-        context: {
-          tasksToday: context.todayTasks.length,
-          tasksCompleted: context.todayTasks.filter((t) => t.completed).length,
-          habitsTotal: context.activeHabits.length,
-          habitsCompleted: context.completedHabitIds.length,
-          spentThisMonth: context.spentThisMonth,
-          budgetLimit: context.budgetLimit,
-          currentStreak: context.currentStreak,
-          weekProgress: context.weekProgress,
-        },
+        context: gathered.counts,
       });
     } catch (err) {
       app.log.error(err);
