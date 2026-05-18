@@ -57,6 +57,7 @@ model User {
   // уведомлений). App-first: пушим в приложение, бота зеркалим.
   expoPushToken          String?
   sentNotifications      SentNotification[]
+  insights               Insight[]
 }
 
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
@@ -130,7 +131,20 @@ model Habit {
   createdAt    DateTime    @default(now())
   logs         HabitLog[]
 
+  // Phase 5 P1 — планировочное дерево (planner-service).
+  // Дискриминатор БЕЗ DB-FK: parent может быть в ДРУГОЙ таблице
+  // (YearlyGoal/WeeklyGoal/Task) — у Prisma нет полиморфного FK,
+  // целостность на уровне приложения (диаграмма допускает).
+  // goalId (выше) — legacy ручная привязка к цели, остаётся;
+  // planParentId — новое generic-дерево декомпозиции.
+  // planParentType ∈ 'YearlyGoal'|'WeeklyGoal'|'Task'.
+  // derivedFrom ∈ 'user'|'planner'|'imported' — кто создал.
+  planParentId   String?
+  planParentType String?
+  derivedFrom    String  @default("user")
+
   @@index([userId])
+  @@index([planParentId])
 }
 
 model HabitLog {
@@ -174,10 +188,19 @@ model Task {
   dependsOn        TaskDependency[] @relation("DependentTask")
   dependedBy       TaskDependency[] @relation("PrerequisiteTask")
 
+  // Phase 5 P1 — планировочное дерево. ВАЖНО: parentId выше — это
+  // self-FK САБТАСКОВ (Task→Task), его НЕ трогаем. planParentId —
+  // ОТДЕЛЬНОЕ generic-дерево декомпозиции (parent может быть
+  // WeeklyGoal/YearlyGoal в другой таблице, потому без FK).
+  planParentId   String?
+  planParentType String?
+  derivedFrom    String  @default("user")
+
   @@index([userId, date])
   @@index([userId, kanbanStatus])
   @@index([parentId])
   @@index([sharedSpaceId])
+  @@index([planParentId])
 }
 
 model WeeklyGoal {
@@ -189,7 +212,14 @@ model WeeklyGoal {
   completed Boolean  @default(false)
   order     Int      @default(0)
 
+  // Phase 5 P1 — планировочное дерево (см. Habit). Обычно
+  // planParentType='YearlyGoal' (год → неделя).
+  planParentId   String?
+  planParentType String?
+  derivedFrom    String  @default("user")
+
   @@index([userId, weekStart])
+  @@index([planParentId])
 }
 
 model YearlyGoal {
@@ -202,7 +232,16 @@ model YearlyGoal {
   progress Float   @default(0)
   habits   Habit[]
 
+  // Phase 5 P1 — корень дерева обычно (planParentId=null,
+  // derivedFrom='user'); планировщик вешает на него WeeklyGoal/
+  // Habit/Task через их planParentId. Поля для единообразия и
+  // на случай мета-целей (цель → подцель).
+  planParentId   String?
+  planParentType String?
+  derivedFrom    String  @default("user")
+
   @@index([userId, year])
+  @@index([planParentId])
 }
 
 model Expense {
@@ -740,4 +779,37 @@ model PendingAction {
   inputJson        Json
   confirmationText String
   createdAt        DateTime @default(now())
+}
+
+// Phase 5 P1 — Insight (рефлектор). Что мозг подсветил, когда,
+// насколько важно, что затрагивает, видел ли юзер, был ли полезен.
+// Источник пушей/брифингов. userFeedback замыкает петлю обучения:
+// часто not_useful → реже показывать (рефлектор не спамит).
+// onDelete:Cascade — инсайты юзера уходят с юзером (не аудит-лог,
+// в отличие от ToolCall).
+model Insight {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+  // 1..10 — для выбора top-1 в пуш (см. rate-limit рефлектора).
+  severity        Int
+  // Какие сущности затрагивает: { goals:[], habits:[], tasks:[], ... }.
+  scope           Json
+  message         String
+  // Откуда вывод (для доверия/дебага, не всегда показывается юзеру).
+  rationale       String?
+  // Что мозг МОГ БЫ сделать: { action, input } — apply_insight
+  // исполнит через обычный confirm-гейт реестра.
+  suggestedAction Json?
+  // Когда показан юзеру (null = ещё в feed, не доставлен).
+  deliveredAt     DateTime?
+  // 'useful' | 'not_useful' | null — петля обучения рефлектора.
+  userFeedback    String?
+  dismissed       Boolean   @default(false)
+
+  // Лента: новые сверху.
+  @@index([userId, createdAt])
+  // Очередь на доставку: недоставленные, по важности.
+  @@index([userId, deliveredAt, severity])
 }
