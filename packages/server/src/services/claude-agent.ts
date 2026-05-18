@@ -1,13 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AiModelError } from '../lib/errors.js';
-// SSOT 9A.8: агент-цикл больше НЕ ходит в legacy LOCAL_TOOLS/
-// runLocalTool. Источник правды — реестр. agentToolSchemas =
-// проекция реестра БЕЗ confirm-tools (security-инвариант там же).
-import {
-  agentToolSchemas,
-  agentToolNames,
-  runRegistryTool,
-} from '../tools/index.js';
+import { LOCAL_TOOLS, runLocalTool } from './agent-tools.js';
 import { convertCurrency } from './external-apis.js';
 
 /**
@@ -124,7 +117,7 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     toolList.push({ type: 'web_search_20250305', name: 'web_search', max_uses: maxSearches });
   }
   if (localTools && userId) {
-    toolList.push(...agentToolSchemas());
+    toolList.push(...LOCAL_TOOLS);
   }
   const tools =
     toolList.length > 0 ? (toolList as unknown as Anthropic.Tool[]) : undefined;
@@ -132,11 +125,10 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
   const textParts: string[] = [];
   let response;
 
-  // Агентный цикл: пока Claude просит инструмент реестра — выполняем
+  // Агентный цикл: пока Claude просит локальный инструмент — выполняем
   // и продолжаем. web_search обрабатывает Anthropic (нам не возвращает
-  // tool_use на исполнение), цикл крутится только на confirm-free
-  // tools реестра (agentToolNames — security-инвариант: без денег).
-  const localNames = agentToolNames();
+  // tool_use на исполнение), поэтому цикл крутится только на LOCAL_TOOLS.
+  const localNames = new Set<string>(LOCAL_TOOLS.map((t) => t.name));
   for (let round = 0; round <= maxToolRounds; round++) {
     try {
       response = await anthropic.messages.create({
@@ -173,23 +165,11 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     messages.push({ role: 'assistant', content: response.content });
     const results = [];
     for (const tu of toolUses) {
-      // 9A.8: диспетчеризация через реестр (zod-валидация + аудит
-      // ToolCall — агент-цикл теперь тоже аудируется). Ошибку
-      // отдельного tool НЕ роняем в весь цикл — возвращаем как
-      // tool_result, агент может восстановиться/честно сказать.
-      let out: string;
-      try {
-        const r = await runRegistryTool(
-          tu.name,
-          (tu.input as Record<string, unknown>) ?? {},
-          { userId: userId as string },
-        );
-        out = typeof r === 'string' ? r : JSON.stringify(r);
-      } catch (e) {
-        out = `Ошибка инструмента ${tu.name}: ${
-          e instanceof Error ? e.message : String(e)
-        }`;
-      }
+      const out = await runLocalTool(
+        tu.name,
+        (tu.input as Record<string, unknown>) ?? {},
+        userId as string,
+      );
       results.push({ type: 'tool_result', tool_use_id: tu.id, content: out });
     }
     messages.push({ role: 'user', content: results });

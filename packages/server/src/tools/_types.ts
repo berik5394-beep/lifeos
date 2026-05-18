@@ -39,13 +39,6 @@ export interface Tool<TIn = unknown, TOut = unknown> {
    * Гейт подтверждения ЖИВЁТ НА ИНСТРУМЕНТЕ, не в глобальном массиве
    * (иначе «забыл синхронизировать NEEDS_CONFIRM»). boolean — всегда;
    * функция от input — условно (напр. расход > 100k).
-   *
-   * Сейчас `!needsConfirm` используется и как security-прокси
-   * «можно ли автономному агент-циклу» (см. agentToolSchemas).
-   * TODO (не сейчас, фокус важнее): когда появится первый tool,
-   * для которого confirm (UX) и agent-disabled (security) должны
-   * быть НЕЗАВИСИМЫ — выделить отдельное поле
-   * `availableToAgent: boolean`, развязав эти два вопроса.
    */
   needsConfirm: boolean | ((input: TIn) => boolean);
   sideEffects: ToolSideEffects;
