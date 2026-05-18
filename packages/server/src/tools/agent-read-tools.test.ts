@@ -79,3 +79,17 @@ describe('9A.4 — recall_person в реестре', () => {
     expect(s.safeParse({}).success).toBe(false);
   });
 });
+
+describe('9A.5 — get_weekly_plan в реестре', () => {
+  const t = registry.get('get_weekly_plan');
+
+  it('зарегистрирован, read-only, без confirm', () => {
+    expect(t, 'get_weekly_plan в реестре').toBeDefined();
+    expect(t!.needsConfirm).toBe(false);
+    expect(t!.sideEffects).toBe('read');
+  });
+
+  it('zod: пустой вход ок (input_schema {})', () => {
+    expect(t!.schema.safeParse({}).success).toBe(true);
+  });
+});

@@ -114,6 +114,8 @@ export const LOCAL_TOOLS = [
     },
   },
   {
+    // @deprecated 9A.5 — реализация в tools/get-weekly-plan.ts.
+    // Схема тут до 9A.8 (свич claude-agent на anthropicSchemas).
     name: 'get_weekly_plan',
     description:
       'Цели/план на ТЕКУЩУЮ неделю (WeeklyGoal): что выполнено, что осталось. Вызывай на «какие планы на неделю», «что у меня по неделе», «недельные цели».',
@@ -229,20 +231,13 @@ export async function runLocalTool(
         return JSON.stringify(r);
       }
       case 'get_weekly_plan': {
-        const m = startOfDay(new Date());
-        m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); // понедельник
-        const wg = await prisma.weeklyGoal.findMany({
-          where: { userId, weekStart: m },
-          select: { goalText: true, completed: true },
-          orderBy: { order: 'asc' },
-          take: 12,
-        });
-        return JSON.stringify({
-          weekStart: m.toISOString().slice(0, 10),
-          done: wg.filter((g) => g.completed).length,
-          total: wg.length,
-          goals: wg.map((g) => ({ text: g.goalText, done: g.completed })),
-        });
+        // 9A.5: мигрировано в реестр (tools/get-weekly-plan.ts).
+        // Свич схем claude-agent на SSOT — 9A.8.
+        console.warn(
+          `[deprecated 9A] runLocalTool.get_weekly_plan → registry (user=${userId})`,
+        );
+        const r = await runRegistryTool('get_weekly_plan', input, { userId });
+        return JSON.stringify(r);
       }
       case 'get_trip': {
         // #1: «запомнил поездку», но «когда вылет» → «нет данных».
