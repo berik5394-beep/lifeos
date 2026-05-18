@@ -48,3 +48,17 @@ describe('9A.2 — get_calendar в реестре', () => {
     expect(s.safeParse({}).success).toBe(false);
   });
 });
+
+describe('9A.3 — get_email_triage в реестре', () => {
+  const t = registry.get('get_email_triage');
+
+  it('зарегистрирован, read-only, без confirm, external', () => {
+    expect(t, 'get_email_triage в реестре').toBeDefined();
+    expect(t!.needsConfirm).toBe(false);
+    expect(t!.sideEffects).toBe('external');
+  });
+
+  it('zod: пустой вход ок (input_schema {})', () => {
+    expect(t!.schema.safeParse({}).success).toBe(true);
+  });
+});

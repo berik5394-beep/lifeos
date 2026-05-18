@@ -94,6 +94,8 @@ export const LOCAL_TOOLS = [
     },
   },
   {
+    // @deprecated 9A.3 — реализация в tools/get-email-triage.ts.
+    // Схема тут до 9A.8 (свич claude-agent на anthropicSchemas).
     name: 'get_email_triage',
     description:
       'Разобрать непрочитанные письма Gmail: что важное, что можно проигнорировать. Read-only. Вызывай на «разбери почту», «что в почте», «есть важные письма».',
@@ -207,11 +209,13 @@ export async function runLocalTool(
         return r.message ?? 'Готово.';
       }
       case 'get_email_triage': {
-        const t = await triageInbox(userId);
-        return JSON.stringify({
-          summary: t.summary,
-          important: t.important.map((m) => ({ from: m.from, subject: m.subject })),
-        });
+        // 9A.3: мигрировано в реестр (tools/get-email-triage.ts).
+        // Свич схем claude-agent на SSOT — 9A.8.
+        console.warn(
+          `[deprecated 9A] runLocalTool.get_email_triage → registry (user=${userId})`,
+        );
+        const r = await runRegistryTool('get_email_triage', input, { userId });
+        return JSON.stringify(r);
       }
       case 'recall_person': {
         // Phase 2.1: структурная связка person ↔ ContactCache. Раньше
