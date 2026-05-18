@@ -20,8 +20,23 @@ import { prisma } from '../lib/prisma.js';
 
 export const STREAK_DAY_THRESHOLD = 60; // % выполнения дня для +1
 
-/** Чистое решение: каким станет стрик. Тестируется без БД. */
-export function streakDecision(prevStreak: number, dayPercent: number): number {
+/**
+ * Чистое решение: каким станет стрик. Тестируется без БД.
+ *
+ * `hadActivity` — было ли вчера ВООБЩЕ что оценивать (хоть одна
+ * задача или активная привычка). Пустой день (0 задач, 0 привычек)
+ * НЕ повод рвать серию: считать «нечего было делать → провалил» —
+ * это ложь bug-#1 класса (мета-игра наказывает за несуществующий
+ * провал). Пустой день → стрик НЕ меняется (ни +1, ни сброс).
+ * CLAUDE.md: серия = «дней подряд здоровье > 60%», пустой день
+ * здоровье не роняет.
+ */
+export function streakDecision(
+  prevStreak: number,
+  dayPercent: number,
+  hadActivity: boolean,
+): number {
+  if (!hadActivity) return prevStreak;
   return dayPercent >= STREAK_DAY_THRESHOLD ? prevStreak + 1 : 0;
 }
 
@@ -31,8 +46,16 @@ function startOfDay(d: Date): Date {
   return x;
 }
 
-/** Выполнение дня в % (привычки 50 + задачи 50) — как в goodnight-итоге. */
-async function dayCompletionPercent(userId: string, day: Date): Promise<number> {
+/**
+ * Выполнение дня в % (привычки 50 + задачи 50) — как в goodnight-итоге.
+ * `hadActivity` — был ли день вообще «оцениваемым» (хоть одна задача
+ * ИЛИ активная привычка); пустой день стрик не трогает (см.
+ * streakDecision).
+ */
+async function dayCompletion(
+  userId: string,
+  day: Date,
+): Promise<{ pct: number; hadActivity: boolean }> {
   const [tasks, habits, habitLogs] = await Promise.all([
     prisma.task.findMany({ where: { userId, date: day }, select: { completed: true } }),
     prisma.habit.count({ where: { userId, active: true } }),
@@ -41,7 +64,10 @@ async function dayCompletionPercent(userId: string, day: Date): Promise<number> 
   const tasksDone = tasks.filter((t) => t.completed).length;
   const tasksPart = (tasksDone / Math.max(tasks.length, 1)) * 50;
   const habitsPart = (habitLogs / Math.max(habits, 1)) * 50;
-  return Math.round(tasksPart + habitsPart);
+  return {
+    pct: Math.round(tasksPart + habitsPart),
+    hadActivity: tasks.length > 0 || habits > 0,
+  };
 }
 
 /**
@@ -61,9 +87,11 @@ export async function evaluatePetStreak(userId: string): Promise<number | null> 
   // Уже зачтено за вчера (или позже) — идемпотентно пропускаем.
   if (pet.streakDate && startOfDay(pet.streakDate) >= yesterday) return null;
 
-  const pct = await dayCompletionPercent(userId, yesterday);
-  const next = streakDecision(pet.streak, pct);
+  const { pct, hadActivity } = await dayCompletion(userId, yesterday);
+  const next = streakDecision(pet.streak, pct, hadActivity);
 
+  // streakDate ставим всегда (день финализирован — идемпотентно не
+  // переоценим), но при пустом дне streak не меняется (next===prev).
   await prisma.pet.update({
     where: { userId },
     data: { streak: next, streakDate: yesterday },
