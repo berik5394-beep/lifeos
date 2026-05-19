@@ -15,6 +15,8 @@ import {
   type BookingContext,
 } from './smart-booking.js';
 import { runAgent } from './claude-agent.js';
+import { matchesCrisisPhrase } from './safety-classifier.js';
+import { buildSafetyResponse } from './safety-response.js';
 import { isPlannerIntent } from './planner-service.js';
 import { captureMemory } from './memory-service.js';
 import { trackInterests } from './interest-service.js';
@@ -188,12 +190,22 @@ async function saveTurn(
   userId: string,
   userText: string,
   assistantText: string,
+  // Phase 6 C1 — sensitive-флаг. default false → 7 существующих
+  // вызовов не меняют поведение (аддитивно, #5). При кризисе
+  // ОБЕ строки помечаются (весь ход sensitive: вопрос юзера +
+  // safety-ответ) — изоляция от analytics/retention/шифрования.
+  crisis = false,
 ): Promise<void> {
   try {
     await prisma.chatMessage.createMany({
       data: [
-        { userId, role: 'user', content: userText.slice(0, 4000) },
-        { userId, role: 'assistant', content: assistantText.slice(0, 4000) },
+        { userId, role: 'user', content: userText.slice(0, 4000), crisis },
+        {
+          userId,
+          role: 'assistant',
+          content: assistantText.slice(0, 4000),
+          crisis,
+        },
       ],
     });
   } catch {
@@ -294,6 +306,21 @@ export async function handleMessage(
   // SSOT Step 7: засекаем начало хода — бейдж считаем из ToolCall,
   // созданных за этот ход (факт), а не из NLP-выдумки.
   const turnStart = new Date();
+
+  // ---- Phase 6 C1 SAFETY GATE (САМЫЙ ПЕРВЫЙ, до всего) ----
+  // Детерминированная сеть (matchesCrisisPhrase) — instant, zero-cost,
+  // гарантия recall (1b). Haiku-расширение НЕ здесь: вызов на КАЖДОЕ
+  // сообщение = bot-wide latency/cost регресс; оно живёт в C3
+  // emotional-пути. При кризисе: хардкод safety-ответ (style-agnostic
+  // by construction — toxic физически не просочится), ОБА сообщения
+  // помечаются crisis=true, ранний return — агент/стиль/инструменты
+  // НЕ вызываются. Safety перебивает ВСЁ структурно, не промптом.
+  if (matchesCrisisPhrase(text)) {
+    const reply = buildSafetyResponse();
+    await saveTurn(userId, text, reply, true);
+    return { reply, intent: 'safety_crisis' };
+  }
+
   // ---- Фаза 1.2: ждём подтверждения предыдущего денежного действия? ----
   const pending = await peekPendingAction(userId);
   if (pending) {
