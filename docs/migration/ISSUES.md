@@ -315,3 +315,24 @@ a root (missing schema fields):
 
 Blocked-by: the W2 archivedAt + timestamp migration. Do not fake
 either signal before the schema supports it.
+
+## ISSUE-MD — markdown leak in prod (planner) — RESOLVED
+
+Found by Berik in prod smoke (2026-05-19): planner replies contained
+literal markdown (bold headers, bold habit name) despite jarvis-prompt
+HARD rule "Markdown ЗАПРЕЩЕНО". Telegram web renders the asterisks
+literally → ugly. Reproduced twice (decompose reply + "какие
+привычки") → systematic, not a one-off; the prompt rule demonstrably
+does not hold for tool-result narration.
+
+Root cause: prompt-only enforcement. The model adds emphasis when
+narrating structured tool output, ignoring the no-markdown rule.
+
+Fix (commit below): deterministic stripMarkdown() in claude-agent
+final-text cleanup — same structural-not-hope precedent as enforceTenge
+(₽→₸) and the web_search artifact cleanup that already live there.
+Strips bold/italic/headers/bullets/code, bullets → dash (prompt
+style). Pure, 3 unit tests incl. the exact prod artifacts + a
+"plain text untouched / single * not mangled" regression. Applies to
+ALL agent output (chat+planner), structurally enforcing an existing
+rule. full suite 504/504, tsc clean.

@@ -44,6 +44,25 @@ export function convertRubInText(
   };
 }
 
+/**
+ * Детерминированное добивание markdown. Промпт жёстко запрещает
+ * разметку (жирный/курсив/заголовки/буллеты), но модель ВСЁ РАВНО
+ * её шлёт — воспроизведено в проде на planner (Telegram рендерит
+ * звёздочки буквально = уродство). Прецедент: enforceTenge
+ * структурно добивает рубли, а не «надеется на промпт». Тут так же.
+ * Чистая, тестируется без сети.
+ */
+export function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^\n*]+)\*\*/g, '$1') // **bold**
+    .replace(/__([^\n_]+)__/g, '$1') // __bold__
+    .replace(/(^|[\s(«"'])\*([^\n*]+)\*/g, '$1$2') // *italic*
+    .replace(/(^|[\s(«"'])_([^\n_]+)_/g, '$1$2') // _italic_
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '') // ## заголовки
+    .replace(/^\s*[-*•]\s+/gm, '— ') // буллеты → тире (стиль промпта)
+    .replace(/`{1,3}([^`\n]+)`{1,3}/g, '$1'); // `code`
+}
+
 async function enforceTenge(text: string): Promise<string> {
   if (!hasRub(text)) return text;
   try {
@@ -257,5 +276,7 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
   if (!finalText) {
     throw new AiModelError(new Error('Empty Claude response (no text blocks)'));
   }
-  return enforceTenge(finalText); // #6: добиваем рубли детерминированно
+  // Структурное добивание разметки (промпт-правило не держится —
+  // воспроизведено в проде), затем рубли. Оба — детерминированно.
+  return enforceTenge(stripMarkdown(finalText));
 }
