@@ -22,6 +22,7 @@ import { getTripTool } from './get-trip.js';
 import { getGoalProgressTool } from './get-goal-progress.js';
 import { sendTelegramTool } from './send-telegram.js';
 import { decomposeGoalTool } from './decompose-goal.js';
+import { applyInsightTool } from './apply-insight.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -52,6 +53,8 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   sendTelegramTool,
   // planner (Phase 5 P2) — декомпозиция цели в дерево (заглушка, шаг 2)
   decomposeGoalTool,
+  // P3/R8 — применение инсайта рефлектора ТОЛЬКО через confirm-гейт
+  applyInsightTool,
   // agent-only read-tools, миграция 9A (claude-agent свич — 9A.8)
   getTasksTool,
   getCalendarTool,
@@ -199,6 +202,25 @@ export function toolConfirmRequired(
   return typeof tool.needsConfirm === 'function'
     ? tool.needsConfirm(input)
     : tool.needsConfirm;
+}
+
+/**
+ * Phase 5 P3/R8 — SECURITY INVARIANT для apply_insight. Рефлектор
+ * ПРЕДЛАГАЕТ действие (Insight.suggestedAction); применение НИКОГДА
+ * не обходит confirm-гейт (тот же инвариант 9B.2: деньги/внешнее не
+ * исполняются автономно). Единый named-предикат, покрыт money-safety-
+ * style тестом → «через confirm» доказано, не по намерению.
+ *  - 'reject'  — действия нет в реестре (честный отказ, не выдумка);
+ *  - 'confirm' — needsConfirm tool (деньги/внешнее) → ТОЛЬКО pending,
+ *                юзер подтверждает «да», авто-исполнение ЗАПРЕЩЕНО;
+ *  - 'execute' — обратимый (needsConfirm:false) → исполнить с аудитом.
+ */
+export function insightApplyDecision(
+  action: string,
+  input: unknown,
+): 'reject' | 'confirm' | 'execute' {
+  if (!registry.has(action)) return 'reject';
+  return toolConfirmRequired(action, input) ? 'confirm' : 'execute';
 }
 
 export class ToolNotFoundError extends Error {}
