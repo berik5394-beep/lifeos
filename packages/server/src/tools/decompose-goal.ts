@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { defineTool } from './_types.js';
+import { persistPlan } from '../services/planner-service.js';
 
 /**
  * Phase 5 P2 — шаг 2: decompose_goal в реестре, ЗАГЛУШКА.
@@ -50,17 +51,17 @@ export const decomposeGoalTool = defineTool({
     'составь план под цель накопить миллион',
     'как достичь цели выучить английский',
   ],
-  // ЗАГЛУШКА: фиксированный ответ нужной ФОРМЫ. Шаг 3 заменит тело
-  // на planner-service (YearlyGoal → quarterly), форма не изменится.
-  handler: async (input) => {
+  // 3d: реальный planner-service. persistPlan сам честен —
+  // keep_atomic / null-дерево / идемпотентный skip → created:0 +
+  // честный текст, НИКОГДА не выдумывает (bug-#1 класс). Счётчик
+  // created = РЕАЛЬНО созданные строки (как materializeImport).
+  handler: async (input, ctx) => {
+    const r = await persistPlan(ctx.userId, input.goal, input.goalId);
     return {
-      decision: 'decompose' as const,
-      goal: input.goal,
-      tree: [],
-      message:
-        'Планировщик ещё подключается (P2 шаг 3). Пока цель принята, ' +
-        'дерево не построено — скоро разложу по кварталам и неделям.',
-      stub: true,
+      decision: r.decision,
+      created: r.created,
+      goalId: r.goalId ?? null,
+      message: r.message,
     };
   },
 });

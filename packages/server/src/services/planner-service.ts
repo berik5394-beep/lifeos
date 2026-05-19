@@ -41,6 +41,7 @@ const DECOMPOSE =
   /(книг|прочита|чита(?:ть|ю)|страниц|выучи|изучи|научи|освои|язык|английск|испанск|немецк|француз|курс|накопи|сэконом|накоплен|млн|миллион|похуд|сброси|набра|кг|бега|пробеж|трениров|спорт|медитац|форм[уы]|здоров|подтяну|подтягив|каждый день|раз[а]? в недел|в день по|зарабат)/i;
 
 import Anthropic from '@anthropic-ai/sdk';
+import { prisma } from '../lib/prisma.js';
 import { AiModelError } from '../lib/errors.js';
 
 const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
@@ -323,4 +324,166 @@ export function classifyGoal(text: string): GoalDecision {
   // Всё остальное (разовое: встреча/ДР/покупка/звонок) + спорное —
   // conservative bias: НЕ разбиваем.
   return 'keep_atomic';
+}
+
+export interface PlannerResult {
+  decision: GoalDecision;
+  created: number;
+  goalId?: string;
+  message: string;
+}
+
+/**
+ * Phase 5 P2 шаг 3c.3/3d — персист дерева (DB-glue, доверяем как
+ * materializeImport; чистые части classify/parse/map покрыты юнитами).
+ *
+ * Инварианты аудита L99:
+ *  W1 find-or-create YearlyGoal (root=цель юзера, derivedFrom='user').
+ *  W6 идемпотентно: есть planner-дети → НЕ дублируем (честный skip),
+ *     re-decompose = шаги 4/5 (нужен archivedAt).
+ *  non-destructive: трогаем ТОЛЬКО derivedFrom='planner', никогда
+ *     ручные 'user'-строки.
+ *  Честность (bug #1): счётчики — РЕАЛЬНО созданные строки; нет
+ *     дерева/keep_atomic → 0 создано + честный текст, не выдумка.
+ */
+export async function persistPlan(
+  userId: string,
+  goal: string,
+  goalId?: string,
+): Promise<PlannerResult> {
+  const g = goal.trim();
+  const decision = classifyGoal(g);
+  if (decision === 'keep_atomic') {
+    return {
+      decision,
+      created: 0,
+      message:
+        'Это разовое дело, не цель для разбивки. Скажи «создай ' +
+        'задачу/событие» — поставлю напрямую.',
+    };
+  }
+
+  const year = new Date().getUTCFullYear();
+  const area = goalAreaFor(g);
+
+  // W1: find-or-create корневой YearlyGoal.
+  let yg = goalId
+    ? await prisma.yearlyGoal.findFirst({ where: { id: goalId, userId } })
+    : await prisma.yearlyGoal.findFirst({
+        where: {
+          userId,
+          year,
+          goalText: { contains: g.slice(0, 60), mode: 'insensitive' },
+        },
+      });
+  if (!yg) {
+    yg = await prisma.yearlyGoal.create({
+      data: {
+        userId,
+        year,
+        area,
+        goalText: g.slice(0, 300),
+        progress: 0,
+        derivedFrom: 'user', // цель юзера; planner лишь структурирует
+      },
+    });
+  }
+
+  // W6: идемпотентность — есть planner-дети → не дублируем.
+  const existing = await prisma.weeklyGoal.count({
+    where: { userId, planParentId: yg.id, derivedFrom: 'planner' },
+  });
+  if (existing > 0) {
+    return {
+      decision,
+      created: 0,
+      goalId: yg.id,
+      message:
+        `План под цель «${yg.goalText.slice(0, 60)}» уже построен ` +
+        `(${existing} недельных шагов). Не дублирую. ` +
+        `«Перестрой план» — пересоберу заново (скоро).`,
+    };
+  }
+
+  // Дерево через Claude. null → честный отказ, НИЧЕГО не создаём.
+  let tree: PlanTree | null;
+  try {
+    tree = await generatePlanTree(
+      g,
+      decision,
+      new Date().toISOString().slice(0, 10),
+    );
+  } catch {
+    tree = null;
+  }
+  if (!tree) {
+    return {
+      decision,
+      created: 0,
+      goalId: yg.id,
+      message:
+        'Не смог разложить эту цель сейчас — сбой/мало данных. ' +
+        'Ничего не создал. Переформулируй короче или попробуй позже.',
+    };
+  }
+
+  const rows = planTreeToRows(tree, yg.id, area, new Date());
+
+  // Транзакция: недельные цели + привычка + патч YearlyGoal.
+  // non-destructive — только INSERT planner-строк + UPDATE pacing.
+  let created = 0;
+  await prisma.$transaction(async (tx) => {
+    for (const w of rows.weeklyGoals) {
+      await tx.weeklyGoal.create({
+        data: {
+          userId,
+          weekStart: w.weekStart,
+          goalText: w.goalText,
+          order: w.order,
+          planParentId: w.planParentId,
+          planParentType: w.planParentType,
+          derivedFrom: w.derivedFrom,
+        },
+      });
+      created++;
+    }
+    if (rows.habit) {
+      await tx.habit.create({
+        data: {
+          userId,
+          name: rows.habit.name,
+          category: rows.habit.category,
+          frequency: rows.habit.frequency,
+          goalId: rows.habit.goalId,
+          planParentId: rows.habit.planParentId,
+          planParentType: rows.habit.planParentType,
+          derivedFrom: rows.habit.derivedFrom,
+        },
+      });
+      created++;
+    }
+    await tx.yearlyGoal.update({
+      where: { id: yg!.id },
+      data: {
+        target: rows.yearlyPatch.target,
+        pacingMode: rows.yearlyPatch.pacingMode,
+        pacingPlan:
+          rows.yearlyPatch.pacingPlan === null
+            ? undefined
+            : (rows.yearlyPatch.pacingPlan as unknown as object),
+      },
+    });
+  });
+
+  const habitNote = rows.habit
+    ? ` + привычка «${rows.habit.name}» — отмечай каждый день, она ведёт к цели`
+    : '';
+  return {
+    decision,
+    created,
+    goalId: yg.id,
+    message:
+      tree.spokenResponse?.trim() ||
+      `Разложил цель: ${rows.weeklyGoals.length} недельных шагов${habitNote}.`,
+  };
 }
