@@ -377,3 +377,45 @@ Reflector subsystem shipped & deployed GREEN. Carried flags / state:
   STILL OPEN. The deterministic reflector-core does NOT yet
   re-invoke the planner to extend trees ~8 weeks out. Tracked as
   the next reflector capability after P3 lands.
+
+## PHASE 5 CLOSURE — EXPLICIT WAIVER (Berik, 2026-05-19)
+
+Phase 6 spec made "Phase 5 closed: reflector writes insights in
+prod + 24h stability" a hard gate. HONEST STATE at decision time:
+- PROVEN: code pushed (origin/main), deploys GREEN (health 200),
+  576/576 unit, planner builds trees in prod (verified earlier),
+  migrations additive, admin-gate secure (404 без секрета).
+- ASSUMED, NOT PROVEN: reflector actually emits insights for a
+  real prod user. The controlled e2e (admin endpoint) was BUILT
+  but NOT executed (ADMIN_SECRET unset, no seeded test user).
+- The spec's "24h soak" contradicts feedback_ssot_migration_
+  discipline.md (pre-release solo, zero users → soak observes
+  nothing; controlled verification IS verification).
+
+DECISION (Berik): WAIVER — 576 unit tests + code review accepted
+as sufficient Phase 5 closure; Phase 6 may start. Conscious
+trade-off: reflector prod behavior stays "assumed", not "proven".
+Do NOT ever claim Phase 5 was prod-verified — it was waived.
+Re-open if/when real users surface reflector misbehavior.
+
+## PHASE 6 — DESIGN DECISIONS LOCKED (pre-code, Berik 2026-05-19)
+
+- VISION-WISE-FRIEND.md MISSING in repo though spec makes it a
+  hard prerequisite. Decision: Berik provides text OR we co-author
+  + commit it. Component code does NOT start until it exists.
+- toxic assistantStyle × Safety/Therapeutic: Safety template
+  OVERRIDES every style incl. toxic (crisis = non-negotiable).
+  Therapeutic tone ALSO overrides toxic for emotional-not-crisis
+  (toxic confined to productivity-nagging on transactional msgs).
+  Becomes a hard invariant + test.
+- UserProfile vs existing Memory: UserProfile MUST be a derived
+  weekly-synthesis VIEW over Memory(+ChatMessage+Insights).
+  Memory stays SSOT; UserProfile is regenerable cache (rule #4 —
+  no parallel memory / second feedback-store drift).
+- crisis-isolation is NOT one schema commit: decompose into
+  (a) additive `crisis Boolean @default(false)`, (b) 30d purge
+  cron, (c) at-rest encryption strategy, (d) audit ALL existing
+  ChatMessage readers (analytics/export) for exclusion.
+- Therapeutic triggers REUSE Phase 5 insight-store.persistCandidates
+  + R6 delivery + R9/R10/R11 rate-limit (kind:'therapeutic'); do
+  NOT build a parallel rate-limiter.
