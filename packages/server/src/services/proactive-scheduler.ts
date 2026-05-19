@@ -3,6 +3,7 @@ import { generateProactiveNotifications } from './proactive-notifications.js';
 import { runPetStreakSweep } from './pet-streak-service.js';
 import { deliverNotification } from './push-service.js';
 import { deliverTopInsight } from './insight-store.js';
+import { runReflectorDaily } from './reflector-service.js';
 
 /**
  * Фаза 4.1 — планировщик проактивности.
@@ -118,6 +119,20 @@ async function tick(): Promise<void> {
             .deleteMany({ where: { userId, type: n.type, scheduledFor: n.scheduledFor } })
             .catch(() => {});
         }
+      }
+
+      // P3.b — рефлектор: 1×/день/юзер (tz-корректно), детерминизм
+      // решает + Sonnet перефразирует, source='reflector' в ЕДИНЫЙ
+      // стор. ПЕРЕД доставкой — свежий инсайт уйдёт этим же тиком.
+      // НЕ-фатально: сбой/Claude-down не роняет тик (детерминизм
+      // уже честен, fallback внутри сервиса).
+      try {
+        await runReflectorDaily(userId, new Date());
+      } catch (err) {
+        console.warn(
+          `[scheduler] reflector failed user=${userId}:`,
+          err instanceof Error ? err.message : err,
+        );
       }
 
       // R6 — ЕДИНЫЙ Insight-стор: ≤1 пуш/день, top-severity, вне

@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { reflect, type ReflectorFacts } from './reflector-core.js';
 import { persistCandidates } from './insight-store.js';
 import { planVsFact } from './plan-vs-fact.js';
+import { localDayStartUTC } from '../lib/tz.js';
 import type { InsightCandidate } from './insight-core.js';
 
 /**
@@ -170,4 +171,28 @@ export async function runReflector(
   });
   const phrased = await phrase(candidates, user?.assistantStyle ?? 'friendly');
   return persistCandidates(userId, phrased, now);
+}
+
+/**
+ * P3.b.4 — каденс 1×/день/юзер. tz-КОРРЕКТНО: «сегодня» = локальный
+ * день юзера (User.timezone, lib/tz — НЕ серверный UTC, W11-урок).
+ * Идемпотентно: уже есть reflector-инсайт за локальные сутки →
+ * пропускаем (Sonnet не дёргаем — экономия). Дёшево: один count
+ * до любого Claude-вызова.
+ */
+export async function runReflectorDaily(
+  userId: string,
+  now: Date = new Date(),
+): Promise<{ ran: boolean; created: number; superseded: number }> {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const dayStart = localDayStartUTC(u?.timezone ?? 'UTC', now);
+  const already = await prisma.insight.count({
+    where: { userId, source: 'reflector', createdAt: { gte: dayStart } },
+  });
+  if (already > 0) return { ran: false, created: 0, superseded: 0 };
+  const res = await runReflector(userId, now);
+  return { ran: true, ...res };
 }
