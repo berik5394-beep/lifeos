@@ -6,6 +6,7 @@ import {
   mondayUTC,
   planTreeToRows,
   plannerMayPatchParent,
+  rebuildDecision,
   localTodayUTC,
   type PlanTree,
 } from './planner-service.js';
@@ -110,6 +111,19 @@ describe('parsePlanTree — разбор без сети, честный отк�
     )!;
     expect(p).not.toBeNull();
     expect(p.habit).toBeNull();
+  });
+});
+
+describe('P2 4/5 — rebuildDecision (re-decompose, non-destructive)', () => {
+  it('нет активных детей → fresh (строим с нуля)', () => {
+    expect(rebuildDecision(0, false)).toBe('fresh');
+    expect(rebuildDecision(0, true)).toBe('fresh');
+  });
+  it('есть активные + rebuild=false → skip (W6 честно)', () => {
+    expect(rebuildDecision(4, false)).toBe('skip');
+  });
+  it('есть активные + rebuild=true → rebuild (архив старых, не снос)', () => {
+    expect(rebuildDecision(4, true)).toBe('rebuild');
   });
 });
 

@@ -43,6 +43,14 @@ export const decomposeGoalTool = defineTool({
       .max(64)
       .optional()
       .describe('id существующей YearlyGoal, если разбиваем её'),
+    rebuild: z
+      .boolean()
+      .optional()
+      .describe(
+        'true — пересобрать существующий план заново (старый ' +
+          'архивируется, прогресс сохраняется в истории). Ставь, ' +
+          'когда юзер просит «перестрой/пересобери план».',
+      ),
   }),
   needsConfirm: false,
   sideEffects: 'write',
@@ -56,7 +64,12 @@ export const decomposeGoalTool = defineTool({
   // честный текст, НИКОГДА не выдумывает (bug-#1 класс). Счётчик
   // created = РЕАЛЬНО созданные строки (как materializeImport).
   handler: async (input, ctx) => {
-    const r = await persistPlan(ctx.userId, input.goal, input.goalId);
+    const r = await persistPlan(
+      ctx.userId,
+      input.goal,
+      input.goalId,
+      input.rebuild === true,
+    );
     return {
       decision: r.decision,
       created: r.created,

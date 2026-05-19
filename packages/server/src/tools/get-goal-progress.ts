@@ -67,6 +67,7 @@ export const getGoalProgressTool = defineTool({
               userId,
               derivedFrom: 'planner',
               planParentId: { in: goalIds },
+              archivedAt: null, // 4/5: только АКТИВНЫЙ план
             },
             _count: { _all: true },
           })
@@ -82,6 +83,7 @@ export const getGoalProgressTool = defineTool({
               userId,
               derivedFrom: 'planner',
               planParentId: { in: goalIds },
+              archivedAt: null, // 4/5: только АКТИВНЫЙ план
             },
             select: { planParentId: true, name: true },
           })

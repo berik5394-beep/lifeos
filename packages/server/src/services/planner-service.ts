@@ -347,6 +347,24 @@ export function plannerMayPatchParent(createdByThisCall: boolean): boolean {
 }
 
 /**
+ * Phase 5 P2 4/5 — решение по АКТИВНЫМ planner-детям (archivedAt=null):
+ *  - нет активных → 'fresh' (строим как обычно);
+ *  - есть + rebuild=true → 'rebuild' (старых АРХИВИРУЕМ, не удаляем,
+ *    прогресс/история целы; строим заново);
+ *  - есть + rebuild=false → 'skip' (честно «уже построен», W6).
+ * rebuild — ТОЛЬКО по явной просьбе юзера (флаг от агента), НЕ авто
+ * на edit цели — иначе тихо снесём план юзера (W12-класс).
+ * Чистая, тестируется без БД.
+ */
+export function rebuildDecision(
+  activePlannerChildren: number,
+  rebuild: boolean,
+): 'fresh' | 'rebuild' | 'skip' {
+  if (activePlannerChildren === 0) return 'fresh';
+  return rebuild ? 'rebuild' : 'skip';
+}
+
+/**
  * L99/W4 — ЕДИНЫЙ источник «это planner-команда» (SSOT, как
  * SSOT-tools). Распознаёт ФРАЗУ-команду декомпозиции («разбей мою
  * цель X», «составь план под цель», «как достичь цели Y»). Живёт
@@ -398,6 +416,9 @@ export async function persistPlan(
   userId: string,
   goal: string,
   goalId?: string,
+  // 4/5: явная пересборка (флаг от агента, когда юзер просит
+  // «перестрой/пересобери план»). Дефолт false — не авто-снос.
+  rebuild = false,
 ): Promise<PlannerResult> {
   const g = goal.trim();
   const decision = classifyGoal(g);
@@ -448,23 +469,32 @@ export async function persistPlan(
     createdNow = true;
   }
 
-  // W6: идемпотентность — есть planner-дети → не дублируем.
+  // W6 + 4/5: считаем АКТИВНЫХ planner-детей (archivedAt=null).
   const existing = await prisma.weeklyGoal.count({
-    where: { userId, planParentId: yg.id, derivedFrom: 'planner' },
+    where: {
+      userId,
+      planParentId: yg.id,
+      derivedFrom: 'planner',
+      archivedAt: null,
+    },
   });
-  if (existing > 0) {
+  const action = rebuildDecision(existing, rebuild);
+  if (action === 'skip') {
     return {
       decision,
       created: 0,
       goalId: yg.id,
       message:
         `План под цель «${yg.goalText.slice(0, 60)}» уже построен ` +
-        `(${existing} недельных шагов) — не дублирую. Сейчас могу: ` +
-        `показать существующий план, или добавить отдельную ` +
-        `привычку/задачу поверх. Полная пересборка плана появится ` +
-        `в ближайшем апдейте (Phase 4).`,
+        `(${existing} недельных шагов) — не дублирую. Скажи ` +
+        `«перестрой план» — пересоберу заново (старый сохранится ` +
+        `в истории, прогресс не потеряется). Или показать ` +
+        `существующий / добавить привычку поверх.`,
     };
   }
+  // action==='rebuild' → старых архивируем в транзакции ниже
+  // (archivedAt=now), НЕ удаляем. action==='fresh' → строим с нуля.
+  const doArchive = action === 'rebuild';
 
   // Дерево через Claude. null → честный отказ, НИЧЕГО не создаём.
   let tree: PlanTree | null;
@@ -491,9 +521,34 @@ export async function persistPlan(
   const rows = planTreeToRows(tree, yg.id, area, todayUTC);
 
   // Транзакция: недельные цели + привычка + патч YearlyGoal.
-  // non-destructive — только INSERT planner-строк + UPDATE pacing.
+  // non-destructive — INSERT planner-строк + UPDATE pacing; на
+  // rebuild — АРХИВ старых planner-детей (archivedAt), НЕ delete:
+  // прогресс/история целы, ручные (derivedFrom='user') не тронуты.
   let created = 0;
+  let archived = 0;
   await prisma.$transaction(async (tx) => {
+    if (doArchive) {
+      const now = new Date();
+      const aw = await tx.weeklyGoal.updateMany({
+        where: {
+          userId,
+          planParentId: yg!.id,
+          derivedFrom: 'planner',
+          archivedAt: null,
+        },
+        data: { archivedAt: now },
+      });
+      const ah = await tx.habit.updateMany({
+        where: {
+          userId,
+          planParentId: yg!.id,
+          derivedFrom: 'planner',
+          archivedAt: null,
+        },
+        data: { archivedAt: now },
+      });
+      archived = aw.count + ah.count;
+    }
     for (const w of rows.weeklyGoals) {
       await tx.weeklyGoal.create({
         data: {
@@ -545,12 +600,18 @@ export async function persistPlan(
   const habitNote = rows.habit
     ? ` + привычка «${rows.habit.name}» — отмечай каждый день, она ведёт к цели`
     : '';
+  // Честно про пересборку: старый план НЕ удалён, он в истории.
+  const rebuiltNote =
+    archived > 0
+      ? `Пересобрал план заново (старый — ${archived} записей — сохранён в истории, прогресс не потерян). `
+      : '';
   return {
     decision,
     created,
     goalId: yg.id,
     message:
-      tree.spokenResponse?.trim() ||
-      `Разложил цель: ${rows.weeklyGoals.length} недельных шагов${habitNote}.`,
+      rebuiltNote +
+      (tree.spokenResponse?.trim() ||
+        `Разложил цель: ${rows.weeklyGoals.length} недельных шагов${habitNote}.`),
   };
 }
