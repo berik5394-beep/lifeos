@@ -857,9 +857,26 @@ model Insight {
   // dismissKey; дисмисс через тот же routes/insights путь кормит
   // одну петлю обучения. Один источник правды, как isPlannerIntent.
   dismissKey      String?
+  // P3/R5 P4-fold — поля ЕДИНОГО dispatch-ядра (insight-core).
+  // Все nullable/без default → миграция аддитивна (ISSUE-X-safe).
+  // kind — класс инсайта ('budget_over'|'weekly_goal_at_risk'|...);
+  // scopeKey — СТАБИЛЬНЫЙ строковый ключ сущности ('budget:food',
+  // 'goal:<id>') для cooldown/supersede (R9/R10); scope(Json)
+  // остаётся для богатого контекста. source — откуда кандидат
+  // (proactive_notifications|proactive_insights|reflector):
+  // аналитика/кост/debug/ML — дёшево добавить сейчас, дорого потом.
+  // expiresAt — TTL (R9); supersededAt — погашен новым того же
+  // scopeKey+kind вне cooldown (R9), != deliveredAt/dismissed.
+  kind            String?
+  scopeKey        String?
+  source          String?
+  expiresAt       DateTime?
+  supersededAt    DateTime?
 
   // Лента: новые сверху.
   @@index([userId, createdAt])
   // Очередь на доставку: недоставленные, по важности.
   @@index([userId, deliveredAt, severity])
+  // R9/R10 — активные того же kind+scopeKey (cooldown/supersede).
+  @@index([userId, kind, scopeKey])
 }

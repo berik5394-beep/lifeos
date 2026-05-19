@@ -143,6 +143,38 @@ describe('Phase 5 P1 — Insight (рефлектор)', () => {
   });
 });
 
+describe('Phase 5 R5 — Insight dispatch-ядро поля (P4-fold)', () => {
+  const ins = modelBlock('Insight');
+  it('kind/scopeKey/source/expiresAt/supersededAt присутствуют', () => {
+    expect(ins).toMatch(/kind\s+String\?/);
+    expect(ins).toMatch(/scopeKey\s+String\?/);
+    expect(ins).toMatch(/source\s+String\?/);
+    expect(ins).toMatch(/expiresAt\s+DateTime\?/);
+    expect(ins).toMatch(/supersededAt\s+DateTime\?/);
+  });
+  it('индекс cooldown/supersede объявлен', () => {
+    expect(ins).toMatch(/@@index\(\[userId, kind, scopeKey\]\)/);
+  });
+  it('userFeedback СОХРАНЁН (ISSUE-X: R5 не дропает)', () => {
+    expect(ins).toMatch(/userFeedback\s+String\?/);
+  });
+  it('миграция r5_insight_dispatch_fields — аддитивна, без DROP', () => {
+    const dir = join(root, 'prisma/migrations');
+    const mig = readdirSync(dir).find((d) =>
+      d.includes('r5_insight_dispatch_fields'),
+    );
+    expect(mig).toBeTruthy();
+    const sql = readFileSync(join(dir, mig!, 'migration.sql'), 'utf-8');
+    for (const c of ['kind', 'scopeKey', 'source', 'expiresAt', 'supersededAt']) {
+      expect(sql).toMatch(
+        new RegExp(`ALTER TABLE "Insight" ADD COLUMN IF NOT EXISTS "${c}"`),
+      );
+    }
+    expect(sql).toMatch(/CREATE INDEX IF NOT EXISTS "Insight_userId_kind_scopeKey_idx"/);
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+  });
+});
+
 describe('Phase 5 P1 — миграция реально создаёт структуру', () => {
   const dir = join(root, 'prisma/migrations');
   const mig = readdirSync(dir).find((d) =>
