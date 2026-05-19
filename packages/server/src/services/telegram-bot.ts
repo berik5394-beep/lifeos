@@ -199,7 +199,8 @@ export function createTelegramBot(): Telegraf {
         await ctx.reply('Не расслышал. Повтори, пожалуйста?');
         return;
       }
-      const res = await handleMessage(userId, transcript);
+      // ISSUE-4: голосовое сообщение Telegram (транскрипт) → 'voice'.
+      const res = await handleMessage(userId, transcript, 'voice');
       await sendJarvis(ctx, res);
     } catch (err) {
       console.error('TG voice error:', err);

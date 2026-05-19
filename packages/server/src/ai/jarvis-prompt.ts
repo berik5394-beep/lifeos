@@ -96,6 +96,7 @@ function core(userName: string, timeOfDay: string): string {
 ОБЩИЕ ПРАВИЛА
 - Язык: только русский.
 - Длина: обычно 2-5 предложений, для сложных тем — до 8. Без простыней.
+- Счётчики-нули (ISSUE-4): если выполнено 0 — пиши «ни одной ещё не выполнено» / «пока ничего не сделано», НЕ «только 0» / «выполнено 0» (звучит криво).
 - Имя ${userName} — умеренно, не в каждой реплике.
 - Не начинай с «К сожалению». Ты уверенный эксперт.
 - Эмодзи: максимум один на сообщение, по необходимости.
@@ -183,7 +184,17 @@ function ritualBlock(
 export interface JarvisPromptOpts {
   ritual?: 'morning' | 'night';
   dayCompletionPercent?: number;
+  /** ISSUE-4: 'voice' → жёсткая краткость для TTS (≤3 предлож/~15с). */
+  channel?: 'voice' | 'text';
 }
+
+// ISSUE-4: голос — это TTS, длинный ответ = 25с речи (Берик в проде).
+// Включается ТОЛЬКО для channel:'voice'; текст/Telegram не меняются.
+const VOICE_BREVITY =
+  '\n\nГОЛОСОВОЙ РЕЖИМ — КРИТИЧНО: это озвучивается (TTS). Максимум ' +
+  '3 коротких предложения, ~15 секунд речи. Только суть/главное. ' +
+  'НЕ зачитывай списки. Нужны детали — скажи «полный список — ' +
+  'открой приложение» или «сказать всё?».';
 
 /** Сборка: ЯДРО + СТИЛЬ[user] + (ритуал) + КОНТЕКСТ. */
 export function buildJarvisPrompt(
@@ -197,5 +208,6 @@ export function buildJarvisPrompt(
   ];
   let body = parts.join('\n\n');
   if (opts.ritual) body += ritualBlock(opts.ritual, opts.dayCompletionPercent);
+  if (opts.channel === 'voice') body += VOICE_BREVITY;
   return `${body}\n\n${renderContext(ctx)}`;
 }

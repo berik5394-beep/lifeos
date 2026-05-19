@@ -163,7 +163,8 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
       // logs, стиль ассистента, утро/вечер/ночь — всё там). Раньше тут
       // был параллельный второй мозг с собственным промптом и прямым
       // Claude — это и была headline-проблема плана (Столп 1).
-      const jarvis = await handleMessage(userId, text);
+      // ISSUE-4: голосовой ассистент (STT-вход) → channel:'voice'.
+      const jarvis = await handleMessage(userId, text, 'voice');
       let responseText = jarvis.reply;
       // Денежное/исходящее действие ждёт подтверждения — мобилка этого
       // экрана не знает про pendingAction, поэтому добавляем понятную

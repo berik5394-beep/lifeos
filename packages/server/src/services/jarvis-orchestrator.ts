@@ -280,6 +280,9 @@ export async function runConfirmedAction(
 export async function handleMessage(
   userId: string,
   text: string,
+  // ISSUE-4: 'voice' → краткий TTS-режим в промпте. Опционально,
+  // дефолт = текст (Telegram/чат не меняются — аддитивно).
+  channel?: 'voice' | 'text',
 ): Promise<JarvisResponse> {
   // SSOT Step 7: засекаем начало хода — бейдж считаем из ToolCall,
   // созданных за этот ход (факт), а не из NLP-выдумки.
@@ -699,10 +702,10 @@ export async function handleMessage(
   ]);
 
   const system = gathered
-    ? buildJarvisPrompt(
-        gathered.context,
-        ritualOptsFor(intent, gathered.dayCompletionPercent),
-      )
+    ? buildJarvisPrompt(gathered.context, {
+        ...ritualOptsFor(intent, gathered.dayCompletionPercent),
+        channel,
+      })
     : // юзер не найден в БД — крайне маловероятно (есть auth), но не падаем
       'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
 

@@ -143,3 +143,20 @@ describe('buildJarvisPrompt — ритуалы', () => {
     expect(p).not.toContain('РИТУАЛ НОЧИ');
   });
 });
+
+describe('ISSUE-4 — грамматика нулей + голосовая краткость', () => {
+  it('правило про счётчики-нули всегда в промпте (text+voice)', () => {
+    expect(buildJarvisPrompt(ctx())).toContain('Счётчики-нули');
+  });
+  it('channel:voice → блок ГОЛОСОВОЙ РЕЖИМ (краткость TTS)', () => {
+    const p = buildJarvisPrompt(ctx(), { channel: 'voice' });
+    expect(p).toContain('ГОЛОСОВОЙ РЕЖИМ');
+    expect(p).toContain('открой приложение');
+  });
+  it('text/Telegram (без channel или text) — НЕТ голосового блока', () => {
+    expect(buildJarvisPrompt(ctx())).not.toContain('ГОЛОСОВОЙ РЕЖИМ');
+    expect(buildJarvisPrompt(ctx(), { channel: 'text' })).not.toContain(
+      'ГОЛОСОВОЙ РЕЖИМ',
+    );
+  });
+});

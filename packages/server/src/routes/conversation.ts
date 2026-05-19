@@ -202,7 +202,9 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
       // концьерж + память + подтверждения). pendingAction (деньги/
       // исходящее) отдаём текстом — юзер подтверждает «да»
       // следующим сообщением (pending-store оркестратора поймает).
-      const jarvis = await handleMessage(userId, text);
+      // ISSUE-4: это голосовой роут (аудио→Whisper) → channel:'voice'
+      // (краткий TTS-режим). Текстовый роут ниже — без флага.
+      const jarvis = await handleMessage(userId, text, 'voice');
       const response =
         jarvis.pendingAction && jarvis.confirmationText
           ? jarvis.confirmationText
