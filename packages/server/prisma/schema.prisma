@@ -389,8 +389,17 @@ model ChatMessage {
   content   String
   actions   Json?
   createdAt DateTime @default(now())
+  // Phase 6 C1 Safety — sensitive-флаг кризисного диалога. Ставится
+  // ПОСТОЯННО при сохранении (нельзя «отменить» — для будущего
+  // аудита, провал-инвариант спеки #6). Изолирует строку:
+  // исключается из analytics/export, retention 30 дней (purge-cron),
+  // at-rest шифрование. nullable не нужен — default false,
+  // миграция аддитивна (IF NOT EXISTS, ISSUE-X-safe).
+  crisis    Boolean  @default(false)
 
   @@index([userId, createdAt])
+  // Purge-cron (retention 30д кризисных) + analytics-exclusion фильтр.
+  @@index([crisis, createdAt])
 }
 
 model Integration {
