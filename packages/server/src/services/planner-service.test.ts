@@ -5,6 +5,7 @@ import {
   goalAreaFor,
   mondayUTC,
   planTreeToRows,
+  plannerMayPatchParent,
   type PlanTree,
 } from './planner-service.js';
 
@@ -108,6 +109,20 @@ describe('parsePlanTree — разбор без сети, честный отк�
     )!;
     expect(p).not.toBeNull();
     expect(p.habit).toBeNull();
+  });
+});
+
+describe('L99/W12 — planner не перезаписывает user-цель', () => {
+  // Named SSOT-граница non-destructive: patch target/pacing родителя
+  // разрешён ТОЛЬКО когда planner сам создал YearlyGoal в этом
+  // вызове. Найденную/ручную (derivedFrom=user) цель — никогда
+  // (иначе «разбей мою цель» затрёт ручной target). DB-запись —
+  // доверенный glue, как materializeImport; тестируем решение.
+  it('planner создал родителя сейчас → patch разрешён', () => {
+    expect(plannerMayPatchParent(true)).toBe(true);
+  });
+  it('родитель найден/ручной → patch запрещён (target цел)', () => {
+    expect(plannerMayPatchParent(false)).toBe(false);
   });
 });
 

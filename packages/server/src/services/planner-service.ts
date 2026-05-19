@@ -314,6 +314,20 @@ export function planTreeToRows(
   };
 }
 
+/**
+ * W12 (L99 hardening) — единый named-инвариант non-destructive:
+ * planner патчит target/pacingMode/pacingPlan родителя ТОЛЬКО если
+ * СОЗДАЛ YearlyGoal в этом же вызове (он пустой). Найденную/ручную
+ * (derivedFrom='user') цель НИКОГДА не перезаписываем — иначе
+ * «разбей мою цель» затрёт target, который юзер поставил руками
+ * (потеря пользовательских данных). Дети (WeeklyGoal/Habit) — всегда
+ * чистый INSERT, тут разрушать нечего. Покрыт тестом → non-destructive
+ * ДОКАЗАН, не «по намерению».
+ */
+export function plannerMayPatchParent(createdByThisCall: boolean): boolean {
+  return createdByThisCall;
+}
+
 export function classifyGoal(text: string): GoalDecision {
   const t = text.trim();
   // Проект С дедлайном → milestones (НЕ по дням). Проверяем первым:
@@ -376,6 +390,9 @@ export async function persistPlan(
           goalText: { contains: g.slice(0, 60), mode: 'insensitive' },
         },
       });
+  // W12: создал ли planner родителя ИМЕННО в этом вызове. Найденная
+  // (user) цель — чужие данные: target/pacing НЕ перезаписываем.
+  let createdNow = false;
   if (!yg) {
     yg = await prisma.yearlyGoal.create({
       data: {
@@ -387,6 +404,7 @@ export async function persistPlan(
         derivedFrom: 'user', // цель юзера; planner лишь структурирует
       },
     });
+    createdNow = true;
   }
 
   // W6: идемпотентность — есть planner-дети → не дублируем.
@@ -462,17 +480,23 @@ export async function persistPlan(
       });
       created++;
     }
-    await tx.yearlyGoal.update({
-      where: { id: yg!.id },
-      data: {
-        target: rows.yearlyPatch.target,
-        pacingMode: rows.yearlyPatch.pacingMode,
-        pacingPlan:
-          rows.yearlyPatch.pacingPlan === null
-            ? undefined
-            : (rows.yearlyPatch.pacingPlan as unknown as object),
-      },
-    });
+    // W12 non-destructive: патчим родителя ТОЛЬКО если planner создал
+    // его в этом вызове. Найденная user-цель — не трогаем (юзер мог
+    // сам поставить target; перезапись = потеря пользовательских
+    // данных, прямое нарушение инварианта аудита).
+    if (plannerMayPatchParent(createdNow)) {
+      await tx.yearlyGoal.update({
+        where: { id: yg!.id },
+        data: {
+          target: rows.yearlyPatch.target,
+          pacingMode: rows.yearlyPatch.pacingMode,
+          pacingPlan:
+            rows.yearlyPatch.pacingPlan === null
+              ? undefined
+              : (rows.yearlyPatch.pacingPlan as unknown as object),
+        },
+      });
+    }
   });
 
   const habitNote = rows.habit
