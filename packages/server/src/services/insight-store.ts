@@ -5,6 +5,7 @@ import {
   chooseInsightToPush,
   type FlatInsight,
   type ActiveInsight,
+  type InsightCandidate,
 } from './insight-core.js';
 import { localHour, localDayStartUTC } from '../lib/tz.js';
 import { deliverNotification } from './push-service.js';
@@ -30,7 +31,20 @@ export async function persistFlatInsights(
   flat: FlatInsight[],
   now: Date = new Date(),
 ): Promise<{ created: number; superseded: number }> {
-  const candidates = flat.map(flatInsightToCandidate);
+  return persistCandidates(userId, flat.map(flatInsightToCandidate), now);
+}
+
+/**
+ * P3.b.2 — ОБЩИЙ путь персиста кандидатов в ЕДИНЫЙ стор (R5).
+ * Плоский движок (persistFlatInsights) и рефлектор (P3.b) льют
+ * сюда же → один selectInsights (R9/R10/dedup/TTL), один провенанс
+ * `source`. Решения — чистое ядро; здесь только I/O-транзакция.
+ */
+export async function persistCandidates(
+  userId: string,
+  candidates: InsightCandidate[],
+  now: Date = new Date(),
+): Promise<{ created: number; superseded: number }> {
   if (candidates.length === 0) return { created: 0, superseded: 0 };
 
   const rows = await prisma.insight.findMany({
