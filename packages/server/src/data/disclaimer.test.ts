@@ -34,6 +34,14 @@ describe('disclaimer — позиционирование «друг, не пс�
     expect((f.match(/112/g) ?? []).length).toBe(1);
   });
 
+  it('UX-дедуп: «не замена профессиональной помощи» в FULL РОВНО раз', () => {
+    // SHORT уже содержит фразу; ресурс-блок в FULL рендерится с
+    // omitTailDisclaimer → повтора нет. Регресс дедупа = красный.
+    const occ = (f.match(/не замена профессиональной помощи/g) ?? [])
+      .length;
+    expect(occ).toBe(1);
+  });
+
   it('детерминирован', () => {
     expect(disclaimerShort()).toBe(s);
     expect(disclaimerFull()).toBe(f);
