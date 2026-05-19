@@ -1,5 +1,6 @@
 import type { AssistantContext, AssistantStyle } from '../ai/jarvis-prompt.js';
 import type { GatheredContext } from './assistant-service.js';
+import { disclaimerShort } from '../data/disclaimer.js';
 
 /**
  * SSOT 9B.3 — детерминированное приветствие /voice/conversation/start.
@@ -101,5 +102,14 @@ export function buildStartGreeting(
     ctx.upcomingEvents.length,
     c.currentStreak,
   );
-  return { text, suggestions: suggestionsFor(ctx) };
+  // Phase 6 C1 — зеркало дисклеймера в боте (app-first-mirror-bot:
+  // Telegram сейчас единственный живой канал). Показывается в первом
+  // приветствии за день. NOTE (флаг Берику на smoke): это «первая
+  // сессия ДНЯ», т.е. дисклеймер повторяется ежедневно — если на
+  // скрине читается «зажёвано»/назойливо, чистый фикс — once-ever
+  // seen-флаг (малый аддитив схемы), НЕ строю вперёд твоего суждения.
+  return {
+    text: `${text}\n\n${disclaimerShort()}`,
+    suggestions: suggestionsFor(ctx),
+  };
 }

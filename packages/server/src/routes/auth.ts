@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma.js';
 import { validate } from '../middleware/validate.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimiter, validatePassword, getClientIp } from '../middleware/security.js';
+import { disclaimerShort, disclaimerFull } from '../data/disclaimer.js';
 
 // Приватный сентинел для обозначения race condition внутри транзакции —
 // выбрасывается из $transaction callback и ловится снаружи, чтобы сделать
@@ -159,6 +160,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       },
       accessToken,
       refreshToken,
+      // Phase 6 C1 — дисклеймер в ОНБОРДИНГЕ (показывается один раз
+      // при регистрации). SSOT-текст; «друг, не психолог».
+      disclaimer: disclaimerShort(),
     });
   });
 
@@ -513,5 +517,28 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return reply.send({ user });
+  });
+
+  // ----- PROFILE READ (settings) -------------------------------------------
+  // Phase 6 C1: read-эндпоинта профиля не было — добавлен минимально
+  // (стандартный, аддитивный). Несёт disclaimerFull → «всегда
+  // доступен в settings» (требование спеки). Auth-gated.
+  app.get('/auth/me', {
+    preHandler: [authMiddleware],
+  }, async (request, reply) => {
+    const user = await prisma.user.findUnique({
+      where: { id: request.userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        currency: true,
+        assistantStyle: true,
+        assistantGender: true,
+        wakeUpTime: true,
+      },
+    });
+    if (!user) return reply.status(404).send({ message: 'Не найден' });
+    return reply.send({ user, disclaimer: disclaimerFull() });
   });
 }
