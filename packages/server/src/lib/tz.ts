@@ -81,6 +81,18 @@ export function localDayStartUTC(tz: string, at: Date = new Date()): Date {
   return new Date(guessUTC - off);
 }
 
+/** Локальный час юзера 0..23 (R11 тихие часы — не серверный UTC). */
+export function localHour(tz: string, at: Date = new Date()): number {
+  const zone = safeTz(tz);
+  return Number(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).format(at),
+  );
+}
+
 /** UTC-инстант начала дня `n` дней назад относительно локального дня. */
 export function localDayStartUTCOffset(
   tz: string,

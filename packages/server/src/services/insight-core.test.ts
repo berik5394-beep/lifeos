@@ -4,6 +4,8 @@ import {
   pickForPush,
   flatInsightToCandidate,
   joinFeed,
+  withinQuietHours,
+  chooseInsightToPush,
   type InsightCandidate,
   type ActiveInsight,
 } from './insight-core.js';
@@ -244,5 +246,40 @@ describe('pickForPush — R6 ровно один (max severity, тай-брей�
       { id: 'new', severity: 5, createdAt: new Date(NOW.getTime() - DAY) },
     ]);
     expect(r?.id).toBe('new');
+  });
+});
+
+describe('withinQuietHours — R11 тихие часы (tz-агностично)', () => {
+  it('ночь [22..24) → тихо', () => {
+    expect(withinQuietHours(22, 7)).toBe(true);
+    expect(withinQuietHours(23, 7)).toBe(true);
+  });
+  it('до пробуждения [0..wakeUp) → тихо', () => {
+    expect(withinQuietHours(3, 7)).toBe(true);
+    expect(withinQuietHours(6, 7)).toBe(true);
+  });
+  it('день [wakeUp..22) → можно', () => {
+    expect(withinQuietHours(7, 7)).toBe(false);
+    expect(withinQuietHours(13, 7)).toBe(false);
+    expect(withinQuietHours(21, 7)).toBe(false);
+  });
+});
+
+describe('chooseInsightToPush — R6 ≤1/день + R11 + top-severity', () => {
+  const u = [
+    { id: 'low', severity: 3, createdAt: new Date(NOW.getTime() - DAY) },
+    { id: 'hi', severity: 8, createdAt: new Date(NOW.getTime() - 2 * DAY) },
+  ];
+  it('уже доставляли сегодня → null (не спамим)', () => {
+    expect(chooseInsightToPush(u, 13, 7, true)).toBeNull();
+  });
+  it('тихие часы → null (придёт после пробуждения)', () => {
+    expect(chooseInsightToPush(u, 3, 7, false)).toBeNull();
+  });
+  it('день + не доставляли → top-severity', () => {
+    expect(chooseInsightToPush(u, 13, 7, false)?.id).toBe('hi');
+  });
+  it('пусто → null', () => {
+    expect(chooseInsightToPush([], 13, 7, false)).toBeNull();
   });
 });

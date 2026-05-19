@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { generateProactiveNotifications } from './proactive-notifications.js';
 import { runPetStreakSweep } from './pet-streak-service.js';
 import { deliverNotification } from './push-service.js';
+import { deliverTopInsight } from './insight-store.js';
 
 /**
  * Фаза 4.1 — планировщик проактивности.
@@ -117,6 +118,19 @@ async function tick(): Promise<void> {
             .deleteMany({ where: { userId, type: n.type, scheduledFor: n.scheduledFor } })
             .catch(() => {});
         }
+      }
+
+      // R6 — ЕДИНЫЙ Insight-стор: ≤1 пуш/день, top-severity, вне
+      // тихих часов (R11), tz-корректно. НЕ-фатально: сбой не должен
+      // ронять тик/notifications. Идемпотентно по дню (deliveredAt).
+      try {
+        const ins = await deliverTopInsight(userId, new Date());
+        if (ins.deliveredId) delivered++;
+      } catch (err) {
+        console.warn(
+          `[scheduler] insight push failed user=${userId}:`,
+          err instanceof Error ? err.message : err,
+        );
       }
     }
 
