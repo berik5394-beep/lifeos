@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   selectInsights,
   pickForPush,
+  flatInsightToCandidate,
   type InsightCandidate,
   type ActiveInsight,
 } from './insight-core.js';
@@ -130,6 +131,74 @@ describe('selectInsights — дедуп ВНУТРИ батча (max severity)',
       3,
     );
     expect(r.create[0].source).toBe('reflector');
+  });
+});
+
+describe('flatInsightToCandidate — адаптер плоского движка (R5)', () => {
+  it('severity info|warning|critical → 3|6|9', () => {
+    const base = { id: 'x', category: 'finance', title: 't', message: 'm' };
+    expect(flatInsightToCandidate({ ...base, severity: 'info' }).severity).toBe(3);
+    expect(flatInsightToCandidate({ ...base, severity: 'warning' }).severity).toBe(6);
+    expect(
+      flatInsightToCandidate({ ...base, severity: 'critical' }).severity,
+    ).toBe(9);
+  });
+
+  it('kind=category, scope=id, source=proactive_insights, rationale=title', () => {
+    const c = flatInsightToCandidate({
+      id: 'budget_over_food',
+      severity: 'critical',
+      category: 'finance',
+      title: 'Бюджет превышен',
+      message: 'msg',
+      dismissKey: 'budget_over_food_2026_5',
+    });
+    expect(c.kind).toBe('finance');
+    expect(c.scope).toBe('budget_over_food');
+    expect(c.source).toBe('proactive_insights');
+    expect(c.rationale).toBe('Бюджет превышен');
+    expect(c.dismissKey).toBe('budget_over_food_2026_5');
+  });
+
+  it('НЕ выдумывает suggestedAction (честность — flat.actionable = UI, не tool)', () => {
+    const c = flatInsightToCandidate({
+      id: 'x',
+      severity: 'info',
+      category: 'tasks',
+      title: 't',
+      message: 'm',
+    });
+    expect(c.suggestedAction).toBeUndefined();
+  });
+
+  it('адаптер + selectInsights: два прохода одного flat-инсайта → cooldown', () => {
+    const f: Parameters<typeof flatInsightToCandidate>[0] = {
+      id: 'budget_over_food',
+      severity: 'critical',
+      category: 'finance',
+      title: 't',
+      message: 'm',
+    };
+    const c = flatInsightToCandidate(f);
+    const first = selectInsights([c], [], NOW, 3);
+    expect(first.create).toHaveLength(1);
+    // Имитируем активный из первого прохода, второй прогон в cooldown.
+    const r2 = selectInsights(
+      [c],
+      [
+        {
+          id: 'persisted1',
+          kind: c.kind,
+          scope: c.scope,
+          severity: c.severity,
+          createdAt: new Date(NOW.getTime() - DAY),
+        },
+      ],
+      NOW,
+      3,
+    );
+    expect(r2.create).toHaveLength(0);
+    expect(r2.supersedeIds).toHaveLength(0);
   });
 });
 

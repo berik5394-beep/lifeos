@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { persistFlatInsights } from './insight-store.js';
 
 /**
  * Proactive Insights — JARVIS сам смотрит на данные юзера и формирует
@@ -170,7 +171,7 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
     }),
   ]);
 
-  return buildInsights(
+  const result = buildInsights(
     {
       staleTasks,
       todayEvents,
@@ -193,6 +194,18 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
     },
     now,
   );
+
+  // R5 P4-fold: оживляем ЕДИНУЮ Insight-таблицу писателем (с source).
+  // АДДИТИВНО и НЕ-фатально: фид возвращается как раньше; сбой
+  // персиста не должен ломать пользовательский ответ (он pull-only,
+  // таблица станет источником в R5.4). Best-effort провенанс.
+  try {
+    await persistFlatInsights(userId, result, now);
+  } catch (err) {
+    console.error('[R5] persistFlatInsights failed (non-fatal):', err);
+  }
+
+  return result;
 }
 
 /**
