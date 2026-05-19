@@ -6,6 +6,8 @@ import {
   joinFeed,
   withinQuietHours,
   chooseInsightToPush,
+  severityBand,
+  tableOnlyFeed,
   type InsightCandidate,
   type ActiveInsight,
 } from './insight-core.js';
@@ -224,6 +226,45 @@ describe('joinFeed — R5.4 гибрид (таблица=lifecycle, payload=comp
   it('scopeKey без payload (условие ушло) просто не появляется', () => {
     const r = joinFeed(computed, new Set(['gone_key', 'stale_task_1']));
     expect(r.map((x) => x.id)).toEqual(['stale_task_1']);
+  });
+});
+
+describe('severityBand — core 1..10 → UI-полоса (P3.b.5)', () => {
+  it('границы: <=4 info, 5..7 warning, >=8 critical', () => {
+    expect(severityBand(3)).toBe('info');
+    expect(severityBand(4)).toBe('info');
+    expect(severityBand(5)).toBe('warning');
+    expect(severityBand(7)).toBe('warning');
+    expect(severityBand(8)).toBe('critical');
+    expect(severityBand(9)).toBe('critical');
+  });
+});
+
+describe('tableOnlyFeed — рефлектор в ленте (P3.b.5 гибрид)', () => {
+  const rows = [
+    { scopeKey: 'finance:cashflow', severity: 9, message: 'минус', dismissKey: 'r_cf' },
+    { scopeKey: 'goal:finance', severity: 7, message: 'отстаёт+stale', dismissKey: null },
+    { scopeKey: 'budget_over_food', severity: 6, message: 'flat-twin', dismissKey: null },
+  ];
+  it('ряды без compute-близнеца → FeedItem из СВОЕГО payload', () => {
+    const r = tableOnlyFeed(rows, new Set(['budget_over_food']));
+    expect(r.map((x) => x.id)).toEqual(['finance:cashflow', 'goal:finance']);
+    expect(r[0]).toMatchObject({
+      id: 'finance:cashflow',
+      severity: 'critical',
+      category: 'reflector',
+      title: 'JARVIS',
+      message: 'минус',
+      dismissKey: 'r_cf',
+    });
+  });
+  it('покрытый compute scopeKey исключён (не дублируем плоское)', () => {
+    const r = tableOnlyFeed(rows, new Set(['finance:cashflow']));
+    expect(r.find((x) => x.id === 'finance:cashflow')).toBeUndefined();
+  });
+  it('dismissKey=null → поле отсутствует (не null в контракте)', () => {
+    const r = tableOnlyFeed([rows[1]], new Set());
+    expect('dismissKey' in r[0]).toBe(false);
   });
 });
 

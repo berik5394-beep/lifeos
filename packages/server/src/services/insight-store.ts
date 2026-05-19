@@ -134,6 +134,41 @@ export async function activeScopeKeys(
 }
 
 /**
+ * P3.b.5 — активные ряды стора для ленты (гибрид R5.4). Те, у кого
+ * НЕТ compute-близнеца (рефлектор), рендерятся из своего payload
+ * (tableOnlyFeed). Активный = не superseded/dismissed/expired.
+ */
+export async function activeRowsForFeed(
+  userId: string,
+  now: Date = new Date(),
+): Promise<
+  Array<{ scopeKey: string; severity: number; message: string; dismissKey: string | null }>
+> {
+  const rows = await prisma.insight.findMany({
+    where: {
+      userId,
+      supersededAt: null,
+      dismissed: false,
+      scopeKey: { not: null },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    select: {
+      scopeKey: true,
+      severity: true,
+      message: true,
+      dismissKey: true,
+    },
+    orderBy: { severity: 'desc' },
+  });
+  return rows.map((r) => ({
+    scopeKey: r.scopeKey as string,
+    severity: r.severity,
+    message: r.message,
+    dismissKey: r.dismissKey,
+  }));
+}
+
+/**
  * R6 — доставить РОВНО один инсайт пушем (≤1/день, top-severity,
  * вне тихих часов R11). DB/tz-glue; решение — чистое
  * chooseInsightToPush. tz-КОРРЕКТНО: локальный час и «доставлено

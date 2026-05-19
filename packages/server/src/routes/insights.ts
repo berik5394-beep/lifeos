@@ -5,8 +5,8 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { rateLimiter } from '../middleware/security.js';
 import { generateInsights } from '../services/proactive-insights.js';
-import { activeScopeKeys } from '../services/insight-store.js';
-import { joinFeed } from '../services/insight-core.js';
+import { activeRowsForFeed } from '../services/insight-store.js';
+import { joinFeed, tableOnlyFeed } from '../services/insight-core.js';
 
 const dismissSchema = z.object({
   dismissKey: z.string().min(1).max(128),
@@ -29,8 +29,18 @@ export async function insightsRoutes(app: FastifyInstance): Promise<void> {
   // отдаёт computed (резильентно, не прячем всё из-за сбоя стора).
   app.get('/insights', { preHandler: insightsLimiter }, async (request) => {
     const computed = await generateInsights(request.userId);
-    const keys = await activeScopeKeys(request.userId);
-    const insights = joinFeed(computed, keys);
+    const rows = await activeRowsForFeed(request.userId);
+    // R5.4 гибрид: плоские — payload из compute (членство по lifecycle
+    // стора); P3.b.5: ряды БЕЗ compute-близнеца (рефлектор) —
+    // из СВОЕГО honest payload. Резильентность joinFeed: пустой
+    // keys → computed как есть (персист упал).
+    const keys = new Set(rows.map((r) => r.scopeKey));
+    const flat = joinFeed(computed, keys);
+    const reflector = tableOnlyFeed(
+      rows,
+      new Set(computed.map((c) => c.id)),
+    );
+    const insights = [...flat, ...reflector];
     return { insights, generatedAt: new Date().toISOString() };
   });
 
