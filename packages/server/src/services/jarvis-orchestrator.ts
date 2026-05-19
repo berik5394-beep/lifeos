@@ -15,6 +15,7 @@ import {
   type BookingContext,
 } from './smart-booking.js';
 import { runAgent } from './claude-agent.js';
+import { isPlannerIntent } from './planner-service.js';
 import { captureMemory } from './memory-service.js';
 import { trackInterests } from './interest-service.js';
 import { runRegistryTool, toolConfirmRequired } from '../tools/index.js';
@@ -99,15 +100,12 @@ export function looksCaptureWorthy(text: string): boolean {
   const MONEY_RECORD =
     /(?:^|\s)(?:расход|доход)(?:[\s:.,!?]|$)|потрат(?:ил|ила|или|ить|ь|им)|истрат(?:ил|ила|или|ить)|заработал[аи]?|(?:получил[аи]?|пришла)\s+зарплат|зарплат[ауые]|(?:запиши|записать|добав[ьи]|внес[иь]|отметь)\s+(?:\S+\s+){0,2}?(?:расход|доход|трат|зарплат|преми)/i;
   if (MONEY_RECORD.test(t)) return false;
-  // L99/W4: planner-интент («разбей мою цель…», «составь план под
-  // цель», «как достичь цели X») идёт в decompose_goal — он строит
-  // РЕАЛЬНОЕ дерево. captureInBackground НЕ должен параллельно лепить
-  // мусорные задачи (артефакт cmpbhm7n* из ISSUE-3 cleanup —
-  // двойная-генерация). «разбить задачу», «построить дом» (без
-  // цель/план-под) — НЕ planner, проходят как ambient.
-  const PLANNER_INTENT =
-    /(разбе[йи]|разлож[иь]|декомпоз|распиши).{0,24}?цел|план под цель|как (?:мне )?достич(?:ь|ну)|(?:состав[ьи]|построй|сделай|набросай) план (?:под|на|по)/i;
-  if (PLANNER_INTENT.test(t)) return false;
+  // L99/W4 SSOT: planner-интент распознаёт ЕДИНАЯ isPlannerIntent
+  // из planner-service (не локальный regex — иначе два детектора
+  // разойдутся). «разбей мою цель…» идёт в decompose_goal (реальное
+  // дерево); capture НЕ должен параллельно лепить мусор (артефакт
+  // cmpbhm7n* из ISSUE-3 cleanup). intent-symmetry.test фиксирует.
+  if (isPlannerIntent(t)) return false;
   return true;
 }
 

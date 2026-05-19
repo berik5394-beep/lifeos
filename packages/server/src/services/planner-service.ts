@@ -342,6 +342,22 @@ export function plannerMayPatchParent(createdByThisCall: boolean): boolean {
   return createdByThisCall;
 }
 
+/**
+ * L99/W4 — ЕДИНЫЙ источник «это planner-команда» (SSOT, как
+ * SSOT-tools). Распознаёт ФРАЗУ-команду декомпозиции («разбей мою
+ * цель X», «составь план под цель», «как достичь цели Y»). Живёт
+ * РЯДОМ с classifyGoal в planner-модуле; capture-gate ОБЯЗАН
+ * потреблять ИМЕННО ЭТУ функцию, не свой regex — иначе два
+ * детектора разойдутся (intent-symmetry.test это фиксирует).
+ * «разбить задачу», «построить дом» (без цель/план-под) — НЕ
+ * planner, остаются ambient.
+ */
+export function isPlannerIntent(text: string): boolean {
+  return /(разбе[йи]|разлож[иь]|декомпоз|распиши).{0,24}?цел|план под цель|как (?:мне )?достич(?:ь|ну)|(?:состав[ьи]|построй|сделай|набросай) план (?:под|на|по)/i.test(
+    text.trim(),
+  );
+}
+
 export function classifyGoal(text: string): GoalDecision {
   const t = text.trim();
   // Проект С дедлайном → milestones (НЕ по дням). Проверяем первым:
