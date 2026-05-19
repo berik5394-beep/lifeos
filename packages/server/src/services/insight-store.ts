@@ -93,3 +93,25 @@ export async function persistFlatInsights(
 
   return { created: create.length, superseded: supersedeIds.length };
 }
+
+/**
+ * R5.4 — scopeKey активных ядро-инсайтов (lifecycle SSOT для фида).
+ * Активный = не superseded, не dismissed, не протух. Пустой Set
+ * (легаси-only / персист упал) → joinFeed отдаст computed (резильент).
+ */
+export async function activeScopeKeys(
+  userId: string,
+  now: Date = new Date(),
+): Promise<Set<string>> {
+  const rows = await prisma.insight.findMany({
+    where: {
+      userId,
+      supersededAt: null,
+      dismissed: false,
+      scopeKey: { not: null },
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    select: { scopeKey: true },
+  });
+  return new Set(rows.map((r) => r.scopeKey as string));
+}

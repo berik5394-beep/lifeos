@@ -3,6 +3,7 @@ import {
   selectInsights,
   pickForPush,
   flatInsightToCandidate,
+  joinFeed,
   type InsightCandidate,
   type ActiveInsight,
 } from './insight-core.js';
@@ -199,6 +200,28 @@ describe('flatInsightToCandidate — адаптер плоского движк�
     );
     expect(r2.create).toHaveLength(0);
     expect(r2.supersedeIds).toHaveLength(0);
+  });
+});
+
+describe('joinFeed — R5.4 гибрид (таблица=lifecycle, payload=compute)', () => {
+  const computed = [
+    { id: 'budget_over_food', title: 'A' },
+    { id: 'stale_task_1', title: 'B' },
+    { id: 'pet_sick', title: 'C' },
+  ];
+
+  it('фид = computed ∩ активные scopeKeys, порядок compute сохранён', () => {
+    const r = joinFeed(computed, new Set(['pet_sick', 'budget_over_food']));
+    expect(r.map((x) => x.id)).toEqual(['budget_over_food', 'pet_sick']);
+  });
+
+  it('пустой Set (персист упал) → computed как есть (резильентно)', () => {
+    expect(joinFeed(computed, new Set())).toEqual(computed);
+  });
+
+  it('scopeKey без payload (условие ушло) просто не появляется', () => {
+    const r = joinFeed(computed, new Set(['gone_key', 'stale_task_1']));
+    expect(r.map((x) => x.id)).toEqual(['stale_task_1']);
   });
 });
 

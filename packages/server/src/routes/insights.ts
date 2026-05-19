@@ -5,6 +5,8 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { rateLimiter } from '../middleware/security.js';
 import { generateInsights } from '../services/proactive-insights.js';
+import { activeScopeKeys } from '../services/insight-store.js';
+import { joinFeed } from '../services/insight-core.js';
 
 const dismissSchema = z.object({
   dismissKey: z.string().min(1).max(128),
@@ -20,8 +22,15 @@ export async function insightsRoutes(app: FastifyInstance): Promise<void> {
 
   // GET /insights — массив проактивных подсказок для дашборда / утреннего пуша.
   // Юзер видит "Серика откладываешь 3 дня", "бюджет на еду на исходе" и т.д.
+  // R5.4 гибрид: generateInsights считает payload + персистит lifecycle
+  // (R5.3). Членство фида решает Insight-таблица (activeScopeKeys =
+  // SSOT: не superseded/dismissed/expired), UI-payload — из compute по
+  // scopeKey. Пустой Set (персист упал, НЕ-фатальный) → joinFeed
+  // отдаёт computed (резильентно, не прячем всё из-за сбоя стора).
   app.get('/insights', { preHandler: insightsLimiter }, async (request) => {
-    const insights = await generateInsights(request.userId);
+    const computed = await generateInsights(request.userId);
+    const keys = await activeScopeKeys(request.userId);
+    const insights = joinFeed(computed, keys);
     return { insights, generatedAt: new Date().toISOString() };
   });
 
