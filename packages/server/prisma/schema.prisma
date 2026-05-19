@@ -153,6 +153,9 @@ model Habit {
   planParentId   String?
   planParentType String?
   derivedFrom    String  @default("user")
+  // Phase 5 P2 4/5 — re-decompose архивирует planner-привычку
+  // (archivedAt), не удаляет. Habit.createdAt уже есть выше.
+  archivedAt     DateTime?
 
   @@index([userId])
   @@index([planParentId])
@@ -228,6 +231,12 @@ model WeeklyGoal {
   planParentId   String?
   planParentType String?
   derivedFrom    String  @default("user")
+  // Phase 5 P2 4/5 — re-decompose: при смене цели старых planner-
+  // детей АРХИВИРУЕМ (archivedAt=now), не удаляем (прогресс/история
+  // целы). Активные = archivedAt:null. createdAt — для истинного
+  // planStale (цель изменена ПОСЛЕ постройки плана).
+  createdAt      DateTime  @default(now())
+  archivedAt     DateTime?
 
   @@index([userId, weekStart])
   @@index([planParentId])
@@ -262,6 +271,10 @@ model YearlyGoal {
   planParentId   String?
   planParentType String?
   derivedFrom    String  @default("user")
+  // Phase 5 P2 4/5 — истинный planStale: цель изменена ПОЗЖЕ
+  // постройки плана ⟺ updatedAt > max(active planner-child.createdAt).
+  // @updatedAt — Prisma сам трогает при апдейте YearlyGoal.
+  updatedAt      DateTime @updatedAt @default(now())
 
   @@index([userId, year])
   @@index([planParentId])

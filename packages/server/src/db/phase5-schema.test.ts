@@ -73,6 +73,43 @@ describe('Phase 5 P2 — YearlyGoal pacing (E + custom)', () => {
   });
 });
 
+describe('Phase 5 P2 4/5 — re-decompose foundation (W2/ISSUE-Z)', () => {
+  it('WeeklyGoal: createdAt + archivedAt', () => {
+    const b = modelBlock('WeeklyGoal');
+    expect(b).toMatch(/createdAt\s+DateTime\s+@default\(now\(\)\)/);
+    expect(b).toMatch(/archivedAt\s+DateTime\?/);
+  });
+  it('Habit: archivedAt (createdAt уже был)', () => {
+    expect(modelBlock('Habit')).toMatch(/archivedAt\s+DateTime\?/);
+  });
+  it('YearlyGoal: updatedAt @updatedAt (для истинного planStale)', () => {
+    expect(modelBlock('YearlyGoal')).toMatch(
+      /updatedAt\s+DateTime\s+@updatedAt\s+@default\(now\(\)\)/,
+    );
+  });
+  it('миграция p2_45_archived_at — аддитивна, без DROP', () => {
+    const dir = join(root, 'prisma/migrations');
+    const mig = readdirSync(dir).find((d) =>
+      d.includes('p2_45_archived_at'),
+    );
+    expect(mig).toBeTruthy();
+    const sql = readFileSync(join(dir, mig!, 'migration.sql'), 'utf-8');
+    expect(sql).toMatch(
+      /ALTER TABLE "WeeklyGoal" ADD COLUMN IF NOT EXISTS "createdAt"/,
+    );
+    expect(sql).toMatch(
+      /ALTER TABLE "WeeklyGoal" ADD COLUMN IF NOT EXISTS "archivedAt"/,
+    );
+    expect(sql).toMatch(
+      /ALTER TABLE "Habit" ADD COLUMN IF NOT EXISTS "archivedAt"/,
+    );
+    expect(sql).toMatch(
+      /ALTER TABLE "YearlyGoal" ADD COLUMN IF NOT EXISTS "updatedAt"/,
+    );
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+  });
+});
+
 describe('Phase 5 P1 — Insight (рефлектор)', () => {
   const ins = modelBlock('Insight');
   it('обязательные поля присутствуют', () => {
