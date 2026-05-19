@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { persistFlatInsights } from './insight-store.js';
+import { planVsFact } from './plan-vs-fact.js';
 
 /**
  * Proactive Insights — JARVIS сам смотрит на данные юзера и формирует
@@ -452,22 +453,25 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
   // года. «Ты сам ставил цель X — год прошёл на N%, а ты на M%».
   // Это и есть джарвисовское «помню, ты хотел…» на реальных данных.
   {
-    const yearStart = new Date(now.getFullYear(), 0, 1);
-    const yearEnd = new Date(now.getFullYear() + 1, 0, 1);
-    const elapsed =
-      (now.getTime() - yearStart.getTime()) /
-      (yearEnd.getTime() - yearStart.getTime());
-
-    // Слишком рано (январь) — рано судить об отставании.
-    if (elapsed >= 0.15) {
-      const expectedPct = Math.round(elapsed * 100);
-      const behind = yearlyGoals
-        .map((g) => {
-          // progress может быть 0..1 или 0..100 — нормализуем.
-          const pct = g.progress > 1 ? Math.round(g.progress) : Math.round(g.progress * 100);
-          return { ...g, pct, gap: expectedPct - pct };
-        })
-        .filter((g) => g.gap >= 25)
+    // R4: формула план↔факт — ЕДИНАЯ граница (planVsFact), НЕ копия.
+    // tooEarly (январь, elapsed<15%) гейтит эмиссию — рано судить.
+    const { goals: verdicts, tooEarly, yearElapsedPct: expectedPct } =
+      planVsFact(
+        yearlyGoals.map((g) => ({
+          area: g.area,
+          goalText: g.goalText,
+          progress: g.progress,
+          // planStale здесь не нужен (нет timestamps в этом срезе) —
+          // нейтральные значения, эмитим только по gap/status.
+          updatedAt: now,
+          planBuiltAt: null,
+          planWeeks: 0,
+        })),
+        now,
+      );
+    if (!tooEarly) {
+      const behind = verdicts
+        .filter((g) => g.status === 'отстаёт')
         .sort((a, b) => b.gap - a.gap)
         .slice(0, 2); // не заваливаем — максимум 2 самые отстающие
 
@@ -477,7 +481,7 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
           severity: 'warning',
           category: 'tasks',
           title: 'Годовая цель отстаёт',
-          message: `Ты ставил цель «${g.goalText}» (${g.area}): выполнено ~${g.pct}%, а год прошёл на ${expectedPct}%. Отстаём — давай наверстаем?`,
+          message: `Ты ставил цель «${g.goalText}» (${g.area}): выполнено ~${g.progressPct}%, а год прошёл на ${expectedPct}%. Отстаём — давай наверстаем?`,
           actionable: { label: 'Открыть цели', type: 'open_goals' },
           dismissKey: `goal_behind_${g.area}_${now.getFullYear()}`,
         });

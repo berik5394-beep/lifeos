@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getRelevantMemories } from '../services/memory-service.js';
 import { defineTool } from './_types.js';
+import { planVsFact, yearElapsedPct } from '../services/plan-vs-fact.js';
 
 /**
  * SSOT 9A.7 (последний read-tool) — миграция get_goal_progress в
@@ -35,12 +36,8 @@ export const getGoalProgressTool = defineTool({
     const now = new Date();
     const year = now.getFullYear();
     const yearStart = new Date(year, 0, 1);
-    const yearEnd = new Date(year + 1, 0, 1);
-    const elapsedPct = Math.round(
-      ((now.getTime() - yearStart.getTime()) /
-        (yearEnd.getTime() - yearStart.getTime())) *
-        100,
-    );
+    // R4: темп года — из ЕДИНОЙ границы план↔факт (не локальная копия).
+    const elapsedPct = yearElapsedPct(now);
     const area = input.area ? String(input.area).toLowerCase().trim() : null;
 
     const goals = await prisma.yearlyGoal.findMany({
@@ -142,43 +139,46 @@ export const getGoalProgressTool = defineTool({
     const memQuery = area || goals.map((g) => g.goalText).join(' ') || 'цель';
     const remembered = await getRelevantMemories(userId, memQuery, 5);
 
+    // R4: вердикт план↔факт — ЕДИНАЯ граница (planVsFact), не
+    // локальная копия формулы. Порядок verdicts == порядок goals.
+    const { goals: verdicts } = planVsFact(
+      goals.map((g) => ({
+        area: g.area,
+        goalText: g.goalText,
+        progress: g.progress,
+        updatedAt: g.updatedAt,
+        planBuiltAt: builtByGoal.get(g.id) ?? null,
+        planWeeks: weeksByGoal.get(g.id) ?? 0,
+      })),
+      now,
+    );
+
     return {
       yearElapsedPct: elapsedPct,
-      goals: goals.map((g) => {
-        const pct =
-          g.progress > 1
-            ? Math.round(g.progress)
-            : Math.round(g.progress * 100);
-        const gap = elapsedPct - pct;
+      goals: goals.map((g, i) => {
+        const v = verdicts[i];
         const weeks = weeksByGoal.get(g.id) ?? 0;
         return {
           area: g.area,
           goal: g.goalText,
-          progressPct: pct,
-          expectedPct: elapsedPct,
-          status:
-            gap >= 25 ? 'отстаёт' : gap <= -10 ? 'с опережением' : 'в графике',
+          progressPct: v.progressPct,
+          expectedPct: v.expectedPct,
+          status: v.status,
           relatedTasks: taskStats[AREA_TO_CAT[g.area.toLowerCase()]] ?? null,
-          // 4/5.c: ИСТИННЫЙ planStale (теперь вычислим). Цель
-          // менялась ПОЗЖЕ постройки плана ⟺ updatedAt > newest
-          // active planner-child createdAt (+60с буфер от ms-джиттера
-          // при создании в одной транзакции — не кричим «устарел» на
-          // свежепостроенном). Честный boolean, не догадка.
-          plan: (() => {
-            if (weeks <= 0) return null;
-            const built = builtByGoal.get(g.id) ?? null;
-            const stale =
-              !!built &&
-              g.updatedAt.getTime() > built.getTime() + 60_000;
-            return {
-              weeks,
-              habit: habitByGoal.get(g.id) ?? null,
-              stale,
-              note: stale
-                ? 'Цель менялась ПОСЛЕ построения плана — план устарел. Скажи «перестрой план» (старый сохранится в истории).'
-                : 'План актуален.',
-            };
-          })(),
+          // 4/5.c + R4: ИСТИННЫЙ planStale из ЕДИНОЙ границы
+          // (updatedAt > planBuiltAt +60с буфер ms-джиттера). Честный
+          // boolean, не догадка. plan=null если плана нет (weeks<=0).
+          plan:
+            weeks <= 0
+              ? null
+              : {
+                  weeks,
+                  habit: habitByGoal.get(g.id) ?? null,
+                  stale: v.planStale,
+                  note: v.planStale
+                    ? 'Цель менялась ПОСЛЕ построения плана — план устарел. Скажи «перестрой план» (старый сохранится в истории).'
+                    : 'План актуален.',
+                },
         };
       }),
       remembered: remembered.map((m) => m.content),
