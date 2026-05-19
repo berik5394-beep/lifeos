@@ -286,3 +286,32 @@ Add a system-prompt rule: if N=0 phrase as «ни одной ещё не
 still too long (~25s TTS). Add to the voice prompt: max ~3 sentences
 / ~15s speaking time; for detail say "открой приложение / хочешь
 полный список". Prep for mobile UX.
+
+## ISSUE-Z — planner rolling-window + true planStale (gated on schema)
+
+Opened from L99 review (Berik). Two deferred planner debts that share
+a root (missing schema fields):
+
+1. **Rolling-window extension policy.** planTreeToRows caps at 8
+   WeeklyGoal rows (~2-month horizon — enough for the reflector, not
+   52 fabricated rows, doesn't pollute the yearly view). But nobody
+   generates week N+1 when the window runs out. Decision (NOT in 3c):
+   the reflector (P3), once a week, scans each active plan tree — if
+   the last planner WeeklyGoal.weekStart < today + 4 weeks → re-invoke
+   the planner to extend. Until then a plan "ends" after ~2 months
+   with no continuation. Acceptable for 3c (near-term concrete + pacing
+   meta), must be solved in P3 reflector.
+
+2. **True planStale signal.** W8 ships only an honest "a plan exists"
+   marker in get_goal_progress. A real "parent goal changed → children
+   stale" detector is NOT computable today: WeeklyGoal has no numeric
+   target and neither WeeklyGoal nor YearlyGoal has createdAt/updatedAt,
+   so neither target-sum nor timestamp comparison is possible.
+   Fabricating planStale would itself be a bug-#1 fake signal — refused.
+   Real planStale is gated on the SAME additive migration as W2
+   (re-decompose): add updatedAt (and/or per-child target) to
+   YearlyGoal/WeeklyGoal. Do it together with the archivedAt migration
+   for P2 4/5, then implement timestamp/target-based staleness.
+
+Blocked-by: the W2 archivedAt + timestamp migration. Do not fake
+either signal before the schema supports it.
