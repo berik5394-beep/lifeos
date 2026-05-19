@@ -169,3 +169,32 @@ describe('Phase 5 P1 — миграция реально создаёт стру
     expect(sql).toMatch(/Insight_userId_fkey[\s\S]*ON DELETE CASCADE/);
   });
 });
+
+describe('Phase 5 P3.a — reflector schema (R7 + R2 SSOT)', () => {
+  it('User.reflectorTuning Json? (R7 learning-loop)', () => {
+    expect(modelBlock('User')).toMatch(/reflectorTuning\s+Json\?/);
+  });
+  it('Insight.dismissKey String? (R2 единый dismiss-стор)', () => {
+    expect(modelBlock('Insight')).toMatch(/dismissKey\s+String\?/);
+  });
+  it('Insight.userFeedback СОХРАНЁН @deprecated (ISSUE-X: не дропаем)', () => {
+    const ins = modelBlock('Insight');
+    expect(ins).toMatch(/userFeedback\s+String\?/);
+    expect(ins).toMatch(/@deprecated[\s\S]*InsightDismissal/);
+  });
+  it('миграция p3_reflector_schema — аддитивна, без DROP', () => {
+    const dir = join(root, 'prisma/migrations');
+    const mig = readdirSync(dir).find((d) =>
+      d.includes('p3_reflector_schema'),
+    );
+    expect(mig).toBeTruthy();
+    const sql = readFileSync(join(dir, mig!, 'migration.sql'), 'utf-8');
+    expect(sql).toMatch(
+      /ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "reflectorTuning"/,
+    );
+    expect(sql).toMatch(
+      /ALTER TABLE "Insight" ADD COLUMN IF NOT EXISTS "dismissKey"/,
+    );
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+  });
+});

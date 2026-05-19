@@ -69,6 +69,10 @@ model User {
   expoPushToken          String?
   sentNotifications      SentNotification[]
   insights               Insight[]
+  // P3/R7 — настройка рефлектора под юзера (learning-loop): какие
+  // типы инсайтов реже/замьючены (3× dismiss → реже). Json, чтобы
+  // не плодить колонки. Аддитивно (правило ISSUE-X).
+  reflectorTuning        Json?
 }
 
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
@@ -840,9 +844,19 @@ model Insight {
   suggestedAction Json?
   // Когда показан юзеру (null = ещё в feed, не доставлен).
   deliveredAt     DateTime?
-  // 'useful' | 'not_useful' | null — петля обучения рефлектора.
+  /// @deprecated P3/R2 SSOT: ЕДИНЫЙ feedback-стор = InsightDismissal
+  /// + dismissKey (его уже использует proactive-insights Phase 4.4).
+  /// userFeedback — параллельный механизм из P1, НЕ используем
+  /// (дрейф, класс W4). НЕ дропаем (правило ISSUE-X: схема
+  /// аддитивна до cutover migrate-deploy). Адаптация читает
+  /// InsightDismissal по dismissKey, не это поле.
   userFeedback    String?
   dismissed       Boolean   @default(false)
+  // P3/R2 — связь Insight с ЕДИНЫМ dismiss/adaptation-стором
+  // (InsightDismissal). Рефлектор и плоский движок эмитят с
+  // dismissKey; дисмисс через тот же routes/insights путь кормит
+  // одну петлю обучения. Один источник правды, как isPlannerIntent.
+  dismissKey      String?
 
   // Лента: новые сверху.
   @@index([userId, createdAt])
