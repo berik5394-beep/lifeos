@@ -20,6 +20,7 @@ import { recallPersonTool } from './recall-person.js';
 import { getWeeklyPlanTool } from './get-weekly-plan.js';
 import { getTripTool } from './get-trip.js';
 import { getGoalProgressTool } from './get-goal-progress.js';
+import { getUserProfileTool } from './get-user-profile.js';
 import { sendTelegramTool } from './send-telegram.js';
 import { decomposeGoalTool } from './decompose-goal.js';
 import { applyInsightTool } from './apply-insight.js';
@@ -63,6 +64,8 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   getWeeklyPlanTool,
   getTripTool,
   getGoalProgressTool,
+  // Phase 6 C2 — синтезированный профиль (read-only).
+  getUserProfileTool,
 ];
 
 export const registry: ReadonlyMap<string, Tool> = new Map(
