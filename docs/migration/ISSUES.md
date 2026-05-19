@@ -336,3 +336,15 @@ style). Pure, 3 unit tests incl. the exact prod artifacts + a
 "plain text untouched / single * not mangled" regression. Applies to
 ALL agent output (chat+planner), structurally enforcing an existing
 rule. full suite 504/504, tsc clean.
+
+## ISSUE-Z UPDATE (P2 4/5 done)
+
+- archivedAt+updatedAt migration: DONE (5b98af4, additive).
+- re-decompose (archive-not-delete, opt-in rebuild): DONE (dc6c271).
+- TRUE planStale (updatedAt > newest active child createdAt +60s):
+  DONE — get_goal_progress.plan.stale is now a real boolean, not a
+  guess. The W2 schema gate is RESOLVED.
+- STILL OPEN (P3 reflector only): rolling-window extension — a plan
+  ~8 weeks long has no auto-continuation; the reflector must, weekly,
+  re-invoke the planner to extend active trees nearing their end.
+  Not a planner concern; tracked for P3.

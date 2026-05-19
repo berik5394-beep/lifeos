@@ -49,7 +49,13 @@ export const getGoalProgressTool = defineTool({
         year,
         ...(area ? { area: { equals: area, mode: 'insensitive' } } : {}),
       },
-      select: { id: true, area: true, goalText: true, progress: true },
+      select: {
+        id: true,
+        area: true,
+        goalText: true,
+        progress: true,
+        updatedAt: true, // 4/5.c: для истинного planStale
+      },
     });
 
     // L99/W8 — честный сигнал наличия плана (не молчаливый void).
@@ -70,11 +76,13 @@ export const getGoalProgressTool = defineTool({
               archivedAt: null, // 4/5: только АКТИВНЫЙ план
             },
             _count: { _all: true },
+            _max: { createdAt: true }, // 4/5.c: когда план построен
           })
         : Promise.resolve(
             [] as Array<{
               planParentId: string | null;
               _count: { _all: number };
+              _max: { createdAt: Date | null };
             }>,
           ),
       goalIds.length
@@ -92,8 +100,13 @@ export const getGoalProgressTool = defineTool({
           ),
     ]);
     const weeksByGoal = new Map<string, number>();
+    const builtByGoal = new Map<string, Date>();
     for (const r of planWeeks)
-      if (r.planParentId) weeksByGoal.set(r.planParentId, r._count._all);
+      if (r.planParentId) {
+        weeksByGoal.set(r.planParentId, r._count._all);
+        if (r._max.createdAt)
+          builtByGoal.set(r.planParentId, r._max.createdAt);
+      }
     const habitByGoal = new Map<string, string>();
     for (const h of planHabits)
       if (h.planParentId && !habitByGoal.has(h.planParentId))
@@ -146,15 +159,26 @@ export const getGoalProgressTool = defineTool({
           status:
             gap >= 25 ? 'отстаёт' : gap <= -10 ? 'с опережением' : 'в графике',
           relatedTasks: taskStats[AREA_TO_CAT[g.area.toLowerCase()]] ?? null,
-          // W8 honest: ФАКТ плана. Без ложного planStale (невычислим).
-          plan:
-            weeks > 0
-              ? {
-                  weeks,
-                  habit: habitByGoal.get(g.id) ?? null,
-                  note: 'План построен планировщиком. Если менял цель — план мог устареть; пересборка будет в ближайшем апдейте.',
-                }
-              : null,
+          // 4/5.c: ИСТИННЫЙ planStale (теперь вычислим). Цель
+          // менялась ПОЗЖЕ постройки плана ⟺ updatedAt > newest
+          // active planner-child createdAt (+60с буфер от ms-джиттера
+          // при создании в одной транзакции — не кричим «устарел» на
+          // свежепостроенном). Честный boolean, не догадка.
+          plan: (() => {
+            if (weeks <= 0) return null;
+            const built = builtByGoal.get(g.id) ?? null;
+            const stale =
+              !!built &&
+              g.updatedAt.getTime() > built.getTime() + 60_000;
+            return {
+              weeks,
+              habit: habitByGoal.get(g.id) ?? null,
+              stale,
+              note: stale
+                ? 'Цель менялась ПОСЛЕ построения плана — план устарел. Скажи «перестрой план» (старый сохранится в истории).'
+                : 'План актуален.',
+            };
+          })(),
         };
       }),
       remembered: remembered.map((m) => m.content),
