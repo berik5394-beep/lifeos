@@ -348,3 +348,32 @@ rule. full suite 504/504, tsc clean.
   ~8 weeks long has no auto-continuation; the reflector must, weekly,
   re-invoke the planner to extend active trees nearing their end.
   Not a planner concern; tracked for P3.
+
+## P3 COMPLETION (R5/R4/R6/R8/P3.b) — 2026-05-19
+
+Reflector subsystem shipped & deployed GREEN. Carried flags / state:
+
+- userFeedback DROP — STILL deferred to ISSUE-Y/X migrate-deploy
+  cutover batch (Berik-approved). P3 never drops; schema additive
+  only (R5.2 added kind/scopeKey/source/expiresAt/supersededAt via
+  IF NOT EXISTS, no DROP).
+- 35M apartment hardcode — RESOLVED in the reflector path:
+  reflector-service derives finance horizon from the user's real
+  YearlyGoal.target (area ~ financ|финанс). No goal → reflect()
+  honestly emits no horizon insight (no fabrication). NOTE: the
+  legacy pull-only life-truth-analyzer.ts STILL has
+  APARTMENT_PRICE_ALMATY_AVG=35M (separate code path, not in the
+  reflector). De-hardcoding that analyzer is a separate task.
+- Scheduler-fold (proactive-notifications) — DEFERRED by design,
+  Berik to decide. proactive-notifications.ts (push: scheduledFor
+  slots, SentNotification dedup) is a different contract from
+  severity-insights; folding it through insight-core would be
+  spec-literalism with regression risk to working delivery. R5's
+  "dual emitter" concern targeted overlapping *insights* (the pull
+  side, now unified via R5.3/R5.4/P3.b.5). Event reminders are
+  notifications, not dispatch-core insights — recommend they stay
+  separate unless a concrete overlap appears.
+- ISSUE-Z rolling-window (auto-extend weekly plans nearing end) —
+  STILL OPEN. The deterministic reflector-core does NOT yet
+  re-invoke the planner to extend trees ~8 weeks out. Tracked as
+  the next reflector capability after P3 lands.
