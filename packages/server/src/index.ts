@@ -37,6 +37,7 @@ import { appInfoRoutes } from './routes/app-info.js';
 import { lifeAnalysisRoutes } from './routes/life-analysis.js';
 import { dictationRoutes } from './routes/dictation.js';
 import { insightsRoutes } from './routes/insights.js';
+import { adminRoutes } from './routes/admin.js';
 import { startBot, stopBot } from './services/telegram-bot.js';
 import { startRefreshTokenCleanup } from './services/token-cleanup.js';
 import { startProactiveScheduler, stopProactiveScheduler } from './services/proactive-scheduler.js';
@@ -206,6 +207,10 @@ await app.register(appInfoRoutes);
 await app.register(lifeAnalysisRoutes);
 await app.register(dictationRoutes);
 await app.register(insightsRoutes);
+// P3-верификация: secret-gated, без authMiddleware (свой x-admin-secret),
+// отключён если ADMIN_SECRET не задан. Безопасно — только триггер
+// протестированного рефлектора, без деструктива.
+await app.register(adminRoutes);
 
 let telegramBot: Telegraf | null = null;
 let tokenCleanupTimer: NodeJS.Timeout | null = null;
