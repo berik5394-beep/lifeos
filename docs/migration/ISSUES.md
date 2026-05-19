@@ -419,3 +419,21 @@ Re-open if/when real users surface reflector misbehavior.
 - Therapeutic triggers REUSE Phase 5 insight-store.persistCandidates
   + R6 delivery + R9/R10/R11 rate-limit (kind:'therapeutic'); do
   NOT build a parallel rate-limiter.
+
+## OPEN NOTES (Phase 6 C1)
+
+- **TOMORROW — verify bot greeting disclaimer.** C1.1g wired
+  disclaimerShort() into buildStartGreeting (first session of day).
+  Smoke (a) /auth/register JSON and (c) GET /auth/me JSON VERIFIED
+  in prod 2026-05-19 (disclaimer present, FULL dedup live: "не
+  замена профессиональной помощи" ×1, 112 ×1). (b) bot greeting
+  NOT yet seen — gated to first-session-of-day; Berik already had
+  a session today. ON NEXT first /start: screenshot greeting,
+  judge naturalness vs "зажёвано". If naggy-daily → add once-ever
+  seen-flag (small additive schema), do not over-build before that
+  judgment.
+- P3 copy-polish (not blocker): "обратиться к специалисту — это
+  не слабость" (em-dash) reads cleaner than current comma form.
+- GET /auth/me ADDED in 1g (no profile-read endpoint existed) —
+  minimal/additive/auth-gated; carries disclaimerFull (settings
+  always-available requirement).
