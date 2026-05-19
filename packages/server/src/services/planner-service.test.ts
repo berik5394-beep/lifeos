@@ -6,6 +6,7 @@ import {
   mondayUTC,
   planTreeToRows,
   plannerMayPatchParent,
+  localTodayUTC,
   type PlanTree,
 } from './planner-service.js';
 
@@ -134,6 +135,32 @@ describe('goalAreaFor — детерминированная area', () => {
     ['прочитать 50 книг', 'career'],
     ['погладить кота', 'personal'],
   ])('«%s» → %s', (t, a) => expect(goalAreaFor(t)).toBe(a));
+});
+
+describe('L99/W11 — weekStart в tz юзера, не сырой UTC', () => {
+  // Алматы UTC+5 (без DST). 2026-05-17T19:30Z = вс 19:30 UTC =
+  // ПН 00:30 по Алматы. Наивный UTC дал бы прошлый понедельник
+  // (баг класса get_today). localTodayUTC+mondayUTC → правильный
+  // понедельник недели юзера.
+  const sundayNightUTC = new Date('2026-05-17T19:30:00Z');
+  it('пн 00:30 Алматы (=вс UTC) → локальная дата = 2026-05-18', () => {
+    expect(localTodayUTC('Asia/Almaty', sundayNightUTC).toISOString()).toBe(
+      '2026-05-18T00:00:00.000Z',
+    );
+  });
+  it('mondayUTC(localToday) = пн недели юзера (2026-05-18), НЕ 05-11', () => {
+    const wk = mondayUTC(localTodayUTC('Asia/Almaty', sundayNightUTC));
+    expect(wk.toISOString()).toBe('2026-05-18T00:00:00.000Z');
+    // доказываем баг наивного UTC: он дал бы прошлый понедельник
+    expect(mondayUTC(sundayNightUTC).toISOString()).toBe(
+      '2026-05-11T00:00:00.000Z',
+    );
+  });
+  it('UTC-midday того же дня → та же локальная дата', () => {
+    expect(
+      localTodayUTC('Asia/Almaty', new Date('2026-05-18T12:00:00Z')).toISOString(),
+    ).toBe('2026-05-18T00:00:00.000Z');
+  });
 });
 
 describe('mondayUTC — начало ISO-недели UTC', () => {

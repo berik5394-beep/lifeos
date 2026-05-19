@@ -43,6 +43,7 @@ const DECOMPOSE =
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma.js';
 import { AiModelError } from '../lib/errors.js';
+import { localDateStr } from '../lib/tz.js';
 
 const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
 
@@ -227,6 +228,19 @@ export function goalAreaFor(text: string): string {
   return 'personal';
 }
 
+/**
+ * W11 (L99 hardening): локальная «сегодня» юзера как UTC-полночь даты
+ * (совместимо с @db.Date). Через тот же lib/tz.localDateStr, что и
+ * get_today — НЕ сырой new Date()/UTC. Иначе для Алматы (UTC+5) в пн
+ * 00:30 локально (=вс 19:30 UTC) weekStart уезжал на прошлый
+ * понедельник (тот же класс, что был фикс get_today). Чистая,
+ * тестируется без сети (localDateStr — Intl, детерминирована).
+ */
+export function localTodayUTC(tz: string, at: Date = new Date()): Date {
+  const [y, m, d] = localDateStr(tz, at).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
 /** Понедельник недели (UTC, 00:00) для даты. */
 export function mondayUTC(d: Date): Date {
   const x = new Date(
@@ -377,7 +391,14 @@ export async function persistPlan(
     };
   }
 
-  const year = new Date().getUTCFullYear();
+  // W11: всё date-math в таймзоне юзера (как get_today), не сырой UTC.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const tz = user?.timezone || 'Asia/Almaty';
+  const todayUTC = localTodayUTC(tz);
+  const year = todayUTC.getUTCFullYear();
   const area = goalAreaFor(g);
 
   // W1: find-or-create корневой YearlyGoal.
@@ -445,7 +466,7 @@ export async function persistPlan(
     };
   }
 
-  const rows = planTreeToRows(tree, yg.id, area, new Date());
+  const rows = planTreeToRows(tree, yg.id, area, todayUTC);
 
   // Транзакция: недельные цели + привычка + патч YearlyGoal.
   // non-destructive — только INSERT planner-строк + UPDATE pacing.
