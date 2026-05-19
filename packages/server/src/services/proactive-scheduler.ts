@@ -45,6 +45,25 @@ async function tick(): Promise<void> {
       );
     }
 
+    // Phase 6 C1 crisis-isolation (b): retention 30 дней для
+    // sensitive кризис-ходов. Идемпотентно by nature (deleteMany
+    // только >30д crisis=true); индекс (crisis, createdAt) делает
+    // это микросекундным когда удалять нечего. НЕ-фатально.
+    try {
+      const cutoff = new Date(Date.now() - 30 * 86_400_000);
+      const purged = await prisma.chatMessage.deleteMany({
+        where: { crisis: true, createdAt: { lt: cutoff } },
+      });
+      if (purged.count > 0) {
+        console.log(`[scheduler] crisis retention: purged ${purged.count}`);
+      }
+    } catch (err) {
+      console.warn(
+        '[scheduler] crisis purge failed:',
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     // Только юзеры с хоть каким-то каналом доставки: expo push token
     // ИЛИ привязанный telegram. Остальных нет смысла обрабатывать.
     const tgUserIds = (

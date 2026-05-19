@@ -173,7 +173,12 @@ async function getRecentHistory(
   limit = 6,
 ): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
   const rows = await prisma.chatMessage.findMany({
-    where: { userId },
+    // Phase 6 C1 crisis-isolation (d): кризис-ходы НЕ попадают в
+    // сырой LLM-контекст (иначе toxic/обычная модель может их
+    // эхнуть). Заботливый follow-up — работа C4-рефлектора через
+    // структурный путь, НЕ через сырую историю. UI /chat/history
+    // НЕ фильтрует (это собственный диалог юзера — решение Берика).
+    where: { userId, crisis: false },
     orderBy: { createdAt: 'desc' },
     take: limit,
     select: { role: true, content: true },

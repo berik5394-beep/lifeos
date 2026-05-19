@@ -437,3 +437,22 @@ Re-open if/when real users surface reflector misbehavior.
 - GET /auth/me ADDED in 1g (no profile-read endpoint existed) —
   minimal/additive/auth-gated; carries disclaimerFull (settings
   always-available requirement).
+
+## C1 crisis-isolation — DECISIONS (Berik 2026-05-19)
+
+- (d) Exclusion scope: crisis=true EXCLUDED from LLM raw context
+  (getRecentHistory `where:{userId,crisis:false}`) so toxic/normal
+  model can't echo crisis; caring follow-up is C4 reflector's job
+  via structured path, NOT raw history. UI /chat/history KEPT
+  unfiltered (user's own conversation — hiding own words is
+  paternalistic). INVARIANT: any FUTURE analytics/export reader of
+  ChatMessage MUST filter crisis=false (none exist today).
+- (b) Retention: scheduler deleteMany crisis=true older than 30d
+  (idempotent, indexed, non-fatal, reuses existing tick).
+- (c) At-rest encryption: RELY on Railway/Postgres provider disk
+  encryption (standard for managed PG; appropriate for solo
+  pre-release). NO app-level field encryption (would break
+  embeddings/search/memory). RE-OPEN CONDITION: before GA / first
+  paying users, evaluate app-level field encryption for crisis
+  rows specifically (they're already excluded from LLM/search, so
+  low blast radius). Tracked here, not silently dropped.
