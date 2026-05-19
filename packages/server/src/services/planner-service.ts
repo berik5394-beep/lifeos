@@ -211,6 +211,108 @@ export async function generatePlanTree(
   return parsePlanTree(c.text);
 }
 
+/** Цель → area YearlyGoal (CLAUDE.md: finance|health|career|
+ *  spirituality, иначе personal). Детерминированно. */
+export function goalAreaFor(text: string): string {
+  const t = text.toLowerCase();
+  if (/накопи|миллион|млн|сэконом|зарабат|доход|деньг|бюджет|финанс/.test(t))
+    return 'finance';
+  if (/похуд|кг|сброси|набра|бега|пробеж|трениров|спорт|зал|форм[уы]|здоров|сон|питани/.test(t))
+    return 'health';
+  if (/медит|духов|молитв|благодар|осознанн|психолог|спокой/.test(t))
+    return 'spirituality';
+  if (/книг|чита|выучи|изучи|научи|освои|язык|английск|курс|карьер|работ|бизнес|навык|диплом|проект/.test(t))
+    return 'career';
+  return 'personal';
+}
+
+/** Понедельник недели (UTC, 00:00) для даты. */
+export function mondayUTC(d: Date): Date {
+  const x = new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+  );
+  const dow = x.getUTCDay(); // 0=вс..6=сб
+  const diff = dow === 0 ? 6 : dow - 1; // к понедельнику
+  x.setUTCDate(x.getUTCDate() - diff);
+  return x;
+}
+
+export interface WeeklyGoalRow {
+  weekStart: Date;
+  goalText: string;
+  order: number;
+  planParentId: string;
+  planParentType: 'YearlyGoal';
+  derivedFrom: 'planner';
+}
+export interface HabitRow {
+  name: string;
+  category: string;
+  frequency: string;
+  goalId: string; // legacy прямая связь
+  planParentId: string;
+  planParentType: 'YearlyGoal';
+  derivedFrom: 'planner';
+}
+export interface PlannerRows {
+  weeklyGoals: WeeklyGoalRow[];
+  habit: HabitRow | null;
+  yearlyPatch: {
+    target: number | null;
+    pacingMode: 'uniform' | 'custom';
+    pacingPlan: PlanMilestone[] | null;
+  };
+}
+
+/**
+ * Чистое отображение PlanTree → строки БД. Тестируется БЕЗ БД
+ * (детерминированный инвариант — паттерн materializeImport).
+ * weekStart = понедельник от fromDate + i·7дн (ближний горизонт,
+ * НЕ 52 фабрикованных строки — честно). order=i. Дети
+ * derivedFrom='planner' (никогда не трогаем 'user').
+ */
+export function planTreeToRows(
+  tree: PlanTree,
+  yearlyGoalId: string,
+  goalArea: string,
+  fromDate: Date,
+): PlannerRows {
+  const m0 = mondayUTC(fromDate);
+  const weeklyGoals: WeeklyGoalRow[] = tree.weeks.map((w, i) => {
+    const ws = new Date(m0);
+    ws.setUTCDate(ws.getUTCDate() + i * 7);
+    return {
+      weekStart: ws,
+      goalText: (w.metric ? `${w.text} (${w.metric})` : w.text).slice(0, 300),
+      order: i,
+      planParentId: yearlyGoalId,
+      planParentType: 'YearlyGoal' as const,
+      derivedFrom: 'planner' as const,
+    };
+  });
+  const habit: HabitRow | null = tree.habit
+    ? {
+        name: tree.habit.name.slice(0, 200),
+        category: goalArea === 'personal' ? 'personal' : goalArea,
+        frequency: tree.habit.frequency,
+        goalId: yearlyGoalId,
+        planParentId: yearlyGoalId,
+        planParentType: 'YearlyGoal' as const,
+        derivedFrom: 'planner' as const,
+      }
+    : null;
+  return {
+    weeklyGoals,
+    habit,
+    yearlyPatch: {
+      target: tree.target,
+      pacingMode: tree.pacingMode,
+      pacingPlan:
+        tree.pacingMode === 'custom' ? tree.milestones ?? null : null,
+    },
+  };
+}
+
 export function classifyGoal(text: string): GoalDecision {
   const t = text.trim();
   // Проект С дедлайном → milestones (НЕ по дням). Проверяем первым:

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { classifyGoal, parsePlanTree } from './planner-service.js';
+import {
+  classifyGoal,
+  parsePlanTree,
+  goalAreaFor,
+  mondayUTC,
+  planTreeToRows,
+  type PlanTree,
+} from './planner-service.js';
 
 /**
  * Phase 5 P2 — классификатор «разбивать ли цель». Детерминированно
@@ -101,6 +108,101 @@ describe('parsePlanTree — разбор без сети, честный отк�
     )!;
     expect(p).not.toBeNull();
     expect(p.habit).toBeNull();
+  });
+});
+
+describe('goalAreaFor — детерминированная area', () => {
+  it.each([
+    ['накопить миллион', 'finance'],
+    ['сбросить 10 кг', 'health'],
+    ['медитировать каждый день', 'spirituality'],
+    ['прочитать 50 книг', 'career'],
+    ['погладить кота', 'personal'],
+  ])('«%s» → %s', (t, a) => expect(goalAreaFor(t)).toBe(a));
+});
+
+describe('mondayUTC — начало ISO-недели UTC', () => {
+  it('среда → понедельник той же недели', () => {
+    // 2026-05-20 = среда → 2026-05-18 пн
+    expect(mondayUTC(new Date('2026-05-20T12:00:00Z')).toISOString()).toBe(
+      '2026-05-18T00:00:00.000Z',
+    );
+  });
+  it('воскресенье → понедельник ТОЙ ЖЕ недели (не следующей)', () => {
+    // 2026-05-24 вс → 2026-05-18 пн
+    expect(mondayUTC(new Date('2026-05-24T23:00:00Z')).toISOString()).toBe(
+      '2026-05-18T00:00:00.000Z',
+    );
+  });
+  it('понедельник → сам себя 00:00', () => {
+    expect(mondayUTC(new Date('2026-05-18T09:30:00Z')).toISOString()).toBe(
+      '2026-05-18T00:00:00.000Z',
+    );
+  });
+});
+
+describe('planTreeToRows — чистый маппер PlanTree → строки БД', () => {
+  const tree: PlanTree = {
+    pacingMode: 'custom',
+    target: 10,
+    weeks: [
+      { text: 'неделя 1', metric: '−0.5 кг' },
+      { text: 'неделя 2' },
+    ],
+    habit: { name: 'дефицит 400 ккал', frequency: 'daily' },
+    milestones: [{ label: '−3 кг', by: '2026-06-30' }],
+    rationale: 'r',
+    spokenResponse: 's',
+  };
+  const rows = planTreeToRows(tree, 'goal123', 'health', new Date('2026-05-20T00:00:00Z'));
+
+  it('weeklyGoals: weekStart=пн+i·7, order=i, planParent/derivedFrom', () => {
+    expect(rows.weeklyGoals).toHaveLength(2);
+    expect(rows.weeklyGoals[0].weekStart.toISOString()).toBe(
+      '2026-05-18T00:00:00.000Z',
+    );
+    expect(rows.weeklyGoals[1].weekStart.toISOString()).toBe(
+      '2026-05-25T00:00:00.000Z',
+    );
+    expect(rows.weeklyGoals[0].goalText).toBe('неделя 1 (−0.5 кг)');
+    expect(rows.weeklyGoals[1].order).toBe(1);
+    expect(rows.weeklyGoals[0].planParentId).toBe('goal123');
+    expect(rows.weeklyGoals[0].derivedFrom).toBe('planner');
+  });
+
+  it('habit: legacy goalId + planParentId + derivedFrom planner', () => {
+    expect(rows.habit).not.toBeNull();
+    expect(rows.habit!.goalId).toBe('goal123');
+    expect(rows.habit!.planParentId).toBe('goal123');
+    expect(rows.habit!.category).toBe('health');
+    expect(rows.habit!.derivedFrom).toBe('planner');
+  });
+
+  it('yearlyPatch: custom → pacingPlan=milestones', () => {
+    expect(rows.yearlyPatch.target).toBe(10);
+    expect(rows.yearlyPatch.pacingMode).toBe('custom');
+    expect(rows.yearlyPatch.pacingPlan).toHaveLength(1);
+  });
+
+  it('uniform → pacingPlan=null (квартал на лету)', () => {
+    const u = planTreeToRows(
+      { ...tree, pacingMode: 'uniform', milestones: [{ label: 'x' }] },
+      'g',
+      'career',
+      new Date('2026-05-18T00:00:00Z'),
+    );
+    expect(u.yearlyPatch.pacingPlan).toBeNull();
+  });
+
+  it('нет habit → habit:null, недели всё равно есть', () => {
+    const n = planTreeToRows(
+      { ...tree, habit: null },
+      'g',
+      'career',
+      new Date('2026-05-18T00:00:00Z'),
+    );
+    expect(n.habit).toBeNull();
+    expect(n.weeklyGoals.length).toBeGreaterThan(0);
   });
 });
 
