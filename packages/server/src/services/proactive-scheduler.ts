@@ -5,6 +5,7 @@ import { deliverNotification } from './push-service.js';
 import { deliverTopInsight } from './insight-store.js';
 import { runReflectorDaily } from './reflector-service.js';
 import { runProfileSynthesisWeekly } from './profile-synthesizer.js';
+import { runTherapeuticDetectorsDaily } from './therapeutic-detector-service.js';
 
 /**
  * Фаза 4.1 — планировщик проактивности.
@@ -165,6 +166,19 @@ async function tick(): Promise<void> {
       } catch (err) {
         console.warn(
           `[scheduler] profile synth failed user=${userId}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+
+      // Phase 6 C4 — therapeutic-детекторы 1×/день/юзер. ≤1
+      // therapeutic-инсайт создаётся (top-severity); R10 cooldown +
+      // R6 доставка + R11 quiet-hours применяются автоматом.
+      // C1(d): conflict-mentions читаются с crisis=false. НЕ-фатально.
+      try {
+        await runTherapeuticDetectorsDaily(userId, new Date());
+      } catch (err) {
+        console.warn(
+          `[scheduler] therapeutic detectors failed user=${userId}:`,
           err instanceof Error ? err.message : err,
         );
       }
