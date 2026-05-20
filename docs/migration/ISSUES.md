@@ -456,3 +456,17 @@ Re-open if/when real users surface reflector misbehavior.
   paying users, evaluate app-level field encryption for crisis
   rows specifically (they're already excluded from LLM/search, so
   low blast radius). Tracked here, not silently dropped.
+
+## RECURRING BUG — JS `\b` Cyrillic (3rd occurrence in Phase 6 alone)
+
+JS regex `\b` is ASCII-only — silently fails on Cyrillic. Hit in
+classifyGoal (Phase 5), safety-classifier 1b, emotional-classifier
+C3.1. Each time discovered by failing recall tests; fixed by
+removing `\b` and relying on multi-word phrase specificity for
+precision.
+
+NEXT TIME: do NOT write `\b` next to Cyrillic. Either skip word
+boundary entirely (multi-word phrases are precision-safe) or use
+explicit anchors `(?:^|\s|[.,!?;:])`. Worth a tiny shared helper
+or a custom ESLint rule before the 4th recurrence — track as
+follow-up if it happens once more.

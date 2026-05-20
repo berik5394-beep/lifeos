@@ -21,6 +21,7 @@
 // только статическую метадату реестра — prisma не вызывается.
 import { capabilityText } from '../tools/index.js';
 import { CONSTRAINTS_TEXT } from './capabilities.js';
+import { THERAPEUTIC_STYLE_BLOCK } from './therapeutic-mode.js';
 
 export type AssistantStyle = 'friendly' | 'strict' | 'calm' | 'toxic';
 
@@ -193,6 +194,11 @@ export interface JarvisPromptOpts {
   dayCompletionPercent?: number;
   /** ISSUE-4: 'voice' → жёсткая краткость для TTS (≤3 предлож/~15с). */
   channel?: 'voice' | 'text';
+  /** Phase 6 C3 — заменить STYLE-блок на THERAPEUTIC для эмо-хода.
+   *  Активируется emotional-classifier из orchestrator. Therapeutic
+   *  > toxic by construction (тон выше стиля для эмоций). Safety
+   *  выше всего перебивает раньше — сюда уже НЕ-кризис. */
+  therapeuticMode?: boolean;
 }
 
 // ISSUE-4: голос — это TTS, длинный ответ = 25с речи (Берик в проде).
@@ -209,10 +215,13 @@ export function buildJarvisPrompt(
   opts: JarvisPromptOpts = {},
 ): string {
   const style = STYLE[ctx.assistantStyle] ? ctx.assistantStyle : 'friendly';
-  const parts = [
-    core(ctx.userName, getTimeOfDay()),
-    STYLE[style],
-  ];
+  // Phase 6 C3 — therapeutic-mode перебивает STYLE для эмо-хода
+  // (therapeutic > toxic by construction). Safety > всего уже отсек
+  // кризис раньше в orchestrator.
+  const styleBlock = opts.therapeuticMode
+    ? THERAPEUTIC_STYLE_BLOCK
+    : STYLE[style];
+  const parts = [core(ctx.userName, getTimeOfDay()), styleBlock];
   let body = parts.join('\n\n');
   if (opts.ritual) body += ritualBlock(opts.ritual, opts.dayCompletionPercent);
   if (opts.channel === 'voice') body += VOICE_BREVITY;

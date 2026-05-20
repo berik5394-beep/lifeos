@@ -278,14 +278,17 @@ export interface AssistantReply {
 export async function getAssistantReply(
   userId: string,
   text: string,
+  /** Phase 6 C3 — therapeutic-mode для эмо-хода (передаётся из
+   *  orchestrator-fallback, где emotional уже классифицирован). */
+  therapeuticMode = false,
 ): Promise<AssistantReply> {
   const gathered = await gatherAssistantContext(userId, text);
   if (!gathered) throw new Error('Пользователь не найден');
 
-  const systemPrompt = buildJarvisPrompt(
-    gathered.context,
-    ritualOptsFor(gathered.intent, gathered.dayCompletionPercent),
-  );
+  const systemPrompt = buildJarvisPrompt(gathered.context, {
+    ...ritualOptsFor(gathered.intent, gathered.dayCompletionPercent),
+    therapeuticMode,
+  });
 
   const aiResponse = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',

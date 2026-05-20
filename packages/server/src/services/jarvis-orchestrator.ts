@@ -17,6 +17,7 @@ import {
 import { runAgent } from './claude-agent.js';
 import { matchesCrisisPhrase } from './safety-classifier.js';
 import { buildSafetyResponse } from './safety-response.js';
+import { classifyEmotional } from './emotional-classifier.js';
 import { isPlannerIntent } from './planner-service.js';
 import { captureMemory } from './memory-service.js';
 import { trackInterests } from './interest-service.js';
@@ -735,15 +736,23 @@ export async function handleMessage(
   // ОДИН источник правды: gatherAssistantContext (полный контекст,
   // variant A — всегда) + buildJarvisPrompt (ЯДРО+СТИЛЬ+КОНТЕКСТ,
   // тот же что в fallback). goodnight/good_morning → ритуальный тон.
-  const [history, gathered] = await Promise.all([
+  const [history, gathered, therapeuticMode] = await Promise.all([
     getRecentHistory(userId, 6),
     gatherAssistantContext(userId, text, intent),
+    // Phase 6 C3 — эмо-маршрутизация: Safety > therapeutic > toxic.
+    // Safety уже отсёк кризис в самом верху handleMessage. Здесь
+    // классифицируем НЕ-кризисный эмо vs транзакция; при эмо —
+    // therapeutic-mode перебивает STYLE (включая toxic). Bias к
+    // транзакции (precision > recall) защищает «запиши расход» от
+    // получения «как ты?» (провал-инвариант спеки #4).
+    classifyEmotional(text),
   ]);
 
   const system = gathered
     ? buildJarvisPrompt(gathered.context, {
         ...ritualOptsFor(intent, gathered.dayCompletionPercent),
         channel,
+        therapeuticMode,
       })
     : // юзер не найден в БД — крайне маловероятно (есть auth), но не падаем
       'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
@@ -808,7 +817,7 @@ export async function handleMessage(
             webErr instanceof Error ? webErr.message : webErr
           } — fallback getAssistantReply`,
         );
-        const r = await getAssistantReply(userId, text);
+        const r = await getAssistantReply(userId, text, therapeuticMode);
         reply = r.text;
       }
     }
