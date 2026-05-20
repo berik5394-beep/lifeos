@@ -15,7 +15,7 @@ import {
   type BookingContext,
 } from './smart-booking.js';
 import { runAgent } from './claude-agent.js';
-import { matchesCrisisPhrase } from './safety-classifier.js';
+import { matchesCrisisPhrase, classifyCrisis } from './safety-classifier.js';
 import { buildSafetyResponse } from './safety-response.js';
 import { classifyEmotional } from './emotional-classifier.js';
 import { isPlannerIntent } from './planner-service.js';
@@ -769,6 +769,39 @@ export async function handleMessage(
   // !== false AND classifyEmotional → THERAPEUTIC промпт. Дефолт
   // ctx.therapeuticMode = true (для legacy null-полей трактуем как
   // включено — соответствует default(true) в схеме).
+  // Phase 6 P0 safety-recall hardening (Berik review 2026-05-20):
+  // двухуровневый safety-gate. Phrase-net (instant, 0 latency)
+  // отработал в самом верху handleMessage. Сюда message дошёл =
+  // не явный кризис по списку. НО если emo-classifier сработал —
+  // это эмоциональное сообщение → поднимаем Haiku-расширение
+  // (classifyCrisis = phrase OR Haiku c bias-to-FP). Ловит non-
+  // explicit формулировки («устал существовать», «не вижу смысла
+  // продолжать», «лучше бы меня не было») — реальные люди так
+  // говорят, phrase-net их пропускал. Стоимость: Haiku-вызов
+  // ТОЛЬКО на эмо-сообщениях (~5%), не на каждом transactional.
+  // Если Haiku говорит «да» → safety-template + crisis=true,
+  // ранний return (тот же путь, что верхний phrase-гейт).
+  if (therapeuticMode) {
+    const haikuCrisis = await classifyCrisis(text);
+    if (haikuCrisis) {
+      // P1c симметрия: тот же repeat-detect, что в верхнем phrase-
+      // гейте — если кризис в той же сессии (10 мин), empathy-рамка
+      // варьируется. Ресурс-блок детерминирован.
+      const tenMinAgo = new Date(Date.now() - 10 * 60_000);
+      const recentCrisisCount = await prisma.chatMessage.count({
+        where: {
+          userId,
+          role: 'assistant',
+          crisis: true,
+          createdAt: { gte: tenMinAgo },
+        },
+      });
+      const reply = buildSafetyResponse(recentCrisisCount > 0);
+      await saveTurn(userId, text, reply, true);
+      return { reply, intent: 'safety_crisis' };
+    }
+  }
+
   const optIn = gathered?.context.therapeuticMode !== false;
   const finalTherapeutic = therapeuticMode && optIn;
 
