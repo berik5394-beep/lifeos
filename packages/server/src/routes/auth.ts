@@ -41,6 +41,8 @@ const profileUpdateSchema = z.object({
   assistantGender: z.enum(['male', 'female']).optional(),
   wakeUpTime: z.string().regex(/^\d{2}:\d{2}$/, 'Формат HH:MM').optional(),
   currency: z.string().max(8).optional(),
+  // Phase 6 C5 — opt-out therapeutic-режима (тумблер в settings).
+  therapeuticMode: z.boolean().optional(),
 });
 
 // ============================================================================
@@ -491,12 +493,15 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const userId = request.userId;
     const body = request.body as z.infer<typeof profileUpdateSchema>;
 
-    const dataToUpdate: Record<string, string> = {};
+    // string-поля + Boolean therapeuticMode (Phase 6 C5).
+    const dataToUpdate: Record<string, string | boolean> = {};
     if (body.name !== undefined) dataToUpdate.name = body.name;
     if (body.assistantStyle !== undefined) dataToUpdate.assistantStyle = body.assistantStyle;
     if (body.assistantGender !== undefined) dataToUpdate.assistantGender = body.assistantGender;
     if (body.wakeUpTime !== undefined) dataToUpdate.wakeUpTime = body.wakeUpTime;
     if (body.currency !== undefined) dataToUpdate.currency = body.currency;
+    if (body.therapeuticMode !== undefined)
+      dataToUpdate.therapeuticMode = body.therapeuticMode;
 
     if (Object.keys(dataToUpdate).length === 0) {
       return reply.status(400).send({ message: 'Нет данных для обновления' });
@@ -513,6 +518,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         assistantStyle: true,
         assistantGender: true,
         wakeUpTime: true,
+        therapeuticMode: true,
       },
     });
 
@@ -536,6 +542,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         assistantStyle: true,
         assistantGender: true,
         wakeUpTime: true,
+        therapeuticMode: true,
       },
     });
     if (!user) return reply.status(404).send({ message: 'Не найден' });

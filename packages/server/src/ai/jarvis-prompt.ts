@@ -50,6 +50,10 @@ export interface AssistantContext {
    *  триггеры/паттерны/близкие). Ограничен (digestProfile), не
    *  verbose. Пусто/нет профиля → блок не добавляется. */
   profileDigest?: string;
+  /** Phase 6 C5 — opt-out тёплого режима. false → orchestrator
+   *  принудительно therapeuticMode=false в buildJarvisPrompt
+   *  (даже если эмо-классификатор сработал). По умолчанию true. */
+  therapeuticMode?: boolean;
 }
 
 export function getTimeOfDay(d = new Date()): 'утро' | 'день' | 'вечер' | 'ночь' {

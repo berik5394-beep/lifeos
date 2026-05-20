@@ -205,8 +205,14 @@ export async function runTherapeuticDetectorsDaily(
 ): Promise<{ ran: boolean; created: number; chosenKind?: string }> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { timezone: true },
+    select: { timezone: true, therapeuticMode: true },
   });
+  // Phase 6 C5 opt-out: пользователь явно выключил тёплый режим →
+  // therapeutic-детекторы НЕ эмитят (productivity-only). Honest:
+  // никаких «скрытых» therapeutic insights в feed/push.
+  if (user && user.therapeuticMode === false) {
+    return { ran: false, created: 0 };
+  }
   const dayStart = localDayStartUTC(user?.timezone ?? 'UTC', now);
   const already = await prisma.insight.count({
     where: {

@@ -43,6 +43,26 @@ describe('Phase 6 C1 — ChatMessage.crisis (Safety isolation)', () => {
   });
 });
 
+describe('Phase 6 C5 — User.therapeuticMode (opt-out)', () => {
+  it('User.therapeuticMode Boolean default(true)', () => {
+    expect(modelBlock('User')).toMatch(
+      /therapeuticMode\s+Boolean\s+@default\(true\)/,
+    );
+  });
+  it('миграция p6_user_therapeutic_mode — аддитивна, без DROP', () => {
+    const dir = join(root, 'prisma/migrations');
+    const mig = readdirSync(dir).find((d) =>
+      d.includes('p6_user_therapeutic_mode'),
+    );
+    expect(mig).toBeTruthy();
+    const sql = readFileSync(join(dir, mig!, 'migration.sql'), 'utf-8');
+    expect(sql).toMatch(
+      /ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "therapeuticMode" BOOLEAN NOT NULL DEFAULT true/,
+    );
+    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+  });
+});
+
 describe('Phase 6 C2 — UserProfile (derived view over Memory)', () => {
   const b = modelBlock('UserProfile');
   it('обязательные поля присутствуют', () => {

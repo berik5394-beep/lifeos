@@ -59,6 +59,10 @@ export async function gatherAssistantContext(
       wakeUpTime: true,
       currency: true,
       timezone: true,
+      // Phase 6 C5 — opt-out preference юзера; orchestrator AND-gates
+      // computed therapeuticMode (опт-аут → всегда false независимо
+      // от эмо-классификатора).
+      therapeuticMode: true,
     },
   });
   if (!user) return null;
@@ -213,6 +217,7 @@ export async function gatherAssistantContext(
     weeklyPlan,
     memories,
     profileDigest,
+    therapeuticMode: user.therapeuticMode,
   };
 
   // Проактивная погода: ТОЛЬКО если сегодня есть событие — тогда

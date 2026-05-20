@@ -20,6 +20,12 @@ model User {
   // сейчас весь date-math на серверном UTC, для Алматы UTC+5 после
   // 19:00 локально считается «завтра»). Дефолт — Алматы (KZ-приложение).
   timezone        String   @default("Asia/Almaty")
+  // Phase 6 C5 — явный opt-out терапевтического режима. По умолчанию
+  // ON (north star — заботливый друг); false → юзер получает только
+  // транзакционные ответы (productivity-режим), эмо-классификатор
+  // игнорируется, therapeutic-детекторы не эмитят. Аддитивно с
+  // default(true) — миграция безопасна (ISSUE-X).
+  therapeuticMode Boolean  @default(true)
   settings        Json     @default("{}")
   createdAt       DateTime @default(now())
 

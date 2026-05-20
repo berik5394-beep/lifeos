@@ -65,7 +65,11 @@ describe('orchestrator routing — source invariants', () => {
     expect(ORCH).toMatch(/buildJarvisPrompt\(gathered\.context,\s*\{[\s\S]*therapeuticMode[\s\S]*\}\)/);
   });
 
-  it('fallback getAssistantReply тоже получает therapeuticMode', () => {
-    expect(ORCH).toMatch(/getAssistantReply\(userId,\s*text,\s*therapeuticMode\)/);
+  it('fallback getAssistantReply тоже получает финальный therapeutic-флаг', () => {
+    // C5: переменная переименована (therapeuticMode → finalTherapeutic
+    // после AND-gate с opt-in). Семантика та же — 3-й аргумент передан.
+    expect(ORCH).toMatch(
+      /getAssistantReply\(userId,\s*text,\s*(?:final)?[Tt]herapeutic[a-zA-Z]*\)/,
+    );
   });
 });

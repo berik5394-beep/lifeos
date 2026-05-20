@@ -748,11 +748,20 @@ export async function handleMessage(
     classifyEmotional(text),
   ]);
 
+  // Phase 6 C5 — opt-out AND-gate: даже если эмо-классификатор
+  // сработал, при therapeuticMode=false у юзера → ОБЫЧНЫЙ режим
+  // (productivity-only). Decision: ctx.therapeuticMode (preference)
+  // !== false AND classifyEmotional → THERAPEUTIC промпт. Дефолт
+  // ctx.therapeuticMode = true (для legacy null-полей трактуем как
+  // включено — соответствует default(true) в схеме).
+  const optIn = gathered?.context.therapeuticMode !== false;
+  const finalTherapeutic = therapeuticMode && optIn;
+
   const system = gathered
     ? buildJarvisPrompt(gathered.context, {
         ...ritualOptsFor(intent, gathered.dayCompletionPercent),
         channel,
-        therapeuticMode,
+        therapeuticMode: finalTherapeutic,
       })
     : // юзер не найден в БД — крайне маловероятно (есть auth), но не падаем
       'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
@@ -817,7 +826,7 @@ export async function handleMessage(
             webErr instanceof Error ? webErr.message : webErr
           } — fallback getAssistantReply`,
         );
-        const r = await getAssistantReply(userId, text, therapeuticMode);
+        const r = await getAssistantReply(userId, text, finalTherapeutic);
         reply = r.text;
       }
     }
