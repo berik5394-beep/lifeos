@@ -470,3 +470,22 @@ boundary entirely (multi-word phrases are precision-safe) or use
 explicit anchors `(?:^|\s|[.,!?;:])`. Worth a tiny shared helper
 or a custom ESLint rule before the 4th recurrence — track as
 follow-up if it happens once more.
+
+## RESOLVED (2026-05-20) — `\b`-Cyrillic class CLOSED
+
+Helper: `src/lib/cyrillic-regex.ts` — `cyrillicWord(pattern)`
+returns RegExp with Unicode-aware `(?:^|[^\p{L}])` + `(?=$|[^\p{L}])`
+boundaries; `containsAny(text, phrases)` for substring/regex mix.
+
+Structural lint: `src/lib/no-bare-b-cyrillic.test.ts` — walks
+src/**/*.ts (excluding helper/test/itself), strips comments, fails
+if any non-comment line contains `\\b` AND a Cyrillic char. 4-я
+рецидив физически невозможен в CI.
+
+Also fixed 2 silent dead-code offenders surfaced by the dry-run:
+- safety-classifier.ts `/\bда\b/i.test(...)` — `\b` ASCII-only,
+  never matched cyrillic "ДА" → Haiku-widening was dead. Fixed
+  to exact-word-or-punct match without `\b`.
+- emotional-classifier.ts — same `/\bда\b/i` bug, same fix.
+- jarvis-orchestrator.ts `\sдела\b` in isTelegramDataRequest —
+  cyrillic-safe equivalent `(?:\s|$|[.,!?;])`.

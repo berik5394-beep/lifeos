@@ -87,7 +87,10 @@ export async function classifyCrisis(text: string): Promise<boolean> {
     });
     const block = resp.content.find((b) => b.type === 'text');
     if (!block || block.type !== 'text') return false;
-    return /\bда\b/i.test(block.text.trim());
+    // \b ASCII-only → не работает с кириллицей. Haiku инструктирован
+    // отвечать ОДНИМ словом ДА/НЕТ — точечный match без \b.
+    const ans = block.text.trim().toLowerCase();
+    return /^да(?:[.!?\s].*)?$/u.test(ans);
   } catch (err) {
     console.warn(
       '[safety] Haiku classify failed (fallback to phrase-net):',

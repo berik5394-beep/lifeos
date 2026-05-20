@@ -80,7 +80,10 @@ export async function classifyEmotional(text: string): Promise<boolean> {
     });
     const block = resp.content.find((b) => b.type === 'text');
     if (!block || block.type !== 'text') return false;
-    return /\bда\b/i.test(block.text.trim());
+    // \b ASCII-only с кириллицей — мёртвый match. Haiku инструктирован
+    // на ОДНО слово ДА/НЕТ → точечный match без \b.
+    const ans = block.text.trim().toLowerCase();
+    return /^да(?:[.!?\s].*)?$/u.test(ans);
   } catch (err) {
     console.warn(
       '[emo] Haiku classify failed (fallback to phrase-net):',
