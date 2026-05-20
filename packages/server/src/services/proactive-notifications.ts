@@ -51,23 +51,19 @@ function getMonthRange(): { start: Date; end: Date } {
 
 /**
  * Parse "HH:MM" → UTC-Date представляющий это время В ЛОКАЛЬНОЙ TZ
- * юзера сегодня. Это фикс W11-класса: раньше брали серверный UTC
- * как локальный (wakeUpTime=07:00 интерпретировалось как 07:00 UTC,
- * а должно — 07:00 Asia/Almaty = 02:00 UTC). Без tz получаешь
- * сдвиг = смещение зоны от UTC (5 часов для KZ → юзер видел
- * «доброе утро» в 12:00 локального).
+ * юзера сегодня. Фикс W11-класса (раньше брали серверный UTC как
+ * локальный → wakeUpTime="07:00" интерпретировался как 07:00 UTC =
+ * 12:00 Алматы; юзер видел «доброе утро» в полдень).
  *
- * Если tz не передан — fallback на серверное (legacy-поведение).
+ * tz ОБЯЗАТЕЛЕН (структурная защита от рецидива): TS-компилятор
+ * сам поймает любой новый вызов без явной TZ. Legacy-fallback без
+ * tz УБРАН специально — каждый caller обязан подумать о зоне юзера
+ * (User.timezone). НЕТ tz → передавай "UTC" явно с обоснованием.
  */
-export function timeToDate(time: string, tz?: string): Date {
+export function timeToDate(time: string, tz: string): Date {
   const [hours, minutes] = time.split(':').map(Number);
-  if (tz) {
-    const dayStart = localDayStartUTC(tz);
-    return new Date(dayStart.getTime() + ((hours * 60 + minutes) * 60_000));
-  }
-  const d = getToday();
-  d.setHours(hours, minutes, 0, 0);
-  return d;
+  const dayStart = localDayStartUTC(tz);
+  return new Date(dayStart.getTime() + ((hours * 60 + minutes) * 60_000));
 }
 
 /** Days remaining in current month (including today) */

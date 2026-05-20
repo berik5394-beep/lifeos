@@ -26,10 +26,11 @@ describe('timeToDate(time, tz) — W11 tz-correctness', () => {
     expect(d.getUTCMinutes()).toBe(0);
   });
 
-  it('legacy без tz — серверное (fallback, не падает)', () => {
-    const d = timeToDate('07:00');
-    expect(d).toBeInstanceOf(Date);
-    // конкретные часы зависят от tz сервера — не утверждаем, только
-    // что вызов работает (legacy совместимость).
+  it('tz обязателен (структурная защита): UTC explicit передаётся явно', () => {
+    // Раньше был fallback без tz (серверное) — УБРАН специально,
+    // чтобы TS-компилятор ловил рецидив. Если нет user.timezone —
+    // caller обязан явно передать "UTC" с обоснованием.
+    const d = timeToDate('07:00', 'UTC');
+    expect(d.getUTCHours()).toBe(7);
   });
 });

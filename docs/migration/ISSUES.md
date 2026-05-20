@@ -489,3 +489,21 @@ Also fixed 2 silent dead-code offenders surfaced by the dry-run:
 - emotional-classifier.ts — same `/\bда\b/i` bug, same fix.
 - jarvis-orchestrator.ts `\sдела\b` in isTelegramDataRequest —
   cyrillic-safe equivalent `(?:\s|$|[.,!?;])`.
+
+## RESOLVED (2026-05-20) — tz-mandatory class CLOSED
+
+W11 (Phase 5) → morning_briefing 12:08 bug (2026-05-20) → пора
+закрыть класс structurally, not by convention.
+
+Approach: вместо runtime-lint — типы. `timeToDate(time, tz)`
+сделан tz-REQUIRED (был optional с server-fallback). Legacy
+fallback УБРАН специально: caller обязан явно передать
+user.timezone или "UTC" с обоснованием. TS-компилятор ловит
+рецидив на этапе билда — невозможно случайно скиппнуть tz.
+
+Также lib/tz.ts уже широко переиспользуется
+(planner/reflector/profile/therapeutic/proactive-notifications);
+паттерн «локальный день/час юзера через lib/tz + user.timezone»
+закреплён. ISSUE остаётся открытой только если кто-то введёт
+НОВЫЙ time-from-string утилитный модуль вне proactive-
+notifications — тогда повторить tz-required approach там.
