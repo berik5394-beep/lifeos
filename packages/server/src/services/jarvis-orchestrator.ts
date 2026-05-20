@@ -322,7 +322,21 @@ export async function handleMessage(
   // помечаются crisis=true, ранний return — агент/стиль/инструменты
   // НЕ вызываются. Safety перебивает ВСЁ структурно, не промптом.
   if (matchesCrisisPhrase(text)) {
-    const reply = buildSafetyResponse();
+    // P1c (Berik): detect повторный кризис в той же сессии (~10 мин)
+    // → empathy-рамка варьируется, ресурс-блок остаётся фиксированным.
+    // ПРИМЕЧАНИЕ к C1(d)-инварианту: этот count — целенаправленный
+    // запрос ПО crisis-флагу (не утечка content в LLM-контекст), это
+    // законное исключение, документировано.
+    const tenMinAgo = new Date(Date.now() - 10 * 60_000);
+    const recentCrisisCount = await prisma.chatMessage.count({
+      where: {
+        userId,
+        role: 'assistant',
+        crisis: true,
+        createdAt: { gte: tenMinAgo },
+      },
+    });
+    const reply = buildSafetyResponse(recentCrisisCount > 0);
     await saveTurn(userId, text, reply, true);
     return { reply, intent: 'safety_crisis' };
   }

@@ -45,11 +45,14 @@ describe('safety-overrides-toxic — структурный инвариант',
   it('кризис-гейт возвращает именно safety-ответ (не стиль)', () => {
     // В исходнике ветка кризиса формирует reply из buildSafetyResponse,
     // а не из стиля/агента.
+    // Slice расширен под P1c (вариация на повтор добавила detect-логику).
     const gateBlock = SRC.slice(
       SRC.indexOf('matchesCrisisPhrase(text)'),
-      SRC.indexOf('matchesCrisisPhrase(text)') + 320,
+      SRC.indexOf('matchesCrisisPhrase(text)') + 900,
     );
-    expect(gateBlock).toMatch(/buildSafetyResponse\(\)/);
+    // P1c: buildSafetyResponse теперь может принимать isRepeat-флаг —
+    // допускаем любой контент в скобках (структурно: вызов есть).
+    expect(gateBlock).toMatch(/buildSafetyResponse\([^)]*\)/);
     expect(gateBlock).toMatch(/saveTurn\(userId, text, reply, true\)/);
     expect(gateBlock).toMatch(/intent:\s*'safety_crisis'/);
   });
