@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   shouldSynthesize,
   parseProfile,
+  digestProfile,
   type SynthGate,
 } from './profile-core.js';
 
@@ -103,5 +104,35 @@ describe('parseProfile — защитный разбор (мусор НЕ пер
     const big = Array.from({ length: 50 }, (_, i) => `v${i}`);
     const r = parseProfile(JSON.stringify({ values: big }));
     expect(r!.values.length).toBeLessThanOrEqual(20);
+  });
+});
+
+describe('digestProfile — компактная выжимка (не verbose)', () => {
+  it('пустой профиль → пустая строка (контекст не пухнет)', () => {
+    expect(
+      digestProfile({
+        values: [],
+        triggers: [],
+        patterns: [],
+        styleNotes: null,
+        relationships: {},
+      }),
+    ).toBe('');
+  });
+
+  it('наполненный → компактные строки, капы соблюдены', () => {
+    const d = digestProfile({
+      values: ['family', 'growth', 'a', 'b', 'c', 'd', 'e'],
+      triggers: ['criticism'],
+      patterns: ['бросает на 3-й неделе'],
+      styleNotes: 'без воды',
+      relationships: { 'мама': 'сложно', 'Серик': 'бизнес' },
+    });
+    expect(d).toContain('Ценности: family, growth');
+    expect(d).toContain('Как говорить: без воды');
+    expect(d).toContain('Чувствительно: criticism');
+    expect(d).toContain('Близкие: мама — сложно');
+    // values капнуты до 5
+    expect(d).not.toContain(', e');
   });
 });

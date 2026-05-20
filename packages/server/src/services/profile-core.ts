@@ -108,3 +108,32 @@ export function parseProfile(raw: string): SynthProfile | null {
     relationships: relMap(o.relationships),
   };
 }
+
+/**
+ * Компактный дайджест профиля для assistant-контекста. НЕ весь
+ * verbose-JSON (спека: «не болтливо») — ограниченная выжимка.
+ * Пустой профиль → '' (renderContext не добавит блок). Query-
+ * relevance фильтрация ОТЛОЖЕНА на C3 (emotional-роутинг решит,
+ * когда поднимать глубже) — сейчас ограниченная всегда-выжимка.
+ */
+export function digestProfile(p: {
+  values: string[];
+  triggers: string[];
+  patterns: string[];
+  styleNotes: string | null;
+  relationships: Record<string, string>;
+}): string {
+  const parts: string[] = [];
+  if (p.values.length) parts.push(`Ценности: ${p.values.slice(0, 5).join(', ')}`);
+  if (p.styleNotes) parts.push(`Как говорить: ${p.styleNotes}`);
+  if (p.triggers.length)
+    parts.push(`Чувствительно: ${p.triggers.slice(0, 5).join(', ')}`);
+  if (p.patterns.length)
+    parts.push(`Паттерны: ${p.patterns.slice(0, 3).join('; ')}`);
+  const rel = Object.entries(p.relationships).slice(0, 4);
+  if (rel.length)
+    parts.push(
+      `Близкие: ${rel.map(([k, v]) => `${k} — ${v}`).join('; ')}`,
+    );
+  return parts.join('\n');
+}

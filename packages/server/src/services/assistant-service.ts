@@ -8,6 +8,7 @@ import {
 import { parseIntent } from '../ai/intent-parser.js';
 import { calculateStreak, calculateWeekProgress } from './streak-service.js';
 import { getRelevantMemories } from './memory-service.js';
+import { digestProfile } from './profile-core.js';
 import { getWeather } from './external-apis.js';
 import {
   localDayStartUTC,
@@ -166,6 +167,32 @@ export async function gatherAssistantContext(
           .join('; ')
       : 'Не заданы';
 
+  // Phase 6 C2.5 — компактный дайджест UserProfile в контекст
+  // (ассистент «знает» человека). Один индексный запрос по @unique.
+  // Нет синтеза → undefined (renderContext блок не добавит).
+  const up = await prisma.userProfile.findUnique({
+    where: { userId },
+    select: {
+      values: true,
+      triggers: true,
+      patterns: true,
+      styleNotes: true,
+      relationships: true,
+      lastSynthesizedAt: true,
+    },
+  });
+  const profileDigest =
+    up && up.lastSynthesizedAt
+      ? digestProfile({
+          values: (up.values as string[]) ?? [],
+          triggers: (up.triggers as string[]) ?? [],
+          patterns: (up.patterns as string[]) ?? [],
+          styleNotes: up.styleNotes,
+          relationships:
+            (up.relationships as Record<string, string>) ?? {},
+        }) || undefined
+      : undefined;
+
   const context: AssistantContext = {
     userName: user.name,
     assistantStyle: user.assistantStyle as AssistantContext['assistantStyle'],
@@ -185,6 +212,7 @@ export async function gatherAssistantContext(
     pendingHabits,
     weeklyPlan,
     memories,
+    profileDigest,
   };
 
   // Проактивная погода: ТОЛЬКО если сегодня есть событие — тогда

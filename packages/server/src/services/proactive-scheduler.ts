@@ -4,6 +4,7 @@ import { runPetStreakSweep } from './pet-streak-service.js';
 import { deliverNotification } from './push-service.js';
 import { deliverTopInsight } from './insight-store.js';
 import { runReflectorDaily } from './reflector-service.js';
+import { runProfileSynthesisWeekly } from './profile-synthesizer.js';
 
 /**
  * Фаза 4.1 — планировщик проактивности.
@@ -150,6 +151,20 @@ async function tick(): Promise<void> {
       } catch (err) {
         console.warn(
           `[scheduler] reflector failed user=${userId}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+
+      // Phase 6 C2.5 — недельный синтез UserProfile. Каденс-гард в
+      // runProfileSynthesisWeekly + дешёвый gate в profile-core
+      // (неактивен/<недели/нет новых данных → пропуск ДО Sonnet) →
+      // дёргать каждый тик безопасно/дёшево. НЕ-фатально (сбой/нет
+      // ключа → профиль не трогаем, диалог не страдает).
+      try {
+        await runProfileSynthesisWeekly(userId, new Date());
+      } catch (err) {
+        console.warn(
+          `[scheduler] profile synth failed user=${userId}:`,
           err instanceof Error ? err.message : err,
         );
       }

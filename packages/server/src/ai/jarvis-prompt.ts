@@ -45,6 +45,10 @@ export interface AssistantContext {
    *  сегодня (проактивно: «одевайся легко / выезжай раньше»). */
   weatherToday?: string;
   memories?: { type: string; content: string; importance: number }[];
+  /** Phase 6 C2.5 — компактный дайджест UserProfile (ценности/стиль/
+   *  триггеры/паттерны/близкие). Ограничен (digestProfile), не
+   *  verbose. Пусто/нет профиля → блок не добавляется. */
+  profileDigest?: string;
 }
 
 export function getTimeOfDay(d = new Date()): 'утро' | 'день' | 'вечер' | 'ночь' {
@@ -165,6 +169,9 @@ export function renderContext(ctx: AssistantContext): string {
       'Что ты помнишь о пользователе:',
       ...ctx.memories.slice(0, 15).map((m) => `- ${m.content}`),
     );
+  }
+  if (ctx.profileDigest) {
+    L.push('', 'Портрет пользователя (синтез, раз/неделю):', ctx.profileDigest);
   }
   return L.join('\n');
 }
