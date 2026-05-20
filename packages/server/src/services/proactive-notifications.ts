@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { localDayStartUTC } from '../lib/tz.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,9 +49,22 @@ function getMonthRange(): { start: Date; end: Date } {
   return { start, end };
 }
 
-/** Parse "HH:MM" into a Date for today */
-function timeToDate(time: string): Date {
+/**
+ * Parse "HH:MM" → UTC-Date представляющий это время В ЛОКАЛЬНОЙ TZ
+ * юзера сегодня. Это фикс W11-класса: раньше брали серверный UTC
+ * как локальный (wakeUpTime=07:00 интерпретировалось как 07:00 UTC,
+ * а должно — 07:00 Asia/Almaty = 02:00 UTC). Без tz получаешь
+ * сдвиг = смещение зоны от UTC (5 часов для KZ → юзер видел
+ * «доброе утро» в 12:00 локального).
+ *
+ * Если tz не передан — fallback на серверное (legacy-поведение).
+ */
+export function timeToDate(time: string, tz?: string): Date {
   const [hours, minutes] = time.split(':').map(Number);
+  if (tz) {
+    const dayStart = localDayStartUTC(tz);
+    return new Date(dayStart.getTime() + ((hours * 60 + minutes) * 60_000));
+  }
   const d = getToday();
   d.setHours(hours, minutes, 0, 0);
   return d;
@@ -78,15 +92,21 @@ async function generateEventReminders(
   const today = getToday();
   const now = new Date();
 
-  const events = await prisma.calendarEvent.findMany({
-    where: { userId, date: today },
-    select: { id: true, title: true, startTime: true },
-  });
+  // W11-фикс: event.startTime — HH:MM в локальной TZ юзера; чтобы
+  // «за 1ч/30мин» считать корректно, конвертируем в UTC через tz.
+  const [user, events] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } }),
+    prisma.calendarEvent.findMany({
+      where: { userId, date: today },
+      select: { id: true, title: true, startTime: true },
+    }),
+  ]);
+  const tz = user?.timezone || 'UTC';
 
   for (const event of events) {
     if (!event.startTime) continue;
 
-    const eventTime = timeToDate(event.startTime);
+    const eventTime = timeToDate(event.startTime, tz);
 
     // 1 hour before
     const oneHourBefore = new Date(eventTime.getTime() - 60 * 60 * 1000);
@@ -391,9 +411,12 @@ async function generateMorningBriefing(
 ): Promise<ProactiveNotification[]> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { name: true, wakeUpTime: true },
+    select: { name: true, wakeUpTime: true, timezone: true },
   });
-  const scheduledFor = timeToDate(user?.wakeUpTime || '08:00');
+  // W11-фикс: wakeUpTime — локальное время юзера, НЕ серверный UTC.
+  // Раньше «07:00» интерпретировалось как 07:00 UTC = 12:00 Алматы →
+  // юзер видел «доброе утро» в полдень. Теперь tz-корректно.
+  const scheduledFor = timeToDate(user?.wakeUpTime || '08:00', user?.timezone || 'UTC');
   // Планировщик сам решит «пора/не пора» (scheduledFor<=now и <2ч
   // просрочки) и дедупнёт раз в день. Здесь просто собираем брифинг.
   return buildMorning(userId, user?.name ?? 'друг', scheduledFor);
