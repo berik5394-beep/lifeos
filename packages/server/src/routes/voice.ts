@@ -20,6 +20,7 @@ import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 // Теперь ответ идёт через единый оркестратор. Контракт ответа
 // ({response, reply, context}) сохранён — старое приложение не ломается.
 import { handleMessage } from '../services/jarvis-orchestrator.js';
+import { matchesCrisisPhrase } from '../services/safety-classifier.js';
 
 // Voice assistant/transcribe are expensive (Groq Whisper + Claude API) — cap per IP
 const assistantRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'voice-assistant' });
@@ -56,8 +57,28 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
     preHandler: [processRateLimit, aiDailyLimiter, validate(voiceSchema)],
   }, async (request, reply) => {
     const { text } = request.body as z.infer<typeof voiceSchema>;
+    const userId = request.userId;
 
     try {
+      // Phase 6 P0 voice-safety (Berik deep-review, 2026-05-20):
+      // раньше /voice/process шёл сразу в parseIntent + template,
+      // МИНУЯ safety-gate (matchesCrisisPhrase) и весь Phase 5+6
+      // стек, который ВЕСЬ построен в handleMessage. Голосовой
+      // кризис-сигнал не получал ни 150/111/1303, ни crisis-flag
+      // в БД. Реальная P0-дыра в голосовом канале.
+      //
+      // Фикс УЗКИЙ: на crisis-фразе делегируем handleMessage
+      // (полный путь — safety-gate, save crisis=true, P1c вариация
+      // на повтор, retention 30д, изоляция от LLM). Адаптируем
+      // ответ под существующий mobile-shape {intent, response} —
+      // ничего не ломается. Non-crisis путь НЕ затронут.
+      if (matchesCrisisPhrase(text)) {
+        const jarvis = await handleMessage(userId, text, 'voice');
+        return reply.send({
+          intent: { action: jarvis.intent ?? 'safety_crisis' },
+          response: jarvis.reply,
+        });
+      }
       const result = await processVoiceCommand(text);
       return reply.send(result);
     } catch (err) {
