@@ -422,6 +422,15 @@ Re-open if/when real users surface reflector misbehavior.
 
 ## OPEN NOTES (Phase 6 C1)
 
+- **P0 — KZ crisis-hotlines VERIFIED (2026-05-20)** — Berik
+  confirmed full set via egov.kz / Союз кризисных центров /
+  Минздрав sources. HOTLINES contains 150 (Союз кризисных
+  центров КЗ, anonymous psychological), 111 («Аманат», family/
+  women/children 24/7), 1303 (psychological hotline). 112 stays
+  in BASELINE_BODY as emergency. RESOURCES_VERIFIED=true.
+  Invariants: render must contain 112 AND ≥1 dedicated MH-line;
+  each verified hotline rendered as «name: contact». Closed.
+
 - **TOMORROW — verify bot greeting disclaimer.** C1.1g wired
   disclaimerShort() into buildStartGreeting (first session of day).
   Smoke (a) /auth/register JSON and (c) GET /auth/me JSON VERIFIED

@@ -19,8 +19,10 @@ describe('disclaimer — позиционирование «друг, не пс�
   it('НЕ называет СЕБЯ психологом/терапевтом (self-label запрещён)', () => {
     for (const t of [s, f]) {
       const x = t.toLowerCase();
-      expect(x).not.toMatch(/я\s+психолог/);
-      expect(x).not.toMatch(/я\s+терапевт/);
+      // Cyrillic-safe boundary: «я» как СЛОВО (местоимение), не
+      // окончание «лини-я психологической». Без \b (ASCII-only).
+      expect(x).not.toMatch(/(?:^|[^а-яё])я\s+психолог/);
+      expect(x).not.toMatch(/(?:^|[^а-яё])я\s+терапевт/);
       expect(x).not.toMatch(/твой\s+(психолог|терапевт)/);
       expect(x).not.toContain('ai-психолог');
       expect(x).not.toContain('ai-терапевт');

@@ -40,4 +40,23 @@ describe('crisis-resources — structural honesty', () => {
       expect(RESOURCES_VERIFIED).toBe(false); // ещё не подтверждён Бериком
     }
   });
+
+  // ----- ПОСЛЕ верификации (P0 closed): обязательные инварианты -----
+  it('verified=true → render содержит И 112 (emergency) И ≥1 dedicated MH-линию', () => {
+    if (!RESOURCES_VERIFIED) return; // условный тест — fires когда verified
+    expect(txt).toMatch(/112/); // emergency baseline
+    // dedicated MH-линия — любая из подтверждённых (150/111/1303
+    // не путаем с 112; должна присутствовать как `name: contact`).
+    const hasMh = HOTLINES.some(
+      (h) => h.contact.trim().length > 0 && txt.includes(h.contact),
+    );
+    expect(hasMh, 'нет ни одной dedicated MH-линии в render').toBe(true);
+  });
+
+  it('verified=true → каждая подтверждённая HOTLINE отрендерена как «name: contact»', () => {
+    if (!RESOURCES_VERIFIED) return;
+    for (const h of HOTLINES) {
+      expect(txt).toContain(`${h.name}: ${h.contact}`);
+    }
+  });
 });
