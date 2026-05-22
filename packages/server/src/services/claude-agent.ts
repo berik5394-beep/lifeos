@@ -218,6 +218,49 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     throw new AiModelError(new Error('No Claude response'));
   }
 
+  // FIX (Aydana 2026-05-22): если цикл оборвался на maxToolRounds, а
+  // Claude всё ещё просил инструменты (stop_reason='tool_use'), его
+  // последний content — это только tool_use-блоки БЕЗ текста. Тогда
+  // finalText пуст → throw → fallback врёт юзеру «Действие НЕ
+  // выполнено», хотя в ToolCall-аудите видно: 9 действий уже
+  // исполнились (например, create_task ×8). Чтобы не врать, делаем
+  // ОДИН доп. вызов БЕЗ tools — Claude обязан выдать финальный текст
+  // суммаризации того, что только что сделал. Дешёво (+1 запрос),
+  // даёт честный «записал N задач».
+  if (
+    response.stop_reason === 'tool_use' &&
+    !response.content.some((b) => b.type === 'text')
+  ) {
+    // Доталкиваем tool_results (если есть) + просим финал без tools.
+    // messages уже содержит весь контекст с tool_use/tool_result парами,
+    // включая последний assistant tool_use → нам нужен tool_result.
+    const lastTools = response.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+    );
+    if (lastTools.length > 0) {
+      messages.push({ role: 'assistant', content: response.content });
+      const stubs = lastTools.map((tu) => ({
+        type: 'tool_result' as const,
+        tool_use_id: tu.id,
+        content: 'Лимит шагов: подведи итог тем, что уже сделал.',
+      }));
+      messages.push({ role: 'user', content: stubs });
+    }
+    try {
+      response = await anthropic.messages.create({
+        model,
+        max_tokens: 400,
+        system,
+        messages,
+        // NO tools — заставляем выдать чистый текст.
+      });
+    } catch (err) {
+      throw new AiModelError(
+        err instanceof Error ? err : new Error(String(err)),
+      );
+    }
+  }
+
   // Финальный текст — из последнего ответа (после отработки инструментов).
   // Промежуточные «сейчас проверю…» в textParts не тянем.
   for (const block of response.content) {

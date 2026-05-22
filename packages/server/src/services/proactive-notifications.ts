@@ -513,11 +513,19 @@ async function generateEveningSummary(
 export async function generateProactiveNotifications(
   userId: string,
 ): Promise<ProactiveNotification[]> {
+  // FIX (Aydana 2026-05-22): inactivityPing отключён по требованию
+  // юзера — он шлёт «Твой Питомец скучает!»/«Мы скучаем!» как
+  // основной триггер вернуться, и тестер жаловалась на спам. Питомец
+  // как механика остаётся (insights в приложении, рост уровня), но
+  // pushами про него больше не пинаем. Активность по задачам и
+  // привычкам остаётся: eventReminders / habitNudges / morningBriefing
+  // / eveningSummary — это и есть «уведомления о задачах», как просил
+  // Берик. generateInactivityPing/функцию намеренно НЕ удалил, чтобы
+  // не ломать тесты и сохранить историю; просто не вызываем.
   const [
     eventReminders,
     budgetAlerts,
     habitNudges,
-    inactivityPing,
     weeklySummary,
     morningBriefing,
     eveningSummary,
@@ -525,7 +533,6 @@ export async function generateProactiveNotifications(
     generateEventReminders(userId),
     generateBudgetAlerts(userId),
     generateHabitNudges(userId),
-    generateInactivityPing(userId),
     generateWeeklySummary(userId),
     generateMorningBriefing(userId),
     generateEveningSummary(userId),
@@ -535,7 +542,6 @@ export async function generateProactiveNotifications(
     ...eventReminders,
     ...budgetAlerts,
     ...habitNudges,
-    ...inactivityPing,
     ...weeklySummary,
     ...morningBriefing,
     ...eveningSummary,
