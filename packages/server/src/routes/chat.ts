@@ -40,7 +40,12 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       if (res.bookingUrl) message += `\n\n\u{1F517} ${res.bookingUrl}`;
       // SSOT Step 7: бейдж — ТОЛЬКО реальные исполненные инструменты
       // из аудита ToolCall. Никакого NLP-«+N в задачи» из воздуха.
-      if (res.auditedActions && res.auditedActions > 0) {
+      // Friend-UX: бейдж выглядит как SQL-trace для юзера → скрыт по
+      // умолчанию. Включить для debug: DEBUG_AUDIT_FOOTER=true в env.
+      if (
+        process.env.DEBUG_AUDIT_FOOTER === 'true' &&
+        res.auditedActions && res.auditedActions > 0
+      ) {
         message += `\n\n— \u{2705} выполнено действий: ${res.auditedActions}`;
       }
       return reply.send({

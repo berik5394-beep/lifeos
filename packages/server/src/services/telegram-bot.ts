@@ -259,7 +259,12 @@ async function sendJarvis(
   }
   // SSOT Step 7: бейдж — только реальные исполненные инструменты
   // (ToolCall-аудит), не NLP-выдумка captureInBackground.
-  if (res.auditedActions && res.auditedActions > 0) {
+  // Friend-UX: бейдж выглядит как SQL-trace для юзера → скрыт по
+  // умолчанию. Включить для debug: DEBUG_AUDIT_FOOTER=true в env.
+  if (
+    process.env.DEBUG_AUDIT_FOOTER === 'true' &&
+    res.auditedActions && res.auditedActions > 0
+  ) {
     msg += `\n\n— ✅ выполнено действий: ${res.auditedActions}`;
   }
   // БЕЗ parse_mode: ответ Claude (+ web search URLs) содержит непарные
