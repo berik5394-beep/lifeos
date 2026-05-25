@@ -26,6 +26,12 @@ model User {
   // игнорируется, therapeutic-детекторы не эмитят. Аддитивно с
   // default(true) — миграция безопасна (ISSUE-X).
   therapeuticMode Boolean  @default(true)
+  // Phase 7 P1 — DND quiet hours. Формат "HH:MM" локально (по User.timezone).
+  // null = DND off. Если start > end (например 23:00→08:00) — интервал
+  // пересекает полночь. Centralized check в push-service.ts:deliverNotification.
+  // Additive only (см. AGENTS.md §3).
+  quietHoursStart String?
+  quietHoursEnd   String?
   settings        Json     @default("{}")
   createdAt       DateTime @default(now())
 
@@ -191,7 +197,7 @@ model Habit {
   // derivedFrom ∈ 'user'|'planner'|'imported' — кто создал.
   planParentId   String?
   planParentType String?
-  derivedFrom    String  @default("user")
+  derivedFrom    String    @default("user")
   // Phase 5 P2 4/5 — re-decompose архивирует planner-привычку
   // (archivedAt), не удаляет. Habit.createdAt уже есть выше.
   archivedAt     DateTime?
@@ -269,7 +275,7 @@ model WeeklyGoal {
   // planParentType='YearlyGoal' (год → неделя).
   planParentId   String?
   planParentType String?
-  derivedFrom    String  @default("user")
+  derivedFrom    String    @default("user")
   // Phase 5 P2 4/5 — re-decompose: при смене цели старых planner-
   // детей АРХИВИРУЕМ (archivedAt=now), не удаляем (прогресс/история
   // целы). Активные = archivedAt:null. createdAt — для истинного
@@ -309,11 +315,11 @@ model YearlyGoal {
   // на случай мета-целей (цель → подцель).
   planParentId   String?
   planParentType String?
-  derivedFrom    String  @default("user")
+  derivedFrom    String   @default("user")
   // Phase 5 P2 4/5 — истинный planStale: цель изменена ПОЗЖЕ
   // постройки плана ⟺ updatedAt > max(active planner-child.createdAt).
   // @updatedAt — Prisma сам трогает при апдейте YearlyGoal.
-  updatedAt      DateTime @updatedAt @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 
   @@index([userId, year])
   @@index([planParentId])

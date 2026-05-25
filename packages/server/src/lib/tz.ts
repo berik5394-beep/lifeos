@@ -93,6 +93,59 @@ export function localHour(tz: string, at: Date = new Date()): number {
   );
 }
 
+/**
+ * "HH:MM" в локальной таймзоне юзера. Phase 7 P1 DND.
+ * Стабильный формат для сравнения с User.quietHoursStart/End (тоже "HH:MM").
+ */
+export function localTimeStr(tz: string, at: Date = new Date()): string {
+  const zone = safeTz(tz);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: zone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(at);
+  const hh = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const mm = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  return `${hh}:${mm}`;
+}
+
+/**
+ * Phase 7 P1 — DND quiet hours check.
+ *
+ * Если оба null/undefined → DND off, return false.
+ * Если start == end → trivially false (нулевой интервал).
+ * Если start < end (например 13:00→17:00) → линейный интервал.
+ * Если start > end (например 23:00→08:00) → интервал ЧЕРЕЗ полночь:
+ *   "сейчас" попадает если now >= start ИЛИ now <= end.
+ *
+ * Сравнение лексикографическое на "HH:MM" — корректно потому что
+ * h23-формат (zero-padded). Не парсим в Date — избегаем tz-edge.
+ *
+ * Format validation upstream: ожидаем "HH:MM" 5 chars. Невалидный
+ * формат → DND ignored (return false) — graceful, не падаем.
+ */
+export function isInQuietHours(
+  start: string | null | undefined,
+  end: string | null | undefined,
+  tz: string,
+  at: Date = new Date(),
+): boolean {
+  if (!start || !end) return false;
+  // Строгая валидация HH:MM: 00-23 для часов, 00-59 для минут.
+  // Слабый regex \d{2}:\d{2} пропускает "25:99" → cross-midnight
+  // ветка некорректно возвращает true.
+  const valid = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if (!valid.test(start) || !valid.test(end)) return false;
+  if (start === end) return false;
+  const now = localTimeStr(tz, at);
+  if (start < end) {
+    return now >= start && now < end;
+  }
+  // cross-midnight: start > end (23:00→08:00)
+  return now >= start || now < end;
+}
+
 /** UTC-инстант начала дня `n` дней назад относительно локального дня. */
 export function localDayStartUTCOffset(
   tz: string,

@@ -83,9 +83,12 @@ describe('Phase 5 P2 4/5 — re-decompose foundation (W2/ISSUE-Z)', () => {
     expect(modelBlock('Habit')).toMatch(/archivedAt\s+DateTime\?/);
   });
   it('YearlyGoal: updatedAt @updatedAt (для истинного planStale)', () => {
-    expect(modelBlock('YearlyGoal')).toMatch(
-      /updatedAt\s+DateTime\s+@updatedAt\s+@default\(now\(\)\)/,
-    );
+    // Принимаем оба порядка атрибутов — Prisma format нормализует в
+    // @default(now()) @updatedAt, но семантика идентична.
+    const block = modelBlock('YearlyGoal');
+    const orderA = /updatedAt\s+DateTime\s+@updatedAt\s+@default\(now\(\)\)/;
+    const orderB = /updatedAt\s+DateTime\s+@default\(now\(\)\)\s+@updatedAt/;
+    expect(orderA.test(block) || orderB.test(block)).toBe(true);
   });
   it('миграция p2_45_archived_at — аддитивна, без DROP', () => {
     const dir = join(root, 'prisma/migrations');
