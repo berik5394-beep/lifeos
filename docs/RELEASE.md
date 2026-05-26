@@ -415,7 +415,46 @@ behavioral SKIP per Berik.
 
 ---
 
-### v1.2.0 — TBD — First Android APK release [DRAFT]
+### v1.2.0 — 2026-05-26 — Travelpayouts search_flights (MINOR)
+**Commit**: `de91ab8`
+**Tag-type**: regular (MINOR — новая capability «найди билеты»)
+
+> ⚠️ **Version reassignment**: ранее v1.2.0 был зарезервирован за
+> «First Android APK release» (DRAFT). Mobile APK сдвинут на v1.3.0
+> (install + smoke pending). Pattern same as v1.1.0 reassignment.
+
+**Что вошло (поверх v1.1.4)**:
+- **search_flights tool** — active flight search через Aviasales
+  prices_for_dates v3. Раньше `get_trip` показывал только existing
+  TravelPlan (passive); теперь юзер может «найди билет в Алматы на
+  15 июля» и agent делает реальный API call.
+- **integrations/travelpayouts.ts** (новый folder!) — thin HTTP client:
+  - searchFlights({origin, destination, departureAt, returnAt?, currency?})
+  - TravelpayoutsError(code: 'not_configured'|'api_error'|'invalid_input')
+  - Auth X-Access-Token (server-level, не user OAuth)
+  - Affiliate marker автоматом → revenue share
+  - Timeout 8s через AbortController
+- **tools/search-flights.ts** — graceful fallback (AGENTS.md §12)
+  pattern: 4 ветки catch → structured response вместо throw
+- **Zod schema**: IATA validation (length 3) + YYYY-MM-DD regex
+- **9 новых tests** (search-flights.test.ts) — graceful path,
+  zod validation, registry consistency
+- **Disambiguation** в description: НЕ путать с get_trip
+
+**ENV**:
+- packages/server/.env уже содержит TRAVELPAYOUTS_TOKEN/MARKER
+- Railway prod env vars **НЕ добавлены** → graceful fallback сработает
+  («Поиск билетов сейчас не подключён»). Когда Berik добавит — tool
+  заработает БЕЗ нового deploy
+
+**Breaking changes**: нет (новый tool, не trogат existing).
+
+**Verified в проде**: Railway deploy SUCCESS, health 200, 823/823
+tests, behavioral SKIP per Berik.
+
+---
+
+### v1.3.0 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
 
