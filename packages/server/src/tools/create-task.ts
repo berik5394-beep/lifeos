@@ -10,8 +10,10 @@ import { defineTool } from './_types.js';
 export const createTaskTool = defineTool({
   name: 'create_task',
   description:
-    'Создать задачу пользователю. Вызывай на «создай задачу», ' +
-    '«добавь задачу», «напомни сделать X».',
+    'Создать ОДНУ задачу пользователю. Вызывай на «создай задачу», ' +
+    '«добавь задачу», «напомни сделать X». Для разбивки БОЛЬШОЙ цели ' +
+    'в дерево (план под цель: год → кварталы → недели) — используй ' +
+    'decompose_goal, не create_task в цикле.',
   category: 'task',
   schema: z.object({
     title: z.string().min(1).max(300),

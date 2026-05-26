@@ -5,7 +5,11 @@ import { defineTool } from './_types.js';
 /** SSOT Step 5 — write-tool. 1:1 с legacy complete_habit. */
 export const completeHabitTool = defineTool({
   name: 'complete_habit',
-  description: 'Отметить привычку выполненной сегодня по имени или id.',
+  description:
+    'Отметить ОДНУ привычку выполненной сегодня. Если в одном сообщении ' +
+    'несколько привычек («бег И чтение», «все утренние») — используй ' +
+    'complete_multiple_habits. Вызывай на «отметь X», «сделал X», ' +
+    '«выполнил X».',
   category: 'habit',
   schema: z.object({
     name: z.string().max(120).optional(),

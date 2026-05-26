@@ -10,8 +10,9 @@ import { defineTool } from './_types.js';
 export const getCalendarTool = defineTool({
   name: 'get_calendar',
   description:
-    'События календаря юзера в диапазоне дат. Для проверки ' +
-    'занятости/конфликтов перед планированием.',
+    'События календаря юзера в диапазоне дат (что уже занято). ' +
+    'Для проверки занятости/конфликтов перед планированием. Для ' +
+    'поиска СВОБОДНЫХ окон — используй get_free_slots, не считай в уме.',
   category: 'calendar',
   schema: z.object({
     from: z.string().max(20),

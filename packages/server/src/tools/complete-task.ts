@@ -5,7 +5,9 @@ import { defineTool } from './_types.js';
 /** SSOT Step 5 — write-tool. 1:1 с legacy complete_task. */
 export const completeTaskTool = defineTool({
   name: 'complete_task',
-  description: 'Отметить задачу выполненной по названию или id.',
+  description:
+    'Отметить задачу выполненной. Вызывай на «закрой задачу X», ' +
+    '«сделал X», «выполнил задачу X», «X готово».',
   category: 'task',
   schema: z.object({
     title: z.string().max(300).optional(),

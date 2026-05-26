@@ -6,8 +6,10 @@ import { defineTool } from './_types.js';
 export const journalEntryTool = defineTool({
   name: 'journal_entry',
   description:
-    'Записать/обновить дневник самочувствия за сегодня: сон, ' +
-    'энергия, настроение, заметки.',
+    'Записать/обновить дневник самочувствия за сегодня (сон, энергия, ' +
+    'настроение, заметки). Вызывай на «спал X часов», «настроение Y», ' +
+    '«запиши в дневник», «энергия Z». НЕ путать с create_task — это ' +
+    'субъективное состояние, не дело.',
   category: 'task',
   schema: z.object({
     sleepHours: z.number().min(0).max(24).optional(),
