@@ -237,7 +237,45 @@ integration availability — Relayna pattern) — отдельная задач�
 
 ---
 
-### v1.1.0 — 2026-05-25 — First Android APK + integration backlog [DRAFT]
+### v1.1.0 — 2026-05-26 — Tool-filter by integration availability (MINOR)
+**Commit**: `37eed57`
+**Tag-type**: regular (MINOR — новая backend capability)
+
+> ⚠️ **Version reassignment**: ранее v1.1.0 был зарезервирован за
+> «First Android APK release» (DRAFT). Mobile APK сдвинут на v1.2.0
+> (ещё не shipped — install + smoke pending). MINOR-номер занят
+> сегодня раньше, чем mobile удалось довести до раздачи.
+
+**Что вошло (поверх v1.0.4)**:
+- **Tool-filter pattern (Relayna)** — закрывает класс hollow-tools
+  системно. Tool с `requires` integration не показывается агенту
+  если у юзера integration не подключена → агент не вызовет →
+  не упадёт → friend-UX чистый.
+- `_types.ts`: новый тип `IntegrationRequirement`
+  (`{ kind: 'google_oauth' | 'telegram_user_chat' }`), новое
+  опциональное поле `Tool.requires`
+- `tools/index.ts`: async функции `agentToolSchemasForUser(userId)`
+  + `agentToolNamesForUser(userId)` фильтруют по integrations
+  - Backward-compat: старые `agentToolSchemas`/`agentToolNames`
+    оставлены для tests + legacy паттернов
+  - `google_oauth` требует не просто active, но и refreshToken !== null
+- `get-email-triage`: marked `requires: { kind: 'google_oauth' }`.
+  Graceful try/catch остаётся как defense-in-depth (race с
+  deactivation integration).
+- `claude-agent.ts`: использует await user-aware версии в hot-path
+- 14 новых invariant tests (`phase7-tool-filter.test.ts`) — без БД,
+  парсят исходники
+
+**Breaking changes**: нет (additive — старые функции оставлены).
+
+**Verified в проде**:
+- Railway deploy SUCCESS, health 200
+- 809/809 тестов (795 → 809: +14)
+- Behavioral: SKIPPED per Berik (как v1.0.2-v1.0.4 — honest state)
+
+---
+
+### v1.2.0 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
 
