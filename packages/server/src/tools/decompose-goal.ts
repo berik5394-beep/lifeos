@@ -3,16 +3,14 @@ import { defineTool } from './_types.js';
 import { persistPlan } from '../services/planner-service.js';
 
 /**
- * Phase 5 P2 — шаг 2: decompose_goal в реестре, ЗАГЛУШКА.
+ * Phase 5 P2/3 — decompose_goal: реальный planner-tool в SSOT registry.
  *
- * Цель шага: доказать, что новый planner-tool интегрируется в SSOT
- * (autogen схем/промпта, registry-consistency, агент-цикл, аудит
- * ToolCall) БЕЗ поломок — ДО реализации planner-service. Логика
- * декомпозиции приедет на шаге 3 (YearlyGoal → quarterly) и
- * расширится до полного каскада год→квартал→неделя→привычка/задача.
+ * Handler вызывает persistPlan() из planner-service.js — РЕАЛЬНАЯ
+ * декомпозиция (год → кварталы → недели → привычка/задача), пишет
+ * WeeklyGoal/Habit/Task с planParentId. Не выдумывает — counter
+ * `created` отражает РЕАЛЬНО созданные строки (bug-#1 класс защиты).
  *
- * Контракт ответа уже финальный (чтобы P3 только наполнил логику, не
- * меняя форму): decision + tree + message. `decision`:
+ * Контракт ответа: decision + tree + message. `decision`:
  *  - 'decompose'   — цель разбивается (обучение/навык/привычка/
  *                     финансы/здоровье)
  *  - 'keep_atomic' — НЕ разбивается (разовая встреча/ДР/покупка) —
@@ -21,8 +19,12 @@ import { persistPlan } from '../services/planner-service.js';
  *
  * needsConfirm:false — планировщик пишет ОБРАТИМО и НЕдеструктивно
  * (идемпотентно, не трёт ручное), как create_task. sideEffects:
- * 'write' — реальная версия создаёт WeeklyGoal/Habit/Task с
- * planParentId. На заглушке записи НЕТ.
+ * 'write' — реальные записи в WeeklyGoal/Habit/Task с planParentId.
+ *
+ * История: на Phase 5 шаг 2 это была заглушка (доказать SSOT-интеграцию
+ * без поломок ДО planner-service). На шаге 3d (P3.d) handler заменён
+ * на реальный persistPlan, форма ответа сохранена. Комментарии
+ * обновлены 2026-05-26 (устаревали ещё с май 2026).
  */
 export const decomposeGoalTool = defineTool({
   name: 'decompose_goal',
@@ -30,7 +32,7 @@ export const decomposeGoalTool = defineTool({
     'Разложить большую цель в дерево: год → кварталы → недели → ' +
     'привычка/задача. Вызывай на «разбей мою цель», «составь план ' +
     'под цель», «как достичь <цель>». Разовые встречи/покупки НЕ ' +
-    'разбивает. (Заглушка — логика на шаге 3.)',
+    'разбивает.',
   category: 'system',
   schema: z.object({
     goal: z
