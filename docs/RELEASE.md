@@ -352,6 +352,32 @@ manual merge conflict).
 
 ---
 
+### v1.1.3 — 2026-05-26 — C4: tool descriptions precision (PATCH)
+**Commit**: `cb1b5e8`
+**Tag-type**: regular (PATCH — description-only, агент видит чище,
+runtime поведение не меняется)
+
+**Что вошло**: 5 tool descriptions расширены для устранения
+ambiguities и misfire'ов (audit показал что 5 из 23 tools имели
+минимальные/ambiguous descriptions):
+
+- **complete-habit**: + disambig от complete_multiple_habits +
+  trigger phrases
+- **complete-task**: + trigger phrases «закрой задачу X», «X готово»
+- **journal-entry**: + trigger phrases + disambig от create_task
+  («субъективное состояние, не дело»)
+- **create-task**: + disambig от decompose_goal («для разбивки
+  БОЛЬШОЙ цели — используй decompose_goal, не create_task в цикле»)
+- **get-calendar**: + cross-reference get_free_slots («для поиска
+  СВОБОДНЫХ окон — get_free_slots, не считай в уме»)
+
+**Breaking changes**: нет (description-only, handler logic не trogат).
+
+**Verified в проде**: Railway deploy SUCCESS, health 200, 811/811 tests,
+behavioral SKIP per Berik.
+
+---
+
 ### v1.2.0 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
