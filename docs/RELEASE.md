@@ -378,6 +378,43 @@ behavioral SKIP per Berik.
 
 ---
 
+### v1.1.4 — 2026-05-26 — E: tz-aware gating + getToday + isSunday (PATCH)
+**Commit**: `71e6244`
+**Tag-type**: regular (PATCH — продолжение D bug-class)
+
+**Bug-class**: D (v1.1.1) пофиксил scheduling (когда notification
+приходит). E фиксит gating (нужно ли вообще генерить) и getToday
+(какой day для DB queries). 4 server-local checks → локальные:
+- `getToday()` использовал `setHours(0)` сервера → DB query
+  task/habit/event на «сегодня» возвращал not-юзерский день
+  (Almaty юзер ~00:00 локально, server думает «завтра»)
+- `isSunday()` → server day, Almaty юзер в воскресенье 00:00-05:00
+  локально weekly_summary НЕ trigger'илась (server думал суббота)
+- `generateHabitNudges currentHour 14-20` → Almaty юзеру gate
+  работал в 19:00-01:00 локально (за пределами afternoon)
+- `generateWeeklySummary now.getHours() === 20` → server-local
+- `generateInactivityPing currentHour 12-15` → disabled (Aydana fix),
+  patched для consistency
+
+**Fix**:
+- `lib/tz.ts`: `localDayOfWeek(tz)` — 0-6 через Intl.DateTimeFormat
+- `getToday()` → `getToday(tz: string)` — UTC instant полночи в tz
+- `isSunday()` → `isSundayLocal(tz: string)`
+- 6 callers getToday updated → передают tz
+- gating: `now.getHours()` / `currentHour` → `localHour(tz, now)`
+- `generateEventReminders` reordered: fetch tz first, потом today
+- `buildMorning` signature: + `tz: string` (передаётся из generator)
+
+**Scope**: D + E полностью закрывают tz-bug class для proactive
+notifications. Morning/event_reminders уже были tz-correct (W11 fix).
+
+**Breaking changes**: нет (internal refactor, signatures internal).
+
+**Verified в проде**: Railway deploy SUCCESS, health 200, 811/811 tests,
+behavioral SKIP per Berik.
+
+---
+
 ### v1.2.0 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
