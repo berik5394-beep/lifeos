@@ -206,6 +206,37 @@ lib/tz.ts + tests **БЕЗ** `push-service.ts` (ошибка staging — фай�
 
 ---
 
+### v1.0.4 — 2026-05-26 — Tools quality: graceful Gmail + comment cleanup (PATCH)
+**Commit**: `4060bef`
+**Tag-type**: regular (PATCH)
+
+**Что вошло (поверх v1.0.3)**:
+- **get-email-triage graceful fallback**: handler ловит
+  `GoogleCalendarError` и возвращает structured
+  `{ connected:false, reason, message }` — бот объясняет юзеру
+  по-человечески («Gmail не подключён, могу помочь подключить»)
+  вместо silent throw. Friend-UX: класс багов hollow-tools.
+  - `auth_failed` → not_connected
+  - `token_refresh_failed` → token_expired
+  - `api_error` / `not_configured` → api_error
+  - unknown → unexpected_error (с console.warn для observability)
+- **decompose-goal комментарий cleanup**: убран устаревший
+  «ЗАГЛУШКА — логика на шаге 3» (handler реальный через
+  `persistPlan` с Phase 5 P3.d, комментарий вводил в заблуждение)
+
+**Систематический fix** для всех hollow-tools (tool-filter by
+integration availability — Relayna pattern) — отдельная задача
+(v1.1.x backlog).
+
+**Breaking changes**: нет (additive).
+
+**Verified в проде**:
+- Railway deploy SUCCESS, health 200
+- 137 tool tests passed, server tsc clean
+- Behavioral: SKIPPED per Berik (как v1.0.2/v1.0.3 — honest state)
+
+---
+
 ### v1.1.0 — 2026-05-25 — First Android APK + integration backlog [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
