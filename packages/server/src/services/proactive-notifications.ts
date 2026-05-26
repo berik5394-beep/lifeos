@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC, localDaySlot } from '../lib/tz.js';
+import { localDayStartUTC, localDaySlot, localHour, localDayOfWeek } from '../lib/tz.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,9 +22,14 @@ export interface ProactiveNotification {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function getToday(): Date {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+/**
+ * Phase 7 P4 (E) — UTC instant полночи СЕГОДНЯ в tz юзера.
+ * Раньше использовал server local date (now.getFullYear/Month/Date) —
+ * для юзера в Almaty после 19:00 UTC server думал "завтра", DB query
+ * `date: today` возвращал not юзерский день. Bug-class.
+ */
+function getToday(tz: string): Date {
+  return localDayStartUTC(tz);
 }
 
 /**
@@ -77,9 +82,9 @@ function daysRemainingInMonth(): number {
   return lastDay - now.getDate() + 1;
 }
 
-/** Check if today is Sunday (0 = Sunday) */
-function isSunday(): boolean {
-  return new Date().getDay() === 0;
+/** Phase 7 P4 (E) — Sunday в локальной tz юзера (раньше server day). */
+function isSundayLocal(tz: string): boolean {
+  return localDayOfWeek(tz) === 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,19 +94,22 @@ async function generateEventReminders(
   userId: string,
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
-  const today = getToday();
   const now = new Date();
+
+  // Phase 7 P4 (E): fetch tz first → today корректно по локальному дню.
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const tz = user?.timezone || 'UTC';
+  const today = getToday(tz);
 
   // W11-фикс: event.startTime — HH:MM в локальной TZ юзера; чтобы
   // «за 1ч/30мин» считать корректно, конвертируем в UTC через tz.
-  const [user, events] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } }),
-    prisma.calendarEvent.findMany({
-      where: { userId, date: today },
-      select: { id: true, title: true, startTime: true },
-    }),
-  ]);
-  const tz = user?.timezone || 'UTC';
+  const events = await prisma.calendarEvent.findMany({
+    where: { userId, date: today },
+    select: { id: true, title: true, startTime: true },
+  });
 
   for (const event of events) {
     if (!event.startTime) continue;
@@ -218,12 +226,13 @@ async function generateHabitNudges(
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
   const now = new Date();
-  const currentHour = now.getHours();
+  // Phase 7 P4 (E) — gate по локальному часу юзера (раньше server local).
+  const currentHour = localHour(tz, now);
 
-  // Only nudge in the afternoon (14:00-20:00)
+  // Only nudge in the afternoon (14:00-20:00) ЛОКАЛЬНО
   if (currentHour < 14 || currentHour > 20) return notifications;
 
-  const today = getToday();
+  const today = getToday(tz);
 
   const [habits, habitLogs, pet] = await Promise.all([
     prisma.habit.findMany({
@@ -284,7 +293,7 @@ async function generateInactivityPing(
   // Only check between 12:00 and 15:00
   if (currentHour < 12 || currentHour > 15) return notifications;
 
-  const today = getToday();
+  const today = getToday(tz);
 
   // Check if user has any activity today: habit logs, completed tasks, or expenses
   const [habitLogCount, completedTaskCount, expenseCount, pet] =
@@ -346,10 +355,10 @@ async function generateWeeklySummary(
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
 
-  if (!isSunday()) return notifications;
+  if (!isSundayLocal(tz)) return notifications;
 
   const now = new Date();
-  const today = getToday();
+  const today = getToday(tz);
 
   // Calculate week range (Monday-Sunday)
   const weekStart = new Date(today);
@@ -408,7 +417,8 @@ async function generateWeeklySummary(
   const scheduledFor = daySlot(20, tz);
 
   // Only include if 20:00 hasn't passed yet, or it's within the current window
-  if (scheduledFor > now || now.getHours() === 20) {
+  // Phase 7 P4 (E) — локальный час, не server.
+  if (scheduledFor > now || localHour(tz, now) === 20) {
     notifications.push({
       title: 'Итоги недели',
       body: `${name}, неделя: ${completedTasks} ${completedTasks === 1 ? 'задача' : 'задач'} закрыл, привычки ${habitsPct}%. ${motivationalText}`,
@@ -440,15 +450,16 @@ async function generateMorningBriefing(
   const scheduledFor = timeToDate(user?.wakeUpTime || '08:00', user?.timezone || 'UTC');
   // Планировщик сам решит «пора/не пора» (scheduledFor<=now и <2ч
   // просрочки) и дедупнёт раз в день. Здесь просто собираем брифинг.
-  return buildMorning(userId, user?.name ?? 'друг', scheduledFor);
+  return buildMorning(userId, user?.name ?? 'друг', scheduledFor, user?.timezone || 'UTC');
 }
 
 async function buildMorning(
   userId: string,
   name: string,
   scheduledFor: Date,
+  tz: string,
 ): Promise<ProactiveNotification[]> {
-  const today = getToday();
+  const today = getToday(tz);
   const [taskCount, events, habits, habitLogs] = await Promise.all([
     prisma.task.count({ where: { userId, date: today, completed: false } }),
     prisma.calendarEvent.findMany({
@@ -496,7 +507,7 @@ async function generateEveningSummary(
   name: string,
 ): Promise<ProactiveNotification[]> {
   const now = new Date();
-  const today = getToday();
+  const today = getToday(tz);
   // Phase 7 P3 — 21:00 ЛОКАЛЬНО для юзера (раньше setHours = server UTC,
   // для Asia/Almaty юзера evening приходил в 02:00 ночи).
   const scheduledFor = daySlot(21, tz);

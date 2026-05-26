@@ -82,6 +82,31 @@ export function localDayStartUTC(tz: string, at: Date = new Date()): Date {
 }
 
 /** Локальный час юзера 0..23 (R11 тихие часы — не серверный UTC). */
+/**
+ * Phase 7 P4 (E) — день недели в локальной tz юзера.
+ * Возвращает 0=Sunday, 1=Monday, ..., 6=Saturday (как Date.getDay()).
+ * Используется gating-проверками типа "только воскресенье"
+ * (weekly_summary). Раньше new Date().getDay() возвращал server day —
+ * для Almaty юзера в воскресенье 00:00-05:00 локально server думал
+ * субботу (UTC). Bug.
+ */
+export function localDayOfWeek(tz: string, at: Date = new Date()): number {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: safeTz(tz),
+    weekday: 'short',
+  }).format(at);
+  const map: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  return map[fmt] ?? 0;
+}
+
 export function localHour(tz: string, at: Date = new Date()): number {
   const zone = safeTz(tz);
   return Number(
