@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { sendTelegramTo } from './telegram-bot.js';
+import { isInQuietHours } from '../lib/tz.js';
 
 /**
  * Доставка проактивных уведомлений.
@@ -94,11 +95,18 @@ async function getTelegramChatId(userId: string): Promise<string | null> {
 export interface DeliveryResult {
   push: boolean;
   telegram: boolean;
+  /** Phase 7 P1: notification отложена из-за DND quiet hours. */
+  deferred?: boolean;
 }
 
 /**
  * Доставить одно уведомление пользователю по всем доступным каналам.
  * Primary — Expo Push (если есть токен). Mirror — Telegram (если привязан).
+ *
+ * Phase 7 P1 — DND quiet hours: если now ∈ [User.quietHoursStart, End]
+ * (локально по User.timezone), notification НЕ доставляется (deferred=true).
+ * Scheduler видит push=false&&telegram=false → не записывает SentNotification
+ * → следующий tick попробует снова (автоматический retry до конца DND).
  */
 export async function deliverNotification(
   userId: string,
@@ -108,8 +116,24 @@ export async function deliverNotification(
 ): Promise<DeliveryResult> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { expoPushToken: true },
+    select: {
+      expoPushToken: true,
+      quietHoursStart: true,
+      quietHoursEnd: true,
+      timezone: true,
+    },
   });
+
+  // Phase 7 P1: DND guard — friend respects time.
+  if (
+    isInQuietHours(
+      user?.quietHoursStart,
+      user?.quietHoursEnd,
+      user?.timezone || 'UTC',
+    )
+  ) {
+    return { push: false, telegram: false, deferred: true };
+  }
 
   let push = false;
   if (isExpoToken(user?.expoPushToken)) {
