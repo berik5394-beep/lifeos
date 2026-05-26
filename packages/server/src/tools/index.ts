@@ -20,6 +20,7 @@ import { getEmailTriageTool } from './get-email-triage.js';
 import { recallPersonTool } from './recall-person.js';
 import { getWeeklyPlanTool } from './get-weekly-plan.js';
 import { getTripTool } from './get-trip.js';
+import { searchFlightsTool } from './search-flights.js';
 import { getGoalProgressTool } from './get-goal-progress.js';
 import { getUserProfileTool } from './get-user-profile.js';
 import { sendTelegramTool } from './send-telegram.js';
@@ -64,6 +65,7 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   recallPersonTool,
   getWeeklyPlanTool,
   getTripTool,
+  searchFlightsTool,
   getGoalProgressTool,
   // Phase 6 C2 — синтезированный профиль (read-only).
   getUserProfileTool,
