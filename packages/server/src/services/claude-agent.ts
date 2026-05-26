@@ -4,8 +4,8 @@ import { AiModelError } from '../lib/errors.js';
 // runLocalTool. Источник правды — реестр. agentToolSchemas =
 // проекция реестра БЕЗ confirm-tools (security-инвариант там же).
 import {
-  agentToolSchemas,
-  agentToolNames,
+  agentToolSchemasForUser,
+  agentToolNamesForUser,
   runRegistryTool,
 } from '../tools/index.js';
 import { convertCurrency } from './external-apis.js';
@@ -143,7 +143,9 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     toolList.push({ type: 'web_search_20250305', name: 'web_search', max_uses: maxSearches });
   }
   if (localTools && userId) {
-    toolList.push(...agentToolSchemas());
+    // Phase 7: user-aware filter — tools у которых требуется
+    // integration без активной → скрыты от агента (Relayna pattern).
+    toolList.push(...(await agentToolSchemasForUser(userId)));
   }
   const tools =
     toolList.length > 0 ? (toolList as unknown as Anthropic.Tool[]) : undefined;
@@ -155,7 +157,11 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
   // и продолжаем. web_search обрабатывает Anthropic (нам не возвращает
   // tool_use на исполнение), цикл крутится только на confirm-free
   // tools реестра (agentToolNames — security-инвариант: без денег).
-  const localNames = agentToolNames();
+  // Phase 7: симметрия с tool-list (фильтр по integrations) —
+  // validation gate ровно для тех tools, что были показаны агенту.
+  const localNames = userId
+    ? await agentToolNamesForUser(userId)
+    : new Set<string>();
   for (let round = 0; round <= maxToolRounds; round++) {
     try {
       response = await anthropic.messages.create({

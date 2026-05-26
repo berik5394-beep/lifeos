@@ -1,5 +1,6 @@
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import type { Tool, ToolContext } from './_types.js';
+import type { Tool, ToolContext, IntegrationRequirement } from './_types.js';
+import { prisma } from '../lib/prisma.js';
 import { auditToolCall, type AuditSink } from '../services/tool-audit.js';
 import { getToday } from './get-today.js';
 import { getWeatherTool } from './get-weather.js';
@@ -137,6 +138,78 @@ export function agentToolNames(): Set<string> {
   return new Set(
     [...registry.values()]
       .filter((t) => t.needsConfirm === false)
+      .map((t) => t.name),
+  );
+}
+
+/**
+ * Phase 7 — integration availability check для tool-filter pattern
+ * (Relayna). Pure: проверяет конкретный requirement против списка
+ * активных integrations юзера.
+ */
+function integrationAvailable(
+  req: IntegrationRequirement,
+  integrations: Array<{ provider: string; refreshToken: string | null }>,
+): boolean {
+  if (req.kind === 'google_oauth') {
+    // Gmail/Calendar — нужен активный google_calendar Integration
+    // с refreshToken (без него API-вызов всё равно упадёт auth_failed).
+    return integrations.some(
+      (i) => i.provider === 'google_calendar' && i.refreshToken !== null,
+    );
+  }
+  if (req.kind === 'telegram_user_chat') {
+    return integrations.some((i) => i.provider === 'telegram');
+  }
+  // Неизвестный kind — fail-closed (tool скрыт, безопаснее).
+  return false;
+}
+
+/**
+ * Phase 7 — user-aware версия agentToolSchemas. Фильтрует:
+ *   1) `needsConfirm === false` (existing security gate — без денег)
+ *   2) `requires` удовлетворены user's active integrations (новый
+ *      hollow-tools gate — Relayna pattern)
+ *
+ * Tool без `requires` — всегда показывается (default behaviour).
+ * Tool с `requires.kind='google_oauth'` без подключённого Google →
+ * НЕ в списке → агент его не вызовет → не упадёт → friend-UX clean.
+ */
+export async function agentToolSchemasForUser(
+  userId: string,
+): Promise<AnthropicToolSchema[]> {
+  const integrations = await prisma.integration.findMany({
+    where: { userId, active: true },
+    select: { provider: true, refreshToken: true },
+  });
+  return [...registry.values()]
+    .filter((t) => t.needsConfirm === false)
+    .filter((t) => !t.requires || integrationAvailable(t.requires, integrations))
+    .map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: toAnthropicInputSchema(t.schema),
+    }));
+}
+
+/**
+ * Phase 7 — user-aware версия agentToolNames. Симметрия с
+ * agentToolSchemasForUser — validation gate для tool_use ровно тех
+ * tools, что были показаны агенту в текущей сессии.
+ */
+export async function agentToolNamesForUser(
+  userId: string,
+): Promise<Set<string>> {
+  const integrations = await prisma.integration.findMany({
+    where: { userId, active: true },
+    select: { provider: true, refreshToken: true },
+  });
+  return new Set(
+    [...registry.values()]
+      .filter((t) => t.needsConfirm === false)
+      .filter(
+        (t) => !t.requires || integrationAvailable(t.requires, integrations),
+      )
       .map((t) => t.name),
   );
 }

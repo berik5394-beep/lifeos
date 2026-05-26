@@ -23,6 +23,19 @@ export type ToolCategory =
 /** read = ничего не меняет; write = обратимая запись юзеру; external = внешний эффект. */
 export type ToolSideEffects = 'read' | 'write' | 'external';
 
+/**
+ * Phase 7 — integration requirement (Relayna pattern «tool-filter by
+ * integration availability»). Если у юзера соответствующая integration
+ * не подключена/неактивна — tool не показывается агенту (`agentToolSchemasForUser`)
+ * → агент не вызовет → не упадёт. Hollow-tools класс багов закрыт системно.
+ *
+ * undefined = always available (default — не требует никакой
+ * пользовательской интеграции).
+ */
+export type IntegrationRequirement =
+  | { kind: 'google_oauth' } // Gmail, Google Calendar — Integration provider='google_calendar' + refreshToken
+  | { kind: 'telegram_user_chat' }; // user-level TG mirror — Integration provider='telegram'
+
 export interface ToolContext {
   userId: string;
 }
@@ -50,6 +63,12 @@ export interface Tool<TIn = unknown, TOut = unknown> {
   handler: (input: TIn, ctx: ToolContext) => Promise<TOut>;
   /** Опц. примеры фраз — помогают модели выбрать нужный tool. */
   examples?: string[];
+  /**
+   * Phase 7 — required user integration. Если задано, и у юзера
+   * integration не активна — tool скрыт от агента
+   * (`agentToolSchemasForUser`). undefined = always available.
+   */
+  requires?: IntegrationRequirement;
 }
 
 /**
@@ -69,6 +88,7 @@ export function defineTool<S extends z.ZodTypeAny, TOut>(t: {
   sideEffects: ToolSideEffects;
   handler: (input: z.infer<S>, ctx: ToolContext) => Promise<TOut>;
   examples?: string[];
+  requires?: IntegrationRequirement;
 }): Tool {
   return t as unknown as Tool;
 }

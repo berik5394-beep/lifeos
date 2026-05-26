@@ -26,6 +26,11 @@ export const getEmailTriageTool = defineTool({
   schema: z.object({}),
   needsConfirm: false,
   sideEffects: 'external',
+  // Phase 7 tool-filter: без активного google_calendar integration
+  // tool скрыт от агента (agentToolSchemasForUser). Старый graceful
+  // try/catch в handler остаётся как defense-in-depth: если фильтр
+  // когда-то промахнётся / race с deactivation → не упадём.
+  requires: { kind: 'google_oauth' },
   examples: ['разбери почту', 'что в почте', 'есть важные письма'],
   handler: async (_input, ctx) => {
     try {
