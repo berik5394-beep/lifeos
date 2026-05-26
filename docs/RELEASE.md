@@ -129,6 +129,147 @@ SUCCESS, deployed 2026-05-22T15:54:23Z, healthcheck `/health` 120s).
 
 ---
 
+### v1.0.1 — 2026-05-25 — Process discipline + Sentry SDK
+**Commit**: `5e01d73`
+**Tag-type**: regular (PATCH, после GREEN SMOKE)
+
+**Что вошло (поверх v1.0.0)**:
+- `AGENTS.md` (11 правил работы для AI-агента)
+- `docs/SMOKE.md` (пост-деплой checklist с Aydana regression-guard)
+- `docs/RELEASE.md` (semver convention + история тегов)
+
+**Breaking changes**: нет (только docs + meta, runtime backend identical to v1.0.0).
+
+**Known limitations**: те же что в v1.0.0.
+
+**Migration notes**: нет.
+
+**Verified в проде** (Berik 2026-05-25 15:47-15:48):
+- `/health` 200, database in sync, Server listening
+- Bot `@LifeOS_jarvis_bot` отвечает `/start`
+- Aydana regression-guard: «запиши 3 задачи на завтра» → бот корректно
+  записал и перечислил по именам
+- Safety crisis: «не вижу смысла жить» → 112 + Союз кризисных центров КЗ
+  + therapeutic tone
+
+---
+
+### v1.0.2 — 2026-05-25 — Friend-UX: hide audit footer (PATCH)
+**Commit**: `222fc81`
+**Tag-type**: regular (PATCH)
+
+**Что вошло (поверх v1.0.1)**:
+- Убран debug-маркер «— ✅ выполнено действий: N» из юзерских ответов
+  (`routes/chat.ts`, `services/telegram-bot.ts`). Юзеру это выглядело
+  как SQL-trace, не как ответ друга
+- Gated за `DEBUG_AUDIT_FOOTER=true` env var (Berik включает локально
+  когда отлаживает, юзеры не видят)
+
+**Breaking changes**: нет (только UX-косметика).
+
+**Verified в проде**:
+- Railway deploy SUCCESS, health 200
+- Behavioral: SKIPPED per user decision (Berik отказался от ручной
+  проверки). Honest state per AGENTS.md §7.
+
+---
+
+### v1.0.3 — 2026-05-25 — P7 DND quiet hours (PATCH)
+**Commit**: `0cccc53` (изначально tag был на `c5335ca`, retagged —
+см. ⚠️ ниже)
+**Tag-type**: regular (PATCH, additive default-off)
+
+**Что вошло (поверх v1.0.2)**:
+- `User.quietHoursStart/End String?` (nullable, "HH:MM" локально по
+  `User.timezone`). null = DND off → нулевое user-visible изменение.
+- `lib/tz.ts`: `localTimeStr()` + `isInQuietHours()` (поддержка
+  cross-midnight интервалов типа 23:00→08:00, строгая HH:MM валидация
+  regex `/^([01]\d|2[0-3]):[0-5]\d$/`)
+- `push-service.ts`: DND guard в `deliverNotification()`. Если now ∈
+  quiet hours → `{push:false, telegram:false, deferred:true}`,
+  scheduler не помечает SentNotification → следующий tick retries
+  → когда DND кончился, notification доставится автоматом
+- 12 новых tests в `lib/tz.test.ts` + `phase7-schema.test.ts` invariant
+
+⚠️ **Tag history note**: тег v1.0.3 первоначально был на commit
+`c5335ca` (2026-05-25 19:44), но тот коммит содержал schema +
+lib/tz.ts + tests **БЕЗ** `push-service.ts` (ошибка staging — файл
+остался unstaged " M" вместо "M "). Фича была половинной: schema
+в проде, guard — нет. Fix в `0cccc53`, тег перенесён.
+
+**Breaking changes**: нет (additive default-off).
+
+**Verified в проде**:
+- Railway deploy `0cccc53` SUCCESS, health 200
+- 795/795 тестов
+- Behavioral: SKIPPED per user (как v1.0.2).
+
+---
+
+### v1.1.0 — 2026-05-25 — First Android APK + integration backlog [DRAFT]
+**Commit**: TBD (после cherry-pick worktree → main)
+**Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
+
+> ⚠️ **DRAFT** — заполнено заранее, последний блок «Verified в проде»
+> подтверждается после STAGE 4 smoke в `docs/plan/mobile-build.md`.
+
+**Что вошло (поверх v1.0.1)**:
+
+- **First Android APK** через EAS Build (preview channel, internal
+  distribution). Build #2 (`63a073be`) FINISHED, APK:
+  https://expo.dev/artifacts/eas/dix4JDnZMJjVNiV83DD6b5.apk
+- **EAS Update (OTA)** настроен — channel `preview`, runtimeVersion
+  `{policy: appVersion}`. Bugfix workflow: `eas update` 30 сек,
+  юзер открывает app → автоматически новый JS bundle.
+- **Sentry crash reporting** integrated в mobile (`@sentry/react-native ~7.2.0`):
+  - `crash-reporting.ts` свапнут с console-placeholder на реальный
+    Sentry (dev=console, prod=Sentry, graceful fallback если DSN нет)
+  - `App.tsx` обёрнут `Sentry.wrap(App)`, `crashReporting.init()` в
+    module scope
+  - `ErrorBoundary` в `navigation/index.tsx` ловит React-errors →
+    `componentDidCatch` → Sentry
+  - **Source maps DISABLED** (нет AUTH_TOKEN). Stack traces будут
+    minified до v1.1.1 (см. task #15).
+- **ARCHITECTURE.md полная переписана** (335→482 строк) под Phase 5/6 +
+  SSOT registry + Aydana fix. Карта документов, 8 архитектурных
+  принципов, актуальные counts (42 routes, 38 services, 23 tools,
+  42 Prisma models).
+- **5 устаревших audit-снимков удалены** (все P0 закрыто, см. git
+  history): `AUDIT-{ARCHITECTURE,CODE-REVIEW,FRONTEND,SECURITY,SUMMARY}.md`.
+- **plan/ convention** (AGENTS.md §1) применён впервые:
+  - `docs/plan/mobile-build.md` (текущая работа)
+  - `docs/plan/travelpayouts-integration.md` (backlog v1.2.0)
+  - `docs/plan/2gis-integration.md` (deadline 2026-06-25)
+  - `docs/plan/openweather-integration.md` (backlog v1.2.0/v1.3.0)
+  - `docs/plan/newsapi-integration.md` (use case decision BLOCKING)
+- **5 integration ключей** записаны в `packages/server/.env` (gitignored)
+  для будущих v1.2.0+ интеграций: Travelpayouts (2 var), 2GIS,
+  OpenWeather, NewsAPI. Gemini намеренно НЕ записан (Berik отказался).
+
+**Breaking changes**: нет (backend identical to v1.0.1, новое только
+mobile platform).
+
+**Known limitations**:
+- **iOS NOT built** — требует Apple Developer Account ($99/год)
+- **Sentry source maps disabled** — стек-трейсы minified
+  (фикс в v1.1.1: см. task #15)
+- **Legacy `use-voice.ts`** всё ещё на `/voice/process` — 6 экранов.
+  Migration в `/voice/conversation/*` отложена (v1.2.0 / v1.3.0).
+- **Billing/IAP отсутствует** — pre-release, по дизайну.
+- **WhatsApp канал не реализован** (TG-only через `@LifeOS_jarvis_bot`).
+- **5 интеграций не active** (Travelpayouts/2GIS/OpenWeather/NewsAPI) —
+  только plan/ файлы + ключи в `.env`, реализация в v1.2.0+.
+
+**Migration notes**:
+- Юзеры скачивают APK через ссылку (не Play Store ещё)
+- Раздача через Telegram link, Android «небезопасный источник» warning
+  стандартен (Settings → разрешить установку)
+- OTA-обновления автоматом при следующем open app (если JS-only fix)
+
+**Verified в проде** (TBD): ожидается после STAGE 4 install smoke (`docs/plan/mobile-build.md`).
+
+---
+
 ### Шаблон для следующих записей
 
 ```
