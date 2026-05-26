@@ -107,6 +107,40 @@ Prod-verified означает ВСЕ 4 пункта одновременно:
   что юзер пишет на русском и Anthropic-модели лучше следуют инструкции
   на языке ответа.
 
+## 12. Tools с external integration → `requires` обязательно
+**Hard rule (закрывает класс hollow-tools).** Любой tool в SSOT registry
+(`packages/server/src/tools/`), который зависит от **user-level
+external integration** (Google OAuth, Telegram chat, future Calendar/
+Health/etc), ОБЯЗАН быть помечен полем `requires` в `defineTool`:
+
+```ts
+defineTool({
+  name: 'get_email_triage',
+  // ...
+  requires: { kind: 'google_oauth' },
+  // ...
+});
+```
+
+Без `requires`:
+- Tool показывается агенту даже если у юзера нет интеграции
+- Агент вызывает → throws → friend выглядит сломанным
+- Это **anti-pattern** (Phase 7 P2 закрыл class системно)
+
+Также **defense-in-depth**: handler должен иметь try/catch с graceful
+fallback (return `{ connected:false, reason, message }`) на случай
+race condition (integration deactivated пока агент уже выбрал tool).
+Пример — `get-email-triage.ts`.
+
+Текущие `IntegrationRequirement.kind` (см. `_types.ts`):
+- `google_oauth` — Gmail, Google Calendar (Integration provider=
+  'google_calendar' + refreshToken !== null)
+- `telegram_user_chat` — user-level TG mirror (Integration provider=
+  'telegram')
+
+Новые kinds добавлять в `_types.ts` + `tools/index.ts:integrationAvailable`
++ phase7-tool-filter.test.ts invariant.
+
 ## Что запрещено
 - Удаление чужих данных без явной просьбы (`prisma db push --accept-data-loss`,
   `rm -rf`, `DROP TABLE`, `git push --force`).
@@ -114,6 +148,8 @@ Prod-verified означает ВСЕ 4 пункта одновременно:
 - Менять существующие миграции.
 - Использовать regex для парсинга свободного prose-ответа LLM.
 - Помечать как `verified` то, что не запускал и не проверял.
+- Добавлять tool с external user-integration зависимостью БЕЗ
+  `requires` поля (см. правило #12) — это вернёт hollow-tools класс багов.
 - Бросать `--no-verify` чтобы обойти pre-commit hook.
 
 ## Если сомневаешься
