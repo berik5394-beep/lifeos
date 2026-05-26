@@ -1,14 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { runRegistryTool, ToolNotFoundError } from './index.js';
 import type { ToolCallRecord } from '../services/tool-audit.js';
+import { prisma } from '../lib/prisma.js';
 
 /**
  * Проверка #3 — runRegistryTool РЕАЛЬНО проходит через аудит, а не
- * «пишет в никуда». Без БД: sink инъектируется. get_today локально
- * упадёт на prisma (нет БД) — и это ОК: важно, что auditToolCall
- * всё равно зафиксировал РОВНО одну строку (error-row) с именем
- * tool. Значит middleware подключён; на деплое строка ляжет в
- * Postgres. End-to-end DB-запись проверяется smoke-тестом на деплое.
+ * «пишет в никуда». Без БД: sink инъектируется. Раньше тест полагался
+ * на «prisma без DATABASE_URL бросит» — flaky между checkouts (на
+ * main checkout DATABASE_URL мог быть установлен, и prisma не бросал
+ * → resolved вместо rejected). Теперь — explicit mock через
+ * vi.spyOn (scoped, не affects другие тесты). End-to-end DB-запись
+ * проверяется smoke-тестом на деплое.
  */
 
 function recordingSink() {
@@ -18,11 +20,19 @@ function recordingSink() {
 
 const ctx = { userId: 'u-dispatch-test' };
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('runRegistryTool — аудит-обвязка подключена', () => {
   it('исполнение tool пишет РОВНО одну строку ToolCall (даже при падении хендлера)', async () => {
     const { rows, sink } = recordingSink();
-    // get_today.handler дергает prisma.user — без БД бросит. Нам
-    // важно: аудит зафиксировал попытку (одна строка, имя tool).
+    // Explicit mock: prisma.user.findUnique throws — гарантированно,
+    // независимо от env (раньше полагались на отсутствие DATABASE_URL,
+    // что flaky). get_today.handler первым делом дергает prisma.user.
+    vi.spyOn(prisma.user, 'findUnique').mockRejectedValueOnce(
+      new Error('mock: prisma DB unavailable for test'),
+    );
     await expect(
       runRegistryTool('get_today', {}, ctx, sink),
     ).rejects.toBeDefined();
