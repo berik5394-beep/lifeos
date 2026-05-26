@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
+import { localDayStartUTC, localDaySlot } from '../lib/tz.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -36,10 +36,14 @@ function getToday(): Date {
  * Доставится первым тиком в окне [слот .. слот+2ч] (планировщик
  * сам режет просрочку >2ч), дальше — дедуп.
  */
-export function daySlot(hour: number): Date {
-  const d = getToday();
-  d.setHours(hour, 0, 0, 0);
-  return d;
+/**
+ * Phase 7 P3 (2026-05-26) — TZ-aware. Раньше `setHours(hour)` =
+ * server UTC, для юзера в Asia/Almaty слот 14:00 фактически =
+ * 19:00 локально, а evening 21:00 = 02:00 ночи. `tz` обязателен.
+ * Симметрия с timeToDate(time, tz) — без default'а на server local.
+ */
+export function daySlot(hour: number, tz: string): Date {
+  return localDaySlot(hour, tz);
 }
 
 function getMonthRange(): { start: Date; end: Date } {
@@ -135,6 +139,7 @@ async function generateEventReminders(
 // ---------------------------------------------------------------------------
 async function generateBudgetAlerts(
   userId: string,
+  tz: string,
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
   const now = new Date();
@@ -187,7 +192,7 @@ async function generateBudgetAlerts(
         title: 'Бюджет на пределе',
         body: `\u26A0\uFE0F Ты потратил ${Math.round(ratio * 100)}% бюджета на ${label}. Осталось ${remaining}\u20B8 на ${daysLeft} дней`,
         type: 'budget_alert',
-        scheduledFor: daySlot(10), // #4: стабильный слот → 1/день
+        scheduledFor: daySlot(10, tz), // #4: стабильный слот → 1/день локально
       });
     }
   }
@@ -200,6 +205,7 @@ async function generateBudgetAlerts(
 // ---------------------------------------------------------------------------
 async function generateHabitNudges(
   userId: string,
+  tz: string,
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
   const now = new Date();
@@ -243,7 +249,7 @@ async function generateHabitNudges(
     title: 'Не забудь о привычках',
     body: `Ты ещё не отметил: ${namesList}${suffix}.${streakText}`,
     type: 'habit_nudge',
-    scheduledFor: daySlot(14), // #4: стабильный слот → 1/день
+    scheduledFor: daySlot(14, tz), // #4: стабильный слот → 1/день локально
   });
 
   return notifications;
@@ -254,6 +260,7 @@ async function generateHabitNudges(
 // ---------------------------------------------------------------------------
 async function generateInactivityPing(
   userId: string,
+  tz: string,
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
   const now = new Date();
@@ -308,7 +315,7 @@ async function generateInactivityPing(
     title: 'Мы скучаем!',
     body,
     type: 'inactivity_ping',
-    scheduledFor: daySlot(12), // #4: стабильный слот → 1/день
+    scheduledFor: daySlot(12, tz), // #4: стабильный слот → 1/день локально
   });
 
   return notifications;
@@ -319,6 +326,7 @@ async function generateInactivityPing(
 // ---------------------------------------------------------------------------
 async function generateWeeklySummary(
   userId: string,
+  tz: string,
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
 
@@ -378,9 +386,8 @@ async function generateWeeklySummary(
     motivationalText = 'Непростая неделя. Не сдавайся \u2014 каждый шаг считается!';
   }
 
-  // Schedule for Sunday 20:00
-  const scheduledFor = new Date(today);
-  scheduledFor.setHours(20, 0, 0, 0);
+  // Schedule for Sunday 20:00 ЛОКАЛЬНО (tz юзера), не server UTC
+  const scheduledFor = daySlot(20, tz);
 
   // Only include if 20:00 hasn't passed yet, or it's within the current window
   if (scheduledFor > now || now.getHours() === 20) {
@@ -464,11 +471,13 @@ async function buildMorning(
 // Дедуп по (userId,'evening_summary',scheduledFor) → один раз/день.
 async function generateEveningSummary(
   userId: string,
+  tz: string,
 ): Promise<ProactiveNotification[]> {
   const now = new Date();
   const today = getToday();
-  const scheduledFor = new Date(today);
-  scheduledFor.setHours(21, 0, 0, 0);
+  // Phase 7 P3 — 21:00 ЛОКАЛЬНО для юзера (раньше setHours = server UTC,
+  // для Asia/Almaty юзера evening приходил в 02:00 ночи).
+  const scheduledFor = daySlot(21, tz);
 
   // Только вечером (после 21:00). Утром/днём не собираем впустую.
   if (now < scheduledFor) return [];
@@ -522,6 +531,15 @@ export async function generateProactiveNotifications(
   // / eveningSummary — это и есть «уведомления о задачах», как просил
   // Берик. generateInactivityPing/функцию намеренно НЕ удалил, чтобы
   // не ломать тесты и сохранить историю; просто не вызываем.
+
+  // Phase 7 P3 — fetch tz один раз, передаём вниз. Раньше generators
+  // юзали server-local time (setHours) → для Алматы юзера evening
+  // в 02:00 ночи. Morning уже был tz-aware (его не трогаем).
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const tz = user?.timezone || 'UTC';
   const [
     eventReminders,
     budgetAlerts,
@@ -531,11 +549,13 @@ export async function generateProactiveNotifications(
     eveningSummary,
   ] = await Promise.all([
     generateEventReminders(userId),
-    generateBudgetAlerts(userId),
-    generateHabitNudges(userId),
-    generateWeeklySummary(userId),
+    generateBudgetAlerts(userId, tz),
+    generateHabitNudges(userId, tz),
+    // inactivityPing НЕ вызываем (Aydana fix d9b46f9) — функция
+    // остаётся в коде для тестов/истории, но не пишет push.
+    generateWeeklySummary(userId, tz),
     generateMorningBriefing(userId),
-    generateEveningSummary(userId),
+    generateEveningSummary(userId, tz),
   ]);
 
   return [

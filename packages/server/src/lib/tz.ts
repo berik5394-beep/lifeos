@@ -94,6 +94,21 @@ export function localHour(tz: string, at: Date = new Date()): number {
 }
 
 /**
+ * Phase 7 P3 — стабильный «slot» сегодняшнего дня на указанный час
+ * (минута=0) ЛОКАЛЬНО для tz юзера, как UTC-инстант. Используется
+ * proactive-scheduler'ом для дедупа уведомлений «1/день в HH:00».
+ *
+ * Pattern замены устаревшего `daySlot(hour)` (который делал
+ * `new Date().setHours(...)` — server local time, для Алматы юзера
+ * слот 14:00 фактически = 19:00 локально). Симметрично с
+ * `timeToDate("HH:MM", tz)`, но удобнее для целых часов.
+ */
+export function localDaySlot(hour: number, tz: string, at: Date = new Date()): Date {
+  // Часовой UTC-инстант: полночь сегодняшнего дня в tz + hour часов.
+  return new Date(localDayStartUTC(tz, at).getTime() + hour * 3_600_000);
+}
+
+/**
  * "HH:MM" в локальной таймзоне юзера. Phase 7 P1 DND.
  * Стабильный формат для сравнения с User.quietHoursStart/End (тоже "HH:MM").
  */
