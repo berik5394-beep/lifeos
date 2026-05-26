@@ -321,6 +321,37 @@ Manual merge сохранил Aydana disable + применил tz fix к ост
 
 ---
 
+### v1.1.2 — 2026-05-26 — C3: friend-tone notifications (MINOR)
+**Commit**: `9dd7540`
+**Tag-type**: regular (MINOR — пользователь увидит ощутимое
+изменение в push'ах, хотя backward-compatible)
+
+**Что вошло**: 5 user-facing notification текстов переписаны под
+«звучит как друг» (audit показал средний friend-score 5.2/10 →
+~8/10 после правок). Имя юзера + конкретная похвала + actionable
+вопросы вместо шаблонной мотивации.
+
+- **morning_briefing**: title точка вместо «!», CTA «Начнём?» вместо
+  «Открой LifeOS — спланируем день»
+- **habit_nudge**: title «Привычки» (не «Не забудь»), имя +
+  конкретный стрик впереди, «Не дай стрику упасть» / «Закроем сегодня?»
+- **budget_alert**: без обвинения «ты потратил», с math (₸/день) +
+  actionable «Что закажем урезать?». 95%+ → «уже тонко»
+- **evening_summary**: имя + closed-числа в текст (не отдельно X/Y%)
+- **weekly_summary**: имя + цифры в текст, концовка вопросом
+
+**Архитектура**: `generateProactiveNotifications` fetches +name
+(было только timezone), 4 generators получили `name: string` param.
+inactivityPing tz-patched но disabled (Aydana fix сохранён через
+manual merge conflict).
+
+**Breaking changes**: нет (тексты — backward-compat).
+
+**Verified в проде**: Railway deploy SUCCESS, health 200,
+811/811 tests, behavioral SKIP per Berik.
+
+---
+
 ### v1.2.0 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
