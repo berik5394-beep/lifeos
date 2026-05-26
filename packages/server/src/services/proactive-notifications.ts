@@ -140,6 +140,7 @@ async function generateEventReminders(
 async function generateBudgetAlerts(
   userId: string,
   tz: string,
+  name: string,
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
   const now = new Date();
@@ -188,9 +189,16 @@ async function generateBudgetAlerts(
       const remaining = Math.max(0, Math.round(limit.monthlyLimit - spent));
       const label = CATEGORY_LABELS[limit.category] ?? limit.category;
 
+      // C3 friend-tone: без обвинения "ты потратил", с конкретной
+      // математикой (X/день) и actionable вопросом в конце.
+      const dailyAvg = daysLeft > 0 ? Math.round(remaining / daysLeft) : remaining;
+      const tail =
+        ratio >= 0.95
+          ? 'Уже тонко \u2014 на следующей неделе надо урезать.'
+          : `Не критично, но темп придётся снизить \u2014 где-то по ${dailyAvg}\u20B8/день. Что закажем урезать?`;
       notifications.push({
-        title: 'Бюджет на пределе',
-        body: `\u26A0\uFE0F Ты потратил ${Math.round(ratio * 100)}% бюджета на ${label}. Осталось ${remaining}\u20B8 на ${daysLeft} дней`,
+        title: 'Бюджет',
+        body: `${name}, на ${label} осталось ${remaining}\u20B8 на ${daysLeft} ${daysLeft === 1 ? 'день' : 'дней'}. ${tail}`,
         type: 'budget_alert',
         scheduledFor: daySlot(10, tz), // #4: стабильный слот → 1/день локально
       });
@@ -206,6 +214,7 @@ async function generateBudgetAlerts(
 async function generateHabitNudges(
   userId: string,
   tz: string,
+  name: string,
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
   const now = new Date();
@@ -242,12 +251,18 @@ async function generateHabitNudges(
   const suffix =
     incomplete.length > 3 ? ` и ещё ${incomplete.length - 3}` : '';
 
-  const streakText =
-    streak > 0 ? ` Стрик ${streak} дней \u2014 не потеряй!` : '';
+  // C3 friend-tone: имя + конкретная похвала за стрик впереди,
+  // привычки как продолжение, "не дай упасть" вместо "не забудь".
+  const head =
+    streak > 0
+      ? `${name}, ${streak} ${streak === 1 ? 'день' : 'дней'} подряд держишься \u2014 мощно.`
+      : `${name}, день уходит.`;
+  const closingHabit =
+    streak > 0 ? 'Не дай стрику упасть.' : 'Закроем сегодня?';
 
   notifications.push({
-    title: 'Не забудь о привычках',
-    body: `Ты ещё не отметил: ${namesList}${suffix}.${streakText}`,
+    title: 'Привычки',
+    body: `${head} Осталось: ${namesList}${suffix}. ${closingHabit}`,
     type: 'habit_nudge',
     scheduledFor: daySlot(14, tz), // #4: стабильный слот → 1/день локально
   });
@@ -327,6 +342,7 @@ async function generateInactivityPing(
 async function generateWeeklySummary(
   userId: string,
   tz: string,
+  name: string,
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
 
@@ -376,14 +392,16 @@ async function generateWeeklySummary(
   const tasksPct = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 100;
   const overallPct = (tasksPct + habitsPct) / 2;
 
+  // C3 friend-tone: концовка вопросом для engagement (друг
+  // спрашивает что подкрутим, не штампует "так держать").
   if (overallPct >= 90) {
-    motivationalText = 'Невероятная неделя! Так держать!';
+    motivationalText = 'Неделя огонь \u2014 так держать.';
   } else if (overallPct >= 70) {
-    motivationalText = 'Отличная работа! На следующей неделе будет ещё лучше.';
+    motivationalText = 'Хороший темп \u2014 не идеально, но стабильно. Что в следующей подкрутим?';
   } else if (overallPct >= 50) {
-    motivationalText = 'Неплохо, но ты можешь больше. Новая неделя \u2014 новый шанс!';
+    motivationalText = 'Средне \u2014 можем больше. Что начнём с понедельника?';
   } else {
-    motivationalText = 'Непростая неделя. Не сдавайся \u2014 каждый шаг считается!';
+    motivationalText = 'Неделя была тяжёлая. Не сдавайся. Что главное на следующей?';
   }
 
   // Schedule for Sunday 20:00 ЛОКАЛЬНО (tz юзера), не server UTC
@@ -393,7 +411,7 @@ async function generateWeeklySummary(
   if (scheduledFor > now || now.getHours() === 20) {
     notifications.push({
       title: 'Итоги недели',
-      body: `Итоги недели: ${completedTasks}/${totalTasks} задач, ${habitsPct}% привычек. ${motivationalText}`,
+      body: `${name}, неделя: ${completedTasks} ${completedTasks === 1 ? 'задача' : 'задач'} закрыл, привычки ${habitsPct}%. ${motivationalText}`,
       type: 'weekly_summary',
       scheduledFor,
     });
@@ -454,10 +472,13 @@ async function buildMorning(
     );
   }
 
+  // C3 friend-tone: точка вместо "!" в title (спокойнее, не реклама),
+  // CTA "Начнём?" вместо "Открой LifeOS — спланируем день" (без
+  // призыва открывать app — friend, не маркетинг).
   return [
     {
-      title: `Доброе утро, ${name}!`,
-      body: `${parts.join(', ')}. Открой LifeOS — спланируем день.`,
+      title: `Доброе утро, ${name}.`,
+      body: `${parts.join(', ')}. Начнём?`,
       type: 'morning_briefing',
       scheduledFor,
     },
@@ -472,6 +493,7 @@ async function buildMorning(
 async function generateEveningSummary(
   userId: string,
   tz: string,
+  name: string,
 ): Promise<ProactiveNotification[]> {
   const now = new Date();
   const today = getToday();
@@ -497,19 +519,22 @@ async function generateEveningSummary(
   const habitsPct = habits > 0 ? (habitLogs / habits) * 100 : 100;
   const overall = Math.round((tasksPct + habitsPct) / 2);
 
+  // C3 friend-tone: имя в начале, конкретные числа закрытых внутри
+  // текста (не отдельной строкой "X/Y%"). Tone сохраняет 4 уровня.
+  const closed = `${done} ${done === 1 ? 'задачу' : done < 5 ? 'задачи' : 'задач'} и ${habitLogs} ${habitLogs === 1 ? 'привычку' : habitLogs < 5 ? 'привычки' : 'привычек'}`;
   const tone =
     overall >= 90
-      ? 'Мощный день — ты герой. Отдыхай, заслужил.'
+      ? `${name}, мощный день — ${closed} закрыл. Ты в форме. Отдыхай.`
       : overall >= 60
-        ? 'Хороший день. Завтра — ещё лучше.'
+        ? `${name}, хороший день — ${closed} закрыл. Завтра подхватим.`
         : overall >= 30
-          ? 'День был непростым, но ты двигался. Завтра новый шанс.'
-          : 'Тяжёлый день. Главное — не бросил. Завтра чистый лист.';
+          ? `${name}, день был непростой — но ${closed} всё равно закрыл. Это уже движение. Завтра подхватим.`
+          : `${name}, день тяжёлый. Закрыл ${closed} — это уже не ноль. Завтра чистый лист.`;
 
   return [
     {
       title: 'Итоги дня',
-      body: `Задачи ${done}/${total}, привычки ${habitLogs}/${habits} — ${overall}%. ${tone}`,
+      body: tone,
       type: 'evening_summary',
       scheduledFor,
     },
@@ -535,11 +560,16 @@ export async function generateProactiveNotifications(
   // Phase 7 P3 — fetch tz один раз, передаём вниз. Раньше generators
   // юзали server-local time (setHours) → для Алматы юзера evening
   // в 02:00 ночи. Morning уже был tz-aware (его не трогаем).
+  // C3 (2026-05-26) — также fetches name для friend-tone текстов:
+  // обращение по имени делает push'и человечнее (раньше только morning
+  // знал имя, остальные говорили обезличенно).
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { timezone: true },
+    select: { timezone: true, name: true },
   });
   const tz = user?.timezone || 'UTC';
+  const name = user?.name ?? 'друг';
+
   const [
     eventReminders,
     budgetAlerts,
@@ -549,13 +579,13 @@ export async function generateProactiveNotifications(
     eveningSummary,
   ] = await Promise.all([
     generateEventReminders(userId),
-    generateBudgetAlerts(userId, tz),
-    generateHabitNudges(userId, tz),
+    generateBudgetAlerts(userId, tz, name),
+    generateHabitNudges(userId, tz, name),
     // inactivityPing НЕ вызываем (Aydana fix d9b46f9) — функция
     // остаётся в коде для тестов/истории, но не пишет push.
-    generateWeeklySummary(userId, tz),
+    generateWeeklySummary(userId, tz, name),
     generateMorningBriefing(userId),
-    generateEveningSummary(userId, tz),
+    generateEveningSummary(userId, tz, name),
   ]);
 
   return [
