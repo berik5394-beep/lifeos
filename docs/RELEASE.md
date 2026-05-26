@@ -275,6 +275,52 @@ integration availability — Relayna pattern) — отдельная задач�
 
 ---
 
+### v1.1.1 — 2026-05-26 — D: TZ-aware proactive notifications (PATCH)
+**Commit**: `4f93a2e`
+**Tag-type**: regular (PATCH — bug-fix класс)
+
+**Bug-class** (найден в C2 audit): 5 notification types использовали
+server local time (`new Date().setHours(H)`) вместо `User.timezone`.
+Для Asia/Almaty юзера (UTC+5):
+- evening_summary 21:00 → **02:00 ночи** (будило юзера)
+- weekly_summary вс 20:00 → **01:00 понедельника**
+- budget_alert 10:00 → 15:00 локально
+- habit_nudge 14:00 → 19:00 локально
+- inactivity_ping 12:00 → 17:00 локально (disabled per Aydana fix,
+  но patched для consistency)
+
+**Fix**:
+- `lib/tz.ts`: новый `localDaySlot(hour, tz, at?)` — UTC-инстант
+  полночь+H в tz юзера
+- `daySlot(hour, tz)` — tz обязателен (старая server-local
+  сигнатура удалена). Симметрия с `timeToDate("HH:MM", tz)`.
+- `generateProactiveNotifications(userId)` fetches `User.timezone`
+  один раз, передаёт в каждый generator (меньше DB queries)
+- 5 generators получили `tz: string` parameter
+- Tests: проверка через UTC-инстант (`.getTime()`), не `getHours()`
+  (server-local — нестабилен). Cross-tz invariant:
+  `daySlot(14,'Asia/Almaty')` vs `daySlot(14,'UTC')` = ровно 5h
+- Morning briefing был tz-aware ранее (`timeToDate`) — не trogат
+
+**Note**: gating проверки в generators (`if currentHour < 14`) тоже
+страдают от server-local — это **отдельный** bug-class (не scheduling),
+отложен в backlog.
+
+**Merge conflict resolution**: cherry-pick встретил конфликт с Aydana
+fix `d9b46f9` (отключение inactivityPing — спам «Питомец скучает»).
+Manual merge сохранил Aydana disable + применил tz fix к остальным
+4 generators. inactivityPing функция в коде остаётся для тестов/
+истории, но не вызывается из main dispatcher.
+
+**Breaking changes**: нет (PATCH bug-fix).
+
+**Verified в проде**:
+- Railway deploy SUCCESS, health 200
+- 811/811 тестов (809 → 811: +2 tz cross-zone coverage)
+- Behavioral: SKIPPED per Berik (как v1.0.2-v1.1.0)
+
+---
+
 ### v1.2.0 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
