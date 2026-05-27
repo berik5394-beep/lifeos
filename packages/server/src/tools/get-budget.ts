@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localDateStr } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -26,12 +27,8 @@ export const getBudgetTool = defineTool({
   examples: ['как у меня с бюджетом', 'сколько я потратил в этом месяце'],
   handler: async (_input, ctx) => {
     const userId = ctx.userId;
-    // L99 R9 #7 fix: month bounds в локальной tz юзера.
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { timezone: true },
-    });
-    const tz = user?.timezone || 'UTC';
+    // R9 TZ-aware: month bounds в локальной tz юзера.
+    const tz = await getUserTimezone(userId);
     const todayLocal = localDateStr(tz); // "YYYY-MM-DD"
     const [yearStr, monthStr, dayStr] = todayLocal.split('-');
     const year = Number(yearStr);

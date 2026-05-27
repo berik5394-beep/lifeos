@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { analyzeBudgetAfterExpense } from './_finance.js';
 
@@ -28,15 +29,12 @@ export const addExpenseTool = defineTool({
   handler: async (input, ctx) => {
     const userId = ctx.userId;
     const category = input.category || 'other';
-    // L99 R9 #15 fix: «сегодня» в локальной TZ юзера (раньше
+    // R9 TZ-aware: «сегодня» в локальной TZ юзера (раньше
     // setHours(0,0,0,0) = server-local UTC midnight; для Almaty юзера
     // в 00:30 локально (= 19:30 UTC prev day) expense попадал в
     // ПРЕДЫДУЩИЙ день → wrong month aggregation для budget tools).
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { timezone: true },
-    });
-    const today = localDayStartUTC(user?.timezone || 'UTC');
+    const tz = await getUserTimezone(userId);
+    const today = localDayStartUTC(tz);
     const expense = await prisma.expense.create({
       data: {
         userId,

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -23,42 +24,75 @@ export const completeMultipleHabitsTool = defineTool({
   examples: ['отметь бег и чтение', 'я сделал медитацию и зарядку'],
   handler: async (input, ctx) => {
     const userId = ctx.userId;
-    // L99 R9 #8 fix: «сегодня» в локальной TZ юзера.
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { timezone: true },
-    });
-    const today = localDayStartUTC(user?.timezone || 'UTC');
+    // R9 TZ-aware: «сегодня» в локальной TZ юзера.
+    const tz = await getUserTimezone(userId);
+    const today = localDayStartUTC(tz);
 
-    const ids: string[] = [...(input.habitIds ?? [])];
-    for (const name of input.habitNames ?? []) {
-      const h = await prisma.habit.findFirst({
-        where: {
-          userId,
-          name: { contains: name, mode: 'insensitive' },
-          active: true,
-        },
-        select: { id: true },
-      });
-      if (h) ids.push(h.id);
-    }
+    // R9 honesty #16 fix: name resolution параллельно (раньше N
+    // sequential roundtrips к Prisma для каждого имени).
+    const nameResolves = await Promise.all(
+      (input.habitNames ?? []).map(async (name) => {
+        const h = await prisma.habit.findFirst({
+          where: {
+            userId,
+            name: { contains: name, mode: 'insensitive' },
+            active: true,
+          },
+          select: { id: true, name: true },
+        });
+        return { requestedName: name, habit: h };
+      }),
+    );
+    const notFound = nameResolves
+      .filter((r) => !r.habit)
+      .map((r) => r.requestedName);
+    const resolvedIds = nameResolves
+      .filter((r) => r.habit)
+      .map((r) => r.habit!.id);
+    const allIds = [...new Set([...(input.habitIds ?? []), ...resolvedIds])];
 
-    let count = 0;
-    for (const habitId of ids) {
-      try {
-        await prisma.habitLog.upsert({
+    // R9 honesty #16 fix: upsert параллельно через Promise.allSettled +
+    // per-habit status (раньше sequential + silent console.warn skip;
+    // юзер видел «Отмечено: N» без понимания которые именно failed).
+    const results = await Promise.allSettled(
+      allIds.map(async (habitId) => {
+        const log = await prisma.habitLog.upsert({
           where: { habitId_date: { habitId, date: today } },
           update: { completed: true },
           create: { habitId, userId, date: today, completed: true },
+          select: { habitId: true },
         });
-        count++;
-      } catch (e) {
+        return log.habitId;
+      }),
+    );
+    const succeededIds: string[] = [];
+    const failedIds: string[] = [];
+    results.forEach((r, idx) => {
+      if (r.status === 'fulfilled') succeededIds.push(r.value);
+      else {
+        failedIds.push(allIds[idx]);
         console.warn(
-          '[complete_multiple_habits] upsert skip:',
-          e instanceof Error ? e.message : e,
+          `[complete_multiple_habits] upsert failed habitId=${allIds[idx]}:`,
+          r.reason instanceof Error ? r.reason.message : r.reason,
         );
       }
+    });
+
+    const parts: string[] = [`Отмечено привычек: ${succeededIds.length} ✅`];
+    if (failedIds.length > 0) {
+      parts.push(`Не удалось: ${failedIds.length}`);
     }
-    return { message: `Отмечено привычек: ${count} ✅`, count };
+    if (notFound.length > 0) {
+      parts.push(`Не найдено: ${notFound.join(', ')}`);
+    }
+
+    return {
+      message: parts.join('. '),
+      count: succeededIds.length,
+      // R9 honesty: per-habit status array — агент видит правду
+      succeededIds,
+      failedIds,
+      notFoundNames: notFound,
+    };
   },
 });

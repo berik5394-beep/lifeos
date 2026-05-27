@@ -203,19 +203,37 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
       // отдельного tool НЕ роняем в весь цикл — возвращаем как
       // tool_result, агент может восстановиться/честно сказать.
       let out: string;
+      let isError = false;
       try {
         const r = await runRegistryTool(
           tu.name,
           (tu.input as Record<string, unknown>) ?? {},
           { userId: userId as string },
         );
+        // R9 honesty: success path. Handlers с graceful fallback
+        // (get-email-triage, search-flights) уже сами возвращают
+        // structured {connected:false, reason, message} — это валидный
+        // success result для агента (он видит честный статус и решает).
         out = typeof r === 'string' ? r : JSON.stringify(r);
       } catch (e) {
-        out = `Ошибка инструмента ${tu.name}: ${
-          e instanceof Error ? e.message : String(e)
-        }`;
+        // R9 honesty #25 fix: structured JSON + is_error вместо русского
+        // prose. Раньше "Ошибка инструмента X: ..." Claude мог interpret
+        // как success result и врать «записал»/«готово». Теперь явное
+        // {ok:false, error, tool} + Anthropic-native is_error:true —
+        // модель знает что failure и не фабрикует success-ответ.
+        out = JSON.stringify({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+          tool: tu.name,
+        });
+        isError = true;
       }
-      results.push({ type: 'tool_result', tool_use_id: tu.id, content: out });
+      results.push({
+        type: 'tool_result',
+        tool_use_id: tu.id,
+        content: out,
+        ...(isError ? { is_error: true } : {}),
+      });
     }
     messages.push({ role: 'user', content: results });
   }

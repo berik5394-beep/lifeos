@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -33,12 +34,8 @@ export const getCalendarTool = defineTool({
   sideEffects: 'read',
   examples: ['покажи мои встречи на неделе', 'что у меня в календаре'],
   handler: async (input, ctx) => {
-    // L99 R9 fix: tz-aware date boundaries (consistency с write side).
-    const user = await prisma.user.findUnique({
-      where: { id: ctx.userId },
-      select: { timezone: true },
-    });
-    const tz = user?.timezone || 'UTC';
+    // R9 TZ-aware: date boundaries (consistency с write side).
+    const tz = await getUserTimezone(ctx.userId);
     // Mid-day UTC trick для надёжного попадания в нужный локальный
     // день любой tz, затем UTC instant начала этого дня в tz юзера.
     const gte = localDayStartUTC(tz, new Date(input.from + 'T12:00:00Z'));

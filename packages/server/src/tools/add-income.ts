@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -21,12 +22,9 @@ export const addIncomeTool = defineTool({
   sideEffects: 'write',
   examples: ['получил зарплату 350000', 'запиши доход 50000 от фриланса'],
   handler: async (input, ctx) => {
-    // L99 R9 #15 fix: «сегодня» в локальной TZ юзера.
-    const user = await prisma.user.findUnique({
-      where: { id: ctx.userId },
-      select: { timezone: true },
-    });
-    const today = localDayStartUTC(user?.timezone || 'UTC');
+    // R9 TZ-aware: «сегодня» в локальной TZ юзера.
+    const tz = await getUserTimezone(ctx.userId);
+    const today = localDayStartUTC(tz);
     const income = await prisma.income.create({
       data: {
         userId: ctx.userId,

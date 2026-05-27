@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -33,12 +34,8 @@ export const getTasksTool = defineTool({
   sideEffects: 'read',
   examples: ['что у меня сегодня по задачам', 'какие задачи на сегодня'],
   handler: async (input, ctx) => {
-    // L99 R9 fix: tz-aware day boundary (consistency с write side).
-    const user = await prisma.user.findUnique({
-      where: { id: ctx.userId },
-      select: { timezone: true },
-    });
-    const tz = user?.timezone || 'UTC';
+    // R9 TZ-aware: day boundary (consistency с write side).
+    const tz = await getUserTimezone(ctx.userId);
     // Если date указана — берём середину дня UTC чтобы гарантировать
     // что попадаем в нужный локальный день для любой tz, затем
     // запрашиваем UTC instant начала этого дня в tz юзера.
