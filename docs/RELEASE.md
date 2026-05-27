@@ -595,6 +595,35 @@ Behavioral SKIP per Berik.
 
 ---
 
+### v1.3.2 — 2026-05-27 — R9 TZ write-side closure (PATCH)
+**Commit**: `1e13e7d`
+**Tag-type**: regular (PATCH — read/write symmetry fix)
+
+**Что вошло (L99 #17 + #8 закрытие, поверх v1.3.1)**:
+
+- **create-event tz-aware**: было `new Date(input.date)` → UTC
+  midnight, теперь `localDayStartUTC(tz, mid-day UTC)` — symmetric
+  с get-calendar (read tz-aware с v1.3.0). Для Almaty юзера (UTC+5)
+  раньше встреча «28 мая» сохранялась как 2026-05-28T00:00:00Z,
+  но `get-calendar` искал как 2026-05-27T19:00:00Z (начало 28-го
+  локально) — встреча **исчезала из view**.
+- **create-task tz-aware**: тот же fix — symmetric с get-tasks.
+- **Anti-dup окно ±3 дня** в create-event теперь shift'ится от
+  tz-anchored date (preserves локальный day boundary).
+
+**Closing**: остаток L99 #17 (events write) + #8 (tasks write
+coherence). R9 TZ pass теперь **полностью симметричен** на 10 tools
+(8 в v1.3.0 + 2 в v1.3.2).
+
+**Breaking changes**: нет (date column в Prisma — `@db.Date`,
+fractional time усекается; новая семантика просто кладёт тот же
+локальный день в правильный UTC instant).
+
+**Verified в проде**: Railway SUCCESS, health 200, **825/825 tests**.
+Behavioral SKIP per Berik.
+
+---
+
 ### v1.4.0 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
