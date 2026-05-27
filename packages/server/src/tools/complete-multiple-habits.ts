@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import { localDayStartUTC } from '../lib/tz.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -22,8 +23,12 @@ export const completeMultipleHabitsTool = defineTool({
   examples: ['отметь бег и чтение', 'я сделал медитацию и зарядку'],
   handler: async (input, ctx) => {
     const userId = ctx.userId;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // L99 R9 #8 fix: «сегодня» в локальной TZ юзера.
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+    const today = localDayStartUTC(user?.timezone || 'UTC');
 
     const ids: string[] = [...(input.habitIds ?? [])];
     for (const name of input.habitNames ?? []) {

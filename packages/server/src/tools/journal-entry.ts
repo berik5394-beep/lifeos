@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import { localDayStartUTC } from '../lib/tz.js';
 import { defineTool } from './_types.js';
 
 /** SSOT Step 5 — write-tool. 1:1 с legacy journal_entry (upsert на сегодня). */
@@ -22,8 +23,12 @@ export const journalEntryTool = defineTool({
   examples: ['спал 7 часов, настроение 8', 'запиши в дневник: устал'],
   handler: async (input, ctx) => {
     const userId = ctx.userId;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // L99 R9 #8 fix: «сегодня» в локальной TZ юзера.
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+    const today = localDayStartUTC(user?.timezone || 'UTC');
     const entry = await prisma.journalEntry.upsert({
       where: { userId_date: { userId, date: today } },
       update: {

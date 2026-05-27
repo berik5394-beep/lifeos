@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import { localDayStartUTC } from '../lib/tz.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -15,20 +16,37 @@ export const getCalendarTool = defineTool({
     'поиска СВОБОДНЫХ окон — используй get_free_slots, не считай в уме.',
   category: 'calendar',
   schema: z.object({
-    from: z.string().max(20),
-    to: z.string().max(20),
+    // L99 R9 #5 fix: regex YYYY-MM-DD (раньше z.string().max(20)
+    // принимал "yesterday" → new Date("yesterday") = Invalid Date →
+    // Prisma throws «invalid value». Consistency с create_event/
+    // get_free_slots/create_task/search_flights — все enforce regex).
+    from: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
+      .describe('дата начала диапазона YYYY-MM-DD'),
+    to: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
+      .describe('дата конца диапазона YYYY-MM-DD'),
   }),
   needsConfirm: false,
   sideEffects: 'read',
   examples: ['покажи мои встречи на неделе', 'что у меня в календаре'],
   handler: async (input, ctx) => {
+    // L99 R9 fix: tz-aware date boundaries (consistency с write side).
+    const user = await prisma.user.findUnique({
+      where: { id: ctx.userId },
+      select: { timezone: true },
+    });
+    const tz = user?.timezone || 'UTC';
+    // Mid-day UTC trick для надёжного попадания в нужный локальный
+    // день любой tz, затем UTC instant начала этого дня в tz юзера.
+    const gte = localDayStartUTC(tz, new Date(input.from + 'T12:00:00Z'));
+    const lte = localDayStartUTC(tz, new Date(input.to + 'T12:00:00Z'));
     const events = await prisma.calendarEvent.findMany({
       where: {
         userId: ctx.userId,
-        date: {
-          gte: new Date(String(input.from) + 'T00:00:00Z'),
-          lte: new Date(String(input.to) + 'T00:00:00Z'),
-        },
+        date: { gte, lte },
       },
       select: {
         title: true,
