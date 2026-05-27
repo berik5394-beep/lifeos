@@ -27,12 +27,26 @@ export const getTripTool = defineTool({
   examples: ['когда у меня вылет', 'куда я лечу', 'что с поездкой'],
   handler: async (_input, ctx) => {
     const today = startOfDay(new Date());
-    const horizon = new Date(today.getTime() - 86_400_000); // вчера, чтобы свежие тоже
+    const horizon = new Date(today.getTime() - 86_400_000); // вчера для «свежих» upcoming
+    // L99 #6 fix: раньше filter был `dateFrom >= horizon` — это
+    // СКРЫВАЛО active trips (началась 5 дней назад, in_progress
+    // → dateFrom < horizon → не возвращалась). Теперь OR:
+    //   (a) upcoming / recent past start (dateFrom >= horizon), ИЛИ
+    //   (b) currently active (dateFrom <= today AND (dateTo >= today
+    //       OR dateTo IS NULL — open-ended trip))
     const trips = await prisma.travelPlan.findMany({
       where: {
         userId: ctx.userId,
         status: { in: ['planning', 'booked', 'in_progress'] },
-        dateFrom: { gte: horizon },
+        OR: [
+          { dateFrom: { gte: horizon } },
+          {
+            AND: [
+              { dateFrom: { lte: today } },
+              { OR: [{ dateTo: { gte: today } }, { dateTo: null }] },
+            ],
+          },
+        ],
       },
       orderBy: { dateFrom: 'asc' },
       take: 3,

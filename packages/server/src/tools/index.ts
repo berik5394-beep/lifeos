@@ -71,6 +71,26 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   getUserProfileTool,
 ];
 
+// L99 #14 fix: load-time dup-name guard. Раньше `new Map(...)` silent
+// last-wins для дубликатов — два tools с одним name терялись без следа.
+// Теперь fail-loud на import (server вообще не стартует, лучше чем
+// silent потеря tool из реестра).
+{
+  const names = ALL_TOOLS.map((t) => t.name);
+  const seen = new Set<string>();
+  const dups: string[] = [];
+  for (const n of names) {
+    if (seen.has(n)) dups.push(n);
+    seen.add(n);
+  }
+  if (dups.length > 0) {
+    throw new Error(
+      `Registry duplicate tool name(s): ${[...new Set(dups)].join(', ')}. ` +
+        `ALL_TOOLS.length=${names.length}, unique=${seen.size}`,
+    );
+  }
+}
+
 export const registry: ReadonlyMap<string, Tool> = new Map(
   ALL_TOOLS.map((t) => [t.name, t]),
 );
@@ -156,8 +176,14 @@ function integrationAvailable(
   if (req.kind === 'google_oauth') {
     // Gmail/Calendar — нужен активный google_calendar Integration
     // с refreshToken (без него API-вызов всё равно упадёт auth_failed).
+    // L99 #2 fix: проверяем НЕ только null, но и пустую строку — после
+    // revoke flows Prisma может оставить refreshToken = "", в этом
+    // случае Phase 7 invariant ломался (tool в списке, API упадёт).
     return integrations.some(
-      (i) => i.provider === 'google_calendar' && i.refreshToken !== null,
+      (i) =>
+        i.provider === 'google_calendar' &&
+        i.refreshToken != null &&
+        i.refreshToken.trim().length > 0,
     );
   }
   if (req.kind === 'telegram_user_chat') {
@@ -316,12 +342,19 @@ export async function runRegistryTool(
 ): Promise<unknown> {
   const tool = registry.get(name);
   if (!tool) throw new ToolNotFoundError(`Unknown tool: ${name}`);
-  const parsed = tool.schema.parse(rawInput ?? {});
+  // L99 #20 fix: schema.parse внутри audit closure. Раньше parse
+  // throws ZodError ДО auditToolCall — invariant «ровно одна строка
+  // ToolCall на вызов» нарушался для validation failures (юзер видит
+  // ошибку, но ToolCall row не создан → badges/honesty tests слепы).
+  // Теперь любой throw (parse OR handler) ловится audit-layer.
   return auditToolCall(
     ctx.userId,
     name,
-    parsed,
-    () => tool.handler(parsed, ctx),
+    rawInput,
+    async () => {
+      const parsed = tool.schema.parse(rawInput ?? {});
+      return tool.handler(parsed, ctx);
+    },
     sink,
   );
 }

@@ -50,12 +50,19 @@ describe('runRegistryTool — аудит-обвязка подключена', (
     expect(rows).toHaveLength(0);
   });
 
-  it('невалидный вход (zod) → отказ ДО аудита, строки нет', async () => {
+  it('невалидный вход (zod) → ToolCall row С error (parse внутри audit)', async () => {
     const { rows, sink } = recordingSink();
     await expect(
       // get_free_slots требует dateFrom/dateTo YYYY-MM-DD
       runRegistryTool('get_free_slots', { dateFrom: 'не дата' }, ctx, sink),
     ).rejects.toBeDefined();
-    expect(rows).toHaveLength(0); // валидация не дошла до исполнения → не аудируем
+    // L99 #20 fix: parse теперь внутри auditToolCall closure →
+    // ZodError ловится и пишется как failed ToolCall row. Инвариант
+    // «ровно одна строка ToolCall на вызов» теперь буквально true
+    // (раньше zod fail обходил audit → row отсутствовал → honesty
+    // tests/badges не знали о попытке).
+    expect(rows).toHaveLength(1);
+    expect(rows[0].toolName).toBe('get_free_slots');
+    expect(rows[0].error).toBeTruthy(); // ZodError fingerprint
   });
 });

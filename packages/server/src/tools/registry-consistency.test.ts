@@ -58,6 +58,32 @@ describe('автоген строго отражает реестр', () => {
       expect(names).toContain(n);
     }
   });
+
+  // L99 #4 fix: zodToJsonSchema настроен с $refStrategy='none', но
+  // тест не проверял что в реальных схемах нет $ref. Future tool с
+  // z.lazy() или recursive структурой может вернуть refs обратно.
+  it('JSON-схемы tools НЕ содержат $ref (recursive scan)', () => {
+    function hasRef(obj: unknown): boolean {
+      if (obj === null || typeof obj !== 'object') return false;
+      if (Array.isArray(obj)) return obj.some(hasRef);
+      const o = obj as Record<string, unknown>;
+      if ('$ref' in o) return true;
+      return Object.values(o).some(hasRef);
+    }
+    for (const schema of anthropicSchemas()) {
+      expect(
+        hasRef(schema),
+        `tool ${schema.name} имеет $ref в input_schema`,
+      ).toBe(false);
+    }
+  });
+
+  // L99 #14 fix: load-time dup-name guard в tools/index.ts. Документируем
+  // что эта защита работает — если бы был дубль, import index.ts
+  // throw'нул бы при collect (тест не дошёл бы сюда). Sanity registry.
+  it('registry содержит tools (load-time dup-guard прошёл)', () => {
+    expect(registry.size).toBeGreaterThan(0);
+  });
 });
 
 /**

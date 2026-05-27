@@ -61,7 +61,10 @@ describe('Phase 7 — tool-filter: реестр exports user-aware функци�
   });
 
   it('google_oauth требует refreshToken (не просто active)', () => {
-    expect(idx).toMatch(/refreshToken\s*!==\s*null/);
+    // L99 #2 fix: проверяем не только null, но и пустую строку
+    // (после revoke flow Prisma может оставить refreshToken = "")
+    expect(idx).toMatch(/refreshToken\s*!=\s*null/);
+    expect(idx).toMatch(/refreshToken\.trim\(\)\.length\s*>\s*0/);
   });
 });
 

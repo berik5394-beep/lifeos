@@ -3,9 +3,20 @@ import { prisma } from '../lib/prisma.js';
 import { defineTool } from './_types.js';
 
 /**
- * SSOT Step 5 — write-tool. Anti-dup логика 1:1 с legacy: если есть
- * событие с похожим названием в окне ±3 дня — ОБНОВЛЯЕМ, не плодим
- * дубль (фикс «3 встречи с Сериком»). Поведение байт-в-байт.
+ * SSOT Step 5 — write-tool. Anti-dup: если есть событие с ТЕМ ЖЕ
+ * title (полное совпадение, case-insensitive) в окне ±3 дня и тем
+ * же startTime — ОБНОВЛЯЕМ, не плодим дубль.
+ *
+ * Phase 7 (L99 audit #9 fix): раньше match'или по `title.slice(0,40)`
+ * — это **уничтожало данные** (две разные встречи с общим префиксом
+ * затирали друг друга, e.g. «Встреча с Сериком — поставщик» и
+ * «Встреча с Сериком — клиент»). Теперь:
+ *   1. ПОЛНЫЙ title (case-insensitive, trimmed)
+ *   2. Same startTime (null-null или equal) — две встречи в один
+ *      день в разное время остаются раздельными
+ *   3. ±3 дня по date
+ *
+ * Overwrite (UPDATE) логируется через console.warn для audit trail.
  */
 export const createEventTool = defineTool({
   name: 'create_event',
@@ -36,16 +47,27 @@ export const createEventTool = defineTool({
     const windowEnd = new Date(date);
     windowEnd.setDate(windowEnd.getDate() + 3);
 
+    // L99 #9 fix: STRICT equality (full title) + startTime match.
+    // Прежний slice(0,40) merge данные уничтожал.
+    const normalizedTitle = title.trim();
     const existingEv = await prisma.calendarEvent.findFirst({
       where: {
         userId,
-        title: { contains: title.slice(0, 40), mode: 'insensitive' },
+        title: { equals: normalizedTitle, mode: 'insensitive' },
         date: { gte: windowStart, lte: windowEnd },
+        // null-null или equal — две встречи в один день в разное время
+        // остаются раздельными
+        startTime,
       },
       orderBy: { date: 'desc' },
     });
 
     if (existingEv) {
+      // Audit trail: overwrite видно в логах (раньше silent merge
+      // уничтожал данные без следа).
+      console.warn(
+        `[create_event] UPDATE existing event id=${existingEv.id} title="${existingEv.title}" date=${existingEv.date.toISOString().slice(0,10)} startTime=${existingEv.startTime ?? 'null'} (user=${userId})`,
+      );
       const updated = await prisma.calendarEvent.update({
         where: { id: existingEv.id },
         data: {
