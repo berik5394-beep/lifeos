@@ -502,7 +502,65 @@ Behavioral SKIP per Berik.
 
 ---
 
-### v1.3.0 — TBD — First Android APK release [DRAFT]
+### v1.3.0 — 2026-05-27 — R9 TZ coherence pass (MINOR)
+**Commit**: `ab6e1b6`
+**Tag-type**: regular (MINOR — semantics для всех users меняется,
+backward-compat но meaningful behaviour change)
+
+> ⚠️ **Version reassignment**: v1.3.0 был зарезервирован за «First
+> Android APK release» (DRAFT). Mobile APK сдвинут на v1.4.0 (install
+> + smoke pending). Pattern: ship-when-ready беречь semver вес.
+
+**Context**: L99 audit нашёл tz-bug class в 8 tools — write side
+писал `today` через `setHours(0,0,0,0)` = server-local UTC midnight;
+read side query'ил с теми же server bounds. Для Almaty юзера
+(UTC+5) в 00:30 локально (= 19:30 UTC prev day) expense/income/
+habit/journal попадали в **предыдущий день** server-time → wrong
+month aggregation для get-budget. Money stakes > habit stakes —
+#15 был High priority в audit.
+
+**8 tools migrated на localDayStartUTC(tz)**:
+
+WRITE side:
+- `add-expense.ts` (#15 money — высокий impact)
+- `add-income.ts` (#15)
+- `complete-habit.ts` (#8)
+- `complete-multiple-habits.ts` (#8)
+- `journal-entry.ts` (#8)
+
+READ side (handler + Zod regex YYYY-MM-DD):
+- `get-tasks.ts` (#5 schema + #8 handler today)
+- `get-calendar.ts` (#5 schema + handler date range)
+- `get-budget.ts` (#7 — раньше известный debt coupled с write-side;
+  теперь когда write-side fixed, coherence закрыта)
+
+**Pattern**: handler fetches `user.timezone`, использует helpers из
+`lib/tz.ts`:
+- `localDayStartUTC(tz)` — UTC instant начала локального дня
+- `localDayStartUTC(tz, midDayUTC)` — для конкретной даты (mid-day
+  UTC trick для надёжного попадания в нужный локальный день)
+- `localDateStr(tz)` — "YYYY-MM-DD" в локальной tz юзера
+
+**НЕ trogаны намеренно**:
+- `create-event` — `new Date('YYYY-MM-DD')` пишет UTC midnight,
+  read tools tz-aware querят range которая включает этот instant
+  для всех адекватных tz (Almaty 27.05 UTC midnight = 05:00 локально
+  → в range «начало локального 27.05»). Consistent.
+- `get-trip` horizon — patched в v1.2.2 (L99 #6).
+
+**L99 R9 backlog** (honesty fixes, отдельный batch):
+- #1 Aydana stub redesign (Claude lie при filtered tool)
+- #25 structured tool_result {ok:false} вместо текста
+- #16 N+1 + silent skip в complete-multiple-habits
+
+**Breaking changes**: нет (semantics MORE correct, не trogат API).
+
+**Verified в проде**: Railway SUCCESS, health 200, **825/825 tests**.
+Behavioral SKIP per Berik.
+
+---
+
+### v1.4.0 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
 
