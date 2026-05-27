@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import { localDayStartUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -38,10 +40,19 @@ export const createEventTool = defineTool({
   handler: async (input, ctx) => {
     const userId = ctx.userId;
     const title = input.title;
-    const date = new Date(input.date);
+    // R9 TZ coherence (v1.3.2): дата → UTC instant начала локального
+    // дня юзера. Mid-day UTC trick гарантирует попадание в нужный
+    // локальный день для любой tz. Symmetric с get-calendar
+    // (read tz-aware с v1.3.0) — раньше read и write смотрели на
+    // разные UTC instants для одного локального дня → встреча могла
+    // «исчезнуть» из view для юзера в Almaty.
+    const tz = await getUserTimezone(userId);
+    const date = localDayStartUTC(tz, new Date(input.date + 'T12:00:00Z'));
     const startTime = input.startTime ?? null;
     const endTime = input.endTime ?? null;
 
+    // Anti-dup окно ±3 дня — shift от tz-anchored date (преcerves
+    // day boundary в локальной tz).
     const windowStart = new Date(date);
     windowStart.setDate(windowStart.getDate() - 3);
     const windowEnd = new Date(date);

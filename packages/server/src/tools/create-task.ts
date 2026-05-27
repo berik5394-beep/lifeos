@@ -1,10 +1,13 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import { localDayStartUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 
 /**
  * SSOT Step 5 — write-tool. Логика 1:1 с legacy action-executor
- * (паритет поведения; TZ-вопрос даты задачи — отдельно, не Шаг 5).
+ * + R9 TZ-coherence (v1.3.2): дата задачи теперь в локальной TZ
+ * юзера (read-side get-tasks уже tz-aware — было асимметрично).
  * Обратимо → needsConfirm:false.
  */
 export const createTaskTool = defineTool({
@@ -26,11 +29,16 @@ export const createTaskTool = defineTool({
   sideEffects: 'write',
   examples: ['создай задачу купить хлеб завтра', 'добавь задачу отчёт'],
   handler: async (input, ctx) => {
+    // R9 TZ coherence: дата → UTC instant начала локального дня юзера.
+    // Mid-day UTC trick гарантирует попадание в нужный локальный день
+    // для любой tz. Symmetric с get-tasks (read tz-aware с v1.3.0).
+    const tz = await getUserTimezone(ctx.userId);
+    const date = localDayStartUTC(tz, new Date(input.date + 'T12:00:00Z'));
     const task = await prisma.task.create({
       data: {
         userId: ctx.userId,
         title: input.title,
-        date: new Date(input.date),
+        date,
         time: input.time ?? null,
         category: input.category || 'personal',
         priority: input.priority || 'medium',
