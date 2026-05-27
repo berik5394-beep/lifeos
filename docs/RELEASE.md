@@ -624,6 +624,38 @@ Behavioral SKIP per Berik.
 
 ---
 
+### v1.3.3 — 2026-05-27 — Aydana stub redesign (PATCH)
+**Commit**: `cc27116`
+**Tag-type**: regular (PATCH — root cause Aydana fix)
+
+**Что вошло (L99 #1 закрытие, поверх v1.3.2)**:
+
+- **claude-agent.ts Aydana stub** (изначально v1.0.0 fix `d9b46f9`)
+  **redesigned**: раньше при `maxToolRounds`-overflow pushили fake
+  `tool_result.content = "Лимит шагов: подведи итог тем, что уже
+  сделал."` для каждого pending tool_use. Эти tools физически НЕ
+  выполнены — только requested. Claude интерпретировал stub как
+  success → галлюцинировал «записал N задач» для невыполненных
+  tools (главный Aydana-баг был именно тут: пользователь видел
+  подтверждение записи, которой нет в БД).
+- **Fix (option 1, по выбору Berik)**: РЕАЛЬНО выполняем pending
+  tools через тот же `runRegistryTool` dispatch — единый audit
+  trail + structured failure через `is_error:true` (symmetric с
+  STEP C из v1.3.1). Стоимость та же (+1 раунд Claude всё равно
+  был). Claude теперь видит честные results и суммирует правду.
+- Filter по `localNames` (как в основном loop) — web_search не трогаем.
+
+**R9 honesty layer теперь полностью закрыт**: #25 (structured
+tool_result), #16 (N+1 complete-multiple-habits), #1 (Aydana stub).
+
+**Breaking changes**: нет (расходов больше не делает — те же tool
+calls, что Claude и так бы сделал на +1 раунде).
+
+**Verified в проде**: Railway SUCCESS, health 200, **825/825 tests**.
+Behavioral SKIP per Berik.
+
+---
+
 ### v1.4.0 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
