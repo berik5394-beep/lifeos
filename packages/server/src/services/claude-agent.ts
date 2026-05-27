@@ -242,33 +242,61 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     throw new AiModelError(new Error('No Claude response'));
   }
 
-  // FIX (Aydana 2026-05-22): если цикл оборвался на maxToolRounds, а
-  // Claude всё ещё просил инструменты (stop_reason='tool_use'), его
-  // последний content — это только tool_use-блоки БЕЗ текста. Тогда
-  // finalText пуст → throw → fallback врёт юзеру «Действие НЕ
-  // выполнено», хотя в ToolCall-аудите видно: 9 действий уже
-  // исполнились (например, create_task ×8). Чтобы не врать, делаем
-  // ОДИН доп. вызов БЕЗ tools — Claude обязан выдать финальный текст
-  // суммаризации того, что только что сделал. Дешёво (+1 запрос),
-  // даёт честный «записал N задач».
+  // FIX (Aydana 2026-05-22, redesigned R9 honesty #1 2026-05-27): если
+  // цикл оборвался на maxToolRounds, а Claude всё ещё просил инструменты
+  // (stop_reason='tool_use'), его последний content — это только tool_use
+  // блоки БЕЗ текста. Тогда finalText пуст → throw → fallback врёт юзеру
+  // «Действие НЕ выполнено», хотя в ToolCall-аудите видно: предыдущие
+  // действия исполнились. Чтобы не врать, делаем доп. вызов БЕЗ tools.
+  //
+  // R9 honesty #1 redesign: РАНЬШЕ pushили fake tool_result.content =
+  // "Лимит шагов: подведи итог тем, что уже сделал." — но эти tools НЕ
+  // выполнены (только requested). Claude интерпретировал stub как
+  // success → галлюцинировал «записал N задач» для невыполненных tools
+  // (главный Aydana-баг: «записал 3 задачи» когда реально 0 на последнем
+  // батче). Теперь РЕАЛЬНО выполняем pending tools через тот же
+  // runRegistryTool dispatch (+ audit) — Claude видит честные results
+  // и суммирует правду. Стоимость та же (+1 раунд Claude всё равно был).
   if (
     response.stop_reason === 'tool_use' &&
     !response.content.some((b) => b.type === 'text')
   ) {
-    // Доталкиваем tool_results (если есть) + просим финал без tools.
-    // messages уже содержит весь контекст с tool_use/tool_result парами,
-    // включая последний assistant tool_use → нам нужен tool_result.
     const lastTools = response.content.filter(
-      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+      (b): b is Anthropic.ToolUseBlock =>
+        b.type === 'tool_use' && localNames.has(b.name),
     );
     if (lastTools.length > 0) {
       messages.push({ role: 'assistant', content: response.content });
-      const stubs = lastTools.map((tu) => ({
-        type: 'tool_result' as const,
-        tool_use_id: tu.id,
-        content: 'Лимит шагов: подведи итог тем, что уже сделал.',
-      }));
-      messages.push({ role: 'user', content: stubs });
+      // R9 honesty #1: РЕАЛЬНО выполняем pending tools (не stub).
+      // Same dispatch pattern as main loop (lines 200-220) — единый
+      // audit trail + structured failure через is_error:true.
+      const realResults = [];
+      for (const tu of lastTools) {
+        let out: string;
+        let isError = false;
+        try {
+          const r = await runRegistryTool(
+            tu.name,
+            (tu.input as Record<string, unknown>) ?? {},
+            { userId: userId as string },
+          );
+          out = typeof r === 'string' ? r : JSON.stringify(r);
+        } catch (e) {
+          out = JSON.stringify({
+            ok: false,
+            error: e instanceof Error ? e.message : String(e),
+            tool: tu.name,
+          });
+          isError = true;
+        }
+        realResults.push({
+          type: 'tool_result' as const,
+          tool_use_id: tu.id,
+          content: out,
+          ...(isError ? { is_error: true } : {}),
+        });
+      }
+      messages.push({ role: 'user', content: realResults });
     }
     try {
       response = await anthropic.messages.create({
@@ -276,7 +304,8 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
         max_tokens: 400,
         system,
         messages,
-        // NO tools — заставляем выдать чистый текст.
+        // NO tools — заставляем выдать чистый текст (никаких новых
+        // tool_use; модель суммирует РЕАЛЬНЫЕ результаты выше).
       });
     } catch (err) {
       throw new AiModelError(
