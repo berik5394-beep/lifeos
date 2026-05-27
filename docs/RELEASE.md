@@ -454,6 +454,54 @@ tests, behavioral SKIP per Berik.
 
 ---
 
+### v1.2.2 — 2026-05-27 — L99 audit HIGH fixes (PATCH)
+**Commit**: `5c823dd`
+**Tag-type**: regular (PATCH — 5 mechanical fixes, low risk)
+
+**Context**: 3 sequential agents (general-purpose → superpowers/code-reviewer
+→ general-purpose) провели L99 audit tool dispatch chain. 22+ findings
+(0 Critical, 3 High, 9 Medium, 9 Low). HIGH fixes shipped в этом PATCH.
+
+**Что вошло (поверх v1.2.1)**:
+
+- **#9 [DATA LOSS] create-event.ts** — STRICT title equality + startTime match.
+  Раньше `title.slice(0,40) contains` молча перезаписывал разные события с
+  общим префиксом («Встреча с Сериком — поставщик» затирала «Встреча с
+  Сериком — клиент»). Audit trail: UPDATE логируется через console.warn.
+- **#2 [PHASE-7 INVARIANT] tools/index.ts:160** — `refreshToken !== null`
+  пропускал пустые строки (после Google revoke flow). Tool оставался в
+  списке → API падал `auth_failed`. Fix: `refreshToken != null &&
+  refreshToken.trim().length > 0`. Test phase7-tool-filter обновлён.
+- **#6 [HIDDEN DATA] get-trip.ts horizon** — раньше `dateFrom >= horizon`
+  скрывал active trips (началась 5 дней назад, in_progress). Friend не
+  знал что юзер в Дубае. Fix: `OR: [upcoming, currently-active]`.
+- **#20 [INVARIANT] runRegistryTool schema.parse** — ZodError throw'ся ДО
+  `auditToolCall` → ToolCall row не писался → badges/honesty tests слепы
+  к validation failures. Fix: parse внутри audit closure. Тест обновлён.
+- **#14+#4 [REGISTRY GUARDS]**:
+  - Load-time dup-name guard в `tools/index.ts` (IIFE assert). Два tools
+    с одним именем больше не silent last-wins — server вообще не стартует.
+  - Recursive $ref scan в registry-consistency.test. `zodToJsonSchema`
+    настроен `$refStrategy:'none'`, но никто не проверял что в реальных
+    схемах нет refs. Future z.lazy()/recursive структура → тест упадёт.
+
+**L99 findings остаток** → v1.3.0 R9 backlog:
+- TZ coherence pass (#5+#7+#8+#15+#17): единый getUserTimezone helper для
+  money/habit/event/journal tools. Critical: #15 — money TZ-bug в add-expense/
+  add-income (выше stakes чем habits — Almaty юзер в 00:30 локально → запись
+  в not-юзерский день/месяц).
+- Honesty (#1 Aydana stub, #25 structured tool_result, #16 N+1).
+- Low: #3 search_flights env_secret kind, #11 send_telegram pre-check,
+  #13 .describe() coverage, #18 complete-task date scope, etc.
+
+**Breaking changes**: нет (mechanical fixes, не trogат public API).
+
+**Verified в проде**: Railway deploy SUCCESS (<30 сек), health 200,
+**825/825 tests** (+2 new invariants), tsc clean.
+Behavioral SKIP per Berik.
+
+---
+
 ### v1.3.0 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
