@@ -560,6 +560,41 @@ Behavioral SKIP per Berik.
 
 ---
 
+### v1.3.1 — 2026-05-27 — R9 honesty layer (PATCH)
+**Commit**: `d904a46`
+**Tag-type**: regular (PATCH — same semantics, более правильная honesty layer)
+
+**Что вошло (L99 #25 + #16, поверх v1.3.0)**:
+
+- **STEP A — DRY (new helper)**: `packages/server/src/lib/user-context.ts`
+  с `getUserTimezone(userId)`. 8 tools мигрированы с inline
+  `prisma.user.findUnique({select:{timezone:true}}) + user?.timezone || 'UTC'`
+  pattern на helper (add-expense, add-income, complete-habit,
+  complete-multiple-habits, journal-entry, get-tasks, get-calendar,
+  get-budget). Graceful fallback к UTC если prisma throws.
+- **STEP B — N+1 fix (#16)**: `complete-multiple-habits` —
+  раньше sequential `await` loops (N roundtrips к Prisma на N имён
+  + N последовательных upserts). Теперь `Promise.all` на name resolve
+  + `Promise.allSettled` на upserts с per-habit статусом. Return shape
+  расширен: `succeededIds`, `failedIds`, `notFoundNames` — агент видит
+  правду по каждой привычке вместо «Отмечено: N» без понимания которые
+  именно failed.
+- **STEP C+D — structured tool_result (#25)**: `claude-agent.ts`
+  tool_use loop catch — раньше при failure возвращали русский prose
+  `"Ошибка инструмента X: ..."` как `tool_result.content`. Claude мог
+  interpret prose как success result и врать «записал»/«готово».
+  Теперь явное `JSON.stringify({ok:false, error, tool})` +
+  Anthropic-native `is_error:true` на tool_result. Модель знает
+  definitively что failure и не фабрикует success-ответ.
+
+**Breaking changes**: нет (тот же контракт, более правильное
+тело tool_result на failure-пути).
+
+**Verified в проде**: Railway SUCCESS, health 200, **825/825 tests**.
+Behavioral SKIP per Berik.
+
+---
+
 ### v1.4.0 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
