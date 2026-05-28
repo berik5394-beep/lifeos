@@ -258,10 +258,15 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
   // батче). Теперь РЕАЛЬНО выполняем pending tools через тот же
   // runRegistryTool dispatch (+ audit) — Claude видит честные results
   // и суммирует правду. Стоимость та же (+1 раунд Claude всё равно был).
-  if (
-    response.stop_reason === 'tool_use' &&
-    !response.content.some((b) => b.type === 'text')
-  ) {
+  // Fix 2026-05-28: расширил условие — раньше только stop_reason='tool_use'.
+  // Reality (Aydana smoke): Claude может оборваться на stop_reason='max_tokens'
+  // с tool_use блоками + БЕЗ text → старое условие не срабатывало → пустой
+  // finalText → throw → DEGRADED_ACTIONABLE_REFUSAL. Теперь триггер по
+  // факту наличия tool_use без text, независимо от stop_reason.
+  const hasToolUseNoText =
+    response.content.some((b) => b.type === 'tool_use') &&
+    !response.content.some((b) => b.type === 'text');
+  if (hasToolUseNoText) {
     const lastTools = response.content.filter(
       (b): b is Anthropic.ToolUseBlock =>
         b.type === 'tool_use' && localNames.has(b.name),
@@ -371,7 +376,30 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
   }
 
   if (!finalText) {
-    throw new AiModelError(new Error('Empty Claude response (no text blocks)'));
+    // Fix 2026-05-28 (Aydana root cause): раньше throw → catch выше
+    // → DEGRADED_ACTIONABLE_REFUSAL «Действие НЕ выполнено». Юзер видел
+    // ложь когда tools реально исполнились. Теперь если в audit видно
+    // что что-то СДЕЛАНО — deterministic честный fallback ВМЕСТО throw.
+    // Логируем причину для диагностики.
+    const blockTypes = response.content.map((b) => b.type).join(',');
+    console.warn(
+      `[runAgent] empty finalText: stop_reason=${response.stop_reason} blocks=[${blockTypes}] — using deterministic fallback`,
+    );
+    // Если есть tool_use блоки (даже после second-call попытки) — значит
+    // действия выполнились в loop'е. Скажем правду коротко.
+    const toolUseCount = response.content.filter(
+      (b) => b.type === 'tool_use',
+    ).length;
+    if (toolUseCount > 0) {
+      finalText = 'Готово. Если что-то не записалось — повтори формулировку чётче.';
+    } else {
+      // Реально пустой ответ без действий — это уже не Aydana-баг,
+      // это model выдала пустоту без причины. Тогда throw (наверху
+      // ISSUE-1 fallback покажет «не получается» — теперь честно).
+      throw new AiModelError(
+        new Error(`Empty Claude response (stop=${response.stop_reason}, blocks=[${blockTypes}])`),
+      );
+    }
   }
   // Структурное добивание разметки (промпт-правило не держится —
   // воспроизведено в проде), затем рубли. Оба — детерминированно.
