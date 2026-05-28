@@ -656,16 +656,9 @@ Behavioral SKIP per Berik.
 
 ---
 
-### v1.4.0 — 2026-05-28 — Phase 5/6 Safety restoration + Memory hardening [DRAFT — awaiting behavioral SMOKE]
-**Commits**: `6747ebf` + `8e570f0` + `7be342c` + `226e1bc` + `e5d1fca` (HEAD)
+### v1.4.0 — 2026-05-28 — Phase 5/6 Safety restoration + Memory hardening (MINOR)
+**Commits**: `6747ebf` + `8e570f0` + `7be342c` + `226e1bc` + `e5d1fca`
 **Tag-type**: regular (MINOR — restore disabled features + memory contract changes)
-
-> ⚠️ **DRAFT — tag НЕ навешен.** v1.3.3 урок: не клеймю «verified в проде»
-> без поведенческого smoke. Tag навешивается ПОСЛЕ:
->  1. Berik триггерит синтезатор (или ждёт первый weekly cron)
->  2. `inspect-memory.ts` показывает `UserProfile rows > 0`
->  3. Berik пингует бот в эмо-режиме → бот отвечает therapeutic (не транзакц.)
->  4. Berik запускает `backfill-embeddings.ts` → fill_pct → 100%
 
 **Что вошло (поверх v1.3.3 = `8e3af36`)**:
 
@@ -743,18 +736,36 @@ Behavioral SKIP per Berik.
 
 **Tests**: 825 → **845** (+20: 1 env-discipline + 11 memory + 8 TTL).
 
-**Verified в проде (TBD)**:
-- Railway deploy SUCCESS — ✅ `e5d1fca` health 200
-- Behavioral smoke — ⏳ ожидается:
-  - [ ] `UserProfile rows > 0` через 1 cron tick (weekly cadence) или
-    manual trigger
-  - [ ] Эмо-сообщение боту → therapeutic tone (а не транзакционный)
-  - [ ] `backfill-embeddings.ts` → fill_pct = 100%
-  - [ ] Re-run `inspect-memory.ts` → cross-check всех findings
+**Verified в проде** (Berik 2026-05-28):
+- ✅ Railway deploy SUCCESS, health 200 на `e5d1fca`
+- ✅ **UserProfile синтезатор ожил**: inspect-memory.ts Section 5
+  показал user_idx 1 с `values_n=4, triggers_n=3, patterns_n=4,
+  styleNotes=true, synth_version=1, last_synth_days_ago=0` —
+  Sonnet прошёл, профиль персистится. Раньше 0 rows.
+- ✅ **Эмо-путь работает**: тестовое сообщение в @LifeOS_jarvis_bot
+  на эмо-тематику → бот ответил therapeutic тоном (НЕ транзакционно).
+  Phase 6 C1+C3 Tier-2 Haiku классификаторы поднялись.
+- ⚠️ **Backfill embeddings — частично**: из 42 NULL rows обработано
+  3, остальные 39 skipped из-за Voyage free-tier rate-limit 3 RPM
+  (мой скрипт rate-limit 200ms ≫ 3 RPM). Fill state 25→28 (37→42%).
+  Не блокер: гибридный retrieval работает на FTS-only для NULL rows.
+  Fix backfill (slower rate / Voyage payment method) — в v1.4.1.
+
+**Tests**: 825 → **845** (+20: 1 env-discipline + 11 memory + 8 TTL).
 
 ---
 
-### v1.4.1 — TBD — First Android APK release [DRAFT]
+### v1.4.1 — TBD — Backfill embeddings rate-limit fix [DRAFT]
+**Что нужно сделать**:
+- `scripts/backfill-embeddings.ts`: rate-limit с 200ms на 21000ms
+  (≤ 3 RPM Voyage free tier). 42 rows × 21 сек = ~15 мин run.
+- Alternative для Berik: добавить payment method на voyageai.com →
+  unlock 2000 RPM standard tier (без депозита, free 50M токенов
+  в месяц, наш расход ~4K токенов).
+
+---
+
+### v1.4.2 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
 
