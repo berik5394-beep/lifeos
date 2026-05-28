@@ -656,7 +656,105 @@ Behavioral SKIP per Berik.
 
 ---
 
-### v1.4.0 — TBD — First Android APK release [DRAFT]
+### v1.4.0 — 2026-05-28 — Phase 5/6 Safety restoration + Memory hardening [DRAFT — awaiting behavioral SMOKE]
+**Commits**: `6747ebf` + `8e570f0` + `7be342c` + `226e1bc` + `e5d1fca` (HEAD)
+**Tag-type**: regular (MINOR — restore disabled features + memory contract changes)
+
+> ⚠️ **DRAFT — tag НЕ навешен.** v1.3.3 урок: не клеймю «verified в проде»
+> без поведенческого smoke. Tag навешивается ПОСЛЕ:
+>  1. Berik триггерит синтезатор (или ждёт первый weekly cron)
+>  2. `inspect-memory.ts` показывает `UserProfile rows > 0`
+>  3. Berik пингует бот в эмо-режиме → бот отвечает therapeutic (не транзакц.)
+>  4. Berik запускает `backfill-embeddings.ts` → fill_pct → 100%
+
+**Что вошло (поверх v1.3.3 = `8e3af36`)**:
+
+**1. P6-safety: CLAUDE_API_KEY restore (5 файлов)** — `6747ebf`
+- Найдено через `inspect-memory.ts` диагностику: UserProfile=0 rows.
+- Root cause: 5 файлов использовали SDK-дефолтный env-name вместо
+  проектного `CLAUDE_API_KEY` (документировано в `.env.example` +
+  `routes/quick-add.ts:14-15` уже предупреждал в комменте!).
+- Жертвы (severity ↓):
+  - 🔴 **`safety-classifier.ts`** — Tier-2 Haiku crisis тихо отключён
+    в проде, только Tier-1 phrase patterns работал. Subtle non-phrase
+    кризис пропускался. **SAFETY restored.**
+  - 🟡 `emotional-classifier.ts` — Tier-2 Haiku emo отключён, тонкие
+    эмо-сообщения classified as transactional. Phase 6 C3 restored.
+  - 🟠 `profile-synthesizer.ts` — UserProfile никогда не синтезировался
+    в проде (= 0 rows подтверждено inspect-memory). «Бот знает юзера»
+    не работало.
+  - 🟡 `reflector-service.ts` — Phase 5 reflector Sonnet-phrasing
+    отключён, инсайты доставлялись только с детерм. ядра.
+  - 🟢 `life-truth-analyzer.ts` — AI-анализ truth-check возвращал
+    «недоступен» message в проде.
+- Regression guard: новый `env-key-discipline.test.ts` — структурный
+  lint, ANY future использование `ANTHROPIC_API_KEY` в production коде
+  → CI красный.
+
+**2. Memory dedup hardening + audit log + test suite** — `8e570f0`
+- Закрывает Risk A (sparse-overwrite) + Risk D (silent UPDATE) из
+  2026-05-28 audit. Раньше короткий sparse mention перетирал rich
+  content через FTS-subset-match. details/tags мержились, но content
+  (который идёт в промпт ассистенту) деградировал.
+- `shouldOverwriteContent(old, new)` pure decision: отказ если новая
+  значительно короче (< 70% или sparse vs rich).
+- `console.warn` audit на каждый UPDATE (type/id/oldLen/newLen/replaced).
+- **`memory-service.test.ts`** — был ZERO тестов, +11 unit-tests.
+
+**3. TTL defaults для event/emotion (anti-noise)** — `7be342c`
+- inspect-memory: 0/67 rows используют expiresAt → forever-память.
+- event → 30 дней, emotion → 14 дней (transient по природе).
+- fact/preference/person/decision/place → forever (stable).
+- Conservative: только НОВЫЕ записи; существующие 67 не трогает.
+- +8 unit-tests на `computeExpiresAt`.
+
+**4. Operational scripts** — `226e1bc`
+- `scripts/inspect-memory.ts` — read-only диагностика (8 aggregate
+  секций, NO raw content в output). Использован 28.05 для root cause.
+- `scripts/backfill-embeddings.ts` — идемпотентный одноразовый скрипт
+  для 42/67 NULL embedding rows. Rate-limit 200ms, fail-fast.
+
+**5. Memory + pgvector в `prisma/migrations/`** — `e5d1fca`
+- Schema-drift closure: раньше Memory создавался через `db push` +
+  ad-hoc `extensions.sql` вне `migrations/`.
+- Идемпотентный migration (IF NOT EXISTS): в проде = no-op, в чистой
+  dev = создаст с нуля. Schema под версионным контролем.
+
+**Breaking changes**: НЕТ для существующих данных.
+- Memory dedup hardening — те же UPDATE/INSERT, просто content
+  поле не перезатирается коротким. Никаких lost records.
+- TTL applies ТОЛЬКО к новым записям. Существующие 67 forever.
+- P6-safety fix — features которые были disabled, начинают работать
+  (это RESTORE, не новое поведение).
+
+**Known limitations**:
+- HNSW индекс на `Memory.embedding` отложен (volume малый, sequential
+  scan мгновенный до 500+ rows/user).
+- Importance demotion (Risk B) не закрыт (surface малый — только 2
+  rows с importance ≥ 8).
+- Worktree `claude/gracious-bose-edb40d` отстал от main на 11 коммитов
+  — нужен sync перед следующей работой в worktree.
+
+**Migration notes**:
+- **`backfill-embeddings.ts`** Berik запускает руками через Railway env
+  (`railway run npx tsx scripts/backfill-embeddings.ts`).
+- **Postgres password ROTATION** — security: пароль был засвечен в чате
+  28.05 при инспекции. Ротировать через Railway dashboard.
+
+**Tests**: 825 → **845** (+20: 1 env-discipline + 11 memory + 8 TTL).
+
+**Verified в проде (TBD)**:
+- Railway deploy SUCCESS — ✅ `e5d1fca` health 200
+- Behavioral smoke — ⏳ ожидается:
+  - [ ] `UserProfile rows > 0` через 1 cron tick (weekly cadence) или
+    manual trigger
+  - [ ] Эмо-сообщение боту → therapeutic tone (а не транзакционный)
+  - [ ] `backfill-embeddings.ts` → fill_pct = 100%
+  - [ ] Re-run `inspect-memory.ts` → cross-check всех findings
+
+---
+
+### v1.4.1 — TBD — First Android APK release [DRAFT]
 **Commit**: TBD (после cherry-pick worktree → main)
 **Tag-type**: regular (MINOR, после GREEN install smoke на устройстве)
 
