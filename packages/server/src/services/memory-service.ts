@@ -66,6 +66,33 @@ type MemoryRow = { type: string; content: string; importance: number };
  */
 const STABLE_TYPES = new Set(['fact', 'preference', 'person', 'decision']);
 
+/**
+ * Pure decision (тестируется без БД): можно ли заменить content
+ * старой записи новым при dedup-UPDATE? Guard против sparse-overwrite
+ * (Risk A из 2026-05-28 audit):
+ *
+ *  - Old: "Серик Жумабаев — брат, познакомились в школе" (45 chars)
+ *  - New: "Серик" (5 chars, sparse mention) — FTS-match сработает
+ *    (token-subset), но если перезаписать content — потеряем
+ *    «брат + школа» (details сохраняются отдельно, но content —
+ *    то что подмешивается в промпт ассистенту → деградация retrieval).
+ *
+ * Возвращает true только если новый content не значимо короче.
+ * Иначе тегs/importance/details мержатся, но content остаётся старым.
+ */
+export function shouldOverwriteContent(
+  oldContent: string,
+  newContent: string,
+): boolean {
+  const oldLen = oldContent.length;
+  const newLen = newContent.length;
+  // Старая короткая (sparse) → новая длиннее = обогащение, разрешаем
+  if (oldLen < 30) return true;
+  // Новая значительно короче (< 70% старой длины) → отказ
+  if (newLen < oldLen * 0.7) return false;
+  return true;
+}
+
 export async function captureMemory(
   userId: string,
   m: {
@@ -102,11 +129,27 @@ export async function captureMemory(
       const existing = dup[0];
       const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags])).slice(0, 10);
       const merged = details ?? existing.details;
+      // Sparse-overwrite guard (Risk A 2026-05-28): не давать короткому
+      // sparse mention перетереть richer content. existing.content нет
+      // в SELECT — добираем для решения.
+      const ex = await prisma.memory.findUnique({
+        where: { id: existing.id },
+        select: { content: true },
+      });
+      const oldContent = ex?.content ?? '';
+      const allowContentReplace = shouldOverwriteContent(oldContent, content);
+      const newContent = allowContentReplace ? content : oldContent;
+      // Audit trail: видно в логах что был UPDATE и какое решение
+      // (раньше silent → пост-фактум нельзя было понять что произошло).
+      console.warn(
+        `[memory] UPDATE type=${m.type} id=${existing.id} ` +
+          `oldLen=${oldContent.length} newLen=${content.length} ` +
+          `contentReplaced=${allowContentReplace} (user=${userId})`,
+      );
       await prisma.memory.update({
         where: { id: existing.id },
         data: {
-          // Содержимое оставляем актуальное (последняя формулировка).
-          content,
+          content: newContent,
           details: merged,
           tags: mergedTags,
           importance: Math.max(existing.importance, importance),
@@ -114,7 +157,7 @@ export async function captureMemory(
           createdAt: new Date(),
         },
       });
-      await storeEmbedding(existing.id, content, merged);
+      await storeEmbedding(existing.id, newContent, merged);
       return 'updated';
     }
   }
