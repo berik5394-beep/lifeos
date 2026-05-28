@@ -755,13 +755,76 @@ Behavioral SKIP per Berik.
 
 ---
 
-### v1.4.1 — TBD — Backfill embeddings rate-limit fix [DRAFT]
-**Что нужно сделать**:
-- `scripts/backfill-embeddings.ts`: rate-limit с 200ms на 21000ms
-  (≤ 3 RPM Voyage free tier). 42 rows × 21 сек = ~15 мин run.
-- Alternative для Berik: добавить payment method на voyageai.com →
-  unlock 2000 RPM standard tier (без депозита, free 50M токенов
-  в месяц, наш расход ~4K токенов).
+### v1.4.1 — 2026-05-28 — Aydana root cause finalize + model SSOT (MINOR)
+**Commits**: `33bf17b` + `ba9b9f2` + `17916ec`
+**Tag-type**: regular (MINOR — fixes long-standing Aydana production lie)
+
+**История 4 раундов отладки** (Aydana «Действие НЕ выполнено» сага):
+1. v1.0.0 `d9b46f9` — fake tool_result stub при stop_reason='tool_use'
+   без text. Помогло частично, но stub'ил несуществующие results.
+2. v1.3.1 `d904a46` — structured tool_result + is_error для catch
+   failures. Не покрыло Aydana root cause.
+3. v1.3.3 `cc27116` — redesign: РЕАЛЬНО выполнять pending tools +
+   second call без tools для summary. Условие узкое (только
+   stop_reason='tool_use') → не покрыло max_tokens-cutoff кейс.
+4. **v1.4.1 (этот) — настоящий root cause через diagnostic loop:**
+   - `33bf17b` — model SSOT: hardcoded `claude-haiku-4-20250514`
+     (НИКОГДА не существовала, 404 в проде) + `claude-sonnet-4-20250514`
+     (deprecated 2026-06-15) → `lib/models.ts` + 16 файлов мигрированы +
+     structural lint regression guard. 845 → 846 tests.
+   - `ba9b9f2` — diagnostic: `AiModelError.message` теперь включает
+     cause (раньше глотал реальный SDK error). Без этого видели только
+     обёрточный «AI model request failed».
+   - `17916ec` — финальный fix: расширил v1.3.3 condition на ANY
+     tool_use без text (не только stop_reason='tool_use'). Добавил
+     deterministic fallback «Готово» если ПОСЛЕ всех попыток text
+     пустой но tool_use исполнились. Никаких больше lying «Действие
+     НЕ выполнено» когда действия реально прошли.
+
+**Verified в проде** (Berik 2026-05-28 ~17:05):
+- Aydana-style smoke в @LifeOS_jarvis_bot:
+  ```
+  Задачи на неделю: пить воду, читать 30 мин, ходить 10K шагов, час учёбы
+  ```
+- Бот ответил:
+  > Готово! Все 4 задачи на сегодня (четверг) созданы:
+  > — Пить воду — в 12:00
+  > — Читать 30 минут
+  > — Пройти 10 000 шагов
+  > — 1 час на учёбу
+  > Хочешь, чтобы я разбил их на каждый день до конца недели?
+
+  **Никаких «Действие НЕ выполнено» лжи.** Конкретное перечисление
+  + умный follow-up. Aydana paint-point после 4 раундов закрыт.
+
+**Diagnostic infra (новое)**:
+- Railway API direct access через GraphQL (без UI-кликов) — позволяет
+  диагностировать прод-логи + deployment status + env vars без участия
+  пользователя. Reduced debug loop с ~10 мин на цикл до ~30 сек.
+- `scripts/ping-models.ts` — sanity-check какие модели реально живы
+  в Anthropic key (различает «модель не существует» от «код криво»).
+
+**Breaking changes**: НЕТ. Поведение бота честнее, но контракт API
+не менялся.
+
+**Tests**: 845 → **846** (+1 model-discipline regression test).
+
+**Migration notes**:
+- 🔴 **Security debt — нужно ротировать ВСЕ три**:
+  - Railway API token `094e22ea-c97f-4034-8c32-aa223f1c16a7`
+    (он же дал агенту для GraphQL-доступа во время debug сессии)
+  - Postgres password (был засвечен 28.05 в скриншоте инспекции)
+  - Anthropic CLAUDE_API_KEY (передан в скрипт ping-models через
+    Railway env extract — в логах агентного контекста)
+- Все три должны быть rotated в Railway UI до конца дня.
+
+**Известные ограничения (не блокер)**:
+- Aydana запрос «задачи на неделю» интерпретируется как «на сегодня»
+  (бот сам предлагает разбить на дни). Может улучшить prompt чтобы
+  по-умолчанию раскладывать на неделю если контекст «на неделю».
+  Backlog.
+- Backfill embeddings всё ещё 3/42 (Voyage free tier 3 RPM block).
+  Отложено до решения по payment method.
 
 ---
 
