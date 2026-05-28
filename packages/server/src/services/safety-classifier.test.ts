@@ -79,24 +79,24 @@ describe('safety-precision — гипербола/транзакции НЕ ср
 });
 
 describe('classifyCrisis — phrase-hit short-circuit (без сети/ключа)', () => {
-  it('явный сигнал → true даже без ANTHROPIC_API_KEY', async () => {
-    const prev = process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
+  it('явный сигнал → true даже без CLAUDE_API_KEY', async () => {
+    const prev = process.env.CLAUDE_API_KEY;
+    delete process.env.CLAUDE_API_KEY;
     try {
       await expect(classifyCrisis('я хочу умереть')).resolves.toBe(true);
     } finally {
-      if (prev !== undefined) process.env.ANTHROPIC_API_KEY = prev;
+      if (prev !== undefined) process.env.CLAUDE_API_KEY = prev;
     }
   });
   it('нет ключа + не фраза → false (не падает, не теряет)', async () => {
-    const prev = process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
+    const prev = process.env.CLAUDE_API_KEY;
+    delete process.env.CLAUDE_API_KEY;
     try {
       await expect(classifyCrisis('запиши расход 1000')).resolves.toBe(
         false,
       );
     } finally {
-      if (prev !== undefined) process.env.ANTHROPIC_API_KEY = prev;
+      if (prev !== undefined) process.env.CLAUDE_API_KEY = prev;
     }
   });
 });

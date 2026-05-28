@@ -701,9 +701,10 @@ function generateQuickTruthPrompt(
 // ---------------------------------------------------------------------------
 
 async function callClaude(systemPrompt: string): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // FIX (P6-safety 2026-05-28): CLAUDE_API_KEY (см. .env.example).
+  const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey) {
-    return 'AI-анализ недоступен: не настроен ANTHROPIC_API_KEY.';
+    return 'AI-анализ недоступен: не настроен CLAUDE_API_KEY.';
   }
 
   const client = new Anthropic({ apiKey });

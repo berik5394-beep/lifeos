@@ -80,7 +80,11 @@ export function matchesCrisisPhrase(text: string): boolean {
 export async function classifyCrisis(text: string): Promise<boolean> {
   if (matchesCrisisPhrase(text)) return true;
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // FIX (P6-safety 2026-05-28): CLAUDE_API_KEY (см. .env.example).
+  // Раньше SDK-дефолтный env → Tier-2 Haiku в проде НЕ запускался,
+  // только Tier-1 phrase patterns — subtle non-phrase кризис
+  // пропускался. SAFETY-restore.
+  const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey || !text || text.length < 3) return false;
 
   try {

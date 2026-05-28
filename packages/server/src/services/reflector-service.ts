@@ -113,7 +113,10 @@ async function phrase(
   candidates: InsightCandidate[],
   style: string,
 ): Promise<InsightCandidate[]> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // FIX (P6-safety 2026-05-28): CLAUDE_API_KEY (см. .env.example).
+  // Раньше Phase 5 reflector Sonnet-phrasing молча отключён в проде —
+  // инсайты доставлялись только с детерм. ядра (без friend-tone).
+  const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey || candidates.length === 0) return candidates;
 
   const system =

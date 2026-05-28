@@ -61,7 +61,11 @@ export function matchesEmotionalPhrase(text: string): boolean {
 export async function classifyEmotional(text: string): Promise<boolean> {
   if (matchesEmotionalPhrase(text)) return true;
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // FIX (P6-safety 2026-05-28): CLAUDE_API_KEY (см. .env.example).
+  // Раньше SDK-дефолтный env → Tier-2 Haiku отключён в проде, тонкие
+  // эмо-сообщения classified as transactional → бот отвечал как
+  // купи-продай вместо therapeutic mode. Phase 6 C3 восстановлен.
+  const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey || !text || text.length < 8) return false;
 
   try {

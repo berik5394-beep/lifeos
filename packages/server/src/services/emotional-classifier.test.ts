@@ -70,24 +70,24 @@ describe('классификатор precision ≥80% (спека-требова
 
 describe('classifyEmotional — phrase-hit short-circuit', () => {
   it('явный эмо-сигнал → true без сети/ключа', async () => {
-    const prev = process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
+    const prev = process.env.CLAUDE_API_KEY;
+    delete process.env.CLAUDE_API_KEY;
     try {
       await expect(classifyEmotional('мне очень тяжело')).resolves.toBe(true);
     } finally {
-      if (prev !== undefined) process.env.ANTHROPIC_API_KEY = prev;
+      if (prev !== undefined) process.env.CLAUDE_API_KEY = prev;
     }
   });
 
   it('нет ключа + не фраза → false (bias к транзакции, не падает)', async () => {
-    const prev = process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
+    const prev = process.env.CLAUDE_API_KEY;
+    delete process.env.CLAUDE_API_KEY;
     try {
       await expect(classifyEmotional('запиши расход 1000')).resolves.toBe(
         false,
       );
     } finally {
-      if (prev !== undefined) process.env.ANTHROPIC_API_KEY = prev;
+      if (prev !== undefined) process.env.CLAUDE_API_KEY = prev;
     }
   });
 });

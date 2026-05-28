@@ -129,7 +129,11 @@ export async function runProfileSynthesis(
     return { ran: false, persisted: false, reason: 'gate' };
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // FIX (P6-safety 2026-05-28): проект использует CLAUDE_API_KEY (см.
+  // .env.example + routes/quick-add.ts bug-fix комментарий). Раньше
+  // SDK-дефолтный env-name → ключа нет в Railway → синтезатор тихо
+  // отключён → UserProfile = 0 rows в проде (inspect-memory.ts).
+  const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey) return { ran: true, persisted: false, reason: 'no-key' };
 
   let raw = '';
