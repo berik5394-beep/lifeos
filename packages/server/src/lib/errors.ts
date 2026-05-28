@@ -155,11 +155,22 @@ export class ExternalApiError extends AppError {
 
 export class AiModelError extends AppError {
   constructor(cause?: unknown) {
+    // Diagnostic fix 2026-05-28: раньше internalMessage был только
+    // "AI model request failed" → реальная причина (404 / 400 / network)
+    // в cause не виделась в логах. Сейчас включаем cause.message в
+    // message чтобы [jarvis] runAgent failed user=...: <REAL_CAUSE>
+    // было информативным.
+    const causeMsg =
+      cause instanceof Error
+        ? cause.message
+        : cause != null
+          ? String(cause)
+          : 'unknown';
     super({
       code: 'AI_MODEL_FAILED',
       statusCode: 503,
       userMessage: 'AI временно недоступен. Попробуй ещё раз через минуту.',
-      internalMessage: 'AI model request failed',
+      internalMessage: `AI model request failed: ${causeMsg.slice(0, 500)}`,
       cause,
     });
   }
