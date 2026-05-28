@@ -67,6 +67,27 @@ type MemoryRow = { type: string; content: string; importance: number };
 const STABLE_TYPES = new Set(['fact', 'preference', 'person', 'decision']);
 
 /**
+ * TTL defaults для эпизодических типов (2026-05-28 anti-noise).
+ * Раньше: inspect-memory подтвердил 0/67 rows используют expiresAt
+ * → память forever, накапливается шум. event/emotion по природе
+ * transient (был на встрече / расстроен сегодня) — недели достаточно
+ * чтобы попасть в weekly reflector, дальше пользы мало. Conservative:
+ * только НОВЫЕ записи; существующие 67 rows не трогает (нет migration).
+ * fact/preference/person/decision/place остаются forever.
+ */
+const TTL_DEFAULTS_DAYS: Record<string, number> = {
+  event: 30,
+  emotion: 14,
+};
+
+function computeExpiresAt(type: string, now = new Date()): Date | null {
+  const days = TTL_DEFAULTS_DAYS[type];
+  if (!days) return null;
+  return new Date(now.getTime() + days * 86_400_000);
+}
+export { computeExpiresAt };
+
+/**
  * Pure decision (тестируется без БД): можно ли заменить content
  * старой записи новым при dedup-UPDATE? Guard против sparse-overwrite
  * (Risk A из 2026-05-28 audit):
@@ -162,6 +183,9 @@ export async function captureMemory(
     }
   }
 
+  // TTL default для эпизодических типов (event/emotion) — anti-noise.
+  // Если caller передал свой expiresAt — НЕ перетираем (manual control).
+  const expiresAt = computeExpiresAt(m.type);
   const created = await prisma.memory.create({
     data: {
       userId,
@@ -172,6 +196,7 @@ export async function captureMemory(
       sourceId: m.sourceId ?? null,
       tags,
       importance,
+      expiresAt,
     },
     select: { id: true },
   });

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { shouldOverwriteContent } from './memory-service.js';
+import { shouldOverwriteContent, computeExpiresAt } from './memory-service.js';
 
 /**
  * memory-service hardening (Risk A — sparse-overwrite, 2026-05-28).
@@ -71,6 +71,39 @@ describe('shouldOverwriteContent — sparse-overwrite guard (Risk A)', () => {
     it('обе равны 0 → true (edge)', () => {
       expect(shouldOverwriteContent('', '')).toBe(true);
     });
+  });
+});
+
+describe('computeExpiresAt — TTL defaults для эпизодических типов', () => {
+  const NOW = new Date('2026-05-28T12:00:00Z');
+
+  it('event → +30 дней', () => {
+    const exp = computeExpiresAt('event', NOW);
+    expect(exp).not.toBeNull();
+    const days = Math.round(
+      (exp!.getTime() - NOW.getTime()) / 86_400_000,
+    );
+    expect(days).toBe(30);
+  });
+
+  it('emotion → +14 дней', () => {
+    const exp = computeExpiresAt('emotion', NOW);
+    expect(exp).not.toBeNull();
+    const days = Math.round(
+      (exp!.getTime() - NOW.getTime()) / 86_400_000,
+    );
+    expect(days).toBe(14);
+  });
+
+  it.each(['fact', 'preference', 'person', 'decision', 'place'])(
+    '%s → null (forever, не транзиентный тип)',
+    (type) => {
+      expect(computeExpiresAt(type, NOW)).toBeNull();
+    },
+  );
+
+  it('unknown type → null (safe default)', () => {
+    expect(computeExpiresAt('xyz', NOW)).toBeNull();
   });
 });
 
