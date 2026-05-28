@@ -1,4 +1,5 @@
 import { writeFile, unlink } from 'fs/promises';
+import { MODELS } from '../lib/models.js';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import crypto from 'node:crypto';
@@ -116,7 +117,7 @@ export async function extractFromTranscript(
 6. Если транскрипт пустой/мусор/неразборчивый — возвращай пустые arrays и summary="Не разобрал, попробуй ещё раз", spokenResponse="Не разобрал, давай ещё раз?".`;
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: MODELS.sonnet,
     max_tokens: 2000,
     system: systemPrompt,
     messages: [{ role: 'user', content: transcript }],

@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from '../lib/models.js';
 
 const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY || '',
@@ -296,7 +297,7 @@ export async function parseIntent(text: string): Promise<VoiceIntent> {
 - "Полечу в Стамбул в субботу" → plan_travel`;
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: MODELS.sonnet,
     max_tokens: 256,
     system: systemPrompt,
     messages: [{ role: 'user', content: text }],

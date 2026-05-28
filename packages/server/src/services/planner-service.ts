@@ -41,6 +41,7 @@ const DECOMPOSE =
   /(книг|прочита|чита(?:ть|ю)|страниц|выучи|изучи|научи|освои|язык|английск|испанск|немецк|француз|курс|накопи|сэконом|накоплен|млн|миллион|похуд|сброси|набра|кг|бега|пробеж|трениров|спорт|медитац|форм[уы]|здоров|подтяну|подтягив|каждый день|раз[а]? в недел|в день по|зарабат)/i;
 
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from '../lib/models.js';
 import { prisma } from '../lib/prisma.js';
 import { AiModelError } from '../lib/errors.js';
 import { localDateStr } from '../lib/tz.js';
@@ -204,7 +205,7 @@ export async function generatePlanTree(
   let res;
   try {
     res = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODELS.sonnet,
       max_tokens: 1500,
       system: systemPrompt,
       messages: [{ role: 'user', content: goal.slice(0, 300) }],

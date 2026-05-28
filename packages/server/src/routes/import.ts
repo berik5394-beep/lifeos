@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { MODELS } from '../lib/models.js';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -186,7 +187,7 @@ async function analyzeWithClaude(
 ): Promise<{ purpose: string; items: unknown[] }> {
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODELS.sonnet,
       max_tokens: 2048,
       system:
         'Определи, что содержат эти данные, и верни СТРОГО валидный JSON ' +

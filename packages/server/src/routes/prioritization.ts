@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { MODELS } from '../lib/models.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -75,7 +76,7 @@ export async function prioritizationRoutes(app: FastifyInstance): Promise<void> 
     // Нет try/catch вокруг всего: Anthropic SDK ошибки ловит глобальный
     // registerErrorHandler и нормализует в AiModelError автоматически.
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODELS.sonnet,
       max_tokens: 2000,
       messages: [{ role: 'user', content: JSON.stringify(taskList) }],
       system: systemPrompt,

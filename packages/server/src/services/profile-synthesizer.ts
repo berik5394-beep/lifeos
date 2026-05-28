@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from '../lib/models.js';
 import { prisma } from '../lib/prisma.js';
 import {
   shouldSynthesize,
@@ -140,7 +141,7 @@ export async function runProfileSynthesis(
   try {
     const client = new Anthropic({ apiKey });
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODELS.sonnet,
       max_tokens: 1024,
       system: SYSTEM,
       messages: [{ role: 'user', content: buildCorpus(g) }],

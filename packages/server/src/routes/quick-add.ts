@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { MODELS } from '../lib/models.js';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma.js';
@@ -55,7 +56,7 @@ export async function quickAddRoutes(app: FastifyInstance): Promise<void> {
 
     try {
       const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: MODELS.sonnet,
         max_tokens: 300,
         messages: [{ role: 'user', content: text }],
         system: systemPrompt,

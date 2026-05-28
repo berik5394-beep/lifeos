@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from '../lib/models.js';
 import { prisma } from '../lib/prisma.js';
 import { reflect, type ReflectorFacts } from './reflector-core.js';
 import { persistCandidates } from './insight-store.js';
@@ -130,7 +131,7 @@ async function phrase(
   try {
     const client = new Anthropic({ apiKey });
     const resp = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODELS.sonnet,
       max_tokens: 1024,
       system,
       messages: [{ role: 'user', content: user }],

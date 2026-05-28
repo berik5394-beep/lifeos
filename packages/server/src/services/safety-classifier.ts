@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from '../lib/models.js';
 
 /**
  * Phase 6 C1 Safety — распознавание кризисных сигналов.
@@ -90,7 +91,7 @@ export async function classifyCrisis(text: string): Promise<boolean> {
   try {
     const client = new Anthropic({ apiKey });
     const resp = await client.messages.create({
-      model: 'claude-haiku-4-20250514',
+      model: MODELS.haiku,
       max_tokens: 8,
       system:
         'Ты — safety-классификатор. Сообщение пользователя содержит ' +

@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from '../lib/models.js';
 import { prisma } from '../lib/prisma.js';
 import {
   buildJarvisPrompt,
@@ -296,7 +297,7 @@ export async function getAssistantReply(
   });
 
   const aiResponse = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: MODELS.sonnet,
     max_tokens: 512,
     system: systemPrompt,
     messages: [{ role: 'user', content: text }],

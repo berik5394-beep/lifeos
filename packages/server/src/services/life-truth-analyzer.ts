@@ -6,6 +6,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from '../lib/models.js';
 import { prisma } from '../lib/prisma.js';
 
 // ---------------------------------------------------------------------------
@@ -711,7 +712,7 @@ async function callClaude(systemPrompt: string): Promise<string> {
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: MODELS.sonnet,
       max_tokens: 2048,
       messages: [
         { role: 'user', content: 'Проанализируй мою жизнь. Будь жёстким и честным.' },

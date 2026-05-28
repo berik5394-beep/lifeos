@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from '../lib/models.js';
 
 /**
  * #7 — справочник ПРОВЕРЕННЫХ доменов. Разбор: модель парротит
@@ -155,7 +156,7 @@ IATA коды городов Казахстана и СНГ:
 5. **reasoning**: 1 предложение что было ключом ("сказал 'в Астану на завтра' → flight ALA→NQZ").`;
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: MODELS.sonnet,
     max_tokens: 400,
     system: systemPrompt,
     messages: [{ role: 'user', content: text }],

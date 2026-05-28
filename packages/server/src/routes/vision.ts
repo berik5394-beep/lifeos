@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { MODELS } from '../lib/models.js';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
 import { authMiddleware } from '../middleware/auth.js';
@@ -63,7 +64,7 @@ const anthropic = new Anthropic({
   apiKey: process.env.CLAUDE_API_KEY || '',
 });
 
-const VISION_MODEL = 'claude-sonnet-4-20250514';
+const VISION_MODEL = MODELS.sonnet;
 
 // ============================================================================
 // Schemas
@@ -341,7 +342,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
       ).join('\n');
 
       const aiResponse = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: MODELS.sonnet,
         max_tokens: 600,
         system: 'Ты — диетолог-друг. Анализируешь рацион и даёшь конкретные советы на русском. Будь честным но не занудным. Формат: JSON с полями "summary" (2-3 предложения общий вывод), "insights" (массив строк, 3-5 конкретных наблюдений). Без markdown.',
         messages: [{

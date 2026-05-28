@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from '../lib/models.js';
 import { AiModelError } from '../lib/errors.js';
 // SSOT 9A.8: агент-цикл больше НЕ ходит в legacy LOCAL_TOOLS/
 // runLocalTool. Источник правды — реестр. agentToolSchemas =
@@ -119,7 +120,7 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     webSearch = true,
     maxSearches = 3,
     maxTokens = 1024,
-    model = 'claude-sonnet-4-20250514',
+    model = MODELS.sonnet,
     localTools = false,
     userId,
     // Fix C: было 5 → до 6 вызовов Claude на один /voice/chat (против
