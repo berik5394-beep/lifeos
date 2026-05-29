@@ -194,7 +194,7 @@ AGENT TOOL EXTENSIONS:
 | 1 | Design spec draft | ✅ done | 2026-05-28 | docs/superpowers/specs/2026-05-28-v2-memory-proactivity-design.md (1462 lines) |
 | 1 | Self-review spec | ✅ done | 2026-05-28 | 8 ошибок найдено + исправлено inline |
 | 1 | Berik review + approval | ✅ approved | 2026-05-28 | «ок» — spec approved |
-| 1 | Implementation plan (writing-plans) | ⏳ in progress | 2026-05-28 | TBD |
+| 1 | Implementation plan (writing-plans) | ✅ done | 2026-05-28 | docs/superpowers/plans/2026-05-28-v2-week2-schema-tier1-tier2.md (1915 lines, v2 careful — v1 халтура переписана) |
 | 2 | Prisma schema migration | — | — | — |
 | 2 | Tier 1+2 implementation | — | — | — |
 | 3 | Tier 3 + entity graph | — | — | — |
