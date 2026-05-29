@@ -132,3 +132,49 @@ describe('episodic-memory.ts structural — invalidateEvent wiring', () => {
     expect(body).toMatch(/invalidAt\s*:\s*Date\s*=\s*new Date\(\)/);
   });
 });
+
+describe('episodic-memory.ts structural — query methods wiring', () => {
+  it('getEventsForEntity exported as async function', () => {
+    expect(SRC).toMatch(/export async function getEventsForEntity\s*\(/);
+  });
+
+  it('getEventsForEntity filters by entityRefs has', () => {
+    const start = SRC.indexOf('export async function getEventsForEntity');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('entityRefs:');
+    expect(body).toContain('has:');
+  });
+
+  it('getEventsForEntity excludes invalidated by default', () => {
+    const start = SRC.indexOf('export async function getEventsForEntity');
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('invalidAt:');
+    expect(body).toContain('null');
+    expect(body).toContain('includeInvalid');
+  });
+
+  it('lastEventForEntity exported + uses findFirst orderBy validAt desc', () => {
+    expect(SRC).toMatch(/export async function lastEventForEntity\s*\(/);
+    const start = SRC.indexOf('export async function lastEventForEntity');
+    const body = SRC.slice(start, start + 800);
+    expect(body).toContain('prisma.memory.findFirst');
+    expect(body).toMatch(/orderBy:\s*\{\s*validAt:\s*['"]desc['"]/);
+  });
+
+  it('entityFrequency exported + uses count with date filter', () => {
+    expect(SRC).toMatch(/export async function entityFrequency\s*\(/);
+    const start = SRC.indexOf('export async function entityFrequency');
+    const body = SRC.slice(start, start + 800);
+    expect(body).toContain('prisma.memory.count');
+    expect(body).toContain('validAt:');
+    expect(body).toContain('gte:');
+  });
+
+  it('entityFrequency excludes invalidated', () => {
+    const start = SRC.indexOf('export async function entityFrequency');
+    const body = SRC.slice(start, start + 800);
+    expect(body).toContain('invalidAt:');
+    expect(body).toContain('null');
+  });
+});

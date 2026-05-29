@@ -133,3 +133,63 @@ export async function invalidateEvent(
     data: { invalidAt },
   });
 }
+
+/**
+ * Get events that reference a specific entity.
+ * By default excludes invalidated events (invalidAt != null).
+ */
+export async function getEventsForEntity(
+  userId: string,
+  entityId: string,
+  opts: {
+    includeInvalid?: boolean;
+    limit?: number;
+  } = {},
+): Promise<Memory[]> {
+  return prisma.memory.findMany({
+    where: {
+      userId,
+      entityRefs: { has: entityId },
+      ...(opts.includeInvalid ? {} : { invalidAt: null }),
+    },
+    orderBy: { validAt: 'desc' },
+    take: opts.limit ?? 50,
+  });
+}
+
+/**
+ * Most recent event referencing this entity (or null if none).
+ * Excludes invalidated events.
+ */
+export async function lastEventForEntity(
+  userId: string,
+  entityId: string,
+): Promise<Memory | null> {
+  return prisma.memory.findFirst({
+    where: {
+      userId,
+      entityRefs: { has: entityId },
+      invalidAt: null,
+    },
+    orderBy: { validAt: 'desc' },
+  });
+}
+
+/**
+ * Number of (non-invalidated) events for entity in last N days.
+ */
+export async function entityFrequency(
+  userId: string,
+  entityId: string,
+  periodDays: number,
+): Promise<number> {
+  const since = new Date(Date.now() - periodDays * 86_400_000);
+  return prisma.memory.count({
+    where: {
+      userId,
+      entityRefs: { has: entityId },
+      invalidAt: null,
+      validAt: { gte: since },
+    },
+  });
+}
