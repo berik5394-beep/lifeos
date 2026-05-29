@@ -199,7 +199,7 @@ AGENT TOOL EXTENSIONS:
 | 2 | Tier 1 WorkingMemory (Tasks B1-B3) | ✅ done | 2026-05-29 | commits fbbb60a + 171967d + 2ce42a3, 15 tests |
 | 2 | Tier 2 EpisodicMemory (Tasks C1-C5) | ✅ done | 2026-05-29 | commits 7d571e2 + c0fdc4f + 09c02a7 + aa63a29, 23 tests |
 | 2 | feature-flags + Section D verify (D1-D2) | ✅ done | 2026-05-29 | commit 40d7118, 10 tests. **Week 2 TOTAL: 9 commits, 894/894 tests pass, tsc clean** |
-| 3 | Tier 3 + entity graph | ⏳ next | — | — |
+| 3 | Tier 3 + entity graph | ✅ done | 2026-05-29 | 10 commits e07adbe…347a4d5 (A1, B1–B6, C1–C2, D1); +68 tests (894→962); tsc clean; 0 vi.mock; 0 placeholders. Plan: docs/superpowers/plans/2026-05-29-v2-week3-tier3-entity-graph.md |
 | 4 | Tier 4 mini + Tier 5 mini + identity mini | — | — | — |
 | 5 | Proactivity engine + agent tools | — | — | — |
 | 6 | Cron tasks + migration script + integration tests | — | — | — |
