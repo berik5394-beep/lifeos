@@ -52,3 +52,23 @@ describe('postgres-impl.ts structural — skeleton + upsertEntity', () => {
     expect(body).toContain('catch');
   });
 });
+
+describe('postgres-impl.ts structural — getEntity', () => {
+  it('getEntity exported as async method', () => {
+    expect(SRC).toMatch(/async getEntity\s*\(/);
+  });
+
+  it('getEntity calls prisma.entity.findUnique', () => {
+    const start = SRC.indexOf('async getEntity');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 400);
+    expect(body).toContain('prisma.entity.findUnique');
+  });
+
+  it('getEntity does NOT throw for missing entity (returns null)', () => {
+    const start = SRC.indexOf('async getEntity');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 400);
+    expect(body).toContain('null');
+  });
+});

@@ -1,0 +1,214 @@
+<svg viewBox="0 0 1240 1120" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d">
+  <title id="t">LifeOS — целевая архитектура JARVIS: три режима одного мозга</title>
+  <desc id="d">Реактивный + Планировщик + Рефлектор работают параллельно над общим реестром, памятью и хранилищем</desc>
+
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#94A3B8"/>
+    </marker>
+    <marker id="arK" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#6366F1"/>
+    </marker>
+    <marker id="arG" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#22C55E"/>
+    </marker>
+    <marker id="arB" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#3B82F6"/>
+    </marker>
+    <marker id="arA" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#F59E0B"/>
+    </marker>
+  </defs>
+
+  <style>
+    .ttl { font: 700 16px ui-sans-serif, system-ui, sans-serif; fill: #0F172A; }
+    .ttl-xl { font: 800 22px ui-sans-serif, system-ui, sans-serif; fill: #0F172A; }
+    .ttlw { font: 700 16px ui-sans-serif, system-ui, sans-serif; fill: white; }
+    .lbl { font: 600 13px ui-sans-serif, system-ui, sans-serif; fill: #0F172A; }
+    .lblw { font: 600 13px ui-sans-serif, system-ui, sans-serif; fill: white; }
+    .sml { font: 11px ui-sans-serif, system-ui, sans-serif; fill: #64748B; }
+    .smlw { font: 11px ui-sans-serif, system-ui, sans-serif; fill: #E2E8F0; }
+    .chip { font: 11px ui-monospace, monospace; fill: #E2E8F0; }
+    .ex { font: 11px ui-sans-serif, system-ui, sans-serif; fill: #0F172A; }
+    .box { fill: #F8FAFC; stroke: #CBD5E1; stroke-width: 1.5; }
+    .ar { stroke: #94A3B8; stroke-width: 1.4; fill: none; marker-end: url(#ar); }
+    .arK { stroke: #6366F1; stroke-width: 2.4; fill: none; marker-end: url(#arK); }
+    .arG { stroke: #22C55E; stroke-width: 2; fill: none; marker-end: url(#arG); }
+    .arB { stroke: #3B82F6; stroke-width: 2; fill: none; marker-end: url(#arB); }
+    .arA { stroke: #F59E0B; stroke-width: 2; fill: none; marker-end: url(#arA); }
+  </style>
+
+  <rect width="1240" height="1120" fill="white"/>
+
+  <text x="620" y="32" text-anchor="middle" class="ttl-xl">LifeOS · JARVIS — три режима одного мозга</text>
+  <text x="620" y="54" text-anchor="middle" class="sml">Один оркестратор · один реестр · одна память · три способа думать</text>
+
+  <g>
+    <rect x="100" y="80" width="1040" height="58" rx="10" class="box"/>
+    <text x="620" y="105" text-anchor="middle" class="lbl">ВХОДЫ: Telegram · Голос · Чат · Push · Создание новой цели · Тик scheduler каждые 10 мин</text>
+    <text x="620" y="125" text-anchor="middle" class="sml">любой источник → один путь к мозгу</text>
+  </g>
+
+  <path d="M 620 138 L 620 168" class="arK"/>
+
+  <g>
+    <rect x="100" y="168" width="1040" height="280" rx="14" fill="#6366F1"/>
+    <text x="620" y="198" text-anchor="middle" class="ttlw">МОЗГ · jarvis-orchestrator</text>
+    <text x="620" y="218" text-anchor="middle" class="smlw">единая точка для всех входов · подмешивает память, день недели Almaty, контекст</text>
+
+    <rect x="130" y="240" width="320" height="190" rx="10" fill="#22C55E" opacity="0.95"/>
+    <text x="290" y="265" text-anchor="middle" class="ttlw">РЕАКТИВНЫЙ</text>
+    <text x="290" y="282" text-anchor="middle" class="smlw">(уже почти готов — SSOT)</text>
+    <line x1="160" y1="293" x2="420" y2="293" stroke="white" opacity="0.3"/>
+    <text x="290" y="313" text-anchor="middle" class="chip" fill="white">когда: юзер написал/сказал</text>
+    <text x="290" y="332" text-anchor="middle" class="chip" fill="white">что делает: выбирает tool,</text>
+    <text x="290" y="350" text-anchor="middle" class="chip" fill="white">исполняет, отвечает</text>
+    <text x="290" y="376" text-anchor="middle" class="smlw">«запиши расход 5000»</text>
+    <text x="290" y="392" text-anchor="middle" class="smlw">«что у меня сегодня?»</text>
+    <text x="290" y="408" text-anchor="middle" class="smlw">«поставь встречу в среду»</text>
+    <text x="290" y="424" text-anchor="middle" class="chip" fill="white">System 1 — быстрый ответ</text>
+
+    <rect x="460" y="240" width="320" height="190" rx="10" fill="#3B82F6" opacity="0.95"/>
+    <text x="620" y="265" text-anchor="middle" class="ttlw">ПЛАНИРОВЩИК</text>
+    <text x="620" y="282" text-anchor="middle" class="smlw">(НОВЫЙ сервис)</text>
+    <line x1="490" y1="293" x2="750" y2="293" stroke="white" opacity="0.3"/>
+    <text x="620" y="313" text-anchor="middle" class="chip" fill="white">когда: создана/изменена цель</text>
+    <text x="620" y="332" text-anchor="middle" class="chip" fill="white">что делает: раскладывает</text>
+    <text x="620" y="350" text-anchor="middle" class="chip" fill="white">цель в дерево привычек/задач</text>
+    <text x="620" y="376" text-anchor="middle" class="smlw">год → кварталы → недели</text>
+    <text x="620" y="392" text-anchor="middle" class="smlw">→ ежедневная привычка</text>
+    <text x="620" y="408" text-anchor="middle" class="smlw">встреча — НЕ разбивает</text>
+    <text x="620" y="424" text-anchor="middle" class="chip" fill="white">System 2 — медленно думает</text>
+
+    <rect x="790" y="240" width="320" height="190" rx="10" fill="#F59E0B" opacity="0.95"/>
+    <text x="950" y="265" text-anchor="middle" class="ttlw">РЕФЛЕКТОР</text>
+    <text x="950" y="282" text-anchor="middle" class="smlw">(частично есть — расширить)</text>
+    <line x1="820" y1="293" x2="1080" y2="293" stroke="white" opacity="0.3"/>
+    <text x="950" y="313" text-anchor="middle" class="chip" fill="white">когда: scheduler 10 мин / событие</text>
+    <text x="950" y="332" text-anchor="middle" class="chip" fill="white">что делает: видит ВСЁ сразу,</text>
+    <text x="950" y="350" text-anchor="middle" class="chip" fill="white">формирует insight, дёргает push</text>
+    <text x="950" y="376" text-anchor="middle" class="smlw">«цель недели под угрозой»</text>
+    <text x="950" y="392" text-anchor="middle" class="smlw">«стрик 30 дней под риском»</text>
+    <text x="950" y="408" text-anchor="middle" class="smlw">«сон 4ч + 5 задач — урезать?»</text>
+    <text x="950" y="424" text-anchor="middle" class="chip" fill="white">непрерывный сторож</text>
+  </g>
+
+  <path d="M 290 430 C 290 460 620 460 620 488" class="arG"/>
+  <path d="M 620 430 L 620 488" class="arB"/>
+  <path d="M 950 430 C 950 460 620 460 620 488" class="arA"/>
+
+  <g>
+    <rect x="100" y="488" width="1040" height="105" rx="12" fill="#1E293B"/>
+    <text x="620" y="514" text-anchor="middle" class="ttlw">ЕДИНОЕ ЯДРО · все три режима ходят сюда</text>
+
+    <rect x="130" y="528" width="280" height="50" rx="8" fill="#334155"/>
+    <text x="270" y="548" text-anchor="middle" class="lblw">SSOT Tool Registry</text>
+    <text x="270" y="566" text-anchor="middle" class="smlw">~20 tools · автоген схем/промпта</text>
+
+    <rect x="430" y="528" width="280" height="50" rx="8" fill="#334155"/>
+    <text x="570" y="548" text-anchor="middle" class="lblw">Memory (FTS-русский)</text>
+    <text x="570" y="566" text-anchor="middle" class="smlw">факты · люди · предпочтения</text>
+
+    <rect x="730" y="528" width="280" height="50" rx="8" fill="#334155"/>
+    <text x="870" y="548" text-anchor="middle" class="lblw">ToolCall (аудит)</text>
+    <text x="870" y="566" text-anchor="middle" class="smlw">каждый вызов = строка факта</text>
+  </g>
+
+  <path d="M 620 593 L 620 620" class="arK"/>
+
+  <g>
+    <rect x="100" y="620" width="1040" height="200" rx="12" class="box"/>
+    <text x="620" y="646" text-anchor="middle" class="ttl">ХРАНИЛИЩЕ · Postgres (с новой иерархией для планировщика)</text>
+
+    <rect x="130" y="670" width="170" height="130" rx="8" class="box" stroke="#22C55E"/>
+    <text x="215" y="692" text-anchor="middle" class="lbl">Существующие</text>
+    <text x="215" y="715" text-anchor="middle" class="sml">Task · Habit</text>
+    <text x="215" y="733" text-anchor="middle" class="sml">CalendarEvent</text>
+    <text x="215" y="751" text-anchor="middle" class="sml">YearlyGoal · WeeklyGoal</text>
+    <text x="215" y="769" text-anchor="middle" class="sml">Expense · Income</text>
+    <text x="215" y="787" text-anchor="middle" class="sml">JournalEntry · Pet</text>
+
+    <rect x="320" y="670" width="240" height="130" rx="8" fill="#3B82F61A" stroke="#3B82F6" stroke-width="1.5"/>
+    <text x="440" y="692" text-anchor="middle" class="lbl">NEW: Иерархия (планировщик)</text>
+    <text x="440" y="715" text-anchor="middle" class="sml">parent_id на Goal/Task/Habit</text>
+    <text x="440" y="735" text-anchor="middle" class="sml">→ дерево «цель → подцель → задача»</text>
+    <text x="440" y="755" text-anchor="middle" class="sml">derived_from: «кто меня создал»</text>
+    <text x="440" y="775" text-anchor="middle" class="sml">(юзер vs планировщик)</text>
+    <text x="440" y="793" text-anchor="middle" class="sml">cascade-update при изменении</text>
+
+    <rect x="580" y="670" width="240" height="130" rx="8" fill="#F59E0B1A" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="700" y="692" text-anchor="middle" class="lbl">NEW: Insight (рефлектор)</text>
+    <text x="700" y="715" text-anchor="middle" class="sml">что мозг подсветил</text>
+    <text x="700" y="735" text-anchor="middle" class="sml">когда · severity · scope</text>
+    <text x="700" y="755" text-anchor="middle" class="sml">пользователь увидел? полезно?</text>
+    <text x="700" y="775" text-anchor="middle" class="sml">фидбек → обучение рефлексий</text>
+    <text x="700" y="793" text-anchor="middle" class="sml">источник пушей/брифингов</text>
+
+    <rect x="840" y="670" width="270" height="130" rx="8" class="box" stroke="#6366F1"/>
+    <text x="975" y="692" text-anchor="middle" class="lbl">Инфраструктура (готова)</text>
+    <text x="975" y="715" text-anchor="middle" class="sml">ToolCall (аудит каждого действия)</text>
+    <text x="975" y="735" text-anchor="middle" class="sml">PendingAction FSM (confirm)</text>
+    <text x="975" y="755" text-anchor="middle" class="sml">Memory (FTS-русский)</text>
+    <text x="975" y="775" text-anchor="middle" class="sml">ChatMessage (история)</text>
+    <text x="975" y="793" text-anchor="middle" class="sml">User · settings · timezone</text>
+  </g>
+
+  <g transform="translate(50, 850)">
+    <rect x="0" y="0" width="560" height="240" rx="12" fill="#EFF6FF" stroke="#3B82F6" stroke-width="1.5"/>
+    <text x="280" y="25" text-anchor="middle" class="ttl">Как работает ПЛАНИРОВЩИК</text>
+    <text x="280" y="45" text-anchor="middle" class="sml">Юзер: «хочу прочитать 50 книг за год» → дерево:</text>
+
+    <rect x="20" y="60" width="520" height="28" rx="6" fill="#3B82F6"/>
+    <text x="280" y="78" text-anchor="middle" class="lblw">ГОД: 50 книг (YearlyGoal)</text>
+
+    <path d="M 280 90 L 280 100" class="ar"/>
+
+    <rect x="20" y="102" width="520" height="26" rx="6" fill="#60A5FA"/>
+    <text x="280" y="119" text-anchor="middle" class="lblw">КВАРТАЛ: 12-13 книг × 4 → автогенерация milestones</text>
+
+    <path d="M 280 130 L 280 140" class="ar"/>
+
+    <rect x="20" y="142" width="520" height="26" rx="6" fill="#93C5FD"/>
+    <text x="280" y="159" text-anchor="middle" class="ex">НЕДЕЛЯ: ~1 книга (WeeklyGoal с parent_id)</text>
+
+    <path d="M 280 170 L 280 180" class="ar"/>
+
+    <rect x="20" y="182" width="520" height="26" rx="6" fill="#BFDBFE"/>
+    <text x="280" y="199" text-anchor="middle" class="ex">ПРИВЫЧКА: «30 страниц перед сном» (Habit, derived_from=planner)</text>
+
+    <text x="280" y="227" text-anchor="middle" class="sml">встреча — НЕ разбивается · духовное/обучение/финансы — разбиваются</text>
+  </g>
+
+  <g transform="translate(630, 850)">
+    <rect x="0" y="0" width="560" height="240" rx="12" fill="#FFFBEB" stroke="#F59E0B" stroke-width="1.5"/>
+    <text x="280" y="25" text-anchor="middle" class="ttl">Как работает РЕФЛЕКТОР</text>
+    <text x="280" y="45" text-anchor="middle" class="sml">Раз в день видит ВСЁ состояние и формирует 1-3 инсайта:</text>
+
+    <rect x="20" y="60" width="520" height="36" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+    <text x="35" y="80" class="ex">«Цель недели: пробежать 30 км. Прошло 5 дней,</text>
+    <text x="35" y="93" class="ex">пробежал 8 км. Переставлю силовую с пт на сб?»</text>
+
+    <rect x="20" y="105" width="520" height="36" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+    <text x="35" y="125" class="ex">«Бюджет на еду 80k, потратил 72k, осталось 12 дней.</text>
+    <text x="35" y="138" class="ex">Среднее по дням сейчас 4k — выйдешь в перерасход на 20k»</text>
+
+    <rect x="20" y="150" width="520" height="36" rx="6" fill="#FEF3C7" stroke="#F59E0B"/>
+    <text x="35" y="170" class="ex">«Сон 4ч, энергия 3/10, а у тебя 5 задач + 3 встречи.</text>
+    <text x="35" y="183" class="ex">Сместить P2 на завтра?»</text>
+
+    <text x="280" y="215" text-anchor="middle" class="sml">видит: задачи · привычки · финансы · сон · цели · стрики · встречи</text>
+    <text x="280" y="230" text-anchor="middle" class="sml">→ Insight → пуш / утренний брифинг / вечерний итог</text>
+  </g>
+
+  <g transform="translate(100, 1100)">
+    <circle cx="6" cy="0" r="5" fill="#22C55E"/>
+    <text x="18" y="4" class="sml">реактив (есть)</text>
+    <circle cx="146" cy="0" r="5" fill="#3B82F6"/>
+    <text x="158" y="4" class="sml">планировщик (новый)</text>
+    <circle cx="316" cy="0" r="5" fill="#F59E0B"/>
+    <text x="328" y="4" class="sml">рефлектор (новый)</text>
+    <circle cx="486" cy="0" r="5" fill="#6366F1"/>
+    <text x="498" y="4" class="sml">общий поток</text>
+    <text x="640" y="4" class="sml">→ все три режима = один мозг, одна память, одно дерево целей</text>
+  </g>
+</svg>

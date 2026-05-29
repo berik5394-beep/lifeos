@@ -113,10 +113,10 @@ export class PostgresEntityGraph implements EntityGraphStore {
   }
 
   // -------------------------------------------------------------------------
-  // getEntity — placeholder; implemented in B2
+  // getEntity — primary key lookup
   // -------------------------------------------------------------------------
-  async getEntity(_id: string): Promise<Entity | null> {
-    throw new Error('getEntity not yet implemented — Task B2');
+  async getEntity(id: string): Promise<Entity | null> {
+    return prisma.entity.findUnique({ where: { id } });
   }
 
   // -------------------------------------------------------------------------
