@@ -65,6 +65,12 @@ model User {
   memories               Memory[]
   dictationSessions      DictationSession[]
   uiComplexity           String                @default("standard")
+  // v2.0 — Tier 3+4+5 reverse relations
+  entities               Entity[]
+  entityRelations        EntityRelationship[]
+  patterns               Pattern[]
+  moodSnapshots          MoodSnapshot[]
+  botIdentity            BotIdentity?
   /// @deprecated P0 billing: фейковая подписка (роут+subscription.ts)
   /// УДАЛЕНА — это и есть P0-фикс, код НЕ трогаем. Колонки —
   /// ОРФАНЫ, никто не читает. Оставлены живыми т.к. деплой =
@@ -798,10 +804,17 @@ model Memory {
   // записей (досемантических) — гибридный ранкинг это учитывает.
   embedding  Unsupported("vector(512)")?
   createdAt  DateTime                    @default(now())
+  // v2.0 — Episodic extension (validity windows + entity refs + mood)
+  validAt    DateTime                    @default(now())
+  invalidAt  DateTime?
+  entityRefs String[]                    @default([])
+  mood       Float?
 
   @@index([userId, type])
   @@index([userId, createdAt])
   @@index([userId, importance])
+  @@index([userId, validAt])
+  @@index([userId, invalidAt])
 }
 
 // Запись сессии диктофона: транскрипт + что из него извлекли.
@@ -929,4 +942,108 @@ model Insight {
   @@index([userId, deliveredAt, severity])
   // R9/R10 — активные того же kind+scopeKey (cooldown/supersede).
   @@index([userId, kind, scopeKey])
+}
+
+// v2.0 — Tier 3 Semantic + Entity Graph
+model Entity {
+  id           String                      @id @default(cuid())
+  userId       String
+  user         User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         String // 'person' | 'place' | 'concept' | 'goal' | 'organization'
+  name         String
+  aliases      String[]                    @default([])
+  attributes   Json                        @default("{}")
+  lastSeenAt   DateTime                    @default(now())
+  baselineFreq Float                       @default(0)
+  moodAvg      Float?
+  importance   Int                         @default(5)
+  embedding    Unsupported("vector(512)")?
+  createdAt    DateTime                    @default(now())
+  updatedAt    DateTime                    @updatedAt
+
+  relsFrom EntityRelationship[] @relation("FromEntity")
+  relsTo   EntityRelationship[] @relation("ToEntity")
+
+  @@unique([userId, type, name])
+  @@index([userId, type])
+  @@index([userId, lastSeenAt])
+  @@index([userId, importance])
+}
+
+model EntityRelationship {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromId    String
+  from      Entity    @relation("FromEntity", fields: [fromId], references: [id], onDelete: Cascade)
+  toId      String
+  to        Entity    @relation("ToEntity", fields: [toId], references: [id], onDelete: Cascade)
+  type      String // 'family'|'friend'|'colleague'|'partner'|'concern'|'goal_link'|'location'|'works_at'|'lives_in'|'connected_to'
+  label     String?
+  strength  Float     @default(0.5)
+  validAt   DateTime  @default(now())
+  invalidAt DateTime?
+  createdAt DateTime  @default(now())
+  // Fix 2026-05-28 (code-review): strength evolves over time (relationships
+  // strengthen/weaken). updatedAt даёт audit trail когда strength changed.
+  updatedAt DateTime  @updatedAt
+
+  @@unique([userId, fromId, toId, type, validAt])
+  @@index([userId, fromId])
+  @@index([userId, toId])
+}
+
+// v2.0 — Tier 4 Procedural mini
+model Pattern {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind           String // 'frequency'|'time_of_day'|'recurring_topic'|'commitment'|'streak_break'
+  description    String
+  payload        Json
+  confidence     Float     @default(0)
+  observations   Int       @default(1)
+  lastObservedAt DateTime  @default(now())
+  validAt        DateTime  @default(now())
+  invalidAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId, kind])
+  @@index([userId, confidence])
+  @@index([userId, validAt, invalidAt])
+}
+
+// v2.0 — Tier 5 Emotional
+model MoodSnapshot {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source     String // 'message'|'daily_agg'
+  sourceId   String?
+  valence    Float
+  arousal    Float    @default(0.5)
+  emotion    String // 'sad'|'anxious'|'happy'|'angry'|'neutral'|'mixed'
+  entityRefs String[] @default([])
+  excerpt    String?
+  recordedAt DateTime @default(now())
+  // Fix 2026-05-28 (code-review): daily_agg rows будут recomputed (cron
+  // weekly aggregation). updatedAt = audit trail когда снимок пересчитан.
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, recordedAt])
+  @@index([userId, emotion])
+}
+
+// v2.0 — Tier 5 Identity mini
+model BotIdentity {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  botName   String   @default("Эля")
+  avatar    String   @default("🤍")
+  style     String   @default("friendly")
+  traits    Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

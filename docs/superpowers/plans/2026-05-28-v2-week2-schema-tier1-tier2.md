@@ -149,6 +149,9 @@ model EntityRelationship {
   validAt     DateTime  @default(now())
   invalidAt   DateTime?
   createdAt   DateTime  @default(now())
+  // Fix 2026-05-28 (code-review): strength evolves over time (relationships
+  // strengthen/weaken). updatedAt даёт audit trail когда strength changed.
+  updatedAt   DateTime  @updatedAt
 
   @@unique([userId, fromId, toId, type, validAt])
   @@index([userId, fromId])
@@ -201,6 +204,9 @@ model MoodSnapshot {
   entityRefs  String[]  @default([])
   excerpt     String?
   recordedAt  DateTime  @default(now())
+  // Fix 2026-05-28 (code-review): daily_agg rows будут recomputed (cron
+  // weekly aggregation). updatedAt = audit trail когда снимок пересчитан.
+  updatedAt   DateTime  @updatedAt
 
   @@index([userId, recordedAt])
   @@index([userId, emotion])
@@ -354,7 +360,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 ALTER TABLE "Memory" ADD COLUMN IF NOT EXISTS "validAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 ALTER TABLE "Memory" ADD COLUMN IF NOT EXISTS "invalidAt" TIMESTAMP(3);
-ALTER TABLE "Memory" ADD COLUMN IF NOT EXISTS "entityRefs" TEXT[] DEFAULT '{}';
+-- NOT NULL matches Prisma schema (String[] without ? = non-nullable)
+ALTER TABLE "Memory" ADD COLUMN IF NOT EXISTS "entityRefs" TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE "Memory" ADD COLUMN IF NOT EXISTS "mood" DOUBLE PRECISION;
 
 -- Backfill: existing rows get validAt = createdAt
@@ -363,6 +370,10 @@ WHERE "validAt" = CURRENT_TIMESTAMP AND "createdAt" < CURRENT_TIMESTAMP - INTERV
 
 CREATE INDEX IF NOT EXISTS "Memory_userId_validAt_idx" ON "Memory"("userId", "validAt");
 CREATE INDEX IF NOT EXISTS "Memory_userId_invalidAt_idx" ON "Memory"("userId", "invalidAt");
+-- GIN на entityRefs (array contains query "WHERE entityRefs @> ARRAY['entity-X']")
+-- Prisma 6 syntax не handle mixed-column GIN cleanly → raw SQL здесь.
+-- Critical for getEventsForEntity / lastEventForEntity / entityFrequency.
+CREATE INDEX IF NOT EXISTS "Memory_entityRefs_gin_idx" ON "Memory" USING GIN ("entityRefs");
 
 -- =============================================================
 -- 2. Entity table (Tier 3 Semantic)
@@ -373,7 +384,8 @@ CREATE TABLE IF NOT EXISTS "Entity" (
     "userId"       TEXT NOT NULL,
     "type"         TEXT NOT NULL,
     "name"         TEXT NOT NULL,
-    "aliases"      TEXT[] DEFAULT '{}',
+    -- NOT NULL matches Prisma schema (String[] without ? = non-nullable)
+    "aliases"      TEXT[] NOT NULL DEFAULT '{}',
     "attributes"   JSONB NOT NULL DEFAULT '{}',
     "lastSeenAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "baselineFreq" DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -412,6 +424,7 @@ CREATE TABLE IF NOT EXISTS "EntityRelationship" (
     "validAt"   TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "invalidAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "EntityRelationship_pkey" PRIMARY KEY ("id")
 );
 
@@ -478,9 +491,11 @@ CREATE TABLE IF NOT EXISTS "MoodSnapshot" (
     "valence"    DOUBLE PRECISION NOT NULL,
     "arousal"    DOUBLE PRECISION NOT NULL DEFAULT 0.5,
     "emotion"    TEXT NOT NULL,
-    "entityRefs" TEXT[] DEFAULT '{}',
+    -- NOT NULL matches Prisma schema (String[] without ? = non-nullable)
+    "entityRefs" TEXT[] NOT NULL DEFAULT '{}',
     "excerpt"    TEXT,
     "recordedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt"  TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "MoodSnapshot_pkey" PRIMARY KEY ("id")
 );
 
@@ -493,6 +508,9 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS "MoodSnapshot_userId_recordedAt_idx" ON "MoodSnapshot"("userId", "recordedAt");
 CREATE INDEX IF NOT EXISTS "MoodSnapshot_userId_emotion_idx" ON "MoodSnapshot"("userId", "emotion");
+-- GIN на entityRefs (same reason as Memory above) — для queries
+-- "find mood snapshots involving entity X".
+CREATE INDEX IF NOT EXISTS "MoodSnapshot_entityRefs_gin_idx" ON "MoodSnapshot" USING GIN ("entityRefs");
 
 -- =============================================================
 -- 6. BotIdentity table (Tier 5 Identity mini)
