@@ -78,3 +78,44 @@ export function validateEventInput(input: RecordEventInput): void {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Async API (thin prisma wrappers — structural tests in *.test.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Record new episodic event.
+ *
+ * Validates input via validateEventInput (throws if invalid).
+ * Clamps mood to [-1, +1] silently.
+ *
+ * @returns Created Memory row id.
+ */
+export async function recordEvent(
+  userId: string,
+  input: RecordEventInput,
+): Promise<{ id: string }> {
+  validateEventInput(input);
+  const validAt = input.validAt ?? new Date();
+  const mood = clampMood(input.mood);
+
+  const created = await prisma.memory.create({
+    data: {
+      userId,
+      type: input.type,
+      content: input.content.slice(0, 500),
+      details: input.details?.slice(0, 2000) ?? null,
+      source: 'v2-episodic',
+      sourceId: null,
+      tags: [],
+      importance: input.importance ?? 5,
+      validAt,
+      invalidAt: input.invalidAt ?? null,
+      entityRefs: input.entityRefs ?? [],
+      mood: mood ?? null,
+    },
+    select: { id: true },
+  });
+
+  return { id: created.id };
+}

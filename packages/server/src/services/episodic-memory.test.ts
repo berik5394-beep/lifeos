@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { validateEventInput, clampMood } from './episodic-memory.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 describe('clampMood — emotional valence -1..+1', () => {
   it('returns undefined for undefined input', () => {
@@ -71,5 +73,41 @@ describe('validateEventInput', () => {
         validateEventInput({ type: 'event', content: 'x', importance: i }),
       ).not.toThrow();
     }
+  });
+});
+
+const SRC = readFileSync(
+  join(process.cwd(), 'src/services/episodic-memory.ts'),
+  'utf-8',
+);
+
+describe('episodic-memory.ts structural — recordEvent wiring', () => {
+  it('recordEvent exported as async function', () => {
+    expect(SRC).toMatch(/export async function recordEvent\s*\(/);
+  });
+
+  it('recordEvent calls validateEventInput before prisma write', () => {
+    // Find recordEvent body
+    const start = SRC.indexOf('export async function recordEvent');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1500);
+    // Order: validateEventInput appears before prisma.memory.create
+    const validateIdx = body.indexOf('validateEventInput(');
+    const createIdx = body.indexOf('prisma.memory.create');
+    expect(validateIdx).toBeGreaterThan(-1);
+    expect(createIdx).toBeGreaterThan(-1);
+    expect(validateIdx).toBeLessThan(createIdx);
+  });
+
+  it('recordEvent applies clampMood', () => {
+    const start = SRC.indexOf('export async function recordEvent');
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toContain('clampMood(');
+  });
+
+  it('recordEvent sets source = "v2-episodic"', () => {
+    const start = SRC.indexOf('export async function recordEvent');
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toMatch(/source:\s*['"]v2-episodic['"]/);
   });
 });
