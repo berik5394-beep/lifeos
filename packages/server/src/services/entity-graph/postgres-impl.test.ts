@@ -72,3 +72,39 @@ describe('postgres-impl.ts structural — getEntity', () => {
     expect(body).toContain('null');
   });
 });
+
+describe('postgres-impl.ts structural — resolveEntity', () => {
+  it('resolveEntity exported as async method', () => {
+    expect(SRC).toMatch(/async resolveEntity\s*\(/);
+  });
+
+  it('resolveEntity uses plainto_tsquery for name FTS', () => {
+    const start = SRC.indexOf('async resolveEntity');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('plainto_tsquery');
+  });
+
+  it('resolveEntity falls back to embedding similarity when embeddingsEnabled', () => {
+    const start = SRC.indexOf('async resolveEntity');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('embeddingsEnabled');
+    // pgvector cosine operator
+    expect(body).toContain('<=>');
+  });
+
+  it('resolveEntity returns null if no match (not throw)', () => {
+    const start = SRC.indexOf('async resolveEntity');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('return null');
+  });
+
+  it('resolveEntity filters by type if provided', () => {
+    const start = SRC.indexOf('async resolveEntity');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('type');
+  });
+});

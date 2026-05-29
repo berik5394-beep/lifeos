@@ -120,10 +120,66 @@ export class PostgresEntityGraph implements EntityGraphStore {
   }
 
   // -------------------------------------------------------------------------
-  // resolveEntity — placeholder; implemented in B3
+  // resolveEntity — tiered FTS + embedding fallback
   // -------------------------------------------------------------------------
-  async resolveEntity(_userId: string, _mention: string, _type?: string): Promise<Entity | null> {
-    throw new Error('resolveEntity not yet implemented — Task B3');
+  async resolveEntity(userId: string, mention: string, type?: string): Promise<Entity | null> {
+    const mentionClean = mention.trim().slice(0, 255);
+    if (!mentionClean) return null;
+
+    const typeFilter = type ? `AND e.type = '${type.replace(/'/g, "''")}'` : '';
+
+    // Step 1: FTS match on canonical name (russian stemming).
+    const nameFts = await prisma.$queryRawUnsafe<Entity[]>(
+      `SELECT e.*
+       FROM "Entity" e
+       WHERE e."userId" = $1
+         AND to_tsvector('russian', e.name) @@ plainto_tsquery('russian', $2)
+         ${typeFilter}
+       ORDER BY ts_rank(to_tsvector('russian', e.name), plainto_tsquery('russian', $2)) DESC
+       LIMIT 1`,
+      userId,
+      mentionClean,
+    );
+    if (nameFts.length > 0) return nameFts[0];
+
+    // Step 2: FTS match on aliases (unnested).
+    const aliasFts = await prisma.$queryRawUnsafe<Entity[]>(
+      `SELECT DISTINCT e.*
+       FROM "Entity" e,
+            unnest(e.aliases) AS alias_val
+       WHERE e."userId" = $1
+         AND to_tsvector('russian', alias_val) @@ plainto_tsquery('russian', $2)
+         ${typeFilter}
+       ORDER BY e.importance DESC
+       LIMIT 1`,
+      userId,
+      mentionClean,
+    );
+    if (aliasFts.length > 0) return aliasFts[0];
+
+    // Step 3: Embedding cosine similarity fallback.
+    if (embeddingsEnabled()) {
+      const { embedQuery } = await import('../embeddings.js');
+      const qvec = await embedQuery(mentionClean);
+      if (qvec) {
+        const vecLit = toVectorLiteral(qvec);
+        const typeFilterEmbed = type ? `AND e.type = '${type.replace(/'/g, "''")}'` : '';
+        const embResult = await prisma.$queryRawUnsafe<Entity[]>(
+          `SELECT e.*
+           FROM "Entity" e
+           WHERE e."userId" = $1
+             AND e.embedding IS NOT NULL
+             ${typeFilterEmbed}
+           ORDER BY e.embedding <=> $2::vector
+           LIMIT 1`,
+          userId,
+          vecLit,
+        );
+        if (embResult.length > 0) return embResult[0];
+      }
+    }
+
+    return null;
   }
 
   // -------------------------------------------------------------------------
