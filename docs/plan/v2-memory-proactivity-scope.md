@@ -195,9 +195,11 @@ AGENT TOOL EXTENSIONS:
 | 1 | Self-review spec | ✅ done | 2026-05-28 | 8 ошибок найдено + исправлено inline |
 | 1 | Berik review + approval | ✅ approved | 2026-05-28 | «ок» — spec approved |
 | 1 | Implementation plan (writing-plans) | ✅ done | 2026-05-28 | docs/superpowers/plans/2026-05-28-v2-week2-schema-tier1-tier2.md (1915 lines, v2 careful — v1 халтура переписана) |
-| 2 | Prisma schema migration | — | — | — |
-| 2 | Tier 1+2 implementation | — | — | — |
-| 3 | Tier 3 + entity graph | — | — | — |
+| 2 | Prisma schema migration (Tasks A1-A4) | ✅ done | 2026-05-29 | commit 1d3dc76, migration applied prod via db push |
+| 2 | Tier 1 WorkingMemory (Tasks B1-B3) | ✅ done | 2026-05-29 | commits fbbb60a + 171967d + 2ce42a3, 15 tests |
+| 2 | Tier 2 EpisodicMemory (Tasks C1-C5) | ✅ done | 2026-05-29 | commits 7d571e2 + c0fdc4f + 09c02a7 + aa63a29, 23 tests |
+| 2 | feature-flags + Section D verify (D1-D2) | ✅ done | 2026-05-29 | commit 40d7118, 10 tests. **Week 2 TOTAL: 9 commits, 894/894 tests pass, tsc clean** |
+| 3 | Tier 3 + entity graph | ⏳ next | — | — |
 | 4 | Tier 4 mini + Tier 5 mini + identity mini | — | — | — |
 | 5 | Proactivity engine + agent tools | — | — | — |
 | 6 | Cron tasks + migration script + integration tests | — | — | — |
