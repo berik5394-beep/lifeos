@@ -123,3 +123,52 @@ describe('entity-extractor.ts structural — skeleton', () => {
     expect(SRC).toMatch(/export.*ExtractedRelationshipInput/);
   });
 });
+
+describe('entity-extractor.ts structural — extractEntities async', () => {
+  it('extractEntities exported as async function', () => {
+    expect(SRC).toMatch(/export async function extractEntities\s*\(/);
+  });
+
+  it('extractEntities calls anthropic.messages.create', () => {
+    const start = SRC.indexOf('export async function extractEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('anthropic.messages.create');
+  });
+
+  it('extractEntities uses MODELS.haiku (fast/cheap for classify tasks)', () => {
+    const start = SRC.indexOf('export async function extractEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('MODELS.haiku');
+  });
+
+  it('extractEntities wraps entire call in try/catch (best-effort)', () => {
+    const start = SRC.indexOf('export async function extractEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('try {');
+    expect(body).toContain('catch');
+    // On error, must return empty (not throw)
+    expect(body).toContain('entities: []');
+  });
+
+  it('extractEntities calls parseExtractorResponse to parse Claude output', () => {
+    const start = SRC.indexOf('export async function extractEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('parseExtractorResponse(');
+  });
+
+  it('extractEntities normalizes entity names via normalizeEntityName', () => {
+    const start = SRC.indexOf('export async function extractEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('normalizeEntityName(');
+  });
+
+  it('extractEntities system prompt includes JSON-only instruction', () => {
+    // The system prompt must instruct Claude to return ONLY valid JSON.
+    expect(SRC).toMatch(/ТОЛЬКО.*JSON|ONLY.*JSON|valid JSON/s);
+  });
+});

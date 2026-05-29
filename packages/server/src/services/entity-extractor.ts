@@ -110,18 +110,95 @@ export function parseExtractorResponse(raw: string): ExtractorResult {
 
 const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
 
+const ENTITY_TYPES = ['person', 'place', 'concept', 'goal', 'organization'] as const;
+const RELATIONSHIP_TYPES = [
+  'family', 'friend', 'colleague', 'partner',
+  'concern', 'goal_link', 'location', 'works_at', 'lives_in', 'connected_to',
+] as const;
+
+const SYSTEM_PROMPT = `Ты — аналитик знаний LifeOS. Из сообщения пользователя извлеки ТОЛЬКО именованные сущности и связи между ними.
+
+Верни ТОЛЬКО валидный JSON без markdown, строго такого формата:
+{
+  "entities": [
+    {
+      "name": "каноническое имя сущности",
+      "type": "person|place|concept|goal|organization",
+      "attributes": { "ключ": "значение" },
+      "importance": 5
+    }
+  ],
+  "relationships": [
+    {
+      "fromName": "имя сущности A",
+      "toName": "имя сущности B",
+      "type": "family|friend|colleague|partner|concern|goal_link|location|works_at|lives_in|connected_to",
+      "label": "опциональное описание",
+      "strength": 0.5
+    }
+  ]
+}
+
+Правила:
+1. entities — только явно упомянутые. Не выдумывай. Мин. одно слово.
+2. type выбери из фиксированного списка: ${ENTITY_TYPES.join('|')}.
+3. attributes — только явно сказанное (день рождения, город, профессия и т.д.).
+4. importance: 1-3 мелочь, 4-6 средне, 7-10 важно (семья, здоровье, цели).
+5. relationships — только если из текста явно следует связь между двумя entities.
+6. relationship.type из: ${RELATIONSHIP_TYPES.join('|')}.
+7. Если entities нет — верни { "entities": [], "relationships": [] }.
+8. НЕ добавляй объяснений, только JSON.`;
+
 /**
  * Extract entities and relationships from free text via Claude.
- * Best-effort: any error → returns empty ExtractorResult (never throws).
- * Uses MODELS.haiku (fast, cheap — extraction is classify, not reasoning).
  *
- * Implemented in Task C2.
+ * Best-effort: any error (network, parse, Claude 5xx) → returns empty
+ * ExtractorResult and logs warn. Never throws.
+ *
+ * Normalizes entity names before returning (capitalizes, collapses spaces).
  */
 export async function extractEntities(
-  _text: string,
+  text: string,
   _userId: string,
 ): Promise<ExtractorResult> {
-  // Placeholder — implemented in C2.
-  void anthropic; // reference to prevent unused-import lint
-  return { entities: [], relationships: [] };
+  const trimmed = text.trim();
+  if (!trimmed) return { entities: [], relationships: [] };
+
+  try {
+    const response = await anthropic.messages.create({
+      model: MODELS.haiku,
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: trimmed }],
+    });
+
+    const content = response.content[0];
+    if (!content || content.type !== 'text') {
+      console.warn('[entity-extractor] empty or non-text Claude response');
+      return { entities: [], relationships: [] };
+    }
+
+    const parsed = parseExtractorResponse(content.text);
+
+    // Normalize entity names.
+    const normalizedEntities: ExtractedEntityInput[] = parsed.entities.map((e) => ({
+      ...e,
+      name: normalizeEntityName(e.name),
+    }));
+
+    // Normalize relationship fromName/toName to match normalized entity names.
+    const normalizedRelationships: ExtractedRelationshipInput[] = parsed.relationships.map((r) => ({
+      ...r,
+      fromName: normalizeEntityName(r.fromName),
+      toName: normalizeEntityName(r.toName),
+    }));
+
+    return { entities: normalizedEntities, relationships: normalizedRelationships };
+  } catch (err) {
+    console.warn(
+      '[entity-extractor] extractEntities failed:',
+      err instanceof Error ? err.message : err,
+    );
+    return { entities: [], relationships: [] };
+  }
 }
