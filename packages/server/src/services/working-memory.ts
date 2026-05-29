@@ -113,3 +113,24 @@ export class WorkingMemory {
     return this.contexts.size;
   }
 }
+
+/**
+ * Global singleton instance — created lazily.
+ * Wired into jarvis-orchestrator in Week 5 (separate plan).
+ */
+let _instance: WorkingMemory | null = null;
+
+export function getWorkingMemory(): WorkingMemory {
+  if (!_instance) {
+    _instance = new WorkingMemory();
+  }
+  return _instance;
+}
+
+/**
+ * For tests only — clear singleton between test files / cases.
+ * Underscore prefix signals "internal API".
+ */
+export function _resetWorkingMemoryForTests(): void {
+  _instance = null;
+}

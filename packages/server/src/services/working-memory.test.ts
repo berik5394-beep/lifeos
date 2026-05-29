@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { WorkingMemory } from './working-memory.js';
+import { WorkingMemory, getWorkingMemory, _resetWorkingMemoryForTests } from './working-memory.js';
 
 describe('WorkingMemory — addTurn + getContext', () => {
   it('adds new turn to user context', () => {
@@ -115,5 +115,31 @@ describe('WorkingMemory — size', () => {
     expect(wm.size()).toBe(1);
     wm.addTurn('u2', { role: 'user', content: 'y', ts: new Date() });
     expect(wm.size()).toBe(2);
+  });
+});
+
+describe('WorkingMemory — singleton accessor', () => {
+  it('returns same instance on subsequent calls', () => {
+    _resetWorkingMemoryForTests();
+    const a = getWorkingMemory();
+    const b = getWorkingMemory();
+    expect(a).toBe(b);
+  });
+
+  it('persists state across calls', () => {
+    _resetWorkingMemoryForTests();
+    const a = getWorkingMemory();
+    a.addTurn('u1', { role: 'user', content: 'x', ts: new Date() });
+    const b = getWorkingMemory();
+    expect(b.getContext('u1')).not.toBeNull();
+  });
+
+  it('_resetWorkingMemoryForTests creates fresh instance', () => {
+    const a = getWorkingMemory();
+    a.addTurn('u1', { role: 'user', content: 'x', ts: new Date() });
+    _resetWorkingMemoryForTests();
+    const b = getWorkingMemory();
+    expect(b.getContext('u1')).toBeNull();
+    expect(a).not.toBe(b);
   });
 });
