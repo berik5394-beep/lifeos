@@ -119,3 +119,17 @@ export async function recordEvent(
 
   return { id: created.id };
 }
+
+/**
+ * Mark event as invalid (e.g. «передумал увольняться»).
+ * Default invalidAt = now().
+ */
+export async function invalidateEvent(
+  eventId: string,
+  invalidAt: Date = new Date(),
+): Promise<void> {
+  await prisma.memory.update({
+    where: { id: eventId },
+    data: { invalidAt },
+  });
+}

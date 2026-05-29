@@ -111,3 +111,24 @@ describe('episodic-memory.ts structural — recordEvent wiring', () => {
     expect(body).toMatch(/source:\s*['"]v2-episodic['"]/);
   });
 });
+
+describe('episodic-memory.ts structural — invalidateEvent wiring', () => {
+  it('invalidateEvent exported as async function', () => {
+    expect(SRC).toMatch(/export async function invalidateEvent\s*\(/);
+  });
+
+  it('invalidateEvent calls prisma.memory.update with invalidAt', () => {
+    const start = SRC.indexOf('export async function invalidateEvent');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 800);
+    expect(body).toContain('prisma.memory.update');
+    expect(body).toContain('invalidAt');
+  });
+
+  it('invalidateEvent defaults invalidAt to new Date()', () => {
+    const start = SRC.indexOf('export async function invalidateEvent');
+    const body = SRC.slice(start, start + 800);
+    // Parameter signature contains default
+    expect(body).toMatch(/invalidAt\s*:\s*Date\s*=\s*new Date\(\)/);
+  });
+});
