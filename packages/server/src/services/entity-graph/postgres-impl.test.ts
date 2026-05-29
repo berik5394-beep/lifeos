@@ -145,3 +145,62 @@ describe('postgres-impl.ts structural — linkEntities', () => {
     expect(body).toContain('0.5');
   });
 });
+
+import { clampDepth } from './postgres-impl.js';
+
+describe('clampDepth — pure helper', () => {
+  it('passes through values 1..5', () => {
+    expect(clampDepth(1)).toBe(1);
+    expect(clampDepth(3)).toBe(3);
+    expect(clampDepth(5)).toBe(5);
+  });
+
+  it('clamps 0 to 1 (minimum useful depth)', () => {
+    expect(clampDepth(0)).toBe(1);
+    expect(clampDepth(-5)).toBe(1);
+  });
+
+  it('clamps > 5 to 5 (prevents runaway CTE)', () => {
+    expect(clampDepth(6)).toBe(5);
+    expect(clampDepth(100)).toBe(5);
+  });
+});
+
+describe('postgres-impl.ts structural — getNeighbors', () => {
+  it('getNeighbors exported as async method', () => {
+    expect(SRC).toMatch(/async getNeighbors\s*\(/);
+  });
+
+  it('getNeighbors uses WITH RECURSIVE CTE', () => {
+    const start = SRC.indexOf('async getNeighbors');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('WITH RECURSIVE');
+  });
+
+  it('getNeighbors calls clampDepth before executing query', () => {
+    const start = SRC.indexOf('async getNeighbors');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('clampDepth(');
+  });
+
+  it('getNeighbors filters invalidAt IS NULL in CTE', () => {
+    const start = SRC.indexOf('async getNeighbors');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('invalidAt');
+    expect(body).toContain('IS NULL');
+  });
+
+  it('getNeighbors uses $queryRawUnsafe (not tagged template — needs params)', () => {
+    const start = SRC.indexOf('async getNeighbors');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('$queryRawUnsafe');
+  });
+
+  it('clampDepth exported from module', () => {
+    expect(SRC).toMatch(/export function clampDepth/);
+  });
+});

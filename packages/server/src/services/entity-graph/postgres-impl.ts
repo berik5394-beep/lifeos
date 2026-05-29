@@ -45,6 +45,15 @@ async function storeEntityEmbedding(id: string, name: string, aliases: string[])
   }
 }
 
+/**
+ * Clamp graph traversal depth to [1, 5].
+ * Prevents runaway recursive CTE. Min=1 (otherwise query is pointless).
+ * Exported for unit testing.
+ */
+export function clampDepth(depth: number): number {
+  return Math.max(1, Math.min(5, depth));
+}
+
 // ---------------------------------------------------------------------------
 // PostgresEntityGraph
 // ---------------------------------------------------------------------------
@@ -234,13 +243,111 @@ export class PostgresEntityGraph implements EntityGraphStore {
   }
 
   // -------------------------------------------------------------------------
-  // getNeighbors — placeholder; implemented in B5
+  // getNeighbors — recursive CTE with depth cap
   // -------------------------------------------------------------------------
   async getNeighbors(
-    _entityId: string,
-    _depth: number,
+    entityId: string,
+    depth: number,
   ): Promise<Array<{ entity: Entity; relation: EntityRelationship; distance: number }>> {
-    throw new Error('getNeighbors not yet implemented — Task B5');
+    const safeDepth = clampDepth(depth);
+
+    // Recursive CTE with depth cap.
+    // Base: direct neighbors (both directions, distance=1).
+    // Recursive: follow outgoing edges from discovered neighbors.
+    // UNION (not UNION ALL) deduplicates entityId per distance tier.
+    type NeighborRow = Omit<Entity, never> & {
+      distance: number;
+      rel_id: string;
+      rel_userId: string;
+      rel_fromId: string;
+      rel_toId: string;
+      rel_type: string;
+      rel_label: string | null;
+      rel_strength: number;
+      rel_validAt: Date;
+      rel_invalidAt: Date | null;
+      rel_createdAt: Date;
+      rel_updatedAt: Date;
+    };
+
+    const rows = await prisma.$queryRawUnsafe<NeighborRow[]>(
+      `WITH RECURSIVE neighbors AS (
+        -- base: outgoing direct neighbors
+        SELECT r."toId" AS "entityId", r.type AS "relType", r.label AS "relLabel",
+               1 AS distance, r.id AS "relId"
+        FROM "EntityRelationship" r
+        WHERE r."fromId" = $1 AND r."invalidAt" IS NULL
+
+        UNION
+
+        -- base: incoming direct neighbors (bidirectional)
+        SELECT r."fromId" AS "entityId", r.type AS "relType", r.label AS "relLabel",
+               1 AS distance, r.id AS "relId"
+        FROM "EntityRelationship" r
+        WHERE r."toId" = $1 AND r."invalidAt" IS NULL
+
+        UNION
+
+        -- recursive: outgoing from discovered neighbors
+        SELECT r."toId" AS "entityId", r.type AS "relType", r.label AS "relLabel",
+               n.distance + 1 AS distance, r.id AS "relId"
+        FROM neighbors n
+        JOIN "EntityRelationship" r ON r."fromId" = n."entityId"
+        WHERE n.distance < $2 AND r."invalidAt" IS NULL
+      )
+      SELECT DISTINCT ON (e.id)
+        e.*,
+        n.distance,
+        r.id         AS "rel_id",
+        r."userId"   AS "rel_userId",
+        r."fromId"   AS "rel_fromId",
+        r."toId"     AS "rel_toId",
+        r.type       AS "rel_type",
+        r.label      AS "rel_label",
+        r.strength   AS "rel_strength",
+        r."validAt"  AS "rel_validAt",
+        r."invalidAt" AS "rel_invalidAt",
+        r."createdAt" AS "rel_createdAt",
+        r."updatedAt" AS "rel_updatedAt"
+      FROM neighbors n
+      JOIN "Entity" e ON e.id = n."entityId"
+      JOIN "EntityRelationship" r ON r.id = n."relId"
+      WHERE e.id != $1
+      ORDER BY e.id, n.distance ASC, e.importance DESC`,
+      entityId,
+      safeDepth,
+    );
+
+    return rows.map((row) => ({
+      entity: {
+        id: row.id,
+        userId: row.userId,
+        type: row.type,
+        name: row.name,
+        aliases: row.aliases,
+        attributes: row.attributes,
+        lastSeenAt: row.lastSeenAt,
+        baselineFreq: row.baselineFreq,
+        moodAvg: row.moodAvg,
+        importance: row.importance,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      } as Entity,
+      relation: {
+        id: row.rel_id,
+        userId: row.rel_userId,
+        fromId: row.rel_fromId,
+        toId: row.rel_toId,
+        type: row.rel_type,
+        label: row.rel_label,
+        strength: row.rel_strength,
+        validAt: row.rel_validAt,
+        invalidAt: row.rel_invalidAt,
+        createdAt: row.rel_createdAt,
+        updatedAt: row.rel_updatedAt,
+      } as EntityRelationship,
+      distance: row.distance,
+    }));
   }
 
   // -------------------------------------------------------------------------
