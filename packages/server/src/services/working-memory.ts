@@ -39,12 +39,23 @@ export class WorkingMemory {
 
   constructor(opts: WorkingMemoryOptions = {}) {
     this.maxMessages = opts.maxMessages ?? 50;
+    // Fix 2026-05-29 (code-review): maxMessages=0 produces undefined behavior
+    // (queue always empty but context object still exists, confusing for callers).
+    // Reject < 1 explicitly.
+    if (this.maxMessages < 1) {
+      throw new Error(`WorkingMemory: maxMessages must be >= 1, got ${this.maxMessages}`);
+    }
     this.idleThresholdMs = opts.idleThresholdMs ?? 60 * 60 * 1000;
   }
 
   /**
    * Add new turn to user's working context. O(1) amortized.
    * Creates context if not exists. Trims oldest if exceeds maxMessages.
+   *
+   * CALLER CONTRACT: msg.ts must be wall-clock time of the turn (NOT a
+   * historical timestamp from replayed storage). lastActivityAt is set
+   * from msg.ts and drives evictIdle — replaying old messages on cache
+   * warmup will immediately evict the context.
    */
   addTurn(userId: string, msg: WorkingTurn): void {
     let ctx = this.contexts.get(userId);
@@ -69,6 +80,10 @@ export class WorkingMemory {
   /**
    * Get current context snapshot. O(1).
    * Returns null if no context exists.
+   *
+   * CALLER CONTRACT: returned object is a LIVE reference (not cloned for
+   * performance). Callers MUST NOT mutate lastMessages directly — use
+   * addTurn() to preserve bounded-queue invariant. Reading is safe.
    */
   getContext(userId: string): WorkingContext | null {
     return this.contexts.get(userId) ?? null;

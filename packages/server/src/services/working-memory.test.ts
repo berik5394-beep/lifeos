@@ -68,6 +68,11 @@ describe('WorkingMemory — bounded queue (anti memory-leak)', () => {
     expect(ctx?.lastMessages).toHaveLength(5);
     expect(ctx?.lastMessages.map((m) => m.content)).toEqual(['5', '6', '7', '8', '9']);
   });
+
+  it('throws if maxMessages < 1 (guard against undefined behavior)', () => {
+    expect(() => new WorkingMemory({ maxMessages: 0 })).toThrow(/maxMessages must be >= 1/);
+    expect(() => new WorkingMemory({ maxMessages: -5 })).toThrow(/maxMessages must be >= 1/);
+  });
 });
 
 describe('WorkingMemory — evictIdle', () => {
