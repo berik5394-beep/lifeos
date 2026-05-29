@@ -54,6 +54,14 @@ export function clampDepth(depth: number): number {
   return Math.max(1, Math.min(5, depth));
 }
 
+/**
+ * Compute cutoff Date = now - sinceDays * 24h.
+ * Exported for unit testing.
+ */
+export function sinceDaysCutoff(sinceDays: number, now: Date = new Date()): Date {
+  return new Date(now.getTime() - sinceDays * 86_400_000);
+}
+
 // ---------------------------------------------------------------------------
 // PostgresEntityGraph
 // ---------------------------------------------------------------------------
@@ -351,13 +359,17 @@ export class PostgresEntityGraph implements EntityGraphStore {
   }
 
   // -------------------------------------------------------------------------
-  // staleEntities — placeholder; implemented in B6
+  // staleEntities — filter entities not seen in N days
   // -------------------------------------------------------------------------
-  async staleEntities(
-    _userId: string,
-    _sinceDays: number,
-    _minImportance?: number,
-  ): Promise<Entity[]> {
-    throw new Error('staleEntities not yet implemented — Task B6');
+  async staleEntities(userId: string, sinceDays: number, minImportance?: number): Promise<Entity[]> {
+    const cutoff = sinceDaysCutoff(sinceDays);
+    return prisma.entity.findMany({
+      where: {
+        userId,
+        lastSeenAt: { lt: cutoff },
+        ...(minImportance !== undefined ? { importance: { gte: minImportance } } : {}),
+      },
+      orderBy: { importance: 'desc' },
+    });
   }
 }

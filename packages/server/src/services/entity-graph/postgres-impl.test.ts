@@ -204,3 +204,60 @@ describe('postgres-impl.ts structural — getNeighbors', () => {
     expect(SRC).toMatch(/export function clampDepth/);
   });
 });
+
+import { sinceDaysCutoff } from './postgres-impl.js';
+
+describe('sinceDaysCutoff — pure helper', () => {
+  it('returns date exactly N days before now', () => {
+    const now = new Date('2026-05-29T12:00:00Z');
+    const cutoff = sinceDaysCutoff(7, now);
+    const expectedMs = now.getTime() - 7 * 86_400_000;
+    expect(cutoff.getTime()).toBe(expectedMs);
+  });
+
+  it('works for 0 days (returns now)', () => {
+    const now = new Date('2026-05-29T12:00:00Z');
+    const cutoff = sinceDaysCutoff(0, now);
+    expect(cutoff.getTime()).toBe(now.getTime());
+  });
+
+  it('works for 30 days', () => {
+    const now = new Date('2026-06-01T00:00:00Z');
+    const cutoff = sinceDaysCutoff(30, now);
+    const expected = new Date('2026-05-02T00:00:00Z');
+    expect(cutoff.getTime()).toBe(expected.getTime());
+  });
+});
+
+describe('postgres-impl.ts structural — staleEntities', () => {
+  it('staleEntities exported as async method', () => {
+    expect(SRC).toMatch(/async staleEntities\s*\(/);
+  });
+
+  it('staleEntities filters lastSeenAt before cutoff', () => {
+    const start = SRC.indexOf('async staleEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('lastSeenAt');
+    expect(body).toContain('lt:');
+  });
+
+  it('staleEntities applies minImportance filter when provided', () => {
+    const start = SRC.indexOf('async staleEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('minImportance');
+    expect(body).toContain('gte:');
+  });
+
+  it('staleEntities orders by importance DESC', () => {
+    const start = SRC.indexOf('async staleEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toMatch(/orderBy.*importance.*desc/s);
+  });
+
+  it('sinceDaysCutoff exported from module', () => {
+    expect(SRC).toMatch(/export function sinceDaysCutoff/);
+  });
+});
