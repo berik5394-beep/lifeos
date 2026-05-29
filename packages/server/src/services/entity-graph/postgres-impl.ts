@@ -183,16 +183,54 @@ export class PostgresEntityGraph implements EntityGraphStore {
   }
 
   // -------------------------------------------------------------------------
-  // linkEntities — placeholder; implemented in B4
+  // linkEntities — idempotent relationship upsert
   // -------------------------------------------------------------------------
   async linkEntities(
-    _userId: string,
-    _fromId: string,
-    _toId: string,
-    _type: string,
-    _opts?: { label?: string; strength?: number },
+    userId: string,
+    fromId: string,
+    toId: string,
+    type: string,
+    opts?: { label?: string; strength?: number },
   ): Promise<EntityRelationship> {
-    throw new Error('linkEntities not yet implemented — Task B4');
+    const strength = opts?.strength ?? 0.5;
+    const label = opts?.label ?? null;
+
+    // Check for existing active (invalidAt IS NULL) relationship of same triple.
+    const existing = await prisma.entityRelationship.findFirst({
+      where: {
+        userId,
+        fromId,
+        toId,
+        type,
+        invalidAt: null,
+      },
+    });
+
+    if (existing) {
+      // Idempotent: update strength (take the MAX — relationship can only
+      // strengthen, not weaken on repeated mention).
+      return prisma.entityRelationship.update({
+        where: { id: existing.id },
+        data: {
+          strength: Math.max(existing.strength, strength),
+          label: label ?? existing.label,
+        },
+      });
+    }
+
+    // No active triple → create new relationship row.
+    return prisma.entityRelationship.create({
+      data: {
+        userId,
+        fromId,
+        toId,
+        type,
+        label,
+        strength,
+        validAt: new Date(),
+        invalidAt: null,
+      },
+    });
   }
 
   // -------------------------------------------------------------------------

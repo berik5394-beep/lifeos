@@ -108,3 +108,40 @@ describe('postgres-impl.ts structural — resolveEntity', () => {
     expect(body).toContain('type');
   });
 });
+
+describe('postgres-impl.ts structural — linkEntities', () => {
+  it('linkEntities exported as async method', () => {
+    expect(SRC).toMatch(/async linkEntities\s*\(/);
+  });
+
+  it('linkEntities checks for existing active relationship before creating', () => {
+    const start = SRC.indexOf('async linkEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    const hasFindFirst = body.includes('prisma.entityRelationship.findFirst');
+    const hasQueryRaw = body.includes('$queryRaw');
+    expect(hasFindFirst || hasQueryRaw).toBe(true);
+  });
+
+  it('linkEntities updates strength on duplicate triple (no new row)', () => {
+    const start = SRC.indexOf('async linkEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('prisma.entityRelationship.update');
+    expect(body).toContain('strength');
+  });
+
+  it('linkEntities creates new row when no existing active triple', () => {
+    const start = SRC.indexOf('async linkEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('prisma.entityRelationship.create');
+  });
+
+  it('linkEntities defaults strength to 0.5 when not provided', () => {
+    const start = SRC.indexOf('async linkEntities');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('0.5');
+  });
+});
