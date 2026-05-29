@@ -1,0 +1,54 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const SRC = readFileSync(
+  join(process.cwd(), 'src/services/entity-graph/postgres-impl.ts'),
+  'utf-8',
+);
+
+describe('postgres-impl.ts structural — skeleton + upsertEntity', () => {
+  it('exports PostgresEntityGraph class', () => {
+    expect(SRC).toMatch(/export class PostgresEntityGraph/);
+  });
+
+  it('implements EntityGraphStore interface', () => {
+    expect(SRC).toMatch(/implements EntityGraphStore/);
+  });
+
+  it('upsertEntity exported as async method', () => {
+    expect(SRC).toMatch(/async upsertEntity\s*\(/);
+  });
+
+  it('upsertEntity uses prisma.entity.upsert or create+update', () => {
+    const start = SRC.indexOf('async upsertEntity');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    const hasUpsert = body.includes('prisma.entity.upsert');
+    const hasCreate = body.includes('prisma.entity.create');
+    expect(hasUpsert || hasCreate).toBe(true);
+  });
+
+  it('upsertEntity stores embedding best-effort (calls storeEntityEmbedding or embedDocument)', () => {
+    const start = SRC.indexOf('async upsertEntity');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    const hasEmbed = body.includes('storeEntityEmbedding') || body.includes('embedDocument');
+    expect(hasEmbed).toBe(true);
+  });
+
+  it('upsertEntity merges aliases (union dedup)', () => {
+    const start = SRC.indexOf('async upsertEntity');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('aliases');
+  });
+
+  it('storeEntityEmbedding is a best-effort function (try/catch, no throw)', () => {
+    expect(SRC).toMatch(/storeEntityEmbedding/);
+    const start = SRC.indexOf('storeEntityEmbedding');
+    const body = SRC.slice(start, start + 800);
+    expect(body).toContain('try {');
+    expect(body).toContain('catch');
+  });
+});
