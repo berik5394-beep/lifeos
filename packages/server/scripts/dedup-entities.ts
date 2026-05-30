@@ -30,8 +30,7 @@
  *   npx tsx packages/server/scripts/dedup-entities.ts --user=<id> --apply
  */
 
-import { PrismaClient } from '@prisma/client';
-import type { JsonValue } from '@prisma/client/runtime/library';
+import { PrismaClient, Prisma } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
 // Pure CLI parser (mirrors migrate-to-v2 shape)
@@ -322,7 +321,7 @@ async function main(): Promise<void> {
             where: { id: canonical.id },
             data: {
               aliases: mergedAliases,
-              attributes: mergedAttrs as JsonValue,
+              attributes: mergedAttrs as Prisma.InputJsonValue,
             },
           });
           // Delete absorbed
@@ -382,7 +381,7 @@ async function main(): Promise<void> {
             where: { id: canonical.id },
             data: {
               aliases: mergedAliases,
-              attributes: mergedAttrs as JsonValue,
+              attributes: mergedAttrs as Prisma.InputJsonValue,
             },
           });
           await prisma.entity.delete({ where: { id: absorbed.id } });

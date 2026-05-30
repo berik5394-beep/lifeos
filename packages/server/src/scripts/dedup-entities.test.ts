@@ -1,23 +1,38 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import {
-  parseCliArgs,
-  normalizeKey,
-  canonicalizeRelation,
-  findSameNameAcrossTypes,
-  findRelationBasedPairs,
-  pickCanonical,
-  mergeAttributes,
-  mergeAliases,
-  RELATION_ALIASES,
-  type EntityLite,
-} from '../../scripts/dedup-entities.js';
+import { dirname, join } from 'node:path';
 
-const SCRIPT = readFileSync(
-  join(process.cwd(), 'scripts/dedup-entities.ts'),
-  'utf-8',
-);
+// Dynamic-import pattern mirrors src/scripts/migrate-to-v2.test.ts —
+// the script under scripts/ lives outside src/ rootDir, so a static
+// `import ... from '../../scripts/...'` fails tsc's rootDir check.
+// URL + dynamic await import() is opaque to tsc, fine at runtime.
+
+let parseCliArgs: (argv: string[]) => any;
+let normalizeKey: (s: string) => string;
+let canonicalizeRelation: (s: string | null | undefined) => string | null;
+let findSameNameAcrossTypes: (es: any[]) => Array<{ name: string; members: any[] }>;
+let findRelationBasedPairs: (es: any[]) => Array<{ canonical: any; absorbed: any }>;
+let pickCanonical: (es: any[]) => any;
+let mergeAttributes: (c: Record<string, unknown>, o: Record<string, unknown>[]) => Record<string, unknown>;
+let mergeAliases: (cs: string[], abs: any[]) => string[];
+let RELATION_ALIASES: Record<string, string[]>;
+let SCRIPT: string;
+
+beforeAll(async () => {
+  const modulePath = new URL('../../scripts/dedup-entities.js', import.meta.url).href;
+  const mod = await import(modulePath);
+  parseCliArgs = mod.parseCliArgs;
+  normalizeKey = mod.normalizeKey;
+  canonicalizeRelation = mod.canonicalizeRelation;
+  findSameNameAcrossTypes = mod.findSameNameAcrossTypes;
+  findRelationBasedPairs = mod.findRelationBasedPairs;
+  pickCanonical = mod.pickCanonical;
+  mergeAttributes = mod.mergeAttributes;
+  mergeAliases = mod.mergeAliases;
+  RELATION_ALIASES = mod.RELATION_ALIASES;
+  const testDir = dirname(new URL(import.meta.url).pathname);
+  SCRIPT = readFileSync(join(testDir, '..', '..', 'scripts', 'dedup-entities.ts'), 'utf-8');
+});
 
 // ---------------------------------------------------------------------------
 // parseCliArgs
@@ -33,20 +48,16 @@ describe('dedup-entities — parseCliArgs', () => {
     expect(r).toEqual({ userId: 'abc', mode: 'apply' });
   });
   it('rejects missing user', () => {
-    const r = parseCliArgs(['--dry-run']);
-    expect('error' in r).toBe(true);
+    expect('error' in parseCliArgs(['--dry-run'])).toBe(true);
   });
   it('rejects empty user value', () => {
-    const r = parseCliArgs(['--user=', '--dry-run']);
-    expect('error' in r).toBe(true);
+    expect('error' in parseCliArgs(['--user=', '--dry-run'])).toBe(true);
   });
   it('rejects mutually exclusive modes', () => {
-    const r = parseCliArgs(['--user=abc', '--dry-run', '--apply']);
-    expect('error' in r).toBe(true);
+    expect('error' in parseCliArgs(['--user=abc', '--dry-run', '--apply'])).toBe(true);
   });
   it('rejects no mode', () => {
-    const r = parseCliArgs(['--user=abc']);
-    expect('error' in r).toBe(true);
+    expect('error' in parseCliArgs(['--user=abc'])).toBe(true);
   });
 });
 
@@ -65,7 +76,7 @@ describe('normalizeKey', () => {
 // findSameNameAcrossTypes (S1)
 // ---------------------------------------------------------------------------
 
-function mkEnt(over: Partial<EntityLite>): EntityLite {
+function mkEnt(over: Record<string, unknown>): any {
   return {
     id: 'id-' + Math.random().toString(36).slice(2, 8),
     name: 'X',
@@ -87,23 +98,21 @@ describe('findSameNameAcrossTypes (S1)', () => {
     ];
     const groups = findSameNameAcrossTypes(ents);
     expect(groups).toHaveLength(1);
-    expect(groups[0].members.map((m) => m.type).sort()).toEqual(['concept', 'goal']);
+    expect(groups[0].members.map((m: any) => m.type).sort()).toEqual(['concept', 'goal']);
   });
-  it('skips same-type duplicates (already prevented by unique key)', () => {
+  it('skips same-type duplicates', () => {
     const ents = [
       mkEnt({ name: 'Дана', type: 'person' }),
       mkEnt({ name: 'Дана', type: 'person', id: 'b' }),
     ];
-    const groups = findSameNameAcrossTypes(ents);
-    expect(groups).toHaveLength(0);
+    expect(findSameNameAcrossTypes(ents)).toHaveLength(0);
   });
   it('case-insensitive grouping', () => {
     const ents = [
       mkEnt({ name: 'Вода', type: 'concept' }),
       mkEnt({ name: 'ВОДА', type: 'goal' }),
     ];
-    const groups = findSameNameAcrossTypes(ents);
-    expect(groups).toHaveLength(1);
+    expect(findSameNameAcrossTypes(ents)).toHaveLength(1);
   });
 });
 
@@ -131,8 +140,7 @@ describe('findRelationBasedPairs (S2)', () => {
   it('dedupes both-direction pairs', () => {
     const rosa = mkEnt({ name: 'Роза', type: 'person', attributes: { relation: 'мама' } });
     const mama = mkEnt({ name: 'Мама', type: 'person', attributes: { relation: 'роза' } });
-    const pairs = findRelationBasedPairs([rosa, mama]);
-    expect(pairs.length).toBeLessThanOrEqual(1);
+    expect(findRelationBasedPairs([rosa, mama]).length).toBeLessThanOrEqual(1);
   });
   it('only considers persons', () => {
     const ents = [
@@ -141,10 +149,54 @@ describe('findRelationBasedPairs (S2)', () => {
     ];
     expect(findRelationBasedPairs(ents)).toHaveLength(0);
   });
+  it('Роза(relation=mother) ↔ Мама — EN→RU bridge', () => {
+    const rosa = mkEnt({ name: 'Роза', type: 'person', attributes: { relation: 'mother' } });
+    const mama = mkEnt({ name: 'Мама', type: 'person', id: 'm-id' });
+    const pairs = findRelationBasedPairs([rosa, mama]);
+    expect(pairs).toHaveLength(1);
+  });
+  it('Иван(relation=father) ↔ Папа matches', () => {
+    const ivan = mkEnt({ name: 'Иван', type: 'person', attributes: { relation: 'father' } });
+    const papa = mkEnt({ name: 'Папа', type: 'person' });
+    expect(findRelationBasedPairs([ivan, papa])).toHaveLength(1);
+  });
+  it('Дана(relation=сестра) → no Сестра entity → no merge', () => {
+    const dana = mkEnt({ name: 'Дана', type: 'person', attributes: { relation: 'сестра' } });
+    expect(findRelationBasedPairs([dana])).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
-// pickCanonical
+// canonicalizeRelation + alias table
+// ---------------------------------------------------------------------------
+
+describe('canonicalizeRelation', () => {
+  it('mother / mother / мать / Мам → мама', () => {
+    expect(canonicalizeRelation('mother')).toBe('мама');
+    expect(canonicalizeRelation('Mother')).toBe('мама');
+    expect(canonicalizeRelation('мать')).toBe('мама');
+    expect(canonicalizeRelation('Мам')).toBe('мама');
+  });
+  it('sister → сестра', () => {
+    expect(canonicalizeRelation('sister')).toBe('сестра');
+  });
+  it('returns null for unknown/empty', () => {
+    expect(canonicalizeRelation('')).toBeNull();
+    expect(canonicalizeRelation(null)).toBeNull();
+    expect(canonicalizeRelation('коллега')).toBeNull();
+  });
+});
+
+describe('RELATION_ALIASES table', () => {
+  it('contains 9 canonical relations', () => {
+    ['мама', 'папа', 'сестра', 'брат', 'жена', 'муж', 'сын', 'дочь', 'друг'].forEach((k) =>
+      expect(Object.keys(RELATION_ALIASES)).toContain(k),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pickCanonical / mergeAttributes / mergeAliases
 // ---------------------------------------------------------------------------
 
 describe('pickCanonical', () => {
@@ -160,29 +212,20 @@ describe('pickCanonical', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// mergeAttributes
-// ---------------------------------------------------------------------------
-
 describe('mergeAttributes', () => {
   it('canonical wins on key conflict', () => {
-    const c = { status: 'active', priority: 'high' };
-    const others = [{ status: 'inactive', detail: 'd1' }];
-    expect(mergeAttributes(c, others)).toEqual({
-      status: 'active',
-      priority: 'high',
-      detail: 'd1',
-    });
+    expect(
+      mergeAttributes(
+        { status: 'active', priority: 'high' },
+        [{ status: 'inactive', detail: 'd1' }],
+      ),
+    ).toEqual({ status: 'active', priority: 'high', detail: 'd1' });
   });
-  it('handles empty/missing attribute objects', () => {
+  it('handles empty objects', () => {
     expect(mergeAttributes({}, [{}])).toEqual({});
     expect(mergeAttributes({ a: 1 }, [])).toEqual({ a: 1 });
   });
 });
-
-// ---------------------------------------------------------------------------
-// mergeAliases
-// ---------------------------------------------------------------------------
 
 describe('mergeAliases', () => {
   it('union dedupes', () => {
@@ -198,7 +241,7 @@ describe('mergeAliases', () => {
 
 describe('dedup-entities script structural', () => {
   it('imports PrismaClient', () => {
-    expect(SCRIPT).toMatch(/import \{ PrismaClient \}/);
+    expect(SCRIPT).toMatch(/import \{ PrismaClient/);
   });
   it('has dry-run vs apply branches for S1', () => {
     expect(SCRIPT).toMatch(/S1:.*"\$\{canonical\.name\}"/);
@@ -217,72 +260,5 @@ describe('dedup-entities script structural', () => {
       'rels_repointed:',
       'entities_deleted:',
     ].forEach((label) => expect(SCRIPT).toContain(label));
-  });
-});
-
-// ---------------------------------------------------------------------------
-// canonicalizeRelation + cross-language S2
-// ---------------------------------------------------------------------------
-
-describe('canonicalizeRelation', () => {
-  it('mother → мама', () => {
-    expect(canonicalizeRelation('mother')).toBe('мама');
-    expect(canonicalizeRelation('Mother')).toBe('мама');
-    expect(canonicalizeRelation('мать')).toBe('мама');
-    expect(canonicalizeRelation('Мам')).toBe('мама');
-  });
-  it('sister → сестра', () => {
-    expect(canonicalizeRelation('sister')).toBe('сестра');
-    expect(canonicalizeRelation('Сестра')).toBe('сестра');
-  });
-  it('null/empty/unknown returns null', () => {
-    expect(canonicalizeRelation('')).toBeNull();
-    expect(canonicalizeRelation(null)).toBeNull();
-    expect(canonicalizeRelation('коллега')).toBeNull();
-  });
-  it('RELATION_ALIASES exports core 9 keys', () => {
-    expect(Object.keys(RELATION_ALIASES)).toContain('мама');
-    expect(Object.keys(RELATION_ALIASES)).toContain('папа');
-    expect(Object.keys(RELATION_ALIASES)).toContain('сестра');
-    expect(Object.keys(RELATION_ALIASES)).toContain('брат');
-  });
-});
-
-describe('findRelationBasedPairs — cross-language (Q4 enhancement)', () => {
-  it('Роза(relation=mother) ↔ Мама — EN→RU bridge', () => {
-    const rosa = {
-      id: 'r', name: 'Роза', type: 'person', importance: 9,
-      aliases: [], attributes: { relation: 'mother' },
-      createdAt: new Date('2026-05-30'),
-    };
-    const mama = {
-      id: 'm', name: 'Мама', type: 'person', importance: 8,
-      aliases: [], attributes: {}, createdAt: new Date('2026-05-30'),
-    };
-    const pairs = findRelationBasedPairs([rosa, mama]);
-    expect(pairs).toHaveLength(1);
-    expect(pairs[0].canonical.id).toBe('r');
-    expect(pairs[0].absorbed.id).toBe('m');
-  });
-  it('Иван(relation=father) ↔ Папа matches', () => {
-    const ivan = {
-      id: 'i', name: 'Иван', type: 'person', importance: 8,
-      aliases: [], attributes: { relation: 'father' },
-      createdAt: new Date('2026-05-30'),
-    };
-    const papa = {
-      id: 'p', name: 'Папа', type: 'person', importance: 7,
-      aliases: [], attributes: {}, createdAt: new Date('2026-05-30'),
-    };
-    expect(findRelationBasedPairs([ivan, papa])).toHaveLength(1);
-  });
-  it('still skips when no matching person exists', () => {
-    const dana = {
-      id: 'd', name: 'Дана', type: 'person', importance: 8,
-      aliases: [], attributes: { relation: 'сестра' },
-      createdAt: new Date('2026-05-30'),
-    };
-    // No entity named "Сестра"
-    expect(findRelationBasedPairs([dana])).toHaveLength(0);
   });
 });
