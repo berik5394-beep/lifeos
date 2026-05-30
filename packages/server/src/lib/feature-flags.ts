@@ -39,7 +39,12 @@ export function isV2ProactivityEnabled(userId: string): boolean {
  *   "user-X,user-Y"    → enabled only for those users (comma list)
  */
 export function isV2AxesEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_AXES, userId);
+  const raw = process.env.FEATURE_V2_AXES;
+  if (raw === undefined) return false;
+  const flag = raw.trim();
+  if (flag === '' || flag === 'none' || flag === 'false') return false;
+  if (flag === 'all' || flag === 'true') return true;
+  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
 }
 
 /**

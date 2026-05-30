@@ -68,3 +68,27 @@ describe('v2-capture — userName fetched for self-ref filter (Q1)', () => {
     expect(SRC).toMatch(/\.catch\(\(\)\s*=>\s*undefined\)/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// D2 — v2 Phase B1 user-axes parallel branch
+// ---------------------------------------------------------------------------
+describe('v2-capture — user-axes parallel branch (D2)', () => {
+  it('imports analyzeMessage from user-axes', () => {
+    expect(SRC).toMatch(/from '\.\/user-axes\/analyze-message\.js'/);
+  });
+  it('imports isV2AxesEnabled', () => {
+    expect(SRC).toContain('isV2AxesEnabled');
+  });
+  it('parallel branch fires under flag', () => {
+    const captureIdx = SRC.indexOf('Promise.allSettled');
+    expect(captureIdx).toBeGreaterThan(0);
+    const settledRegion = SRC.slice(captureIdx, captureIdx + 2000);
+    expect(settledRegion).toMatch(/isV2AxesEnabled\(\s*userId\s*\)/);
+    expect(settledRegion).toMatch(/userAxesAnalyzeMessage\(\s*userId\s*,\s*msgId\s*,\s*text/);
+  });
+  it('wrapped in best-effort catch', () => {
+    const settledIdx = SRC.indexOf('Promise.allSettled');
+    const settledRegion = SRC.slice(settledIdx, settledIdx + 2000);
+    expect(settledRegion).toMatch(/\.catch\(/);
+  });
+});

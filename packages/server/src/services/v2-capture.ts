@@ -15,6 +15,8 @@ import { extractEntities } from './entity-extractor.js';
 import { getEntityGraph } from './entity-graph/index.js';
 import { recordEvent } from './episodic-memory.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
+import { analyzeMessage as userAxesAnalyzeMessage } from './user-axes/analyze-message.js';
+import { isV2AxesEnabled } from '../lib/feature-flags.js';
 import { prisma } from '../lib/prisma.js';
 import type { JsonValue } from '@prisma/client/runtime/library';
 
@@ -102,6 +104,16 @@ export async function captureV2InBackground(
       emotional.analyzeMessage(userId, msgId, text, entityRefs).catch((err) => {
         console.warn('[v2-capture] analyzeMessage failed:', err);
       }),
+      // v2 Phase B1 — user axes parallel branch (best-effort)
+      (async () => {
+        if (isV2AxesEnabled(userId)) {
+          try {
+            await userAxesAnalyzeMessage(userId, msgId, text);
+          } catch (err) {
+            console.warn('[v2-capture:axes] failed:', err);
+          }
+        }
+      })(),
     ]);
   } catch (err) {
     // Top-level guard — must never throw to caller.

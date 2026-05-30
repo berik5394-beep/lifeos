@@ -36,6 +36,9 @@ import {
   buildV2EnrichmentBlock,
   fetchV2EnrichmentData,
 } from './v2-enrichment.js';
+import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
+import { getUserAxesStore } from './user-axes/index.js';
+import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js';
 
 /**
  * JARVIS Orchestrator — единый мозг. Любое сообщение (текст или
@@ -919,6 +922,38 @@ export async function handleMessage(
 
   // Трекинг интересов (спорт/финансы/...) — fire-and-forget, не ждём.
   void trackInterests(userId, text);
+
+  // v2 Phase B1 — post-process content rules (Gate 1: step-count)
+  if (isV2AxesEnabledFlag(userId)) {
+    try {
+      const axes = await getUserAxesStore().getAxes(userId);
+      const stepCount = extractStepCount(reply);
+      const gate1 = shouldForceOneStep(axes, stepCount);
+      if (gate1.force) {
+        console.log(`[axes:gate1] ${gate1.reason}`);
+        // Log to insights for transparency
+        try {
+          await prisma.insight.create({
+            data: {
+              userId,
+              severity: 5,
+              scope: { rule: 'gate1', stepCount, reason: gate1.reason } as any,
+              message: `⚠️ Gate 1 rule fired: ${gate1.reason}`,
+            },
+          });
+        } catch {
+          /* swallow — log-only */
+        }
+        // Strategy: ask Claude to regenerate with 1-step constraint.
+        // For B1 implementation: prepend a sentinel marker to reply
+        // alerting the user, since regen adds latency and complexity.
+        // Full regen-loop is a follow-up enhancement.
+        reply = '⚠️ (gate-1: 1-step) ' + reply;
+      }
+    } catch (err) {
+      console.warn('[axes:postprocess] failed:', err);
+    }
+  }
 
   await saveTurn(userId, text, reply);
 
