@@ -88,14 +88,12 @@ describe('structural — B2 migration logic', () => {
     expect(SRC).toMatch(/WHERE[\s\S]{0,80}?"validAt"\s+IS\s+NULL/i);
   });
 
-  it('step 2: reads Memory rows for user and maps type → entity', () => {
+  it('step 2: routes each Memory row through Claude extractor + upserts canonical entities (Q3 rewrite)', () => {
     expect(SRC).toMatch(/memory\.findMany/);
+    expect(SRC).toMatch(/extractEntities/);
     expect(SRC).toMatch(/upsertEntity/);
-    expect(SRC).toMatch(/'person'/);
-    expect(SRC).toMatch(/'place'/);
-    // decision → goal mapping per spec §11
-    expect(SRC).toMatch(/'decision'/);
-    expect(SRC).toMatch(/'goal'/);
+    // Self-ref filter via Q1 — userName passed through.
+    expect(SRC).toMatch(/userName/);
   });
 
   it('step 3: upsert BotIdentity with defaults', () => {
