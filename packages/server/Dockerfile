@@ -43,4 +43,4 @@ EXPOSE 3000
 # Для proper релизов с историей миграций позже переедем на `migrate deploy`.
 # Phase 2.3: pgvector extension ДО db push (db push расширения не ставит,
 # а колонка vector(512) без расширения не создастся). Идемпотентно.
-CMD ["sh", "-c", "npx prisma db execute --schema=prisma/schema.prisma --file prisma/extensions.sql && npx prisma db push --skip-generate && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma db execute --schema=prisma/schema.prisma --file prisma/extensions.sql && npx prisma migrate deploy --schema=prisma/schema.prisma && node dist/index.js"]
