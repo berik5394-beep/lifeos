@@ -43,3 +43,12 @@ describe('captureV2InBackground — runtime safety', () => {
     { timeout: 15_000 },
   );
 });
+
+// ---------------------------------------------------------------------------
+// F2 fix (2026-05-30): pass entityRefs into analyzeMessage
+// ---------------------------------------------------------------------------
+describe('v2-capture — analyzeMessage entityRefs propagation (F2 fix)', () => {
+  it('analyzeMessage called with entityRefs as 4th argument', () => {
+    expect(SRC).toMatch(/emotional\.analyzeMessage\(\s*userId,\s*msgId,\s*text,\s*entityRefs/);
+  });
+});

@@ -362,3 +362,23 @@ describe('emotional-memory.ts structural — detectMoodShift', () => {
     expect(body).toContain('sinceDays: 3');
   });
 });
+
+// ---------------------------------------------------------------------------
+// F2 fix (2026-05-30): analyzeMessage accepts entityRefs param
+// ---------------------------------------------------------------------------
+describe('analyzeMessage — entityRefs propagation (F2 fix)', () => {
+  it('signature exposes optional entityRefs parameter', () => {
+    expect(SRC).toMatch(/entityRefs(\?:|\s*:)\s*string\[\]/);
+  });
+  it('persists supplied entityRefs to MoodSnapshot row', () => {
+    const fn = SRC.slice(SRC.indexOf('async analyzeMessage'));
+    const body = fn.slice(0, 1500);
+    expect(body).not.toMatch(/entityRefs:\s*\[\]/);
+    expect(body).toMatch(/entityRefs(,|\s*})/);
+  });
+  it('interface signature also exposes entityRefs', () => {
+    const iface = SRC.slice(SRC.indexOf('export interface EmotionalMemoryStore'));
+    const ifaceBody = iface.slice(0, 600);
+    expect(ifaceBody).toMatch(/entityRefs\?: string\[\]/);
+  });
+});

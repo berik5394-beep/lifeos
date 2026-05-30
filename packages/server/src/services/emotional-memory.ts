@@ -29,7 +29,12 @@ const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
 // ---------------------------------------------------------------------------
 
 export interface EmotionalMemoryStore {
-  analyzeMessage(userId: string, msgId: string, content: string): Promise<MoodSnapshot>;
+  analyzeMessage(
+    userId: string,
+    msgId: string,
+    content: string,
+    entityRefs?: string[],
+  ): Promise<MoodSnapshot>;
   getMoodTimeline(
     userId: string,
     sinceDays: number,
@@ -204,6 +209,7 @@ export class EmotionalMemory implements EmotionalMemoryStore {
     userId: string,
     msgId: string,
     content: string,
+    entityRefs: string[] = [],
   ): Promise<MoodSnapshot> {
     let parsed = { valence: 0, arousal: 0.5, emotion: 'neutral' };
 
@@ -234,7 +240,7 @@ export class EmotionalMemory implements EmotionalMemoryStore {
         valence: parsed.valence,
         arousal: parsed.arousal,
         emotion: parsed.emotion,
-        entityRefs: [],
+        entityRefs,
         excerpt: content.slice(0, 200),
       },
     });

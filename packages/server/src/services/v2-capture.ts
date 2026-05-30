@@ -89,7 +89,7 @@ export async function captureV2InBackground(
       }).catch((err) => {
         console.warn('[v2-capture] recordEvent failed:', err);
       }),
-      emotional.analyzeMessage(userId, msgId, text).catch((err) => {
+      emotional.analyzeMessage(userId, msgId, text, entityRefs).catch((err) => {
         console.warn('[v2-capture] analyzeMessage failed:', err);
       }),
     ]);
