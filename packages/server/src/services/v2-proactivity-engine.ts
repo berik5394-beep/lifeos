@@ -139,6 +139,8 @@ import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localHour } from '../lib/tz.js';
 import { runAgent } from './claude-agent.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
+import { persistCandidates } from './insight-store.js';
+import type { InsightCandidate } from './insight-core.js';
 
 const DAY_MS = 86_400_000;
 
@@ -392,15 +394,69 @@ async function gate4_Dedup(
 // ---- Engine class — placeholders (filled in A2-A6) -----------------------
 
 export class V2ProactivityEngine implements ProactivityEngine {
-  async runForUser(_userId: string): Promise<{
+  async detectCandidates(userId: string): Promise<NudgeCandidate[]> {
+    const results = await Promise.allSettled([
+      detectStaleEntity(userId),
+      detectCommitmentDue(userId),
+      detectMoodShift(userId),
+      detectStreakBreak(userId),
+      detectGoalNoProgress(userId),
+    ]);
+    const out: NudgeCandidate[] = [];
+    for (const r of results) {
+      if (r.status === 'fulfilled') out.push(...r.value);
+    }
+    return out;
+  }
+
+  async runForUser(userId: string): Promise<{
     candidatesFound: number;
     candidatesAfterFilter: number;
     nudgesDelivered: number;
   }> {
-    throw new Error('not yet implemented — Task A6');
-  }
-  async detectCandidates(_userId: string): Promise<NudgeCandidate[]> {
-    throw new Error('not yet implemented — Task A2/A3');
+    const all = await this.detectCandidates(userId);
+    const passed = await this.filterCandidates(userId, all);
+    if (passed.length === 0) {
+      return {
+        candidatesFound: all.length,
+        candidatesAfterFilter: 0,
+        nudgesDelivered: 0,
+      };
+    }
+    passed.sort((a, b) => b.significance - a.significance);
+    const top = passed[0];
+    const message = await this.generateNudge(userId, top);
+    const scope =
+      `${top.source}:${top.entityId ?? top.patternId ?? 'global'}`;
+    const candidate: InsightCandidate = {
+      kind: 'v2_nudge',
+      scope,
+      source: 'v2-proactivity' as any,
+      severity: Math.round(top.significance * 10),
+      message,
+      rationale: `v2-proactivity:${top.source}`,
+      suggestedAction: {
+        entityId: top.entityId,
+        patternId: top.patternId,
+        payload: top.payload,
+        toneHint: top.toneHint,
+      },
+    };
+    try {
+      const res = await persistCandidates(userId, [candidate]);
+      return {
+        candidatesFound: all.length,
+        candidatesAfterFilter: passed.length,
+        nudgesDelivered: res.created,
+      };
+    } catch (err) {
+      console.warn('[v2-proactivity] persistCandidates failed:', err);
+      return {
+        candidatesFound: all.length,
+        candidatesAfterFilter: passed.length,
+        nudgesDelivered: 0,
+      };
+    }
   }
   async filterCandidates(
     userId: string,

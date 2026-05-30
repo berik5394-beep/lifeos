@@ -157,9 +157,6 @@ describe('structural — module skeleton', () => {
       expect(SRC).toMatch(new RegExp(`\\b${m}\\b`));
     }
   });
-  it('placeholders throw with "not yet implemented" marker', () => {
-    expect(SRC).toMatch(/not yet implemented — Task A/);
-  });
 });
 
 describe('structural — A2 detectors', () => {
@@ -242,5 +239,35 @@ describe('structural — A5 generateNudge', () => {
   });
   it('has a safe fallback string when Claude fails', () => {
     expect(SRC).toMatch(/Подумал о тебе — как ты\?/);
+  });
+});
+
+describe('structural — A6 runForUser + detectCandidates orchestrator', () => {
+  it('detectCandidates uses Promise.allSettled over the 5 detectors', () => {
+    expect(SRC).toMatch(/Promise\.allSettled/);
+    for (const fn of [
+      'detectStaleEntity',
+      'detectCommitmentDue',
+      'detectMoodShift',
+      'detectStreakBreak',
+      'detectGoalNoProgress',
+    ]) {
+      expect(SRC).toMatch(new RegExp(`${fn}\\(\\s*userId\\s*\\)`));
+    }
+  });
+  it('runForUser sorts by significance desc and takes top 1', () => {
+    const body = SRC.slice(SRC.indexOf('runForUser'));
+    expect(body).toMatch(/\.sort\(/);
+    expect(body).toMatch(/significance/);
+  });
+  it('persists via persistCandidates with source v2-proactivity', () => {
+    expect(SRC).toMatch(/from '\.\/insight-store\.js'/);
+    expect(SRC).toMatch(/persistCandidates\(/);
+    expect(SRC).toMatch(/source:\s*'v2-proactivity'/);
+  });
+  it('returns three-counter result object', () => {
+    expect(SRC).toMatch(/candidatesFound/);
+    expect(SRC).toMatch(/candidatesAfterFilter/);
+    expect(SRC).toMatch(/nudgesDelivered/);
   });
 });
