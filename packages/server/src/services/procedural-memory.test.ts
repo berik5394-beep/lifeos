@@ -717,3 +717,96 @@ describe('procedural-memory.ts structural — extractCommitmentPatterns', () => 
     expect(body).toContain('catch');
   });
 });
+
+// ---------------------------------------------------------------------------
+// weekIndex
+// ---------------------------------------------------------------------------
+
+describe('weekIndex — pure helper', () => {
+  it('returns 1 for date equal to startDate', async () => {
+    const { weekIndex } = await import('./procedural-memory.js');
+    const start = new Date('2026-01-01T00:00:00Z');
+    expect(weekIndex(start, start)).toBe(1);
+  });
+
+  it('returns 1 for date 6 days after start', async () => {
+    const { weekIndex } = await import('./procedural-memory.js');
+    const start = new Date('2026-01-01T00:00:00Z');
+    const d = new Date('2026-01-07T00:00:00Z'); // exactly 6 days
+    expect(weekIndex(start, d)).toBe(1);
+  });
+
+  it('returns 2 for date 7 days after start', async () => {
+    const { weekIndex } = await import('./procedural-memory.js');
+    const start = new Date('2026-01-01T00:00:00Z');
+    const d = new Date('2026-01-08T00:00:00Z');
+    expect(weekIndex(start, d)).toBe(2);
+  });
+
+  it('returns 3 for date ~14 days after start', async () => {
+    const { weekIndex } = await import('./procedural-memory.js');
+    const start = new Date('2026-01-01T00:00:00Z');
+    const d = new Date('2026-01-15T00:00:00Z');
+    expect(weekIndex(start, d)).toBe(3);
+  });
+
+  it('returns 1 for date before startDate (clamped)', async () => {
+    const { weekIndex } = await import('./procedural-memory.js');
+    const start = new Date('2026-01-15T00:00:00Z');
+    const d = new Date('2026-01-01T00:00:00Z');
+    expect(weekIndex(start, d)).toBe(1);
+  });
+});
+
+describe('procedural-memory.ts structural — extractStreakBreakPatterns', () => {
+  it('exports extractStreakBreakPatterns', () => {
+    expect(SRC).toMatch(/export async function extractStreakBreakPatterns/);
+  });
+
+  it('exports weekIndex helper', () => {
+    expect(SRC).toMatch(/export function weekIndex/);
+  });
+
+  it('requires habits with >= 42 logs (6 weeks)', () => {
+    const start = SRC.indexOf('export async function extractStreakBreakPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('42');
+  });
+
+  it('uses weekIndex helper to bucket logs', () => {
+    const start = SRC.indexOf('export async function extractStreakBreakPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('weekIndex(');
+  });
+
+  it('checks completion rate < 0.3 (break threshold)', () => {
+    const start = SRC.indexOf('export async function extractStreakBreakPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('0.3');
+  });
+
+  it('requires same week appears as break >= 2 times', () => {
+    const start = SRC.indexOf('export async function extractStreakBreakPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('>= 2');
+  });
+
+  it('creates Pattern with kind=streak_break', () => {
+    const start = SRC.indexOf('export async function extractStreakBreakPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain("'streak_break'");
+  });
+
+  it('wraps per-habit work in try/catch', () => {
+    const start = SRC.indexOf('export async function extractStreakBreakPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('try {');
+    expect(body).toContain('catch');
+  });
+});

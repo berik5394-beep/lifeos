@@ -251,6 +251,20 @@ export class ProceduralMemory implements ProceduralMemoryStore {
 }
 
 // ---------------------------------------------------------------------------
+// Pure helpers for extractStreakBreakPatterns (B7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Index a date into a 1-based week number relative to startDate.
+ * Week 1 = startDate .. startDate+6d. Clamps to 1 for dates < startDate.
+ */
+export function weekIndex(startDate: Date, date: Date): number {
+  const ms = date.getTime() - startDate.getTime();
+  if (ms < 0) return 1;
+  return Math.floor(ms / (7 * 86_400_000)) + 1;
+}
+
+// ---------------------------------------------------------------------------
 // Pure helpers for extractCommitmentPatterns (B6)
 // ---------------------------------------------------------------------------
 
@@ -720,6 +734,119 @@ export async function extractCommitmentPatterns(userId: string): Promise<Pattern
       console.warn(
         '[procedural] commitment extract failed for msg',
         msg.id,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return patterns;
+}
+
+// ---------------------------------------------------------------------------
+// Extractor: streak_break
+// ---------------------------------------------------------------------------
+
+/**
+ * For each Habit with >= 42 logs (6 weeks), bucket logs by week index.
+ * Find weeks where completion rate < 30% that immediately followed a
+ * streak week (>= 80%). If same week-of-streak repeats as break >= 2
+ * times → Pattern{streak_break}.
+ *
+ * Best-effort: per-habit errors caught.
+ */
+export async function extractStreakBreakPatterns(userId: string): Promise<Pattern[]> {
+  const patterns: Pattern[] = [];
+  const habits = await prisma.habit.findMany({
+    where: { userId, active: true },
+    select: { id: true, name: true, createdAt: true },
+  });
+
+  if (habits.length === 0) return patterns;
+
+  for (const habit of habits) {
+    try {
+      const logs = await prisma.habitLog.findMany({
+        where: { habitId: habit.id, userId },
+        select: { date: true, completed: true },
+        orderBy: { date: 'asc' },
+      });
+
+      if (logs.length < 42) continue;
+
+      // Bucket by week index. weekStats[wi] = { total, completed }
+      const weekStats = new Map<number, { total: number; completed: number }>();
+      for (const log of logs) {
+        const wi = weekIndex(habit.createdAt, log.date);
+        const entry = weekStats.get(wi) ?? { total: 0, completed: 0 };
+        entry.total++;
+        if (log.completed) entry.completed++;
+        weekStats.set(wi, entry);
+      }
+
+      // Sort weeks ascending; find break weeks that follow streak weeks.
+      const sortedWeeks = [...weekStats.entries()].sort((a, b) => a[0] - b[0]);
+      const breakOccurrencesByWeek = new Map<number, number>();
+      for (let i = 1; i < sortedWeeks.length; i++) {
+        const [, prev] = sortedWeeks[i - 1];
+        const [wi, curr] = sortedWeeks[i];
+        const prevRate = prev.total === 0 ? 0 : prev.completed / prev.total;
+        const currRate = curr.total === 0 ? 0 : curr.completed / curr.total;
+        if (prevRate >= 0.8 && currRate < 0.3) {
+          breakOccurrencesByWeek.set(wi, (breakOccurrencesByWeek.get(wi) ?? 0) + 1);
+        }
+      }
+
+      for (const [wi, count] of breakOccurrencesByWeek.entries()) {
+        if (count < 2) continue; // need >= 2 same-week breaks
+
+        const observations = count;
+        const confidence = clampConfidence(observations * 5); // 2 breaks → 1.0
+        const payload = {
+          habitId: habit.id,
+          weekNumber: wi,
+          observedAt: new Date().toISOString(),
+        };
+        const description = `${habit.name}: бросает на ${wi}-й неделе streak'а`;
+
+        const existing = await prisma.pattern.findFirst({
+          where: { userId, kind: 'streak_break', invalidAt: null },
+        });
+        let row: Pattern;
+        if (
+          existing &&
+          (existing.payload as { habitId?: string; weekNumber?: number })?.habitId ===
+            habit.id &&
+          (existing.payload as { weekNumber?: number })?.weekNumber === wi
+        ) {
+          row = await prisma.pattern.update({
+            where: { id: existing.id },
+            data: {
+              description,
+              payload,
+              observations,
+              confidence,
+              lastObservedAt: new Date(),
+            },
+          });
+        } else {
+          row = await prisma.pattern.create({
+            data: {
+              userId,
+              kind: 'streak_break',
+              description,
+              payload,
+              observations,
+              confidence,
+              lastObservedAt: new Date(),
+            },
+          });
+        }
+        patterns.push(row);
+      }
+    } catch (err) {
+      console.warn(
+        '[procedural] streak_break extract failed for habit',
+        habit.id,
         err instanceof Error ? err.message : err,
       );
     }
