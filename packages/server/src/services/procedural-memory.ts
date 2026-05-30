@@ -189,8 +189,31 @@ export function greedyCluster(
 // ---------------------------------------------------------------------------
 
 export class ProceduralMemory implements ProceduralMemoryStore {
-  async extractPatterns(_userId: string): Promise<Pattern[]> {
-    throw new Error('extractPatterns not yet implemented — Task B8');
+  async extractPatterns(userId: string): Promise<Pattern[]> {
+    const results = await Promise.allSettled([
+      extractFrequencyPatterns(userId),
+      extractTimeOfDayPatterns(userId),
+      extractRecurringTopicPatterns(userId),
+      extractCommitmentPatterns(userId),
+      extractStreakBreakPatterns(userId),
+    ]);
+
+    const aggregated: Pattern[] = [];
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        aggregated.push(...r.value);
+      } else {
+        console.warn('[procedural] extractor failed:', r.reason);
+      }
+    }
+
+    // Dedupe by (kind, JSON.stringify(payload)) — last wins.
+    const dedup = new Map<string, Pattern>();
+    for (const p of aggregated) {
+      const key = `${p.kind}::${JSON.stringify(p.payload)}`;
+      dedup.set(key, p);
+    }
+    return [...dedup.values()];
   }
 
   async getActivePatterns(

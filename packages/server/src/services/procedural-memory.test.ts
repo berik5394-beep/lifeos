@@ -810,3 +810,30 @@ describe('procedural-memory.ts structural — extractStreakBreakPatterns', () =>
     expect(body).toContain('catch');
   });
 });
+
+describe('procedural-memory.ts structural — extractPatterns orchestrator', () => {
+  it('extractPatterns calls all 5 extractors', () => {
+    const start = SRC.indexOf('async extractPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('extractFrequencyPatterns');
+    expect(body).toContain('extractTimeOfDayPatterns');
+    expect(body).toContain('extractRecurringTopicPatterns');
+    expect(body).toContain('extractCommitmentPatterns');
+    expect(body).toContain('extractStreakBreakPatterns');
+  });
+
+  it('extractPatterns uses Promise.allSettled (resilient to per-extractor failure)', () => {
+    const start = SRC.indexOf('async extractPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('Promise.allSettled');
+  });
+
+  it('extractPatterns dedupes by (kind, JSON.stringify(payload))', () => {
+    const start = SRC.indexOf('async extractPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('JSON.stringify');
+  });
+});
