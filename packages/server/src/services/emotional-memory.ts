@@ -102,6 +102,50 @@ export function parseMoodResponse(
   }
 }
 
+/**
+ * Return the most common string in `list`. Ties broken alphabetically.
+ * Empty list → 'neutral'.
+ */
+export function dominantEmotion(list: string[]): string {
+  if (list.length === 0) return 'neutral';
+  const counts = new Map<string, number>();
+  for (const e of list) counts.set(e, (counts.get(e) ?? 0) + 1);
+  let best = '';
+  let bestCount = -1;
+  for (const [emo, c] of [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (c > bestCount) {
+      best = emo;
+      bestCount = c;
+    }
+  }
+  return best;
+}
+
+/**
+ * Group mood snapshots by UTC day. For each day returns avg valence
+ * and dominant emotion. Result sorted ascending by date.
+ */
+export function groupByDay(
+  snaps: Array<{ recordedAt: Date; valence: number; emotion: string }>,
+): Array<{ date: string; valence: number; emotion: string }> {
+  if (snaps.length === 0) return [];
+  const byDay = new Map<string, { valences: number[]; emotions: string[] }>();
+  for (const s of snaps) {
+    const key = s.recordedAt.toISOString().slice(0, 10);
+    const entry = byDay.get(key) ?? { valences: [], emotions: [] };
+    entry.valences.push(s.valence);
+    entry.emotions.push(s.emotion);
+    byDay.set(key, entry);
+  }
+  return [...byDay.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, { valences, emotions }]) => ({
+      date,
+      valence: valences.reduce((s, v) => s + v, 0) / valences.length,
+      emotion: dominantEmotion(emotions),
+    }));
+}
+
 // ---------------------------------------------------------------------------
 // EmotionalMemory implementation
 // ---------------------------------------------------------------------------
@@ -158,14 +202,25 @@ export class EmotionalMemory implements EmotionalMemoryStore {
   }
 
   async getMoodTimeline(
-    _userId: string,
-    _sinceDays: number,
+    userId: string,
+    sinceDays: number,
   ): Promise<Array<{ date: string; valence: number; emotion: string }>> {
-    throw new Error('getMoodTimeline not yet implemented — Task C2');
+    const cutoff = new Date(Date.now() - sinceDays * 86_400_000);
+    const rows = await prisma.moodSnapshot.findMany({
+      where: { userId, source: 'message', recordedAt: { gte: cutoff } },
+      select: { recordedAt: true, valence: true, emotion: true },
+      orderBy: { recordedAt: 'asc' },
+    });
+    return groupByDay(rows);
   }
 
-  async getEntityMood(_userId: string, _entityId: string): Promise<number> {
-    throw new Error('getEntityMood not yet implemented — Task C2');
+  async getEntityMood(userId: string, entityId: string): Promise<number> {
+    const rows = await prisma.moodSnapshot.findMany({
+      where: { userId, entityRefs: { has: entityId } },
+      select: { valence: true },
+    });
+    if (rows.length === 0) return 0;
+    return rows.reduce((s, r) => s + r.valence, 0) / rows.length;
   }
 
   async detectMoodShift(_userId: string): Promise<{

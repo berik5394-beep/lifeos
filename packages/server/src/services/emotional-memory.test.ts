@@ -190,3 +190,93 @@ describe('emotional-memory.ts structural — skeleton + analyzeMessage', () => {
     expect(SRC).toMatch(/ТОЛЬКО.*JSON|ONLY.*JSON|valid JSON/s);
   });
 });
+
+import { groupByDay, dominantEmotion } from './emotional-memory.js';
+
+describe('dominantEmotion — pure helper', () => {
+  it('returns mode for clear majority', () => {
+    expect(dominantEmotion(['sad', 'sad', 'happy'])).toBe('sad');
+  });
+
+  it('returns "neutral" for empty', () => {
+    expect(dominantEmotion([])).toBe('neutral');
+  });
+
+  it('breaks ties alphabetically (deterministic)', () => {
+    expect(dominantEmotion(['happy', 'sad'])).toBe('happy'); // 'h' < 's'
+  });
+});
+
+describe('groupByDay — pure helper', () => {
+  it('returns empty array for empty input', () => {
+    expect(groupByDay([])).toEqual([]);
+  });
+
+  it('groups two snapshots same day, avg valence, dominant emotion', () => {
+    const snaps = [
+      { recordedAt: new Date('2026-05-29T10:00:00Z'), valence: 0.4, emotion: 'happy' },
+      { recordedAt: new Date('2026-05-29T20:00:00Z'), valence: 0.6, emotion: 'happy' },
+    ];
+    const result = groupByDay(snaps);
+    expect(result).toHaveLength(1);
+    expect(result[0].date).toBe('2026-05-29');
+    expect(result[0].valence).toBeCloseTo(0.5, 2);
+    expect(result[0].emotion).toBe('happy');
+  });
+
+  it('returns days sorted ascending', () => {
+    const snaps = [
+      { recordedAt: new Date('2026-05-30T10:00:00Z'), valence: 0.2, emotion: 'happy' },
+      { recordedAt: new Date('2026-05-29T10:00:00Z'), valence: -0.2, emotion: 'sad' },
+    ];
+    const result = groupByDay(snaps);
+    expect(result[0].date).toBe('2026-05-29');
+    expect(result[1].date).toBe('2026-05-30');
+  });
+});
+
+describe('emotional-memory.ts structural — getMoodTimeline / getEntityMood', () => {
+  it('exports groupByDay helper', () => {
+    expect(SRC).toMatch(/export function groupByDay/);
+  });
+
+  it('exports dominantEmotion helper', () => {
+    expect(SRC).toMatch(/export function dominantEmotion/);
+  });
+
+  it('getMoodTimeline queries MoodSnapshot.findMany', () => {
+    const start = SRC.indexOf('async getMoodTimeline');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toContain('prisma.moodSnapshot.findMany');
+  });
+
+  it('getMoodTimeline filters source=message', () => {
+    const start = SRC.indexOf('async getMoodTimeline');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toContain("'message'");
+  });
+
+  it('getMoodTimeline calls groupByDay', () => {
+    const start = SRC.indexOf('async getMoodTimeline');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toContain('groupByDay(');
+  });
+
+  it('getEntityMood filters entityRefs has entityId', () => {
+    const start = SRC.indexOf('async getEntityMood');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toContain('entityRefs');
+    expect(body).toContain('has:');
+  });
+
+  it('getEntityMood returns 0 if no rows', () => {
+    const start = SRC.indexOf('async getEntityMood');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toMatch(/return 0|=== 0/);
+  });
+});
