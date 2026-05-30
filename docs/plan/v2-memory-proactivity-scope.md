@@ -201,7 +201,7 @@ AGENT TOOL EXTENSIONS:
 | 2 | feature-flags + Section D verify (D1-D2) | ✅ done | 2026-05-29 | commit 40d7118, 10 tests. **Week 2 TOTAL: 9 commits, 894/894 tests pass, tsc clean** |
 | 3 | Tier 3 + entity graph | ✅ done | 2026-05-29 | 10 commits e07adbe…347a4d5 (A1, B1–B6, C1–C2, D1); +68 tests (894→962); tsc clean; 0 vi.mock; 0 placeholders. Plan: docs/superpowers/plans/2026-05-29-v2-week3-tier3-entity-graph.md |
 | 4 | Tier 4 mini + Tier 5 mini + identity mini | ✅ done | 2026-05-30 | 12 commits 8c65c6e…77a8278 (B1–B8 ProceduralMemory + 5 extractors, C1–C3 EmotionalMemory, D1 IdentityService); +201 tests (962→1163); tsc clean; 0 vi.mock; 0 placeholders. Plan: docs/superpowers/plans/2026-05-30-v2-week4-tier4-tier5-identity.md |
-| 5 | Proactivity engine + agent tools | — | — | — |
+| 5 | Proactivity engine + agent tools + wiring | ✅ done | 2026-05-30 | 16 commits 9494756…414db7e (A1-A6 ProactivityEngine, B1-B4 3 tools+registry, C1 /setname, D1-D3 capture+enrichment+orchestrator wiring, E1 scheduler hook, F1 SMOKE doc); +66 tests (1163→1262 inc Week 5 only 1196→1262 = +66 in this week's files); tsc clean; 0 vi.mock; 0 placeholders. Dual-write preserved; behavior byte-identical при flag=off. Plan: docs/superpowers/plans/2026-05-31-v2-week5-proactivity-wiring.md |
 | 6 | Cron tasks + migration script + integration tests | — | — | — |
 | 7 | Feature flag rollout Berik → Aydana + behavioral SMOKE + tag v2.0-alpha | — | — | — |
 | 8-12 | Phase B (full versions) | — | — | — |
