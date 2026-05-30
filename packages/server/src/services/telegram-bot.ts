@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import { transcribeAudio } from './dictation-service.js';
 import { handleMessage } from './jarvis-orchestrator.js';
+import { getBotIdentityService } from './bot-identity.singleton.js';
 
 /**
  * LifeOS Telegram Bot — полноценный JARVIS в Telegram.
@@ -173,6 +174,44 @@ export function createTelegramBot(): Telegraf {
     } catch (err) {
       console.error('TG /start error:', err);
       await ctx.reply('Ошибка инициализации. Попробуй /start ещё раз.');
+    }
+  });
+
+  // v2.0 Week 5 (spec §10.1) — user renames the bot.
+  // Validation: 1..30 chars after trim. Persists via IdentityService;
+  // the new name flows back into prompts through buildV2EnrichmentBlock
+  // (D2) on the very next turn.
+  bot.command('setname', async (ctx) => {
+    const chatId = String(ctx.chat?.id);
+    const from = ctx.from;
+    if (!chatId || !from) return;
+    const newName = (ctx.message.text ?? '')
+      .split(' ')
+      .slice(1)
+      .join(' ')
+      .trim();
+    if (newName.length < 1) {
+      await ctx.reply('Использование: /setname Имя');
+      return;
+    }
+    if (newName.length > 30) {
+      await ctx.reply('Имя слишком длинное (макс 30 символов)');
+      return;
+    }
+    try {
+      const userId = await findOrCreateUser(
+        chatId,
+        from.id,
+        from.first_name || '',
+        from.username,
+      );
+      await getBotIdentityService().updateIdentity(userId, {
+        botName: newName,
+      });
+      await ctx.reply(`Готово, теперь меня зовут ${newName} 🤍`);
+    } catch (err) {
+      console.error('TG /setname error:', err);
+      await ctx.reply('Не получилось переименовать — попробуй ещё раз?');
     }
   });
 
