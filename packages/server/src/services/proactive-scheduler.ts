@@ -6,8 +6,11 @@ import { deliverTopInsight } from './insight-store.js';
 import { runReflectorDaily } from './reflector-service.js';
 import { runProfileSynthesisWeekly } from './profile-synthesizer.js';
 import { runTherapeuticDetectorsDaily } from './therapeutic-detector-service.js';
-import { isV2ProactivityEnabled } from '../lib/feature-flags.js';
+import { isV2ProactivityEnabled, isV2CronEnabled } from '../lib/feature-flags.js';
 import { getProactivityEngine } from './v2-proactivity-engine.singleton.js';
+import { withCronLock } from './cron-runner.js';
+import { runMoodRetention } from './cron/mood-retention-cron.js';
+import { runPatternExtraction } from './cron/pattern-extraction-cron.js';
 
 /**
  * Фаза 4.1 — планировщик проактивности.
@@ -88,6 +91,46 @@ async function tick(): Promise<void> {
     });
 
     const now = Date.now();
+
+    // v2.0 Week 6 A5 — global cron hooks (mood-retention daily,
+    // pattern-extraction weekly). Run BEFORE the per-user loop so that:
+    //   - mood-retention's aggregate writes land before the proactivity
+    //     engine reads MoodSnapshot in the loop below;
+    //   - pattern-extraction's fresh patterns are visible to detectors
+    //     on the same tick.
+    // Both behind isV2CronEnabled (global); withCronLock enforces the
+    // 24h / 7d interval regardless of how often tick fires. Each hook
+    // is its own try/catch — a cron failure must not break the user loop.
+    if (isV2CronEnabled()) {
+      try {
+        const r = await withCronLock(
+          'mood-retention',
+          24 * 60 * 60 * 1000,
+          null,
+          runMoodRetention,
+        );
+        if (r.ran) console.log('[cron:mood-retention] tick: ran');
+      } catch (err) {
+        console.warn(
+          '[cron:mood-retention] tick hook failed:',
+          err instanceof Error ? err.message : err,
+        );
+      }
+      try {
+        const r = await withCronLock(
+          'pattern-extraction',
+          7 * 24 * 60 * 60 * 1000,
+          null,
+          runPatternExtraction,
+        );
+        if (r.ran) console.log('[cron:pattern-extraction] tick: ran');
+      } catch (err) {
+        console.warn(
+          '[cron:pattern-extraction] tick hook failed:',
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
 
     for (const { id: userId } of users) {
       let notifications;

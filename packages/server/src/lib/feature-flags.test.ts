@@ -1,5 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { isV2MemoryEnabled, isV2ProactivityEnabled } from './feature-flags.js';
+import {
+  isV2MemoryEnabled,
+  isV2ProactivityEnabled,
+  isV2CronEnabled,
+} from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
 const ORIG_PROAC = process.env.FEATURE_V2_PROACTIVITY;
@@ -57,5 +61,37 @@ describe('isV2ProactivityEnabled', () => {
   it('returns true when env = "all"', () => {
     process.env.FEATURE_V2_PROACTIVITY = 'all';
     expect(isV2ProactivityEnabled('user1')).toBe(true);
+  });
+});
+
+describe('isV2CronEnabled — global flag (no userId arg)', () => {
+  const ORIG = process.env.FEATURE_V2_CRON;
+  afterEach(() => {
+    if (ORIG === undefined) delete process.env.FEATURE_V2_CRON;
+    else process.env.FEATURE_V2_CRON = ORIG;
+  });
+  it('unset → false', () => {
+    delete process.env.FEATURE_V2_CRON;
+    expect(isV2CronEnabled()).toBe(false);
+  });
+  it('"none" → false', () => {
+    process.env.FEATURE_V2_CRON = 'none';
+    expect(isV2CronEnabled()).toBe(false);
+  });
+  it('"false" → false', () => {
+    process.env.FEATURE_V2_CRON = 'false';
+    expect(isV2CronEnabled()).toBe(false);
+  });
+  it('"true" → true', () => {
+    process.env.FEATURE_V2_CRON = 'true';
+    expect(isV2CronEnabled()).toBe(true);
+  });
+  it('"all" → true (alias for true)', () => {
+    process.env.FEATURE_V2_CRON = 'all';
+    expect(isV2CronEnabled()).toBe(true);
+  });
+  it('"  true  " → true (whitespace tolerant)', () => {
+    process.env.FEATURE_V2_CRON = '  true  ';
+    expect(isV2CronEnabled()).toBe(true);
   });
 });

@@ -29,3 +29,17 @@ export function isV2MemoryEnabled(userId: string): boolean {
 export function isV2ProactivityEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_PROACTIVITY, userId);
 }
+
+/**
+ * v2.0 Week 6 — global cron flag.
+ *
+ * Crons are global jobs (one sweep affects all users), so no per-user
+ * tagging. Enable on Railway with FEATURE_V2_CRON=true once the v2
+ * memory dual-write has been running for at least a few days (Week 7
+ * after Berik SMOKE passes).
+ */
+export function isV2CronEnabled(): boolean {
+  const flag = (process.env.FEATURE_V2_CRON ?? '').trim();
+  if (!flag || flag === 'none' || flag === 'false') return false;
+  return flag === 'true' || flag === 'all';
+}
