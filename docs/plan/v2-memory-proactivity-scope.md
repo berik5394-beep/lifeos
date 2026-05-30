@@ -202,7 +202,7 @@ AGENT TOOL EXTENSIONS:
 | 3 | Tier 3 + entity graph | ✅ done | 2026-05-29 | 10 commits e07adbe…347a4d5 (A1, B1–B6, C1–C2, D1); +68 tests (894→962); tsc clean; 0 vi.mock; 0 placeholders. Plan: docs/superpowers/plans/2026-05-29-v2-week3-tier3-entity-graph.md |
 | 4 | Tier 4 mini + Tier 5 mini + identity mini | ✅ done | 2026-05-30 | 12 commits 8c65c6e…77a8278 (B1–B8 ProceduralMemory + 5 extractors, C1–C3 EmotionalMemory, D1 IdentityService); +201 tests (962→1163); tsc clean; 0 vi.mock; 0 placeholders. Plan: docs/superpowers/plans/2026-05-30-v2-week4-tier4-tier5-identity.md |
 | 5 | Proactivity engine + agent tools + wiring | ✅ done | 2026-05-30 | 16 commits 9494756…414db7e (A1-A6 ProactivityEngine, B1-B4 3 tools+registry, C1 /setname, D1-D3 capture+enrichment+orchestrator wiring, E1 scheduler hook, F1 SMOKE doc); +66 tests (1163→1262 inc Week 5 only 1196→1262 = +66 in this week's files); tsc clean; 0 vi.mock; 0 placeholders. Dual-write preserved; behavior byte-identical при flag=off. Plan: docs/superpowers/plans/2026-05-31-v2-week5-proactivity-wiring.md |
-| 6 | Cron tasks + migration script + integration tests | — | — | — |
+| 6 | Cron tasks + migration script + integration tests | ✅ done | 2026-05-30 | 10 commits 6ce0196…91267c2 (A1 CronJobRun, A2 cron-runner, A3 mood-retention, A4 pattern-extraction, A5 scheduler wire, B1+B2 migrate-to-v2.ts, C1+C2+C3 integration tests); +100 tests (1262→1362); tsc clean; 0 vi.mock; migration applied via Docker (idempotent). Plan: docs/superpowers/plans/2026-05-31-v2-week6-cron-migration-integration.md. **NOT YET PUSHED — awaiting Berik approval (precedent 2026-05-30).** |
 | 7 | Feature flag rollout Berik → Aydana + behavioral SMOKE + tag v2.0-alpha | — | — | — |
 | 8-12 | Phase B (full versions) | — | — | — |
 
