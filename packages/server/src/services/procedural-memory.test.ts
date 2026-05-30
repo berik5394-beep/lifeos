@@ -561,3 +561,159 @@ describe('procedural-memory.ts structural — extractRecurringTopicPatterns', ()
     expect(body).toContain('catch');
   });
 });
+
+// ---------------------------------------------------------------------------
+// matchesCommitmentPhrase — pure helper
+// ---------------------------------------------------------------------------
+
+describe('matchesCommitmentPhrase — pure helper', async () => {
+  const { matchesCommitmentPhrase } = await import('./procedural-memory.js');
+
+  it('returns true for "обещаю"', () => {
+    expect(matchesCommitmentPhrase('обещаю прочитать книгу')).toBe(true);
+  });
+
+  it('returns true for "буду"', () => {
+    expect(matchesCommitmentPhrase('буду ходить в зал')).toBe(true);
+  });
+
+  it('returns true for "с понедельника"', () => {
+    expect(matchesCommitmentPhrase('с понедельника бросаю курить')).toBe(true);
+  });
+
+  it('returns true for "решил"', () => {
+    expect(matchesCommitmentPhrase('решил пойти на йогу')).toBe(true);
+  });
+
+  it('returns false for random text', () => {
+    expect(matchesCommitmentPhrase('погода сегодня хорошая')).toBe(false);
+  });
+
+  it('returns false for empty string', () => {
+    expect(matchesCommitmentPhrase('')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseCommitmentResponse — pure helper
+// ---------------------------------------------------------------------------
+
+describe('parseCommitmentResponse — pure helper', async () => {
+  const { parseCommitmentResponse } = await import('./procedural-memory.js');
+
+  it('parses valid JSON with what + dueAt', () => {
+    const raw = JSON.stringify({ what: 'читать 30 мин в день', dueAt: '2026-06-01T00:00:00Z' });
+    const result = parseCommitmentResponse(raw);
+    expect(result).not.toBeNull();
+    expect(result!.what).toBe('читать 30 мин в день');
+    expect(result!.dueAt).toBeInstanceOf(Date);
+  });
+
+  it('parses what without dueAt (null)', () => {
+    const raw = JSON.stringify({ what: 'медитировать', dueAt: null });
+    const result = parseCommitmentResponse(raw);
+    expect(result).not.toBeNull();
+    expect(result!.dueAt).toBeNull();
+  });
+
+  it('strips markdown code fences', () => {
+    const inner = JSON.stringify({ what: 'X', dueAt: null });
+    const wrapped = '```json\n' + inner + '\n```';
+    expect(parseCommitmentResponse(wrapped)).not.toBeNull();
+  });
+
+  it('returns null for invalid JSON (never throws)', () => {
+    expect(parseCommitmentResponse('garbage')).toBeNull();
+  });
+
+  it('returns null for missing what field', () => {
+    expect(parseCommitmentResponse(JSON.stringify({ dueAt: null }))).toBeNull();
+  });
+
+  it('returns null for empty what', () => {
+    expect(parseCommitmentResponse(JSON.stringify({ what: '   ', dueAt: null }))).toBeNull();
+  });
+
+  it('returns null for empty string', () => {
+    expect(parseCommitmentResponse('')).toBeNull();
+  });
+
+  it('handles invalid dueAt by setting dueAt to null', () => {
+    const result = parseCommitmentResponse(
+      JSON.stringify({ what: 'X', dueAt: 'not a date' }),
+    );
+    expect(result).not.toBeNull();
+    expect(result!.dueAt).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// procedural-memory.ts structural — extractCommitmentPatterns
+// ---------------------------------------------------------------------------
+
+describe('procedural-memory.ts structural — extractCommitmentPatterns', () => {
+  it('exports extractCommitmentPatterns', () => {
+    expect(SRC).toMatch(/export async function extractCommitmentPatterns/);
+  });
+
+  it('exports matchesCommitmentPhrase pure helper', () => {
+    expect(SRC).toMatch(/export function matchesCommitmentPhrase/);
+  });
+
+  it('exports parseCommitmentResponse pure helper', () => {
+    expect(SRC).toMatch(/export function parseCommitmentResponse/);
+  });
+
+  it('queries last 7 days of ChatMessage', () => {
+    const start = SRC.indexOf('export async function extractCommitmentPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('chatMessage');
+    expect(body).toContain('7');
+  });
+
+  it('filters role=user and crisis=false', () => {
+    const start = SRC.indexOf('export async function extractCommitmentPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain("'user'");
+    expect(body).toContain('crisis');
+  });
+
+  it('uses matchesCommitmentPhrase prefilter before Claude call', () => {
+    const start = SRC.indexOf('export async function extractCommitmentPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('matchesCommitmentPhrase(');
+  });
+
+  it('calls anthropic.messages.create with MODELS.haiku', () => {
+    const start = SRC.indexOf('export async function extractCommitmentPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('anthropic.messages.create');
+    expect(body).toContain('MODELS.haiku');
+  });
+
+  it('uses parseCommitmentResponse to parse Claude output', () => {
+    const start = SRC.indexOf('export async function extractCommitmentPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('parseCommitmentResponse(');
+  });
+
+  it('creates Pattern with kind=commitment', () => {
+    const start = SRC.indexOf('export async function extractCommitmentPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain("'commitment'");
+  });
+
+  it('wraps Claude call in try/catch (best-effort)', () => {
+    const start = SRC.indexOf('export async function extractCommitmentPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('try {');
+    expect(body).toContain('catch');
+  });
+});

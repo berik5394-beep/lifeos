@@ -18,6 +18,10 @@
 
 import { prisma } from '../lib/prisma.js';
 import type { Pattern } from '@prisma/client';
+import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from '../lib/models.js';
+
+const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
 
 // Re-export Prisma type so consumers can import from one place.
 export type { Pattern };
@@ -243,6 +247,52 @@ export class ProceduralMemory implements ProceduralMemoryStore {
       data: { invalidAt: new Date() },
     });
     return result.count;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pure helpers for extractCommitmentPatterns (B6)
+// ---------------------------------------------------------------------------
+
+const COMMITMENT_PHRASES =
+  /(обещ[аю]|^|\s)(буду|начн[ёе]?\w*\s+с|решил[аи]?|с\s+понедельника|с\s+завтра|с\s+нового\s+месяца)/i;
+
+/**
+ * Cheap regex prefilter for commitment phrases.
+ * Mirrors emotional-classifier matchesEmotionalPhrase pattern.
+ */
+export function matchesCommitmentPhrase(text: string): boolean {
+  if (!text) return false;
+  if (/обещ[аю]/i.test(text)) return true;
+  return COMMITMENT_PHRASES.test(text);
+}
+
+/**
+ * Parse Claude haiku JSON response into { what, dueAt }.
+ * Handles markdown code fences, invalid JSON, missing fields, bad dates.
+ * Never throws — returns null on any failure.
+ */
+export function parseCommitmentResponse(
+  raw: string,
+): { what: string; dueAt: Date | null } | null {
+  if (!raw || !raw.trim()) return null;
+  let text = raw.trim();
+  if (text.startsWith('```')) {
+    text = text.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();
+  }
+  try {
+    const parsed = JSON.parse(text) as { what?: unknown; dueAt?: unknown };
+    if (typeof parsed.what !== 'string') return null;
+    const what = parsed.what.trim();
+    if (!what) return null;
+    let dueAt: Date | null = null;
+    if (typeof parsed.dueAt === 'string' && parsed.dueAt.trim()) {
+      const d = new Date(parsed.dueAt);
+      if (!Number.isNaN(d.getTime())) dueAt = d;
+    }
+    return { what, dueAt };
+  } catch {
+    return null;
   }
 }
 
@@ -582,6 +632,94 @@ export async function extractRecurringTopicPatterns(userId: string): Promise<Pat
       console.warn(
         '[procedural] recurring_topic extract failed for entity',
         entity.id,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return patterns;
+}
+
+// ---------------------------------------------------------------------------
+// Extractor: commitment (Claude haiku, regex prefilter)
+// ---------------------------------------------------------------------------
+
+const COMMITMENT_SYSTEM_PROMPT = `Ты — аналитик намерений. Из сообщения извлеки ОДНО конкретное обязательство пользователя (что он обещает/решает делать) и срок если есть.
+
+Верни ТОЛЬКО валидный JSON без markdown:
+{ "what": "краткое описание обязательства", "dueAt": "ISO-8601 дата или null" }
+
+Если обязательство не явное — верни { "what": "", "dueAt": null }.
+НЕ добавляй объяснений, только JSON.`;
+
+export async function extractCommitmentPatterns(userId: string): Promise<Pattern[]> {
+  const patterns: Pattern[] = [];
+  const cutoff = new Date(Date.now() - 7 * 86_400_000);
+  const messages = await prisma.chatMessage.findMany({
+    where: {
+      userId,
+      role: 'user',
+      crisis: false,
+      createdAt: { gte: cutoff },
+    },
+    select: { id: true, content: true, createdAt: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  if (messages.length === 0) return patterns;
+
+  for (const msg of messages) {
+    if (!matchesCommitmentPhrase(msg.content)) continue;
+
+    try {
+      const resp = await anthropic.messages.create({
+        model: MODELS.haiku,
+        max_tokens: 256,
+        system: COMMITMENT_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: msg.content.slice(0, 1000) }],
+      });
+      const block = resp.content.find((b) => b.type === 'text');
+      if (!block || block.type !== 'text') continue;
+
+      const parsed = parseCommitmentResponse(block.text);
+      if (!parsed) continue;
+
+      const payload = {
+        what: parsed.what,
+        dueAt: parsed.dueAt ? parsed.dueAt.toISOString() : null,
+        fulfilled: null,
+        sourceMsgId: msg.id,
+      };
+      const description = `обязательство: ${parsed.what}`;
+
+      // Idempotent on sourceMsgId — same message shouldn't create duplicate.
+      const existing = await prisma.pattern.findFirst({
+        where: { userId, kind: 'commitment', invalidAt: null },
+      });
+      let row: Pattern;
+      if (
+        existing &&
+        (existing.payload as { sourceMsgId?: string })?.sourceMsgId === msg.id
+      ) {
+        row = existing;
+      } else {
+        row = await prisma.pattern.create({
+          data: {
+            userId,
+            kind: 'commitment',
+            description,
+            payload,
+            observations: 1,
+            confidence: 1.0,
+            lastObservedAt: msg.createdAt,
+          },
+        });
+      }
+      patterns.push(row);
+    } catch (err) {
+      console.warn(
+        '[procedural] commitment extract failed for msg',
+        msg.id,
         err instanceof Error ? err.message : err,
       );
     }
