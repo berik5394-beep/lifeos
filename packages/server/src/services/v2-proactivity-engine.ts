@@ -137,6 +137,8 @@ import { lastEventForEntity } from './episodic-memory.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localHour } from '../lib/tz.js';
+import { runAgent } from './claude-agent.js';
+import { getBotIdentityService } from './bot-identity.singleton.js';
 
 const DAY_MS = 86_400_000;
 
@@ -418,9 +420,41 @@ export class V2ProactivityEngine implements ProactivityEngine {
     return passed;
   }
   async generateNudge(
-    _userId: string,
-    _candidate: NudgeCandidate,
+    userId: string,
+    candidate: NudgeCandidate,
   ): Promise<string> {
-    throw new Error('not yet implemented — Task A5');
+    // 1) Template lookup — fast, deterministic, free.
+    const template = TEMPLATES[candidate.source]?.[candidate.toneHint];
+    if (template) {
+      const rendered = interpolate(template, candidate.payload);
+      if (rendered.trim().length > 0) return rendered;
+    }
+    // 2) Claude haiku fallback.
+    try {
+      const identity = await getBotIdentityService()
+        .getIdentity(userId)
+        .catch(() => null);
+      const botName = identity?.botName ?? 'JARVIS';
+      const tone = candidate.toneHint;
+      const prompt =
+        `Ты — ${botName}, проактивный AI-друг. Сгенерируй ОДНО короткое ` +
+        `(1-2 предложения, без markdown, без emoji кроме 🤍) ` +
+        `проактивное сообщение пользователю. Tone: ${tone}. ` +
+        `Source: ${candidate.source}. Payload: ${JSON.stringify(candidate.payload)}. ` +
+        `Не объясняй, не извиняйся — просто сообщение, как другу.`;
+      const reply = await runAgent({
+        system: prompt,
+        userMessage: 'Generate.',
+        webSearch: false,
+        localTools: false,
+        maxTokens: 200,
+        userId,
+      });
+      const txt = (reply ?? '').trim();
+      if (txt.length > 0) return txt;
+    } catch (err) {
+      console.warn('[v2-proactivity] generateNudge claude failed:', err);
+    }
+    return 'Подумал о тебе — как ты?';
   }
 }

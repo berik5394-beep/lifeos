@@ -227,3 +227,20 @@ describe('structural — A4 gates + filterCandidates', () => {
     expect(SRC).toMatch(/7\s*\*\s*DAY_MS|subDays\(\s*\w+\s*,\s*7\s*\)/);
   });
 });
+
+describe('structural — A5 generateNudge', () => {
+  it('imports runAgent + getBotIdentityService', () => {
+    expect(SRC).toMatch(/from '\.\/claude-agent\.js'/);
+    expect(SRC).toMatch(/from '\.\/bot-identity\.singleton\.js'/);
+  });
+  it('looks up TEMPLATES[source][toneHint] before fallback', () => {
+    const body = SRC.slice(SRC.indexOf('generateNudge'));
+    expect(body.indexOf('TEMPLATES[')).toBeLessThan(body.indexOf('runAgent('));
+  });
+  it('uses interpolate on the template', () => {
+    expect(SRC).toMatch(/interpolate\(\s*template/);
+  });
+  it('has a safe fallback string when Claude fails', () => {
+    expect(SRC).toMatch(/Подумал о тебе — как ты\?/);
+  });
+});
