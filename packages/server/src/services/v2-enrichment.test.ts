@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   buildV2EnrichmentBlock,
+  formatAxesSection,
   type V2EnrichmentData,
 } from './v2-enrichment.js';
 
@@ -95,5 +96,76 @@ describe('structural — fetcher', () => {
   });
   it('returns null on top-level failure (best-effort)', () => {
     expect(SRC).toMatch(/return null/);
+  });
+});
+
+describe('formatAxesSection (D1)', () => {
+  const axesBase = {
+    selfDiscipline: 0.5,
+    emotionalOpenness: 0.5,
+    conflictTolerance: 0.5,
+    introspectionDepth: 0.5,
+    signalCount: 0,
+    lastSignalAt: null,
+  };
+
+  it('returns empty string when no axes available (null input)', () => {
+    expect(formatAxesSection(null)).toBe('');
+  });
+  it('renders 4 axis lines with labels for moderate (default) values', () => {
+    const out = formatAxesSection(axesBase);
+    expect(out).toContain('self-discipline: 0.50');
+    expect(out).toContain('emotional-openness: 0.50');
+    expect(out).toContain('conflict-tolerance: 0.50');
+    expect(out).toContain('introspection-depth: 0.50');
+    // All four are "средняя" at 0.5
+    expect((out.match(/средняя/g) ?? []).length).toBe(4);
+  });
+  it('includes guidance when SD low', () => {
+    const out = formatAxesSection({ ...axesBase, selfDiscipline: 0.25 });
+    expect(out).toContain('self-discipline: 0.25');
+    expect(out).toContain('низкая');
+    // Guidance about 1-step plans (substring; exact wording in
+    // implementation, but must convey the rule)
+    expect(out.toLowerCase()).toMatch(/один|1[-\s]?шаг|шаг/);
+  });
+  it('includes guidance when EO high', () => {
+    const out = formatAxesSection({ ...axesBase, emotionalOpenness: 0.85 });
+    expect(out).toContain('emotional-openness: 0.85');
+    expect(out).toContain('очень высокая');
+  });
+});
+
+describe('fetchV2EnrichmentAxesSection — axes integration (D1)', () => {
+  // The function is async and reads from DB / singleton. We verify the
+  // wiring structurally via readFileSync; runtime is covered by integration.
+  it('exports fetchV2EnrichmentAxesSection helper', () => {
+    const enrichSrc = readFileSync(
+      join(process.cwd(), 'src/services/v2-enrichment.ts'),
+      'utf-8',
+    );
+    expect(enrichSrc).toMatch(/export async function fetchV2EnrichmentAxesSection/);
+  });
+  it('reads axes via getUserAxesStore().getAxes', () => {
+    const enrichSrc = readFileSync(
+      join(process.cwd(), 'src/services/v2-enrichment.ts'),
+      'utf-8',
+    );
+    expect(enrichSrc).toContain('getUserAxesStore');
+    expect(enrichSrc).toMatch(/\.getAxes\(/);
+  });
+  it('calls formatAxesSection to render output', () => {
+    const enrichSrc = readFileSync(
+      join(process.cwd(), 'src/services/v2-enrichment.ts'),
+      'utf-8',
+    );
+    expect(enrichSrc).toContain('formatAxesSection');
+  });
+  it('gated by isV2AxesEnabled', () => {
+    const enrichSrc = readFileSync(
+      join(process.cwd(), 'src/services/v2-enrichment.ts'),
+      'utf-8',
+    );
+    expect(enrichSrc).toContain('isV2AxesEnabled');
   });
 });

@@ -14,6 +14,9 @@ import { prisma } from '../lib/prisma.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { getProceduralMemory } from './procedural-memory.singleton.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
+import { getUserAxesStore } from './user-axes/index.js';
+import { axisLabel, type UserAxesValues } from './user-axes/index.js';
+import { isV2AxesEnabled } from '../lib/feature-flags.js';
 
 export type V2EnrichmentData = {
   identity: { botName: string; style: string } | null;
@@ -57,6 +60,60 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
     lines.push(`ключевые люди/места: ${top}`);
   }
   return lines.join('\n');
+}
+
+/**
+ * v2 Phase B1 — render axes section for system prompt block.
+ *
+ * Returns empty string when axes are null (e.g. axes feature disabled
+ * for user, or first-msg auto-init not yet visible). Otherwise renders
+ * 4 lines with current value, semantic label, and behavioural guidance.
+ *
+ * Pure helper (no I/O) — exported for unit testing.
+ */
+export function formatAxesSection(axes: UserAxesValues | null): string {
+  if (!axes) return '';
+
+  const lines: string[] = ['## Личностные оси (continuous 0..1, обновляются с каждым сообщением)', ''];
+
+  const sd = axes.selfDiscipline;
+  lines.push(`- self-discipline: ${sd.toFixed(2)} (${axisLabel(sd)}) — ${guidanceSD(sd)}`);
+  const eo = axes.emotionalOpenness;
+  lines.push(`- emotional-openness: ${eo.toFixed(2)} (${axisLabel(eo)}) — ${guidanceEO(eo)}`);
+  const ct = axes.conflictTolerance;
+  lines.push(`- conflict-tolerance: ${ct.toFixed(2)} (${axisLabel(ct)}) — ${guidanceCT(ct)}`);
+  const id = axes.introspectionDepth;
+  lines.push(`- introspection-depth: ${id.toFixed(2)} (${axisLabel(id)}) — ${guidanceID(id)}`);
+
+  return lines.join('\n');
+}
+
+function guidanceSD(v: number): string {
+  if (v < 0.3) return 'Юзер борется с follow-through. НЕ предлагай multi-step plans. Помогай через «следующий ОДИН маленький шаг».';
+  if (v < 0.6) return 'Умеренная дисциплина. Multi-step OK, но проверяй capacity. Если 3+ шагов — спроси готов ли.';
+  if (v < 0.8) return 'Хорошая дисциплина. Можешь предлагать конкретные планы — юзер выполнит.';
+  return 'Очень дисциплинированный — можешь поставить ambitious targets, проверять stretch goals.';
+}
+
+function guidanceEO(v: number): string {
+  if (v < 0.3) return 'Юзер сдержан в эмоциях. Suppress «что чувствуешь?» probes. Фокус на practical help.';
+  if (v < 0.6) return 'Умеренная openness. Можешь спрашивать про чувства если context располагает.';
+  if (v < 0.8) return 'Открыт обсуждать чувства. Reference past emotional states, can ask "что чувствуешь?".';
+  return 'Очень открыт. Можешь suggest journaling, mood inventories, deep emotional reflection.';
+}
+
+function guidanceCT(v: number): string {
+  if (v < 0.3) return 'Защитен при pushback. Default — supportive. Критику только если ЯВНО попросил. Видишь противоречие — спроси "как ты сам это видишь?".';
+  if (v < 0.6) return 'Умеренная tolerance. Pushback OK если мягкий и обоснованный.';
+  if (v < 0.8) return 'Открыт challenge. Можешь указать противоречие, holding accountable.';
+  return 'Любит правду в лицо. Можешь быть strict trainer, ставить hard questions.';
+}
+
+function guidanceID(v: number): string {
+  if (v < 0.3) return 'Action-oriented, мало рефлексии. Фокус на конкретике, не открывай philosophical loops.';
+  if (v < 0.6) return 'Умеренная reflection. Можешь спрашивать «почему» если на context, но не уходи в abstract.';
+  if (v < 0.8) return 'Reflective. Suggest journaling prompts, delve into patterns.';
+  return 'Глубокая introspection. Можешь задавать philosophical questions, big-picture reframes.';
 }
 
 const DAY_MS = 86_400_000;
@@ -119,5 +176,22 @@ export async function fetchV2EnrichmentData(
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);
     return null;
+  }
+}
+
+/**
+ * v2 Phase B1 — Fetch axes and render section for enrichment block.
+ * Separate helper called by orchestrator after main enrichment data.
+ */
+export async function fetchV2EnrichmentAxesSection(userId: string): Promise<string> {
+  if (!isV2AxesEnabled(userId)) {
+    return '';
+  }
+  try {
+    const axes = await getUserAxesStore().getAxes(userId);
+    return formatAxesSection(axes);
+  } catch (err) {
+    console.warn('[v2-enrichment:axes] failed:', err);
+    return '';
   }
 }

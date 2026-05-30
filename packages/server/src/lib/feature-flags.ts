@@ -31,6 +31,18 @@ export function isV2ProactivityEnabled(userId: string): boolean {
 }
 
 /**
+ * v2 Phase B1 — Per-user gate for USER NEST axes feature.
+ *
+ * Values:
+ *   "all" / "true"     → enabled for everyone
+ *   "" / "none" / "false" / unset → disabled for everyone
+ *   "user-X,user-Y"    → enabled only for those users (comma list)
+ */
+export function isV2AxesEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_AXES, userId);
+}
+
+/**
  * v2.0 Week 6 — global cron flag.
  *
  * Crons are global jobs (one sweep affects all users), so no per-user
