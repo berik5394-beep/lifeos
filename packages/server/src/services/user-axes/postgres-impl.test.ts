@@ -82,3 +82,40 @@ describe('postgres-impl.ts structural — recordSignals', () => {
     expect(body).toMatch(/source\s*[:=].*claude_classifier/);
   });
 });
+
+describe('postgres-impl.ts structural — recentSignals', () => {
+  it('queries AxisSignal filtered by userId + axis, ordered by recordedAt DESC', () => {
+    const start = SRC.indexOf('async recentSignals');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toContain('prisma.axisSignal.findMany');
+    expect(body).toContain('userId');
+    expect(body).toContain('axis');
+    expect(body).toMatch(/orderBy.*recordedAt.*desc/s);
+  });
+  it('default limit honored', () => {
+    const start = SRC.indexOf('async recentSignals');
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toMatch(/limit.*=\s*\d+/);
+  });
+});
+
+describe('postgres-impl.ts structural — recomputeFromSignals', () => {
+  it('reads full signal history ordered by recordedAt ASC', () => {
+    const start = SRC.indexOf('async recomputeFromSignals');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('prisma.axisSignal.findMany');
+    expect(body).toMatch(/orderBy.*recordedAt.*asc/s);
+  });
+  it('reuses applyEwma to fold signals into current state', () => {
+    const start = SRC.indexOf('async recomputeFromSignals');
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('applyEwma');
+  });
+  it('writes final values back via UserAxes.upsert', () => {
+    const start = SRC.indexOf('async recomputeFromSignals');
+    const body = SRC.slice(start, start + 2500);
+    expect(body).toContain('prisma.userAxes.upsert');
+  });
+});

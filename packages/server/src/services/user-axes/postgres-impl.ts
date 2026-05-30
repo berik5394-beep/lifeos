@@ -138,21 +138,90 @@ export class PostgresUserAxes implements UserAxesStore {
   }
 
   async recentSignals(
-    _userId: string,
-    _axis: AxisName,
-    _limit?: number,
+    userId: string,
+    axis: AxisName,
+    limit: number = 5,
   ): Promise<Array<{
     delta: number;
     confidence: number;
     excerpt: string | null;
     recordedAt: Date;
   }>> {
-    // Implemented in B4.
-    throw new Error('recentSignals not yet implemented — Task B4');
+    try {
+      const rows = await prisma.axisSignal.findMany({
+        where: { userId, axis },
+        orderBy: { recordedAt: 'desc' },
+        take: limit,
+        select: { delta: true, confidence: true, excerpt: true, recordedAt: true },
+      });
+      return rows;
+    } catch (err) {
+      console.warn('[user-axes:recentSignals] failed:', err);
+      return [];
+    }
   }
 
-  async recomputeFromSignals(_userId: string): Promise<UserAxesValues> {
-    // Implemented in B4.
-    throw new Error('recomputeFromSignals not yet implemented — Task B4');
+  async recomputeFromSignals(userId: string): Promise<UserAxesValues> {
+    try {
+      const signals = await prisma.axisSignal.findMany({
+        where: { userId },
+        orderBy: { recordedAt: 'asc' },
+        select: { axis: true, delta: true, confidence: true, recordedAt: true },
+      });
+
+      const axisFieldByName: Record<
+        AxisName,
+        'selfDiscipline' | 'emotionalOpenness' | 'conflictTolerance' | 'introspectionDepth'
+      > = {
+        self_discipline: 'selfDiscipline',
+        emotional_openness: 'emotionalOpenness',
+        conflict_tolerance: 'conflictTolerance',
+        introspection_depth: 'introspectionDepth',
+      };
+
+      const next: Record<
+        'selfDiscipline' | 'emotionalOpenness' | 'conflictTolerance' | 'introspectionDepth',
+        number
+      > = {
+        selfDiscipline: AXIS_DEFAULTS.self_discipline,
+        emotionalOpenness: AXIS_DEFAULTS.emotional_openness,
+        conflictTolerance: AXIS_DEFAULTS.conflict_tolerance,
+        introspectionDepth: AXIS_DEFAULTS.introspection_depth,
+      };
+      let lastSignalAt: Date | null = null;
+      for (const s of signals) {
+        const field = axisFieldByName[s.axis as AxisName];
+        if (!field) continue;
+        next[field] = applyEwma(next[field], s.delta, s.confidence);
+        lastSignalAt = s.recordedAt;
+      }
+
+      const updated = await prisma.userAxes.upsert({
+        where: { userId },
+        create: {
+          userId,
+          ...next,
+          signalCount: signals.length,
+          lastSignalAt,
+        },
+        update: {
+          ...next,
+          signalCount: signals.length,
+          lastSignalAt,
+        },
+      });
+
+      return {
+        selfDiscipline: updated.selfDiscipline,
+        emotionalOpenness: updated.emotionalOpenness,
+        conflictTolerance: updated.conflictTolerance,
+        introspectionDepth: updated.introspectionDepth,
+        signalCount: updated.signalCount,
+        lastSignalAt: updated.lastSignalAt,
+      };
+    } catch (err) {
+      console.warn('[user-axes:recomputeFromSignals] failed:', err);
+      return this.getAxes(userId);
+    }
   }
 }
