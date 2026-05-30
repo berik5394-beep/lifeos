@@ -156,5 +156,108 @@ export class ProceduralMemory implements ProceduralMemoryStore {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Extractor: frequency
+// ---------------------------------------------------------------------------
+
+/**
+ * For each Entity with importance >= 5, scan related Memory events from
+ * the last 60 days. If median inter-event interval is stable
+ * (sd < 50% median), upsert a Pattern{kind:'frequency'}.
+ *
+ * Best-effort: per-entity errors are caught and logged; we never throw.
+ */
+export async function extractFrequencyPatterns(userId: string): Promise<Pattern[]> {
+  const patterns: Pattern[] = [];
+  const entities = await prisma.entity.findMany({
+    where: { userId, importance: { gte: 5 } },
+    select: { id: true, name: true },
+  });
+
+  if (entities.length === 0) return patterns;
+
+  const cutoff = new Date(Date.now() - 60 * 86_400_000);
+
+  for (const entity of entities) {
+    try {
+      // Memory.entityRefs is a String[] — use has filter.
+      const events = await prisma.memory.findMany({
+        where: {
+          userId,
+          validAt: { gte: cutoff },
+          entityRefs: { has: entity.id },
+        },
+        select: { validAt: true },
+        orderBy: { validAt: 'asc' },
+      });
+
+      if (events.length < 3) continue; // not enough observations
+
+      const ts = events.map((e) => e.validAt);
+      const median = medianInterval(ts);
+      const intervals: number[] = [];
+      for (let i = 1; i < ts.length; i++) {
+        intervals.push((ts[i].getTime() - ts[i - 1].getTime()) / 86_400_000);
+      }
+      const sd = stddev(intervals);
+
+      if (!isStableInterval(median, sd)) continue;
+
+      const observations = events.length;
+      const confidence = clampConfidence(observations);
+      const lastObservedAt = ts[ts.length - 1];
+      const payload = {
+        entityId: entity.id,
+        periodDays: Math.round(median * 10) / 10,
+        lastObservedAt: lastObservedAt.toISOString(),
+      };
+      const description = `упоминает ${entity.name} каждые ~${payload.periodDays} дней`;
+
+      // Upsert: look for existing active pattern with same kind+entityId.
+      const existing = await prisma.pattern.findFirst({
+        where: { userId, kind: 'frequency', invalidAt: null },
+      });
+
+      let row: Pattern;
+      if (
+        existing &&
+        (existing.payload as { entityId?: string })?.entityId === entity.id
+      ) {
+        row = await prisma.pattern.update({
+          where: { id: existing.id },
+          data: {
+            description,
+            payload,
+            observations,
+            confidence,
+            lastObservedAt,
+          },
+        });
+      } else {
+        row = await prisma.pattern.create({
+          data: {
+            userId,
+            kind: 'frequency',
+            description,
+            payload,
+            observations,
+            confidence,
+            lastObservedAt,
+          },
+        });
+      }
+      patterns.push(row);
+    } catch (err) {
+      console.warn(
+        '[procedural] frequency extract failed for entity',
+        entity.id,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return patterns;
+}
+
 // Reference prisma to prevent unused-import lint (will be used in B2+).
 void prisma;

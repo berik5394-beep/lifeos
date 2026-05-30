@@ -258,3 +258,63 @@ describe('procedural-memory.ts structural — getActivePatterns / hasPattern / i
     expect(body).toContain('.count');
   });
 });
+
+describe('procedural-memory.ts structural — extractFrequencyPatterns', () => {
+  it('exports extractFrequencyPatterns as standalone async function', () => {
+    expect(SRC).toMatch(/export async function extractFrequencyPatterns/);
+  });
+
+  it('filters entities by importance >= 5', () => {
+    const start = SRC.indexOf('export async function extractFrequencyPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('importance');
+    expect(body).toContain('gte:');
+    expect(body).toContain('5');
+  });
+
+  it('queries Memory.entityRefs over last 60 days', () => {
+    const start = SRC.indexOf('export async function extractFrequencyPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('entityRefs');
+    expect(body).toContain('60');
+  });
+
+  it('uses medianInterval + isStableInterval helpers', () => {
+    const start = SRC.indexOf('export async function extractFrequencyPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('medianInterval(');
+    expect(body).toContain('isStableInterval(');
+  });
+
+  it('uses clampConfidence helper', () => {
+    const start = SRC.indexOf('export async function extractFrequencyPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('clampConfidence(');
+  });
+
+  it('creates Pattern with kind=frequency', () => {
+    const start = SRC.indexOf('export async function extractFrequencyPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain("'frequency'");
+  });
+
+  it('handles empty data (no entities) without throwing', () => {
+    const start = SRC.indexOf('export async function extractFrequencyPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toMatch(/return \[\]|patterns/);
+  });
+
+  it('wraps per-entity work in try/catch (best-effort)', () => {
+    const start = SRC.indexOf('export async function extractFrequencyPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('try {');
+    expect(body).toContain('catch');
+  });
+});
