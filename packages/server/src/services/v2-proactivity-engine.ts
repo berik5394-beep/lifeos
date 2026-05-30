@@ -134,6 +134,8 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
 import { getEntityGraph } from './entity-graph/index.js';
 import { getProceduralMemory } from './procedural-memory.singleton.js';
 import { lastEventForEntity } from './episodic-memory.js';
+import { getEmotionalMemory } from './emotional-memory.singleton.js';
+import { prisma } from '../lib/prisma.js';
 
 const DAY_MS = 86_400_000;
 
@@ -212,6 +214,108 @@ async function detectCommitmentDue(userId: string): Promise<NudgeCandidate[]> {
     return out;
   } catch (err) {
     console.warn('[v2-proactivity] detectCommitmentDue failed:', err);
+    return [];
+  }
+}
+
+async function detectMoodShift(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const emotional = getEmotionalMemory();
+    const shift = await emotional.detectMoodShift(userId);
+    if (!shift) return [];
+    const magnitude = Number(shift.magnitude ?? 0);
+    if (Math.abs(magnitude) < 0.4) return [];
+    const cand: NudgeCandidate = {
+      source: 'mood_shift',
+      significance: 0,
+      payload: {
+        magnitude,
+        direction: shift.direction,
+        sinceDays: shift.sinceDays,
+      },
+      toneHint: magnitude < 0 ? 'supportive' : 'celebratory',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectMoodShift failed:', err);
+    return [];
+  }
+}
+
+async function detectStreakBreak(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const procedural = getProceduralMemory();
+    const habits = await prisma.habit.findMany({
+      where: { userId, archivedAt: null },
+      select: { id: true, name: true },
+    });
+    if (habits.length === 0) return [];
+    const twoDaysAgo = new Date(Date.now() - 2 * DAY_MS);
+    const recent = await prisma.habitLog.findMany({
+      where: {
+        habitId: { in: habits.map((h) => h.id) },
+        completed: true,
+        date: { gte: twoDaysAgo },
+      },
+      select: { habitId: true },
+    });
+    const activeIds = new Set(recent.map((r) => r.habitId));
+    const out: NudgeCandidate[] = [];
+    for (const h of habits) {
+      if (activeIds.has(h.id)) continue;
+      const patterns = await procedural
+        .getActivePatterns(userId, { kinds: ['streak_break'] })
+        .catch(() => []);
+      const streakPattern = patterns.find((p) => {
+        const payload = (p.payload ?? {}) as Record<string, unknown>;
+        return payload.habitId === h.id;
+      });
+      if (!streakPattern) continue;
+      const consistency = Number(streakPattern.confidence ?? 0);
+      const cand: NudgeCandidate = {
+        source: 'streak_break',
+        significance: 0,
+        patternId: streakPattern.id,
+        entityId: h.id,
+        payload: { habit: h.name, consistency },
+        toneHint: 'gentle',
+      };
+      cand.significance = scoreSignificance(cand);
+      out.push(cand);
+    }
+    return out;
+  } catch (err) {
+    console.warn('[v2-proactivity] detectStreakBreak failed:', err);
+    return [];
+  }
+}
+
+async function detectGoalNoProgress(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const goals = await prisma.yearlyGoal.findMany({
+      where: { userId },
+      select: { id: true, goalText: true, updatedAt: true },
+    });
+    if (goals.length === 0) return [];
+    const now = Date.now();
+    const out: NudgeCandidate[] = [];
+    for (const g of goals) {
+      const lastAt = g.updatedAt?.getTime() ?? 0;
+      const daysSilent = Math.floor((now - lastAt) / DAY_MS);
+      if (daysSilent < 14) continue;
+      const cand: NudgeCandidate = {
+        source: 'goal_no_progress',
+        significance: 0,
+        payload: { goal: g.goalText, daysSilent },
+        toneHint: 'curious',
+      };
+      cand.significance = scoreSignificance(cand);
+      out.push(cand);
+    }
+    return out;
+  } catch (err) {
+    console.warn('[v2-proactivity] detectGoalNoProgress failed:', err);
     return [];
   }
 }

@@ -182,3 +182,23 @@ describe('structural — A2 detectors', () => {
     expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('structural — A3 detectors', () => {
+  it('defines detectMoodShift importing emotional-memory singleton', () => {
+    expect(SRC).toMatch(/from '\.\/emotional-memory\.singleton\.js'/);
+    expect(SRC).toMatch(/function detectMoodShift\s*\(/);
+    expect(SRC).toMatch(/detectMoodShift\(userId\)/);
+  });
+  it('defines detectStreakBreak using prisma habitLog', () => {
+    expect(SRC).toMatch(/function detectStreakBreak\s*\(/);
+    expect(SRC).toMatch(/habitLog|HabitLog/);
+  });
+  it('defines detectGoalNoProgress reading YearlyGoal', () => {
+    expect(SRC).toMatch(/function detectGoalNoProgress\s*\(/);
+    expect(SRC).toMatch(/yearlyGoal\.findMany/);
+  });
+  it('all 5 detectors are wrapped in try/catch', () => {
+    const matches = SRC.match(/catch\s*\([^)]*\)\s*\{[\s\S]{0,160}?return\s*\[\]/g) ?? [];
+    expect(matches.length).toBeGreaterThanOrEqual(5);
+  });
+});
