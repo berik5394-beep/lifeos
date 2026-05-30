@@ -202,17 +202,59 @@ async function main(): Promise<void> {
     console.warn(`${tag} step 3 failed:`, err);
   }
 
-  // ---- Step 4: extractPatterns -------------------------------------------
+  // ---- Step 4: UserProfile.relationships → Entity lift -------------------
+  // (Q2 2026-05-31): Phase 6 life-truth-analyzer stores a structured
+  // psycho-profile in UserProfile.relationships ({ "Серик": "деловой контакт..." }).
+  // Those people are referenced in the bot's system prompt today, but they
+  // are NOT in the v2 Entity graph — so getEntityMood/getNeighbors miss
+  // them. Lift each profile relationship into a person Entity with the
+  // description stored in attributes.profile_note.
+  let profileLifted = 0;
+  let profileSkipped = 0;
+  try {
+    const profile = await prisma.userProfile.findUnique({
+      where: { userId },
+      select: { relationships: true },
+    });
+    const relMap = (profile?.relationships ?? {}) as Record<string, unknown>;
+    const relEntries = Object.entries(relMap).filter(([k, v]) => typeof k === 'string' && typeof v === 'string');
+    console.log(`${tag} step 4: UserProfile.relationships has ${relEntries.length} entries`);
+    const graph = getEntityGraph();
+    for (const [name, note] of relEntries) {
+      try {
+        if (mode === 'dry-run') {
+          console.log(`${tag} step 4: would upsert profile-lift entity name=${JSON.stringify(name)} profile_note=${JSON.stringify(String(note).slice(0, 60))}`);
+          profileLifted++;
+        } else if (mode === 'apply') {
+          await graph.upsertEntity(userId, {
+            type: 'person',
+            name,
+            importance: 6,
+            attributes: { profile_note: String(note), source: 'userprofile_lift' },
+          });
+          profileLifted++;
+        }
+      } catch (err) {
+        profileSkipped++;
+        console.warn(`${tag} step 4: profile-lift failed for ${name}:`, err);
+      }
+    }
+    console.log(`${tag} step 4: ${profileLifted} lifted, ${profileSkipped} skipped`);
+  } catch (err) {
+    console.warn(`${tag} step 4 failed:`, err);
+  }
+
+  // ---- Step 5: extractPatterns -------------------------------------------
   try {
     if (mode === 'dry-run') {
-      console.log(`${tag} step 4: would call extractPatterns(${userId})`);
+      console.log(`${tag} step 5: would call extractPatterns(${userId})`);
     } else if (mode === 'apply') {
       const patterns = await getProceduralMemory().extractPatterns(userId);
       patternsExtracted = patterns.length;
-      console.log(`${tag} step 4: extracted ${patternsExtracted} patterns`);
+      console.log(`${tag} step 5: extracted ${patternsExtracted} patterns`);
     }
   } catch (err) {
-    console.warn(`${tag} step 4 failed:`, err);
+    console.warn(`${tag} step 5 failed:`, err);
   }
 
   // ---- Report ------------------------------------------------------------
@@ -223,6 +265,8 @@ async function main(): Promise<void> {
   console.log(`memoriesBackfilled:  ${memoriesBackfilled}`);
   console.log(`entitiesCreated:     ${entitiesCreated}`);
   console.log(`entitiesSkipped:     ${entitiesSkipped}`);
+  console.log(`profileLifted:       ${profileLifted}`);
+  console.log(`profileSkipped:      ${profileSkipped}`);
   console.log(`identityCreated:     ${identityCreated}`);
   console.log(`patternsExtracted:   ${patternsExtracted}`);
 

@@ -124,3 +124,32 @@ describe('structural — B2 migration logic', () => {
     expect(SRC).toMatch(/memoriesBackfilled|entitiesCreated|identityCreated|patternsExtracted/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Q2 (2026-05-31): UserProfile.relationships → Entity lift
+// ---------------------------------------------------------------------------
+import { readFileSync as readScript } from 'node:fs';
+import { join as joinPath } from 'node:path';
+const SCRIPT = readScript(
+  joinPath(process.cwd(), 'scripts/migrate-to-v2.ts'),
+  'utf-8',
+);
+
+describe('migrate-to-v2 — UserProfile relationships lift (Q2)', () => {
+  it('reads userProfile.relationships', () => {
+    expect(SCRIPT).toMatch(/userProfile\.findUnique[\s\S]*relationships:\s*true/);
+  });
+  it('upserts each relationship as person Entity with profile_note attribute', () => {
+    expect(SCRIPT).toMatch(/source:\s*'userprofile_lift'/);
+    expect(SCRIPT).toMatch(/profile_note/);
+    expect(SCRIPT).toMatch(/type:\s*'person'/);
+  });
+  it('has both dry-run logging and apply upsert branches', () => {
+    expect(SCRIPT).toMatch(/would upsert profile-lift entity/);
+    expect(SCRIPT).toMatch(/graph\.upsertEntity\(userId,[\s\S]*source:\s*'userprofile_lift'/);
+  });
+  it('summary report includes profileLifted + profileSkipped counters', () => {
+    expect(SCRIPT).toMatch(/profileLifted:\s*\$\{profileLifted\}/);
+    expect(SCRIPT).toMatch(/profileSkipped:\s*\$\{profileSkipped\}/);
+  });
+});
