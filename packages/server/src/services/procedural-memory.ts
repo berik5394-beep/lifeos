@@ -90,6 +90,43 @@ export function isStableInterval(median: number, sd: number, threshold = 0.5): b
   return sd < threshold * median;
 }
 
+/**
+ * Compute peak hour and mass within ±windowSize hours.
+ * Window wraps modulo 24. Returns peakHour=null for empty input.
+ * Deterministic: peak is the hour with highest raw count; ties broken by smaller hour.
+ *
+ * Used by extractTimeOfDayPatterns. Pure — no DB.
+ */
+export function hourHistogramWindow(
+  hours: number[],
+  windowSize = 2,
+): { peakHour: number | null; pct: number } {
+  if (hours.length === 0) return { peakHour: null, pct: 0 };
+  const counts = new Array(24).fill(0) as number[];
+  for (const h of hours) {
+    const hh = ((h % 24) + 24) % 24;
+    counts[Math.floor(hh)]++;
+  }
+
+  // Find the hour with the highest raw count (deterministic: ties go to smaller hour).
+  let peakHour = 0;
+  let peakCount = -1;
+  for (let h = 0; h < 24; h++) {
+    if (counts[h] > peakCount) {
+      peakCount = counts[h];
+      peakHour = h;
+    }
+  }
+
+  // Compute window mass around the peak hour.
+  let mass = 0;
+  for (let d = -windowSize; d <= windowSize; d++) {
+    mass += counts[((peakHour + d) % 24 + 24) % 24];
+  }
+
+  return { peakHour, pct: mass / hours.length };
+}
+
 // ---------------------------------------------------------------------------
 // ProceduralMemory implementation
 // ---------------------------------------------------------------------------
@@ -251,6 +288,102 @@ export async function extractFrequencyPatterns(userId: string): Promise<Pattern[
       console.warn(
         '[procedural] frequency extract failed for entity',
         entity.id,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return patterns;
+}
+
+// ---------------------------------------------------------------------------
+// Extractor: time_of_day
+// ---------------------------------------------------------------------------
+
+/**
+ * For each Habit with >= 14 completed logs, compute hour-of-day histogram
+ * over (a) HabitLog.date interpreted at the log-time hour if available,
+ * (b) Memory events of type='habit_completed' with validAt as wall-clock.
+ *
+ * Mini-version note: HabitLog.date is @db.Date (no time component) — we
+ * fall back to Memory rows where habit completion has a real timestamp.
+ * If neither source yields meaningful hour variance, skip this habit.
+ *
+ * If >=70% of completions fall within ±2h window → Pattern{time_of_day}.
+ * Best-effort: per-habit errors are caught.
+ */
+export async function extractTimeOfDayPatterns(userId: string): Promise<Pattern[]> {
+  const patterns: Pattern[] = [];
+  const habits = await prisma.habit.findMany({
+    where: { userId, active: true },
+    select: { id: true, name: true },
+  });
+
+  if (habits.length === 0) return patterns;
+
+  for (const habit of habits) {
+    try {
+      // Source: Memory rows tagged with habit id in entityRefs OR sourceId.
+      const memRows = await prisma.memory.findMany({
+        where: {
+          userId,
+          OR: [
+            { entityRefs: { has: habit.id } },
+            { sourceId: habit.id },
+          ],
+          type: { in: ['habit_completed', 'event'] },
+        },
+        select: { validAt: true },
+      });
+
+      const hours = memRows.map((r) => r.validAt.getHours());
+      if (hours.length < 14) continue;
+
+      const { peakHour, pct } = hourHistogramWindow(hours, 2);
+      if (peakHour === null || pct < 0.7) continue;
+
+      const observations = hours.length;
+      const confidence = clampConfidence(observations);
+      const payload = { habitId: habit.id, hourMode: peakHour, windowPct: pct };
+      const description = `${habit.name} обычно в ${peakHour}:00 (±2ч)`;
+
+      const existing = await prisma.pattern.findFirst({
+        where: { userId, kind: 'time_of_day', invalidAt: null },
+      });
+
+      let row: Pattern;
+      if (
+        existing &&
+        (existing.payload as { habitId?: string })?.habitId === habit.id
+      ) {
+        row = await prisma.pattern.update({
+          where: { id: existing.id },
+          data: {
+            description,
+            payload,
+            observations,
+            confidence,
+            lastObservedAt: new Date(),
+          },
+        });
+      } else {
+        row = await prisma.pattern.create({
+          data: {
+            userId,
+            kind: 'time_of_day',
+            description,
+            payload,
+            observations,
+            confidence,
+            lastObservedAt: new Date(),
+          },
+        });
+      }
+      patterns.push(row);
+    } catch (err) {
+      console.warn(
+        '[procedural] time_of_day extract failed for habit',
+        habit.id,
         err instanceof Error ? err.message : err,
       );
     }

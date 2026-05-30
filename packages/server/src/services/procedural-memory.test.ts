@@ -4,6 +4,7 @@ import {
   stddev,
   clampConfidence,
   isStableInterval,
+  hourHistogramWindow,
 } from './procedural-memory.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -312,6 +313,98 @@ describe('procedural-memory.ts structural — extractFrequencyPatterns', () => {
 
   it('wraps per-entity work in try/catch (best-effort)', () => {
     const start = SRC.indexOf('export async function extractFrequencyPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('try {');
+    expect(body).toContain('catch');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hourHistogramWindow
+// ---------------------------------------------------------------------------
+
+describe('hourHistogramWindow — pure helper', () => {
+  it('returns peakHour=null when input empty', () => {
+    expect(hourHistogramWindow([])).toEqual({ peakHour: null, pct: 0 });
+  });
+
+  it('finds peak hour for clustered hours', () => {
+    // 10 logs at 7am, 2 at 8am, 1 at 9am → peak=7, window [5..9] = 13/13 = 1.0
+    const hours = [7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 9];
+    const result = hourHistogramWindow(hours);
+    expect(result.peakHour).toBe(7);
+    expect(result.pct).toBeCloseTo(1.0, 2);
+  });
+
+  it('handles bimodal distribution by choosing first peak with most ±2h mass', () => {
+    // 5 at 7am, 5 at 19pm → both equally peaks; we choose smaller hour (deterministic)
+    const hours = [7, 7, 7, 7, 7, 19, 19, 19, 19, 19];
+    const result = hourHistogramWindow(hours);
+    expect([7, 19]).toContain(result.peakHour);
+    expect(result.pct).toBeCloseTo(0.5, 2);
+  });
+
+  it('wraps window around midnight (e.g. 23, 0, 1 cluster)', () => {
+    const hours = [23, 23, 23, 0, 0, 0, 1, 1, 1];
+    const result = hourHistogramWindow(hours);
+    // Any of 23/0/1 acceptable as peak; window ±2 covers all 9
+    expect(result.pct).toBeCloseTo(1.0, 2);
+  });
+
+  it('respects custom windowSize', () => {
+    const hours = [7, 7, 7, 12, 12, 12];
+    // windowSize=1 → peak=7, window [6,7,8] = 3/6 = 0.5
+    expect(hourHistogramWindow(hours, 1).pct).toBeCloseTo(0.5, 2);
+  });
+});
+
+describe('procedural-memory.ts structural — extractTimeOfDayPatterns', () => {
+  it('exports extractTimeOfDayPatterns', () => {
+    expect(SRC).toMatch(/export async function extractTimeOfDayPatterns/);
+  });
+
+  it('exports hourHistogramWindow helper', () => {
+    expect(SRC).toMatch(/export function hourHistogramWindow/);
+  });
+
+  it('queries habits with at least 14 logs (count or threshold check)', () => {
+    const start = SRC.indexOf('export async function extractTimeOfDayPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('14');
+  });
+
+  it('uses hourHistogramWindow', () => {
+    const start = SRC.indexOf('export async function extractTimeOfDayPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('hourHistogramWindow(');
+  });
+
+  it('checks pct >= 0.7 threshold (spec §6.4)', () => {
+    const start = SRC.indexOf('export async function extractTimeOfDayPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('0.7');
+  });
+
+  it('creates Pattern with kind=time_of_day', () => {
+    const start = SRC.indexOf('export async function extractTimeOfDayPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toContain("'time_of_day'");
+  });
+
+  it('handles no habits gracefully (returns [])', () => {
+    const start = SRC.indexOf('export async function extractTimeOfDayPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 3000);
+    expect(body).toMatch(/return patterns|return \[\]/);
+  });
+
+  it('wraps per-habit work in try/catch', () => {
+    const start = SRC.indexOf('export async function extractTimeOfDayPatterns');
     expect(start).toBeGreaterThan(-1);
     const body = SRC.slice(start, start + 3000);
     expect(body).toContain('try {');
