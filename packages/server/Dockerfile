@@ -34,20 +34,13 @@ RUN npx prisma generate
 
 EXPOSE 3000
 
-# Применение миграций перед стартом сервера.
-# Phase A polish 2026-05-31 (#8 Path B): переехали с `db push` на `migrate
-# deploy`. Старый `db push` не вёл audit history (_prisma_migrations) и
-# не применял custom SQL внутри migration files (GIN indexes на
-# entityRefs не доходили до прода — fixed Q5).
-#
-# `migrate deploy` применяет только новые migrations из /prisma/migrations
-# в порядке timestamps, проверяет _prisma_migrations table, идемпотентен.
-# Уже-применённые migrations пропускаются. Все 16 existing migrations
-# baseline'нуты вручную через `migrate resolve --applied` на prod
-# 2026-05-31 (см. docs/RELEASE.md). 2 missing GIN indexes были применены
-# через `db execute --file` на той же сессии — теперь они в проде.
-#
-# pgvector extension ДО migrate deploy: Prisma extensions не ставит,
-# колонка vector(512) без extension не создастся. Сам файл extensions.sql
-# идемпотентен (CREATE EXTENSION IF NOT EXISTS).
-CMD ["sh", "-c", "npx prisma db execute --schema=prisma/schema.prisma --file prisma/extensions.sql && npx prisma migrate deploy --schema=prisma/schema.prisma && node dist/index.js"]
+# Синхронизация схемы перед стартом сервера.
+# `db push` идемпотентен: на свежей БД создаст все таблицы, на существующей
+# добавит недостающие. Без `--accept-data-loss` ничего не удалит и не сломает
+# существующие данные — если возникнет конфликт типов, контейнер упадёт
+# с понятной ошибкой (это лучше тихого runtime-краша).
+# `--skip-generate` потому что клиент уже сгенерирован на build-стадии.
+# Для proper релизов с историей миграций позже переедем на `migrate deploy`.
+# Phase 2.3: pgvector extension ДО db push (db push расширения не ставит,
+# а колонка vector(512) без расширения не создастся). Идемпотентно.
+CMD ["sh", "-c", "npx prisma db execute --schema=prisma/schema.prisma --file prisma/extensions.sql && npx prisma db push --skip-generate && node dist/index.js"]
