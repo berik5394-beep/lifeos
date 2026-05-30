@@ -79,6 +79,32 @@ export function normalizeEntityName(raw: string): string {
  *   - Non-array values → empty arrays
  *   - Invalid JSON → empty arrays (log warn, never throw)
  */
+/**
+ * Self-reference detector — `true` if `name` refers to the user themselves
+ * ("я", "пользователь", "юзер", "user", "себя", own first name).
+ *
+ * Why: extractor often returns the user as a `person` entity ("Я раздражён"
+ * → entity "Я"). Storing this creates duplicates ("Я" / "Берик" / "Пользователь"
+ * — three entities for the same person) and pollutes graph queries. We're
+ * the user; we already know our own context. Skip self-references.
+ *
+ * Pure helper (testable). Called before `upsertEntity`.
+ */
+export function isSelfReference(name: string, userName?: string): boolean {
+  if (!name) return false;
+  const n = name.trim().toLowerCase();
+  const SELF = new Set([
+    'я', 'мне', 'меня', 'мной', 'мною', 'себя', 'себе',
+    'пользователь', 'юзер', 'user', 'i', 'me', 'myself',
+  ]);
+  if (SELF.has(n)) return true;
+  if (userName) {
+    const u = userName.trim().toLowerCase();
+    if (u && n === u) return true;
+  }
+  return false;
+}
+
 export function parseExtractorResponse(raw: string): ExtractorResult {
   const empty: ExtractorResult = { entities: [], relationships: [] };
   if (!raw || !raw.trim()) return empty;
@@ -146,8 +172,9 @@ const SYSTEM_PROMPT = `Ты — аналитик знаний LifeOS. Из со�
 4. importance: 1-3 мелочь, 4-6 средне, 7-10 важно (семья, здоровье, цели).
 5. relationships — только если из текста явно следует связь между двумя entities.
 6. relationship.type из: ${RELATIONSHIP_TYPES.join('|')}.
-7. Если entities нет — верни { "entities": [], "relationships": [] }.
-8. НЕ добавляй объяснений, только JSON.`;
+7. НЕ извлекай самого пользователя ("я", "пользователь", "user", собственное имя владельца) как entity — он known by context; ты пишешь его graph, не его самого.
+8. Если entities нет — верни { "entities": [], "relationships": [] }.
+9. НЕ добавляй объяснений, только JSON.`;
 
 /**
  * Extract entities and relationships from free text via Claude.
@@ -160,6 +187,7 @@ const SYSTEM_PROMPT = `Ты — аналитик знаний LifeOS. Из со�
 export async function extractEntities(
   text: string,
   _userId: string,
+  userName?: string,
 ): Promise<ExtractorResult> {
   const trimmed = text.trim();
   if (!trimmed) return { entities: [], relationships: [] };
@@ -181,17 +209,34 @@ export async function extractEntities(
     const parsed = parseExtractorResponse(content.text);
 
     // Normalize entity names.
-    const normalizedEntities: ExtractedEntityInput[] = parsed.entities.map((e) => ({
-      ...e,
-      name: normalizeEntityName(e.name),
-    }));
+    const normalizedEntities: ExtractedEntityInput[] = parsed.entities
+      .map((e) => ({ ...e, name: normalizeEntityName(e.name) }))
+      // Drop self-references — the user is not an entity in their own graph.
+      .filter((e) => !isSelfReference(e.name, userName));
+
+    // Build a set of dropped names so we can skip relationships involving them.
+    const droppedNames = new Set(
+      parsed.entities
+        .map((e) => normalizeEntityName(e.name))
+        .filter((n) => isSelfReference(n, userName)),
+    );
 
     // Normalize relationship fromName/toName to match normalized entity names.
-    const normalizedRelationships: ExtractedRelationshipInput[] = parsed.relationships.map((r) => ({
-      ...r,
-      fromName: normalizeEntityName(r.fromName),
-      toName: normalizeEntityName(r.toName),
-    }));
+    // Drop relationships that involve a dropped self-reference endpoint —
+    // otherwise upstream will try to upsert "Я" as a person.
+    const normalizedRelationships: ExtractedRelationshipInput[] = parsed.relationships
+      .map((r) => ({
+        ...r,
+        fromName: normalizeEntityName(r.fromName),
+        toName: normalizeEntityName(r.toName),
+      }))
+      .filter(
+        (r) =>
+          !isSelfReference(r.fromName, userName) &&
+          !isSelfReference(r.toName, userName) &&
+          !droppedNames.has(r.fromName) &&
+          !droppedNames.has(r.toName),
+      );
 
     return { entities: normalizedEntities, relationships: normalizedRelationships };
   } catch (err) {

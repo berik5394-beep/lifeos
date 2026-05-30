@@ -52,3 +52,19 @@ describe('v2-capture — analyzeMessage entityRefs propagation (F2 fix)', () => 
     expect(SRC).toMatch(/emotional\.analyzeMessage\(\s*userId,\s*msgId,\s*text,\s*entityRefs/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Q1 (2026-05-31): v2-capture fetches userName + passes to extractEntities
+// ---------------------------------------------------------------------------
+describe('v2-capture — userName fetched for self-ref filter (Q1)', () => {
+  it('fetches user.name via prisma.user.findUnique', () => {
+    expect(SRC).toMatch(/prisma\.user\s*\n?\s*\.findUnique\(\{\s*where:\s*\{\s*id:\s*userId\s*\}/);
+    expect(SRC).toMatch(/select:\s*\{\s*name:\s*true\s*\}/);
+  });
+  it('extractEntities called with userName as 3rd arg', () => {
+    expect(SRC).toMatch(/extractEntities\(\s*text,\s*userId,\s*userName\s*\)/);
+  });
+  it('userName lookup is best-effort (falls back to undefined on error)', () => {
+    expect(SRC).toMatch(/\.catch\(\(\)\s*=>\s*undefined\)/);
+  });
+});

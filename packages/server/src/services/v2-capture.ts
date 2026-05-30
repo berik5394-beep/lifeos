@@ -15,6 +15,7 @@ import { extractEntities } from './entity-extractor.js';
 import { getEntityGraph } from './entity-graph/index.js';
 import { recordEvent } from './episodic-memory.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
+import { prisma } from '../lib/prisma.js';
 import type { JsonValue } from '@prisma/client/runtime/library';
 
 export async function captureV2InBackground(
@@ -26,8 +27,17 @@ export async function captureV2InBackground(
     const graph = getEntityGraph();
     const emotional = getEmotionalMemory();
 
+    // Fetch user.name once for self-reference filtering — extractor uses it
+    // to drop "Я"/"Берик"/etc from the returned entities (Q1 dedup fix).
+    // Best-effort: on lookup failure, fall back to undefined and rely on
+    // the extractor's static SELF set ("я", "пользователь", ...).
+    const userName = await prisma.user
+      .findUnique({ where: { id: userId }, select: { name: true } })
+      .then((u) => u?.name ?? undefined)
+      .catch(() => undefined);
+
     // 1. Extract entities + relationships from message text.
-    const extracted = await extractEntities(text, userId).catch((err) => {
+    const extracted = await extractEntities(text, userId, userName).catch((err) => {
       console.warn('[v2-capture] extractEntities failed:', err);
       return { entities: [], relationships: [] };
     });

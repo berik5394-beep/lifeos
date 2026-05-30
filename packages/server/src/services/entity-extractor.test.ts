@@ -172,3 +172,55 @@ describe('entity-extractor.ts structural — extractEntities async', () => {
     expect(SRC).toMatch(/ТОЛЬКО.*JSON|ONLY.*JSON|valid JSON/s);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Q1 (2026-05-31): isSelfReference + extractor drops self-refs
+// ---------------------------------------------------------------------------
+import { isSelfReference } from './entity-extractor.js';
+
+describe('isSelfReference — pure helper (Q1 coreference dedup)', () => {
+  it('detects Russian self-pronouns', () => {
+    ['я', 'Я', 'меня', 'мне', 'себя', 'себе'].forEach((n) => {
+      expect(isSelfReference(n)).toBe(true);
+    });
+  });
+  it('detects "пользователь" / "юзер" / "user"', () => {
+    ['Пользователь', 'юзер', 'User', 'I', 'me'].forEach((n) => {
+      expect(isSelfReference(n)).toBe(true);
+    });
+  });
+  it('matches the user\'s own first name when provided', () => {
+    expect(isSelfReference('Берик', 'Берик')).toBe(true);
+    expect(isSelfReference('берик', 'Берик')).toBe(true);
+  });
+  it('does NOT match other names', () => {
+    expect(isSelfReference('Роза', 'Берик')).toBe(false);
+    expect(isSelfReference('Серик', 'Берик')).toBe(false);
+    expect(isSelfReference('Дана')).toBe(false);
+  });
+  it('empty/missing inputs are safe', () => {
+    expect(isSelfReference('')).toBe(false);
+    expect(isSelfReference('Роза', undefined)).toBe(false);
+    expect(isSelfReference('Роза', '')).toBe(false);
+  });
+});
+
+describe('entity-extractor.ts structural — Q1 filtering wired', () => {
+  it('extractEntities signature exposes userName param', () => {
+    expect(SRC).toMatch(/extractEntities\s*\(\s*[\s\S]*userName\?:\s*string/);
+  });
+  it('extractor filters entities through isSelfReference', () => {
+    // Scope to the extractEntities function body only (skip parseExtractorResponse).
+    const fn = SRC.slice(SRC.indexOf('export async function extractEntities'));
+    const block = fn.slice(fn.indexOf('parsed.entities'), fn.indexOf('parsed.relationships'));
+    expect(block).toMatch(/isSelfReference/);
+  });
+  it('extractor filters relationships when endpoint is self-ref', () => {
+    const fn = SRC.slice(SRC.indexOf('export async function extractEntities'));
+    const block = fn.slice(fn.indexOf('parsed.relationships'));
+    expect(block).toMatch(/isSelfReference/);
+  });
+  it('SYSTEM_PROMPT instructs Claude to skip user-self', () => {
+    expect(SRC).toMatch(/НЕ извлекай самого пользователя/);
+  });
+});
