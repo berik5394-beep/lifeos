@@ -146,6 +146,45 @@ export function groupByDay(
     }));
 }
 
+/**
+ * Private — local sample stddev so emotional-memory has no cross-module
+ * helper dependency. Mirrors procedural-memory.stddev exactly.
+ */
+function _localStddev(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((s, v) => s + v, 0) / values.length;
+  const variance =
+    values.reduce((s, v) => s + (v - mean) ** 2, 0) / (values.length - 1);
+  return Math.sqrt(variance);
+}
+
+/**
+ * Compute magnitude of mood shift between recent and baseline windows.
+ * magnitude = |recentAvg - baselineAvg| / baselineSd (or raw diff if sd=0
+ * or baseline too small). direction = 'up'|'down'|null.
+ */
+export function computeShiftMagnitude(
+  recent: number[],
+  baseline: number[],
+): { magnitude: number; direction: 'up' | 'down' | null } {
+  if (recent.length === 0) return { magnitude: 0, direction: null };
+  const recentAvg = recent.reduce((s, v) => s + v, 0) / recent.length;
+  if (baseline.length === 0) {
+    if (recentAvg === 0) return { magnitude: 0, direction: null };
+    return {
+      magnitude: Math.abs(recentAvg),
+      direction: recentAvg > 0 ? 'up' : 'down',
+    };
+  }
+  const baselineAvg = baseline.reduce((s, v) => s + v, 0) / baseline.length;
+  const diff = recentAvg - baselineAvg;
+  if (diff === 0) return { magnitude: 0, direction: null };
+
+  const sd = _localStddev(baseline);
+  const magnitude = sd === 0 ? Math.abs(diff) : Math.abs(diff) / sd;
+  return { magnitude, direction: diff > 0 ? 'up' : 'down' };
+}
+
 // ---------------------------------------------------------------------------
 // EmotionalMemory implementation
 // ---------------------------------------------------------------------------
@@ -223,12 +262,36 @@ export class EmotionalMemory implements EmotionalMemoryStore {
     return rows.reduce((s, r) => s + r.valence, 0) / rows.length;
   }
 
-  async detectMoodShift(_userId: string): Promise<{
+  async detectMoodShift(userId: string): Promise<{
     shifted: boolean;
     direction?: 'up' | 'down';
     magnitude?: number;
     sinceDays?: number;
   } | null> {
-    throw new Error('detectMoodShift not yet implemented — Task C3');
+    const now = Date.now();
+    const recentCutoff = new Date(now - 3 * 86_400_000);
+    const baselineCutoff = new Date(now - 17 * 86_400_000); // 14 prior + 3 recent
+    const rows = await prisma.moodSnapshot.findMany({
+      where: {
+        userId,
+        source: 'message',
+        recordedAt: { gte: baselineCutoff },
+      },
+      select: { recordedAt: true, valence: true },
+    });
+
+    const recent = rows.filter((r) => r.recordedAt >= recentCutoff).map((r) => r.valence);
+    const baseline = rows
+      .filter((r) => r.recordedAt < recentCutoff)
+      .map((r) => r.valence);
+
+    if (recent.length < 3 || baseline.length < 5) return null;
+
+    const { magnitude, direction } = computeShiftMagnitude(recent, baseline);
+
+    if (magnitude >= 1.0 && direction) {
+      return { shifted: true, direction, magnitude, sinceDays: 3 };
+    }
+    return { shifted: false };
   }
 }

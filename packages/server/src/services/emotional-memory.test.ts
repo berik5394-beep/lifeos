@@ -280,3 +280,85 @@ describe('emotional-memory.ts structural — getMoodTimeline / getEntityMood', (
     expect(body).toMatch(/return 0|=== 0/);
   });
 });
+
+import { computeShiftMagnitude } from './emotional-memory.js';
+
+describe('computeShiftMagnitude — pure helper', () => {
+  it('returns magnitude 0 and direction null for identical avgs', () => {
+    const r = computeShiftMagnitude([0.5, 0.5], [0.5, 0.5, 0.5]);
+    expect(r.magnitude).toBe(0);
+    expect(r.direction).toBeNull();
+  });
+
+  it('returns positive magnitude for upward shift', () => {
+    const r = computeShiftMagnitude([0.8, 0.9], [0.1, 0.2, 0.0, 0.1, 0.0]);
+    expect(r.magnitude).toBeGreaterThan(0);
+    expect(r.direction).toBe('up');
+  });
+
+  it('returns positive magnitude for downward shift with direction down', () => {
+    const r = computeShiftMagnitude([-0.8, -0.9], [0.1, 0.2, 0.0, 0.1, 0.0]);
+    expect(r.magnitude).toBeGreaterThan(0);
+    expect(r.direction).toBe('down');
+  });
+
+  it('handles zero baseline stddev (all same) by raw diff', () => {
+    const r = computeShiftMagnitude([1.0], [0.5, 0.5, 0.5]);
+    expect(r.magnitude).toBeCloseTo(0.5, 5);
+    expect(r.direction).toBe('up');
+  });
+
+  it('handles small baseline (< 2) by raw diff', () => {
+    const r = computeShiftMagnitude([0.5], [0.0]);
+    expect(r.magnitude).toBeCloseTo(0.5, 5);
+    expect(r.direction).toBe('up');
+  });
+
+  it('handles empty recent (magnitude 0, direction null)', () => {
+    const r = computeShiftMagnitude([], [0.1, 0.2]);
+    expect(r.magnitude).toBe(0);
+    expect(r.direction).toBeNull();
+  });
+});
+
+describe('emotional-memory.ts structural — detectMoodShift', () => {
+  it('exports computeShiftMagnitude helper', () => {
+    expect(SRC).toMatch(/export function computeShiftMagnitude/);
+  });
+
+  it('detectMoodShift queries last ~17 days of snapshots', () => {
+    const start = SRC.indexOf('async detectMoodShift');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toMatch(/17|14[\s\S]*?3/);
+  });
+
+  it('detectMoodShift uses computeShiftMagnitude', () => {
+    const start = SRC.indexOf('async detectMoodShift');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('computeShiftMagnitude(');
+  });
+
+  it('detectMoodShift checks magnitude >= 1.0 threshold', () => {
+    const start = SRC.indexOf('async detectMoodShift');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('1.0');
+  });
+
+  it('detectMoodShift returns null on insufficient data', () => {
+    const start = SRC.indexOf('async detectMoodShift');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('return null');
+  });
+
+  it('detectMoodShift returns { shifted: true, direction, magnitude, sinceDays: 3 } when shifted', () => {
+    const start = SRC.indexOf('async detectMoodShift');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 2000);
+    expect(body).toContain('shifted: true');
+    expect(body).toContain('sinceDays: 3');
+  });
+});
