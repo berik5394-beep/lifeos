@@ -1047,3 +1047,18 @@ model BotIdentity {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// v2.0 Week 6 (spec §9.6) — cron job audit log used for idempotency.
+// Single tiny model shared by mood-retention-cron + pattern-extraction-cron.
+// withCronLock(jobName, intervalMs, userId, fn) writes one row per successful
+// run; "did this run recently?" = findFirst order by ranAt desc.
+// No FK on userId — audit row stays even if user deleted (purely historical).
+model CronJobRun {
+  id      String   @id @default(cuid())
+  jobName String
+  userId  String?
+  ranAt   DateTime @default(now())
+
+  @@index([jobName, ranAt])
+  @@index([userId, jobName, ranAt])
+}
