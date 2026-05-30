@@ -202,3 +202,28 @@ describe('structural — A3 detectors', () => {
     expect(matches.length).toBeGreaterThanOrEqual(5);
   });
 });
+
+describe('structural — A4 gates + filterCandidates', () => {
+  it('exports/uses 4 gates in correct order', () => {
+    expect(SRC).toMatch(/function gate1_DND\s*\(/);
+    expect(SRC).toMatch(/function gate2_RateLimit\s*\(/);
+    // gate3_Significance already exported (A1)
+    expect(SRC).toMatch(/function gate4_Dedup\s*\(/);
+    // order: DND must appear before RateLimit appear before Dedup inside filterCandidates method body
+    // Extract the filterCandidates method starting from "async filterCandidates"
+    const filterCandStart = SRC.indexOf('async filterCandidates');
+    const methodBody = SRC.slice(filterCandStart);
+    expect(methodBody.indexOf('gate1_DND')).toBeLessThan(methodBody.indexOf('gate2_RateLimit'));
+    expect(methodBody.indexOf('gate2_RateLimit')).toBeLessThan(methodBody.indexOf('gate4_Dedup'));
+    // gate3_Significance call should be between gate2 and gate4
+    expect(methodBody.indexOf('gate2_RateLimit')).toBeLessThan(methodBody.indexOf('gate3_Significance'));
+  });
+  it('gate2 caps at 2/day with source filter', () => {
+    expect(SRC).toMatch(/source:\s*'v2-proactivity'/);
+    expect(SRC).toMatch(/<\s*2\b|todayCount\s*<\s*2/);
+  });
+  it('gate4 uses 7-day window on metadata.entityId', () => {
+    expect(SRC).toMatch(/path:\s*\['entityId'\]/);
+    expect(SRC).toMatch(/7\s*\*\s*DAY_MS|subDays\(\s*\w+\s*,\s*7\s*\)/);
+  });
+});

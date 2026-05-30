@@ -136,6 +136,7 @@ import { getProceduralMemory } from './procedural-memory.singleton.js';
 import { lastEventForEntity } from './episodic-memory.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { prisma } from '../lib/prisma.js';
+import { localDayStartUTC, localHour } from '../lib/tz.js';
 
 const DAY_MS = 86_400_000;
 
@@ -320,6 +321,72 @@ async function detectGoalNoProgress(userId: string): Promise<NudgeCandidate[]> {
   }
 }
 
+// ---- Gates (A4) -------------------------------------------------------
+
+async function gate1_DND(userId: string, now: Date): Promise<boolean> {
+  try {
+    const u = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { timezone: true, wakeUpTime: true },
+    });
+    if (!u) return false;
+    const hour = localHour(u.timezone, now);
+    const wakeUpHour = Number(String(u.wakeUpTime).split(':')[0]) || 7;
+    // Quiet: from 22:00 until wakeUpHour the next morning.
+    if (hour >= 22 || hour < wakeUpHour) return false;
+    return true;
+  } catch (err) {
+    console.warn('[v2-proactivity] gate1_DND failed:', err);
+    return false; // fail-closed: when in doubt, do not nudge
+  }
+}
+
+async function gate2_RateLimit(userId: string, now: Date): Promise<boolean> {
+  try {
+    const u = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { timezone: true },
+    });
+    if (!u) return false;
+    const dayStart = localDayStartUTC(u.timezone, now);
+    const todayCount = await prisma.insight.count({
+      where: {
+        userId,
+        source: 'v2-proactivity',
+        createdAt: { gte: dayStart },
+      },
+    });
+    return todayCount < 2;
+  } catch (err) {
+    console.warn('[v2-proactivity] gate2_RateLimit failed:', err);
+    return false;
+  }
+}
+
+async function gate4_Dedup(
+  userId: string,
+  candidate: NudgeCandidate,
+  now: Date,
+): Promise<boolean> {
+  if (!candidate.entityId) return true;
+  try {
+    const cutoff = new Date(now.getTime() - 7 * DAY_MS);
+    const recent = await prisma.insight.findFirst({
+      where: {
+        userId,
+        source: 'v2-proactivity',
+        scope: { path: ['entityId'], equals: candidate.entityId },
+        createdAt: { gte: cutoff },
+      },
+      select: { id: true },
+    });
+    return recent === null;
+  } catch (err) {
+    console.warn('[v2-proactivity] gate4_Dedup failed:', err);
+    return false;
+  }
+}
+
 // ---- Engine class — placeholders (filled in A2-A6) -----------------------
 
 export class V2ProactivityEngine implements ProactivityEngine {
@@ -334,10 +401,21 @@ export class V2ProactivityEngine implements ProactivityEngine {
     throw new Error('not yet implemented — Task A2/A3');
   }
   async filterCandidates(
-    _userId: string,
-    _candidates: NudgeCandidate[],
+    userId: string,
+    candidates: NudgeCandidate[],
   ): Promise<NudgeCandidate[]> {
-    throw new Error('not yet implemented — Task A4');
+    if (candidates.length === 0) return [];
+    const now = new Date();
+    // Gate 1 + 2 are user-scoped, shortcircuit early.
+    if (!(await gate1_DND(userId, now))) return [];
+    if (!(await gate2_RateLimit(userId, now))) return [];
+    const passed: NudgeCandidate[] = [];
+    for (const c of candidates) {
+      if (!gate3_Significance(c)) continue;
+      if (!(await gate4_Dedup(userId, c, now))) continue;
+      passed.push(c);
+    }
+    return passed;
   }
   async generateNudge(
     _userId: string,
