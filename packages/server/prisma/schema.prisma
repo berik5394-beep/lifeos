@@ -94,6 +94,9 @@ model User {
   // Phase 6 C2 — синтезированный «характер» (ПРОИЗВОДНАЯ вьюха над
   // Memory, не параллельная память: Memory = SSOT).
   userProfile            UserProfile?
+  // v2.0 Phase B1 — USER NEST axes
+  userAxes               UserAxes?
+  axisSignals            AxisSignal[]
 }
 
 // Phase 6 C2 — синтезированный профиль личности. ВАЖНО (#4 SSOT):
@@ -1061,4 +1064,46 @@ model CronJobRun {
 
   @@index([jobName, ranAt])
   @@index([userId, jobName, ranAt])
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// v2 Phase B1 — USER NEST Axes (added 2026-05-31)
+// Spec: docs/superpowers/specs/2026-05-31-v2-phase-b1-user-axes-design.md
+// ───────────────────────────────────────────────────────────────────────────
+
+model UserAxes {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 4 axes, all Float in [0, 1], default 0.5 (neutral)
+  selfDiscipline     Float @default(0.5)
+  emotionalOpenness  Float @default(0.5)
+  conflictTolerance  Float @default(0.5)
+  introspectionDepth Float @default(0.5)
+
+  // Provenance
+  signalCount  Int       @default(0)
+  lastSignalAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model AxisSignal {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  msgId      String?
+  axis       String
+  delta      Float
+  confidence Float    @default(0.5)
+  excerpt    String?
+  source     String   @default("claude_classifier")
+  recordedAt DateTime @default(now())
+
+  @@index([userId, axis, recordedAt])
+  @@index([userId, recordedAt])
+  @@index([msgId])
 }
