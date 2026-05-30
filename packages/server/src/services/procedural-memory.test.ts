@@ -177,3 +177,84 @@ describe('procedural-memory.ts structural — skeleton + pure helpers', () => {
     expect(SRC).toMatch(/async invalidateStale\s*\(/);
   });
 });
+
+describe('procedural-memory.ts structural — getActivePatterns / hasPattern / invalidateStale', () => {
+  it('getActivePatterns filters invalidAt IS NULL (active only)', () => {
+    const start = SRC.indexOf('async getActivePatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('invalidAt');
+    expect(body).toContain('null');
+  });
+
+  it('getActivePatterns filters by kinds when provided', () => {
+    const start = SRC.indexOf('async getActivePatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('kinds');
+    expect(body).toContain('in:');
+  });
+
+  it('getActivePatterns filters by minConfidence when provided', () => {
+    const start = SRC.indexOf('async getActivePatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('minConfidence');
+    expect(body).toContain('gte:');
+  });
+
+  it('getActivePatterns orders by confidence DESC', () => {
+    const start = SRC.indexOf('async getActivePatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toMatch(/orderBy[\s\S]*?confidence[\s\S]*?desc/);
+  });
+
+  it('hasPattern uses prisma.pattern.findFirst', () => {
+    const start = SRC.indexOf('async hasPattern');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('prisma.pattern.findFirst');
+  });
+
+  it('hasPattern filters invalidAt IS NULL', () => {
+    const start = SRC.indexOf('async hasPattern');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('invalidAt');
+  });
+
+  it('hasPattern compares payload via JSON.stringify equality', () => {
+    const start = SRC.indexOf('async hasPattern');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('JSON.stringify');
+  });
+
+  it('invalidateStale uses updateMany and sets invalidAt = now', () => {
+    const start = SRC.indexOf('async invalidateStale');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('prisma.pattern.updateMany');
+    expect(body).toContain('invalidAt');
+  });
+
+  it('invalidateStale defaults staleDays to 30', () => {
+    expect(SRC).toMatch(/staleDays\s*=\s*30/);
+  });
+
+  it('invalidateStale filters lastObservedAt < cutoff', () => {
+    const start = SRC.indexOf('async invalidateStale');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('lastObservedAt');
+    expect(body).toContain('lt:');
+  });
+
+  it('invalidateStale returns count (number)', () => {
+    const start = SRC.indexOf('async invalidateStale');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toContain('.count');
+  });
+});

@@ -100,22 +100,59 @@ export class ProceduralMemory implements ProceduralMemoryStore {
   }
 
   async getActivePatterns(
-    _userId: string,
-    _opts?: { kinds?: string[]; minConfidence?: number },
+    userId: string,
+    opts?: { kinds?: string[]; minConfidence?: number },
   ): Promise<Pattern[]> {
-    throw new Error('getActivePatterns not yet implemented — Task B2');
+    return prisma.pattern.findMany({
+      where: {
+        userId,
+        invalidAt: null,
+        ...(opts?.kinds && opts.kinds.length > 0 ? { kind: { in: opts.kinds } } : {}),
+        ...(opts?.minConfidence !== undefined
+          ? { confidence: { gte: opts.minConfidence } }
+          : {}),
+      },
+      orderBy: [{ confidence: 'desc' }, { lastObservedAt: 'desc' }],
+    });
   }
 
   async hasPattern(
-    _userId: string,
-    _kind: string,
-    _payload: object,
+    userId: string,
+    kind: string,
+    payload: object,
   ): Promise<Pattern | null> {
-    throw new Error('hasPattern not yet implemented — Task B2');
+    const target = JSON.stringify(payload);
+    const candidates = await prisma.pattern.findFirst({
+      where: { userId, kind, invalidAt: null },
+      orderBy: { lastObservedAt: 'desc' },
+    });
+    // Fast-path: single candidate compared via JSON.stringify of payload.
+    // For mini-version we accept O(N) scan if multiple rows share kind —
+    // app-level filter avoids leaning on Prisma JSON path queries.
+    if (!candidates) return null;
+    if (JSON.stringify(candidates.payload) === target) return candidates;
+
+    // Scan others (rare — most users have <10 patterns per kind).
+    const all = await prisma.pattern.findMany({
+      where: { userId, kind, invalidAt: null },
+    });
+    for (const row of all) {
+      if (JSON.stringify(row.payload) === target) return row;
+    }
+    return null;
   }
 
-  async invalidateStale(_userId: string, _staleDays = 30): Promise<number> {
-    throw new Error('invalidateStale not yet implemented — Task B2');
+  async invalidateStale(userId: string, staleDays = 30): Promise<number> {
+    const cutoff = new Date(Date.now() - staleDays * 86_400_000);
+    const result = await prisma.pattern.updateMany({
+      where: {
+        userId,
+        invalidAt: null,
+        lastObservedAt: { lt: cutoff },
+      },
+      data: { invalidAt: new Date() },
+    });
+    return result.count;
   }
 }
 
