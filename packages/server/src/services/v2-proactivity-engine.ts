@@ -129,6 +129,93 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
   },
 };
 
+// ---- Detectors (A2-A3) -------------------------------------------------------
+
+import { getEntityGraph } from './entity-graph/index.js';
+import { getProceduralMemory } from './procedural-memory.singleton.js';
+import { lastEventForEntity } from './episodic-memory.js';
+
+const DAY_MS = 86_400_000;
+
+async function detectStaleEntity(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const graph = getEntityGraph();
+    const procedural = getProceduralMemory();
+    const stale = await graph.staleEntities(userId, 7, 5);
+    const out: NudgeCandidate[] = [];
+    const now = Date.now();
+    for (const ent of stale) {
+      const last = await lastEventForEntity(userId, ent.id).catch(() => null);
+      const lastAt = last?.validAt?.getTime() ?? ent.lastSeenAt?.getTime() ?? now;
+      const daysSinceLast = Math.max(1, Math.floor((now - lastAt) / DAY_MS));
+      const patterns = await procedural
+        .getActivePatterns(userId, { kinds: ['frequency'] })
+        .catch(() => []);
+      const freqPattern = patterns.find((p) => {
+        const payload = (p.payload ?? {}) as Record<string, unknown>;
+        return payload.entityId === ent.id;
+      });
+      const period = Number((freqPattern?.payload as Record<string, unknown>)?.periodDays ?? 0);
+      if (period <= 0) continue;
+      const gapRatio = daysSinceLast / period;
+      if (gapRatio < 1.5) continue;
+      const cand: NudgeCandidate = {
+        source: 'stale_entity',
+        significance: 0,
+        entityId: ent.id,
+        patternId: freqPattern?.id,
+        payload: {
+          name: ent.name,
+          daysSinceLast,
+          gapRatio,
+          importance: ent.importance,
+        },
+        toneHint: 'gentle',
+      };
+      cand.significance = scoreSignificance(cand);
+      out.push(cand);
+    }
+    return out;
+  } catch (err) {
+    console.warn('[v2-proactivity] detectStaleEntity failed:', err);
+    return [];
+  }
+}
+
+async function detectCommitmentDue(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const procedural = getProceduralMemory();
+    const patterns = await procedural.getActivePatterns(userId, {
+      kinds: ['commitment'],
+    });
+    const now = Date.now();
+    const out: NudgeCandidate[] = [];
+    for (const p of patterns) {
+      const payload = (p.payload ?? {}) as Record<string, unknown>;
+      const dueAt = payload.dueAt ? new Date(String(payload.dueAt)).getTime() : NaN;
+      if (!Number.isFinite(dueAt) || dueAt > now) continue;
+      const daysOverdue = Math.max(0, Math.floor((now - dueAt) / DAY_MS));
+      const cand: NudgeCandidate = {
+        source: 'commitment_due',
+        significance: 0,
+        patternId: p.id,
+        entityId: (payload.entityId as string) ?? undefined,
+        payload: {
+          commitment: String(payload.text ?? ''),
+          daysOverdue,
+        },
+        toneHint: 'curious',
+      };
+      cand.significance = scoreSignificance(cand);
+      out.push(cand);
+    }
+    return out;
+  } catch (err) {
+    console.warn('[v2-proactivity] detectCommitmentDue failed:', err);
+    return [];
+  }
+}
+
 // ---- Engine class — placeholders (filled in A2-A6) -----------------------
 
 export class V2ProactivityEngine implements ProactivityEngine {

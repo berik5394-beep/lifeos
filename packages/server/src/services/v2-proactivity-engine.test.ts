@@ -161,3 +161,24 @@ describe('structural — module skeleton', () => {
     expect(SRC).toMatch(/not yet implemented — Task A/);
   });
 });
+
+describe('structural — A2 detectors', () => {
+  it('imports getEntityGraph and getProceduralMemory', () => {
+    expect(SRC).toMatch(/from '\.\/entity-graph\/index\.js'/);
+    expect(SRC).toMatch(/from '\.\/procedural-memory\.singleton\.js'/);
+  });
+  it('defines detectStaleEntity', () => {
+    expect(SRC).toMatch(/function detectStaleEntity\s*\(/);
+    expect(SRC).toMatch(/staleEntities\s*\(\s*userId\s*,\s*7\s*,\s*5/);
+    expect(SRC).toMatch(/lastEventForEntity/);
+  });
+  it('defines detectCommitmentDue with overdue calc', () => {
+    expect(SRC).toMatch(/function detectCommitmentDue\s*\(/);
+    expect(SRC).toMatch(/daysOverdue/);
+  });
+  it('each detector is wrapped in try/catch returning []', () => {
+    // crude: count "return []" within ~50 chars of "catch" — two detectors
+    const matches = SRC.match(/catch\s*\([^)]*\)\s*\{[\s\S]{0,120}?return\s*\[\]/g) ?? [];
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+  });
+});
