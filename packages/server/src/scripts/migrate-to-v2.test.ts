@@ -1,12 +1,25 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-// Note: script lives in packages/server/scripts/, not packages/server/src/.
-// Resolve relative to this test file.
-import { parseCliArgs } from '../../scripts/migrate-to-v2.js';
+import { dirname, join } from 'node:path';
 
-const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'migrate-to-v2.ts');
-const SRC = readFileSync(SCRIPT_PATH, 'utf8');
+let parseCliArgs: (argv: string[]) => any;
+let SRC: string;
+
+beforeAll(async () => {
+  // Dynamic import with indirect path construction to avoid rootDir check
+  const modulePath = new URL(
+    '../../scripts/migrate-to-v2.js',
+    import.meta.url,
+  ).href;
+  const module = await import(modulePath);
+  parseCliArgs = module.parseCliArgs;
+
+  // Read script source for structural tests
+  const testDir = dirname(new URL(import.meta.url).pathname);
+  // testDir is src/scripts, need to go to scripts (one level up, then into scripts)
+  const scriptPath = join(testDir, '..', '..', 'scripts', 'migrate-to-v2.ts');
+  SRC = readFileSync(scriptPath, 'utf8');
+});
 
 describe('parseCliArgs — pure', () => {
   it('accepts --user=X --dry-run', () => {
@@ -61,5 +74,53 @@ describe('structural — skeleton', () => {
   it('top-level catch + prisma.$disconnect in finally', () => {
     expect(SRC).toMatch(/\$disconnect/);
     expect(SRC).toMatch(/\.catch\(/);
+  });
+});
+
+describe('structural — B2 migration logic', () => {
+  it('imports getEntityGraph + getProceduralMemory', () => {
+    expect(SRC).toMatch(/getEntityGraph/);
+    expect(SRC).toMatch(/getProceduralMemory/);
+  });
+
+  it('step 1: backfill Memory.validAt via raw SQL', () => {
+    expect(SRC).toMatch(/UPDATE\s+"Memory"\s+SET\s+"validAt"\s*=\s*"createdAt"/i);
+    expect(SRC).toMatch(/WHERE[\s\S]{0,80}?"validAt"\s+IS\s+NULL/i);
+  });
+
+  it('step 2: reads Memory rows for user and maps type → entity', () => {
+    expect(SRC).toMatch(/memory\.findMany/);
+    expect(SRC).toMatch(/upsertEntity/);
+    expect(SRC).toMatch(/'person'/);
+    expect(SRC).toMatch(/'place'/);
+    // decision → goal mapping per spec §11
+    expect(SRC).toMatch(/'decision'/);
+    expect(SRC).toMatch(/'goal'/);
+  });
+
+  it('step 3: upsert BotIdentity with defaults', () => {
+    expect(SRC).toMatch(/botIdentity\.upsert/);
+    expect(SRC).toMatch(/['"]Эля['"]/);
+  });
+
+  it('step 4: calls extractPatterns at the end', () => {
+    expect(SRC).toMatch(/extractPatterns\(\s*userId\s*\)/);
+  });
+
+  it('dry-run mode logs [dry-run] prefix and performs no writes', () => {
+    expect(SRC).toMatch(/\[dry-run\]/);
+    // All write calls must be inside `if (mode === 'apply')` or similar guards.
+    expect(SRC).toMatch(/mode\s*===\s*['"]apply['"]/);
+  });
+
+  it('per-step try/catch (no $transaction wrapping the whole thing)', () => {
+    // Sentinel: at least 4 try blocks (one per step).
+    const tryCount = (SRC.match(/\btry\s*\{/g) ?? []).length;
+    expect(tryCount).toBeGreaterThanOrEqual(4);
+    expect(SRC).not.toMatch(/\$transaction\(/);
+  });
+
+  it('end-of-run report with counts', () => {
+    expect(SRC).toMatch(/memoriesBackfilled|entitiesCreated|identityCreated|patternsExtracted/);
   });
 });

@@ -11,21 +11,18 @@
  *   npx tsx packages/server/scripts/migrate-to-v2.ts --user=<id> --apply
  *
  * What it does (--apply):
- *   1. Backfill Memory.validAt = createdAt for rows where validAt IS NULL.
- *   2. Lift legacy Memory rows into the Entity graph (person/place/decision).
+ *   1. Backfill Memory.validAt = createdAt where NULL.
+ *   2. Lift Memory rows into Entity graph (person/place/decision→goal).
  *   3. Upsert BotIdentity with defaults if not exists.
  *   4. Run getProceduralMemory().extractPatterns(userId) once at end.
  *
- * No $transaction wrapping — Berik's corpus is small (~67 rows). A
- * partial migration is recoverable (re-run is idempotent: validAt
- * backfill is UPDATE WHERE NULL; entity upsert is unique-key based;
- * BotIdentity upsert is by userId).
- *
- * Safety: --apply requires explicit flag; default to printing help.
- * Tests in src/scripts/migrate-to-v2.test.ts (pure parser only — full
- * migration covered by C3 integration test against local Docker DB).
+ * Idempotent — re-run safe. Per-step try/catch; partial failure doesn't
+ * abort the rest. No $transaction (corpus is small, recoverable).
  */
+
 import { PrismaClient } from '@prisma/client';
+import { getEntityGraph } from '../src/services/entity-graph/index.js';
+import { getProceduralMemory } from '../src/services/procedural-memory.singleton.js';
 
 // ---- Pure CLI parser ------------------------------------------------------
 
@@ -49,7 +46,6 @@ export function parseCliArgs(argv: string[]): CliArgs {
     } else if (arg === '--apply') {
       apply = true;
     }
-    // Unknown args are ignored (defensive).
   }
   if (!userId) {
     return {
@@ -63,6 +59,31 @@ export function parseCliArgs(argv: string[]): CliArgs {
     return { error: 'Pick a mode: --dry-run or --apply' };
   }
   return { userId, mode: dryRun ? 'dry-run' : 'apply' };
+}
+
+// ---- Type → entity-type mapping per spec §11 -----------------------------
+
+type MemoryRow = {
+  id: string;
+  type: string;
+  content: string;
+  importance: number;
+};
+
+function mapMemoryToEntity(
+  m: MemoryRow,
+): { type: 'person' | 'place' | 'goal'; name: string; importance: number } | null {
+  switch (m.type) {
+    case 'person':
+      return { type: 'person', name: m.content, importance: m.importance };
+    case 'place':
+      return { type: 'place', name: m.content, importance: m.importance };
+    case 'decision':
+      // Spec §11: decision → goal (long-form intent that needs goal tracking).
+      return { type: 'goal', name: m.content, importance: m.importance };
+    default:
+      return null;
+  }
 }
 
 // ---- Main ----------------------------------------------------------------
@@ -83,24 +104,135 @@ async function main(): Promise<void> {
   const prisma = new PrismaClient();
 
   console.log(`[migrate-to-v2] user=${userId} mode=${mode}`);
+  const tag = mode === 'dry-run' ? '[dry-run]' : '[apply]';
 
+  let memoriesBackfilled = 0;
+  let entitiesCreated = 0;
+  let entitiesSkipped = 0;
+  let identityCreated = false;
+  let patternsExtracted = 0;
+
+  // ---- Step 1: validAt backfill ------------------------------------------
   try {
-    // B2 fills in the real migration logic. B1 only prints what WOULD run.
-    console.log('[migrate-to-v2] (B1 skeleton) — no work performed.');
+    const candidates = await prisma.memory.count({
+      where: { userId, validAt: null as unknown as Date },
+    });
+    console.log(`${tag} step 1: ${candidates} Memory rows with NULL validAt`);
+    if (mode === 'apply' && candidates > 0) {
+      // Raw SQL — Prisma cannot express "SET validAt = createdAt" cleanly.
+      const result = await prisma.$executeRaw`
+        UPDATE "Memory"
+           SET "validAt" = "createdAt"
+         WHERE "userId" = ${userId}
+           AND "validAt" IS NULL
+      `;
+      memoriesBackfilled = Number(result);
+      console.log(`${tag} step 1: backfilled ${memoriesBackfilled} rows`);
+    }
+  } catch (err) {
+    console.warn(`${tag} step 1 failed:`, err);
+  }
+
+  // ---- Step 2: Memory → Entity lift --------------------------------------
+  try {
+    const rows = (await prisma.memory.findMany({
+      where: { userId },
+      select: { id: true, type: true, content: true, importance: true },
+    })) as MemoryRow[];
+    console.log(`${tag} step 2: scanning ${rows.length} Memory rows`);
+    const graph = getEntityGraph();
+    for (const m of rows) {
+      const mapped = mapMemoryToEntity(m);
+      if (!mapped) {
+        entitiesSkipped++;
+        continue;
+      }
+      try {
+        if (mode === 'dry-run') {
+          console.log(
+            `${tag} step 2: would upsert entity type=${mapped.type} name=${JSON.stringify(mapped.name)} importance=${mapped.importance}`,
+          );
+        } else if (mode === 'apply') {
+          await graph.upsertEntity(userId, {
+            type: mapped.type,
+            name: mapped.name,
+            importance: mapped.importance,
+            attributes: {},
+          });
+          entitiesCreated++;
+        }
+      } catch (err) {
+        console.warn(
+          `${tag} step 2: upsert failed for memory.id=${m.id}:`,
+          err,
+        );
+      }
+    }
     console.log(
-      '[migrate-to-v2] Run after B2 lands for the full migration logic.',
+      `${tag} step 2: ${entitiesCreated} upserted, ${entitiesSkipped} skipped (unmapped type)`,
     );
   } catch (err) {
-    console.error('[migrate-to-v2] failed:', err);
-    process.exitCode = 1;
-  } finally {
-    await prisma.$disconnect();
+    console.warn(`${tag} step 2 failed:`, err);
   }
+
+  // ---- Step 3: BotIdentity upsert ----------------------------------------
+  try {
+    if (mode === 'dry-run') {
+      const existing = await prisma.botIdentity.findUnique({ where: { userId } });
+      if (existing) {
+        console.log(`${tag} step 3: BotIdentity exists (botName=${existing.botName}) — no change`);
+      } else {
+        console.log(`${tag} step 3: would upsert BotIdentity { botName: 'Эля', style: 'warm' }`);
+      }
+    } else if (mode === 'apply') {
+      const before = await prisma.botIdentity.findUnique({ where: { userId } });
+      await prisma.botIdentity.upsert({
+        where: { userId },
+        create: { userId, botName: 'Эля', style: 'warm' },
+        update: {},
+      });
+      if (!before) {
+        identityCreated = true;
+        console.log(`${tag} step 3: BotIdentity created`);
+      } else {
+        console.log(`${tag} step 3: BotIdentity exists (botName=${before.botName}) — no change`);
+      }
+    }
+  } catch (err) {
+    console.warn(`${tag} step 3 failed:`, err);
+  }
+
+  // ---- Step 4: extractPatterns -------------------------------------------
+  try {
+    if (mode === 'dry-run') {
+      console.log(`${tag} step 4: would call extractPatterns(${userId})`);
+    } else if (mode === 'apply') {
+      const patterns = await getProceduralMemory().extractPatterns(userId);
+      patternsExtracted = patterns.length;
+      console.log(`${tag} step 4: extracted ${patternsExtracted} patterns`);
+    }
+  } catch (err) {
+    console.warn(`${tag} step 4 failed:`, err);
+  }
+
+  // ---- Report ------------------------------------------------------------
+  console.log('');
+  console.log('=== migrate-to-v2 summary ===');
+  console.log(`user:                ${userId}`);
+  console.log(`mode:                ${mode}`);
+  console.log(`memoriesBackfilled:  ${memoriesBackfilled}`);
+  console.log(`entitiesCreated:     ${entitiesCreated}`);
+  console.log(`entitiesSkipped:     ${entitiesSkipped}`);
+  console.log(`identityCreated:     ${identityCreated}`);
+  console.log(`patternsExtracted:   ${patternsExtracted}`);
+
+  await prisma.$disconnect();
 }
 
-// Only run as entrypoint, not when imported by tests.
-if (process.argv[1]?.endsWith('migrate-to-v2.ts') ||
-    process.argv[1]?.endsWith('migrate-to-v2.js')) {
+if (
+  process.argv[1]?.endsWith('migrate-to-v2.ts') ||
+  process.argv[1]?.endsWith('migrate-to-v2.js')
+) {
   main().catch((e) => {
     console.error('migrate-to-v2 fatal:', e);
     process.exit(1);
