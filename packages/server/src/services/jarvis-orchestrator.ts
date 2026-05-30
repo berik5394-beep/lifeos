@@ -30,6 +30,12 @@ import {
   clearPendingAction,
   readConfirmSignal,
 } from './pending-actions.js';
+import { isV2MemoryEnabled } from '../lib/feature-flags.js';
+import { captureV2InBackground } from './v2-capture.js';
+import {
+  buildV2EnrichmentBlock,
+  fetchV2EnrichmentData,
+} from './v2-enrichment.js';
 
 /**
  * JARVIS Orchestrator — единый мозг. Любое сообщение (текст или
@@ -119,6 +125,7 @@ export function looksCaptureWorthy(text: string): boolean {
 async function captureInBackground(
   userId: string,
   text: string,
+  msgId?: string,
 ): Promise<{ tasks: number; memories: number }> {
   try {
     const user = await prisma.user.findUnique({
@@ -161,6 +168,14 @@ async function captureInBackground(
         importance: m.importance,
       });
       memories++;
+    }
+    // v2.0 Week 5 D3 — dual-write to new memory tiers behind flag.
+    // Fire-and-forget so legacy capture's return time is unchanged;
+    // captureV2InBackground itself has top-level try/catch and never throws.
+    if (isV2MemoryEnabled(userId)) {
+      void captureV2InBackground(userId, text, msgId ?? 'unknown').catch(
+        (err) => console.warn('[v2-capture] hook:', err),
+      );
     }
     return { tasks, memories };
   } catch {
@@ -805,14 +820,26 @@ export async function handleMessage(
   const optIn = gathered?.context.therapeuticMode !== false;
   const finalTherapeutic = therapeuticMode && optIn;
 
-  const system = gathered
+  let system = gathered
     ? buildJarvisPrompt(gathered.context, {
         ...ritualOptsFor(intent, gathered.dayCompletionPercent),
         channel,
         therapeuticMode: finalTherapeutic,
       })
-    : // юзер не найден в БД — крайне маловероятно (есть auth), но не падаем
-      'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
+    : 'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
+
+  // v2.0 Week 5 D3 — additive memory enrichment block (best-effort,
+  // dropped silently on fault → legacy prompt unaffected).
+  if (gathered && isV2MemoryEnabled(userId)) {
+    try {
+      const v2Data = await fetchV2EnrichmentData(userId);
+      if (v2Data) {
+        system = system + '\n\n' + buildV2EnrichmentBlock(v2Data);
+      }
+    } catch (err) {
+      console.warn('[v2-enrichment] hook failed:', err);
+    }
+  }
 
   let reply: string;
   try {
@@ -887,7 +914,7 @@ export async function handleMessage(
   // задачу). Осмысленный ambient-capture («купи продукты», «надо
   // позвонить врачу») сохраняется.
   if (looksCaptureWorthy(text)) {
-    await captureInBackground(userId, text);
+    await captureInBackground(userId, text, String(Date.now()));
   }
 
   // Трекинг интересов (спорт/финансы/...) — fire-and-forget, не ждём.
