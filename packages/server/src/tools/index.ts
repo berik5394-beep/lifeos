@@ -26,6 +26,9 @@ import { getUserProfileTool } from './get-user-profile.js';
 import { sendTelegramTool } from './send-telegram.js';
 import { decomposeGoalTool } from './decompose-goal.js';
 import { applyInsightTool } from './apply-insight.js';
+import { rememberEntityTool } from './remember-entity.js';
+import { linkRelationshipTool } from './link-relationship.js';
+import { suggestGoalTool } from './suggest-goal.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -69,6 +72,10 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   getGoalProgressTool,
   // Phase 6 C2 — синтезированный профиль (read-only).
   getUserProfileTool,
+  // v2.0 Week 5 — memory tools (B1/B2 reversible) + goal (B3 needsConfirm).
+  rememberEntityTool,
+  linkRelationshipTool,
+  suggestGoalTool,
 ];
 
 // L99 #14 fix: load-time dup-name guard. Раньше `new Map(...)` silent
