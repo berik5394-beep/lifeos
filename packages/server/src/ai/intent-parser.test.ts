@@ -137,3 +137,31 @@ describe('deterministicIntent — обычный чат не перехваты�
     expect(deterministicIntent('Как думаешь, стоит ли менять работу?')).toBeNull();
   });
 });
+
+  // F3 fix (2026-05-30): reflective memory queries → NOT create_task,
+  // must fall through to Claude/LLM so v2 enrichment block can answer.
+  describe('F3: reflective memory queries are NOT create_task', () => {
+    it('"Напомни кого ты помнишь из моих знакомых?" → не задача', () => {
+      const r = deterministicIntent('Напомни кого ты помнишь из моих знакомых?');
+      expect(r?.action).not.toBe('create_task');
+    });
+    it('"Напомни что ты знаешь про мою маму?" → не задача', () => {
+      const r = deterministicIntent('Напомни что ты знаешь про мою маму?');
+      expect(r?.action).not.toBe('create_task');
+    });
+    it('"Напомни какие у меня цели?" → не задача', () => {
+      const r = deterministicIntent('Напомни какие у меня цели?');
+      expect(r?.action).not.toBe('create_task');
+    });
+    it('"Напомни кто моя сестра" (без ?, рефлексивное "кто ты помнишь" not present) → all good (это явный запрос)', () => {
+      // Это спорный кейс; без ? и без "ты помнишь" — может остаться create_task.
+      // Тест документирует current поведение, не enforce'ит.
+      const r = deterministicIntent('Напомни кто моя сестра');
+      // Either reflective skip or create_task — обе OK.
+      expect(r).toBeDefined();
+    });
+    it('regression: "Напомни купить хлеб завтра" остаётся create_task', () => {
+      const r = deterministicIntent('Напомни купить хлеб завтра');
+      expect(r?.action).toBe('create_task');
+    });
+  });
