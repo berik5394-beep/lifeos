@@ -892,6 +892,157 @@ mobile platform).
 
 ---
 
+### v2.0-alpha — 2026-05-30 — Memory + Proactivity: cognitive multi-tier (MAJOR)
+**Commit**: `61ec308` (tip of Phase A)
+**Tag-type**: regular alpha — Phase A done, Phase B (Week 8-12) ahead
+
+**Что вошло (Phase A, Weeks 2-7, единая фаза разработки 2026-05-28 … 2026-05-30):**
+
+- **5-tier cognitive memory architecture** (Atkinson-Shiffrin + Tulving model)
+  кастомная имплементация. НЕТ внешних библиотек (Mem0/Zep/Letta/NEST как lib
+  явно отвергнуты scope lock'ом). Pattern-копия из исследовательских
+  проектов, не зависимость.
+
+  - **Tier 1 — WorkingMemory** (`services/working-memory.ts`): in-process
+    bounded queue 50 msgs/user + TTL eviction. Singleton, `_resetForTests`.
+  - **Tier 2 — EpisodicMemory** (`services/episodic-memory.ts`): расширил
+    существующую `Memory` table через `validAt`/`invalidAt`/`entityRefs`/`mood`
+    колонки. API: `recordEvent`, `invalidateEvent`, `getEventsForEntity`,
+    `lastEventForEntity`, `entityFrequency`.
+  - **Tier 3 — Entity Graph** (`services/entity-graph/`): новые таблицы
+    `Entity` + `EntityRelationship` + class `PostgresEntityGraph` с 6
+    методами: `upsertEntity`, `getEntity`, `resolveEntity` (FTS+aliases+
+    embedding fallback), `linkEntities` (idempotent), `getNeighbors`
+    (recursive CTE depth-capped 5), `staleEntities`. `EntityExtractor`
+    через Claude haiku JSON.
+  - **Tier 4 — ProceduralMemory** (`services/procedural-memory.ts`): новая
+    таблица `Pattern`. **Все 5 extractors** (frequency / time_of_day /
+    recurring_topic via greedy cosine clustering ≥0.75 / commitment via
+    Claude haiku / streak_break). Orchestrator `extractPatterns` через
+    `Promise.allSettled`.
+  - **Tier 5 — EmotionalMemory + IdentityService** (`services/emotional-memory.ts`
+    + `services/bot-identity.ts`): новые таблицы `MoodSnapshot` + `BotIdentity`.
+    API: `analyzeMessage` (Claude haiku JSON → valence/arousal/emotion +
+    entityRefs binding), `getMoodTimeline`, `getEntityMood`, `detectMoodShift`
+    (3d vs 14d baseline, magnitude ≥1.0). Identity default «Эля», `/setname`
+    Telegram command, sync с `User.assistantStyle`.
+
+- **Proactivity Engine** (`services/v2-proactivity-engine.ts`): KAIROS-pattern
+  4-gate filter (DND → rate ≤2/day → significance ≥0.6 → dedup 7d), 5
+  candidate detectors (stale_entity, commitment_due, mood_shift, streak_break,
+  goal_no_progress), template-based nudge generator с Claude haiku fallback,
+  `runForUser` orchestrator. Wired в `proactive-scheduler.ts` tick (per-user
+  try/catch, runs BEFORE `deliverTopInsight` на том же tick).
+
+- **3 новых agent tools** в registry: `remember_entity`, `link_relationship`,
+  `suggest_goal` (с `needsConfirm: true` для YearlyGoal creation).
+
+- **WIRING в `jarvis-orchestrator.ts`** (critical, +35/-4 строк):
+  - `captureInBackground` → fire-and-forget `captureV2InBackground` за
+    `isV2MemoryEnabled(userId)`. Legacy `extractFromTranscript` +
+    `captureMemory` НЕ тронуты (dual-write контракт).
+  - `handleMessage` system prompt → conditional append `buildV2EnrichmentBlock`
+    (bot identity, top patterns, recent mood shift, top entities) за тем же
+    флагом. Best-effort try/catch; fault → fallback на legacy prompt.
+
+- **Cron infrastructure** — новая таблица `CronJobRun` (jobName, userId?,
+  ranAt) для idempotency. Два job'а: `mood-retention-cron` (daily aggregate
+  per-msg MoodSnapshot >30 дней в daily_agg + drop per-msg) и
+  `pattern-extraction-cron` (weekly batch `extractPatterns` для активных
+  юзеров). Wired в `proactive-scheduler.ts` tick top через `withCronLock`.
+
+- **Migration script** `scripts/migrate-to-v2.ts` — manual standalone с CLI
+  `--user=<id> --dry-run|--apply`. Lifts legacy Memory rows в Entity,
+  backfills `validAt`, upserts BotIdentity, runs `extractPatterns` once.
+  Per-step try/catch, no $transaction.
+
+- **3 structural integration tests** (`src/__integration__/v2-{consolidation,
+  proactivity,migration}-flow.test.ts`) — verify wiring chains, не E2E с
+  live Claude.
+
+- **5 новых Prisma models** (Entity, EntityRelationship, Pattern, MoodSnapshot,
+  BotIdentity) + 1 для cron (CronJobRun) = 6 моделей. Migration applied
+  через Railway `prisma db push` в Dockerfile. Локально применена через
+  Docker postgres+pgvector (`packages/server/docker-compose.dev.yml`).
+
+- **Feature flags** в `lib/feature-flags.ts`:
+  - `FEATURE_V2_MEMORY` (per-user list или `all`)
+  - `FEATURE_V2_PROACTIVITY` (то же)
+  - `FEATURE_V2_CRON` (глобальный bool)
+  Default OFF — поведение бота byte-identical pre-Week-5 для всех.
+
+- **Rollout — Berik+Aydana активированы 2026-05-30** (override spec §13
+  timeline которая предполагала Berik 4д solo сначала). Берик подтвердил
+  «не жалея Aydana». Migration script НЕ запускался — cold start.
+
+- **3 фикса (F1/F2/F3) post-rollout** (2026-05-30):
+  - F1: удалена bogus task "кого ты помнишь..." созданная legacy intent
+    parser до F3 fix.
+  - F2: `MoodSnapshot.entityRefs` — `analyzeMessage` теперь принимает
+    optional `entityRefs[]` parameter, v2-capture передаёт уже-извлечённые
+    entity IDs. Раньше: всегда `[]`. Теперь: реально связано.
+  - F3: рефлексивные вопросы ("Напомни кого ты помнишь?") больше не
+    matched как `create_task` в `intent-parser.ts`. Guard: `.endsWith('?')`
+    OR `^(кого|что|какие|кто|какой|какая|какое|сколько) (ты|вы)
+    (помнишь|знаешь|можешь)` regex.
+
+**Numbers**:
+- **88 atomic commits** (Week 2-6) + 2 fix commits (Week 7) + progress
+  trackers
+- **846 → 1371 tests pass** (+525 over 3 days, all green, tsc clean)
+- **0 `vi.mock`** в проекте (verified в каждой неделе)
+- **+12 new files** созданы под `services/` + `tools/` + `scripts/` +
+  `__integration__/`
+- **1 prod file editied** (`jarvis-orchestrator.ts`, ровно 35/-4 строк за
+  flag)
+
+**Architectural findings (записаны в memory `v2_memory_proactivity_scope.md`)**:
+- **DUAL ACCOUNT GOTCHA** — Berik имеет 2 User row (email-bound +
+  Telegram-bound). При flag flip используй Telegram-bound через
+  `Integration` table or recent `ChatMessage`.
+- **THREE-SOURCE BOT KNOWLEDGE** — бот merge'ит legacy `Memory` + existing
+  `UserProfile` (psycho-profile от life-truth-analyzer Phase 6) + v2
+  `Entity/Mood`. Не дублирует, дополняет.
+
+**Breaking changes**: нет. Dual-write контракт сохранил legacy. Flags off
+по умолчанию.
+
+**Known limitations / Phase B backlog**:
+- Entity coreference dedup — `Я`/`Берик`/`Пользователь` создают 3 разных
+  Entity вместо одного canonical.
+- `UserProfile.relationships` → v2 Entity lift не сделан в migration
+  script (Серик/Друг остаются только в profile).
+- Voyage embeddings 429 rate-limit без payment — best-effort, новые
+  entities не embedding'утся пока.
+- Railway Dockerfile использует `prisma db push --skip-generate` а не
+  `migrate deploy`. GIN indexes из migration SQL не применяются в проде
+  (backlog: переключить Dockerfile или manual SQL apply).
+- Cold start — нет ещё накопленных patterns/stale entities, поэтому
+  `runForUser` outputs 0 nudges первые дни. Ожидаемо.
+- `migrate-to-v2.ts` НЕ запускался в проде — старые `Memory` rows не
+  lifted в `Entity` (только новые сообщения после flag-on создают
+  entities).
+
+**Migration notes**:
+- Old chat pipeline продолжает работать без изменений (flags off).
+- Rollback path: `FEATURE_V2_MEMORY=none, FEATURE_V2_PROACTIVITY=none,
+  FEATURE_V2_CRON=false` → behavior byte-identical pre-v2.
+
+**Verified в проде** (2026-05-30, Telegram SMOKE Berik):
+- `/setname Соя` → BotIdentity persisted, бот именует себя «Соя» ✅
+- `Помни, мою маму зовут Роза, живёт в Алматы` → Entity{Роза,person,imp9} +
+  Entity{Алматы,place,imp7} + EntityRelationship{Роза lives_in Алматы,
+  strength 0.95} + MoodSnapshot{neutral} ✅
+- `моя сестра Дана раздражает меня` → Entity{Дана,person,imp8} +
+  MoodSnapshot{valence=-0.6, arousal=0.7, emotion=angry,
+  entityRefs=[Дана,Раздражение,Я]} (F2 verified) ✅
+- `Напомни кого ты помнишь?` → бот merge ответ из v2 Entity + UserProfile
+  relationships, НЕ создал create_task (F3 verified) ✅
+- Cron logs `[cron:mood-retention] tick: ran` + `[cron:pattern-extraction]
+  starting sweep for 2 active users` ✅
+
+---
+
 ### Шаблон для следующих записей
 
 ```
