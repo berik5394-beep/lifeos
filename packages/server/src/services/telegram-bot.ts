@@ -6,6 +6,9 @@ import { prisma } from '../lib/prisma.js';
 import { transcribeAudio } from './dictation-service.js';
 import { handleMessage } from './jarvis-orchestrator.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
+import { getUserAxesStore } from './user-axes/index.js';
+import { axisLabel, type AxisName } from './user-axes/index.js';
+import { isV2AxesEnabled } from '../lib/feature-flags.js';
 
 /**
  * LifeOS Telegram Bot — полноценный JARVIS в Telegram.
@@ -215,6 +218,31 @@ export function createTelegramBot(): Telegraf {
     }
   });
 
+  // v2 Phase B1 — /axes transparency command
+  bot.command('axes', async (ctx) => {
+    if (!ctx.message) return;
+    try {
+      const chatId = String(ctx.chat?.id);
+      const from = ctx.from;
+      if (!chatId || !from) return;
+      const userId = await findOrCreateUser(
+        chatId,
+        from.id,
+        from.first_name || '',
+        from.username,
+      );
+      if (!isV2AxesEnabled(userId)) {
+        await ctx.reply('Личностные оси выключены для тебя. Спроси админа подключить FEATURE_V2_AXES.');
+        return;
+      }
+      const text = await formatAxesForTelegram(userId);
+      await ctx.reply(text);
+    } catch (err) {
+      console.warn('[telegram:axes] failed:', err);
+      await ctx.reply('Не получилось получить axes. Попробуй позже.');
+    }
+  });
+
   // Голосовое → транскрипция → ОРКЕСТРАТОР (не всегда диктофон!).
   // Раньше голос всегда шёл в processDictation (просто запись задач) —
   // это и делало бота "блокнотом". Теперь: расшифровали → отдали мозгу,
@@ -338,6 +366,44 @@ function splitForTelegram(text: string): string[] {
   }
   if (rest.length > 0) chunks.push(rest);
   return chunks;
+}
+
+async function formatAxesForTelegram(userId: string): Promise<string> {
+  const axes = await getUserAxesStore().getAxes(userId);
+  const labels: Array<[string, AxisName, number, string]> = [
+    ['🎯', 'self_discipline', axes.selfDiscipline, 'self-discipline'],
+    ['💖', 'emotional_openness', axes.emotionalOpenness, 'emotional-openness'],
+    ['🥊', 'conflict_tolerance', axes.conflictTolerance, 'conflict-tolerance'],
+    ['🔍', 'introspection_depth', axes.introspectionDepth, 'introspection-depth'],
+  ];
+
+  const lines: string[] = ['Твои личностные оси (continuous 0..1):', ''];
+  for (const [emoji, axisName, value, displayName] of labels) {
+    lines.push(`${emoji} ${displayName}: ${value.toFixed(2)} (${axisLabel(value)})`);
+    const recent = await getUserAxesStore().recentSignals(userId, axisName, 3);
+    if (recent.length > 0) {
+      lines.push('   Свежие сигналы:');
+      for (const s of recent) {
+        const sign = s.delta >= 0 ? '+' : '';
+        const when = relativeDate(s.recordedAt);
+        const exc = s.excerpt ? ` «${s.excerpt.slice(0, 50)}»` : '';
+        lines.push(`   • ${sign}${s.delta.toFixed(2)}${exc} (${when})`);
+      }
+    }
+    lines.push('');
+  }
+  lines.push(`Всего сигналов: ${axes.signalCount}`);
+  return lines.join('\n').trim();
+}
+
+function relativeDate(d: Date): string {
+  const diffMs = Date.now() - d.getTime();
+  const diffDays = Math.floor(diffMs / 86400_000);
+  if (diffDays === 0) return 'сегодня';
+  if (diffDays === 1) return 'вчера';
+  if (diffDays < 7) return `${diffDays} дней назад`;
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} нед. назад`;
+  return d.toISOString().slice(0, 10);
 }
 
 let activeBot: Telegraf | null = null;
