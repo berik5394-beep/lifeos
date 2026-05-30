@@ -5,6 +5,8 @@ import {
   clampConfidence,
   isStableInterval,
   hourHistogramWindow,
+  cosineSimilarity,
+  greedyCluster,
 } from './procedural-memory.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -407,6 +409,154 @@ describe('procedural-memory.ts structural — extractTimeOfDayPatterns', () => {
     const start = SRC.indexOf('export async function extractTimeOfDayPatterns');
     expect(start).toBeGreaterThan(-1);
     const body = SRC.slice(start, start + 3000);
+    expect(body).toContain('try {');
+    expect(body).toContain('catch');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cosineSimilarity
+// ---------------------------------------------------------------------------
+
+describe('cosineSimilarity — pure helper', () => {
+  it('returns 1 for identical vectors', () => {
+    expect(cosineSimilarity([1, 0, 0], [1, 0, 0])).toBeCloseTo(1, 5);
+  });
+
+  it('returns 0 for orthogonal vectors', () => {
+    expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0, 5);
+  });
+
+  it('returns -1 for opposite vectors', () => {
+    expect(cosineSimilarity([1, 0], [-1, 0])).toBeCloseTo(-1, 5);
+  });
+
+  it('returns 0 if either vector is zero', () => {
+    expect(cosineSimilarity([0, 0], [1, 1])).toBe(0);
+    expect(cosineSimilarity([1, 1], [0, 0])).toBe(0);
+  });
+
+  it('returns 0 if lengths differ', () => {
+    expect(cosineSimilarity([1, 0], [1, 0, 0])).toBe(0);
+  });
+
+  it('handles normalized 3D vectors correctly', () => {
+    expect(cosineSimilarity([3, 4, 0], [3, 4, 0])).toBeCloseTo(1, 5);
+    expect(cosineSimilarity([3, 4, 0], [4, 3, 0])).toBeCloseTo(0.96, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// greedyCluster
+// ---------------------------------------------------------------------------
+
+describe('greedyCluster — pure helper', () => {
+  it('returns no clusters for empty input', () => {
+    expect(greedyCluster([])).toEqual([]);
+  });
+
+  it('places a single vector into one cluster', () => {
+    const clusters = greedyCluster([[1, 0, 0]]);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].memberIndexes).toEqual([0]);
+  });
+
+  it('groups similar vectors into one cluster (cos >= 0.75)', () => {
+    const clusters = greedyCluster([
+      [1, 0, 0],
+      [0.9, 0.1, 0],
+      [0.95, 0.05, 0],
+    ]);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].memberIndexes).toEqual([0, 1, 2]);
+  });
+
+  it('separates dissimilar vectors into different clusters', () => {
+    const clusters = greedyCluster([
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+    ]);
+    expect(clusters).toHaveLength(3);
+  });
+
+  it('respects custom threshold', () => {
+    const a = [1, 0];
+    const b = [0.7071, 0.7071];
+    expect(greedyCluster([a, b], 0.6)).toHaveLength(1);
+    expect(greedyCluster([a, b], 0.8)).toHaveLength(2);
+  });
+
+  it('updates centroid as running mean', () => {
+    const clusters = greedyCluster([
+      [1, 0],
+      [1, 0],
+    ]);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].centroid[0]).toBeCloseTo(1, 5);
+    expect(clusters[0].centroid[1]).toBeCloseTo(0, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractRecurringTopicPatterns structural tests
+// ---------------------------------------------------------------------------
+
+describe('procedural-memory.ts structural — extractRecurringTopicPatterns', () => {
+  it('exports extractRecurringTopicPatterns', () => {
+    expect(SRC).toMatch(/export async function extractRecurringTopicPatterns/);
+  });
+
+  it('exports cosineSimilarity helper', () => {
+    expect(SRC).toMatch(/export function cosineSimilarity/);
+  });
+
+  it('exports greedyCluster helper', () => {
+    expect(SRC).toMatch(/export function greedyCluster/);
+  });
+
+  it('filters entities by importance >= 7', () => {
+    const start = SRC.indexOf('export async function extractRecurringTopicPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('importance');
+    expect(body).toContain('7');
+  });
+
+  it('uses $queryRawUnsafe to read embeddings (pgvector Unsupported)', () => {
+    const start = SRC.indexOf('export async function extractRecurringTopicPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('$queryRawUnsafe');
+    expect(body).toContain('embedding');
+  });
+
+  it('calls greedyCluster with cosine threshold ~0.75', () => {
+    const start = SRC.indexOf('export async function extractRecurringTopicPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('greedyCluster(');
+    expect(body).toContain('0.75');
+  });
+
+  it('requires cluster size >= 3 (spec §6.4)', () => {
+    const start = SRC.indexOf('export async function extractRecurringTopicPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('>= 3');
+  });
+
+  it('creates Pattern with kind=recurring_topic', () => {
+    const start = SRC.indexOf('export async function extractRecurringTopicPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain("'recurring_topic'");
+  });
+
+  it('wraps per-entity work in try/catch', () => {
+    const start = SRC.indexOf('export async function extractRecurringTopicPatterns');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 4000);
     expect(body).toContain('try {');
     expect(body).toContain('catch');
   });

@@ -127,6 +127,59 @@ export function hourHistogramWindow(
   return { peakHour, pct: mass / hours.length };
 }
 
+/**
+ * Standard cosine similarity in [-1, 1]. Returns 0 if either vector
+ * is zero or lengths differ.
+ */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    na += a[i] * a[i];
+    nb += b[i] * b[i];
+  }
+  if (na === 0 || nb === 0) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+/**
+ * Greedy single-pass clustering over vectors with cosine threshold.
+ * Deterministic: order-dependent (first cluster matched wins).
+ * Centroid is running mean of members.
+ *
+ * Mini-version of k-means/HDBSCAN: faster, no convergence loop, fits
+ * Phase A budget (<100 vectors per entity).
+ */
+export function greedyCluster(
+  vectors: number[][],
+  threshold = 0.75,
+): Array<{ memberIndexes: number[]; centroid: number[] }> {
+  const clusters: Array<{ memberIndexes: number[]; centroid: number[] }> = [];
+  for (let i = 0; i < vectors.length; i++) {
+    const vec = vectors[i];
+    let placed = false;
+    for (const c of clusters) {
+      if (cosineSimilarity(c.centroid, vec) >= threshold) {
+        // Add member and update centroid as running mean.
+        c.memberIndexes.push(i);
+        const n = c.memberIndexes.length;
+        for (let d = 0; d < c.centroid.length; d++) {
+          c.centroid[d] = c.centroid[d] + (vec[d] - c.centroid[d]) / n;
+        }
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      clusters.push({ memberIndexes: [i], centroid: [...vec] });
+    }
+  }
+  return clusters;
+}
+
 // ---------------------------------------------------------------------------
 // ProceduralMemory implementation
 // ---------------------------------------------------------------------------
@@ -384,6 +437,151 @@ export async function extractTimeOfDayPatterns(userId: string): Promise<Pattern[
       console.warn(
         '[procedural] time_of_day extract failed for habit',
         habit.id,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  return patterns;
+}
+
+// ---------------------------------------------------------------------------
+// Extractor: recurring_topic (greedy cosine clustering)
+// ---------------------------------------------------------------------------
+
+type EmbRow = { id: string; content: string; validAt: Date; embedding: number[] | null };
+
+/**
+ * For each Entity with importance >= 7 and >1 event/week baseline, cluster
+ * the entity's recent Memory.embedding rows with greedy cosine (threshold
+ * 0.75). Any cluster of size >= 3 → Pattern{recurring_topic}.
+ *
+ * Mini-version: no k-means/HDBSCAN. Best-effort: per-entity errors caught.
+ */
+export async function extractRecurringTopicPatterns(userId: string): Promise<Pattern[]> {
+  const patterns: Pattern[] = [];
+  const entities = await prisma.entity.findMany({
+    where: { userId, importance: { gte: 7 } },
+    select: { id: true, name: true, createdAt: true },
+  });
+
+  if (entities.length === 0) return patterns;
+
+  const cutoff = new Date(Date.now() - 90 * 86_400_000);
+
+  for (const entity of entities) {
+    try {
+      // Baseline frequency check: events / weeks-active. Skip if < 1/week.
+      const totalEvents = await prisma.memory.count({
+        where: { userId, entityRefs: { has: entity.id } },
+      });
+      const weeksActive = Math.max(
+        1,
+        (Date.now() - entity.createdAt.getTime()) / (7 * 86_400_000),
+      );
+      if (totalEvents / weeksActive < 1) continue;
+
+      // Pull embeddings via raw SQL (pgvector type is Unsupported in Prisma).
+      const rows = await prisma.$queryRawUnsafe<EmbRow[]>(
+        `SELECT id, content, "validAt", embedding::text AS embedding
+         FROM "Memory"
+         WHERE "userId" = $1
+           AND $2 = ANY("entityRefs")
+           AND "validAt" >= $3
+           AND embedding IS NOT NULL
+         ORDER BY "validAt" DESC
+         LIMIT 100`,
+        userId,
+        entity.id,
+        cutoff,
+      );
+
+      if (rows.length < 3) continue;
+
+      const parsedVectors: number[][] = [];
+      const meta: Array<{ id: string; content: string }> = [];
+      for (const r of rows) {
+        const raw = r.embedding as unknown as string | null;
+        if (!raw || typeof raw !== 'string') continue;
+        // pgvector text format: "[0.1,0.2,...]"
+        try {
+          const vec = raw
+            .replace(/^\[/, '')
+            .replace(/\]$/, '')
+            .split(',')
+            .map((s) => Number(s.trim()));
+          if (vec.length === 0 || vec.some((v) => Number.isNaN(v))) continue;
+          parsedVectors.push(vec);
+          meta.push({ id: r.id, content: r.content });
+        } catch {
+          continue;
+        }
+      }
+
+      if (parsedVectors.length < 3) continue;
+
+      const clusters = greedyCluster(parsedVectors, 0.75);
+
+      for (let ci = 0; ci < clusters.length; ci++) {
+        const c = clusters[ci];
+        // Require cluster size >= 3 (spec §6.4)
+        if (!(c.memberIndexes.length >= 3)) continue;
+
+        const observations = c.memberIndexes.length;
+        const confidence = clampConfidence(observations);
+        const sampleContents = c.memberIndexes
+          .slice(0, 2)
+          .map((i) => meta[i].content.slice(0, 120));
+
+        const payload = {
+          entityId: entity.id,
+          clusterIndex: ci,
+          centroidPreview: c.centroid.slice(0, 8),
+          size: observations,
+          sampleContents,
+        };
+        const description = `повторяющаяся тема вокруг ${entity.name} (${observations} событий)`;
+
+        const existing = await prisma.pattern.findFirst({
+          where: { userId, kind: 'recurring_topic', invalidAt: null },
+        });
+
+        let row: Pattern;
+        if (
+          existing &&
+          (existing.payload as { entityId?: string; clusterIndex?: number })?.entityId ===
+            entity.id &&
+          (existing.payload as { clusterIndex?: number })?.clusterIndex === ci
+        ) {
+          row = await prisma.pattern.update({
+            where: { id: existing.id },
+            data: {
+              description,
+              payload,
+              observations,
+              confidence,
+              lastObservedAt: new Date(),
+            },
+          });
+        } else {
+          row = await prisma.pattern.create({
+            data: {
+              userId,
+              kind: 'recurring_topic',
+              description,
+              payload,
+              observations,
+              confidence,
+              lastObservedAt: new Date(),
+            },
+          });
+        }
+        patterns.push(row);
+      }
+    } catch (err) {
+      console.warn(
+        '[procedural] recurring_topic extract failed for entity',
+        entity.id,
         err instanceof Error ? err.message : err,
       );
     }
