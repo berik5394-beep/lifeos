@@ -41,6 +41,8 @@ import { getUserAxesStore } from './user-axes/index.js';
 import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
+import { isV2HermesEnabled } from '../lib/feature-flags.js';
+import { routeToSkill, buildSkillInstruction, getHermesStore } from './hermes/index.js';
 
 /**
  * JARVIS Orchestrator — единый мозг. Любое сообщение (текст или
@@ -857,6 +859,31 @@ export async function handleMessage(
     }
   }
 
+  // v2 Phase B4 — Hermes: if the message routes to a saved skill, seed the
+  // agent turn with the skill's plan. The existing loop executes it, so
+  // money/write steps still hit their normal confirm gates. Best-effort.
+  let hermesForceTools = false;
+  if (isV2HermesEnabled(userId)) {
+    try {
+      const skills = await getHermesStore().activeSkills(userId);
+      const matched = await routeToSkill(userId, text, skills);
+      if (matched) {
+        const spec = {
+          name: matched.name,
+          description: matched.description,
+          triggers: matched.triggers,
+          plan: matched.plan as unknown as { toolName: string }[],
+          synthesis: matched.synthesis,
+        };
+        system = system + '\n\n' + buildSkillInstruction(spec as any);
+        hermesForceTools = true;
+        void getHermesStore().bumpUsage(matched.id);
+      }
+    } catch (err) {
+      console.warn('[hermes:run-seed] failed:', err);
+    }
+  }
+
   let reply: string;
   try {
     reply = await runAgent({
@@ -870,7 +897,7 @@ export async function handleMessage(
       // («расскажи анекдот») они только грузят запрос (7 схем + риск
       // web_search+tools combo) без пользы. Включаем когда сообщение
       // правдоподобно требует данных/действия юзера.
-      localTools: mayNeedLocalTools(text),
+      localTools: hermesForceTools || mayNeedLocalTools(text),
       userId,
     });
   } catch (agentErr) {
