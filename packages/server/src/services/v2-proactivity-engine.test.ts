@@ -122,20 +122,26 @@ describe('interpolate — pure', () => {
 });
 
 describe('TEMPLATES — table', () => {
-  it('covers all 5 sources', () => {
+  it('covers all 6 sources', () => {
     expect(Object.keys(TEMPLATES).sort()).toEqual(
       [
         'commitment_due',
         'goal_no_progress',
+        'identity_growth',
         'mood_shift',
         'stale_entity',
         'streak_break',
       ].sort(),
     );
   });
-  it('each source has at least one tone template', () => {
-    for (const src of Object.values(TEMPLATES)) {
-      expect(Object.keys(src).length).toBeGreaterThan(0);
+  it('each source (except identity_growth) has at least one tone template', () => {
+    for (const [src, templates] of Object.entries(TEMPLATES)) {
+      if (src === 'identity_growth') {
+        // identity_growth uses growth narrative, not templates
+        expect(Object.keys(templates).length).toBe(0);
+      } else {
+        expect(Object.keys(templates).length).toBeGreaterThan(0);
+      }
     }
   });
 });
@@ -269,5 +275,33 @@ describe('structural — A6 runForUser + detectCandidates orchestrator', () => {
     expect(SRC).toMatch(/candidatesFound/);
     expect(SRC).toMatch(/candidatesAfterFilter/);
     expect(SRC).toMatch(/nudgesDelivered/);
+  });
+});
+
+describe('v2-proactivity-engine — identity growth detector (B2 D2)', () => {
+  it('detectIdentityGrowth defined', () => {
+    expect(SRC).toMatch(/detectIdentityGrowth/);
+  });
+  it('uses getBotTraitsStore snapshotHistory', () => {
+    const start = SRC.indexOf('detectIdentityGrowth');
+    const body = SRC.slice(start, start + 2500);
+    expect(body).toContain('getBotTraitsStore');
+    expect(body).toContain('snapshotHistory');
+  });
+  it('30-day dedup via Insight kind=identity_growth', () => {
+    const start = SRC.indexOf('detectIdentityGrowth');
+    const body = SRC.slice(start, start + 2500);
+    expect(body).toContain('identity_growth');
+    expect(body).toMatch(/30/);
+  });
+  it('depth-shift threshold 0.15', () => {
+    const start = SRC.indexOf('detectIdentityGrowth');
+    const body = SRC.slice(start, start + 2500);
+    expect(body).toMatch(/0\.15/);
+  });
+  it('wired into detectCandidates', () => {
+    const start = SRC.indexOf('async detectCandidates');
+    const body = SRC.slice(start, start + 2500);
+    expect(body).toContain('detectIdentityGrowth');
   });
 });

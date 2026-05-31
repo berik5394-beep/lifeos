@@ -5,7 +5,7 @@
  * memory tiers (semantic / episodic / procedural / emotional). Runs per
  * scheduler tick (every 10 min, behind FEATURE_V2_PROACTIVITY flag).
  *
- * Flow: runForUser → detectCandidates (5 detectors) → filterCandidates
+ * Flow: runForUser → detectCandidates (6 detectors) → filterCandidates
  * (4 gates in order: DND, RateLimit, Significance, Dedup) → pick top by
  * significance → generateNudge (template lookup → Claude haiku fallback)
  * → deliverTopInsight (existing R6 push pipeline).
@@ -21,7 +21,8 @@ export type NudgeSource =
   | 'commitment_due'
   | 'mood_shift'
   | 'streak_break'
-  | 'goal_no_progress';
+  | 'goal_no_progress'
+  | 'identity_growth';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -72,6 +73,10 @@ export function scoreSignificance(c: NudgeCandidate): number {
     case 'goal_no_progress': {
       const daysSilent = Number(c.payload.daysSilent ?? 0);
       return Math.min(1, daysSilent / 14);
+    }
+    case 'identity_growth': {
+      const depthShift = Number(c.payload.depthShift ?? 0);
+      return Math.min(1, depthShift * 3);
     }
   }
 }
@@ -127,6 +132,10 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     gentle:
       'Давно не двигали «{{goal}}». Скорректировать или отпустить?',
   },
+  identity_growth: {
+    // identity_growth uses growth narrative (Claude haiku), not templates.
+    // Leave empty to skip template lookup in generateNudge.
+  },
 };
 
 // ---- Detectors (A2-A3) -------------------------------------------------------
@@ -141,6 +150,8 @@ import { runAgent } from './claude-agent.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { persistCandidates } from './insight-store.js';
 import type { InsightCandidate } from './insight-core.js';
+import { getBotTraitsStore } from './bot-traits/index.js';
+import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
 
 const DAY_MS = 86_400_000;
 
@@ -296,6 +307,45 @@ async function detectStreakBreak(userId: string): Promise<NudgeCandidate[]> {
   }
 }
 
+async function detectIdentityGrowth(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const store = getBotTraitsStore();
+    const history = await store.snapshotHistory(userId, 50);
+    if (history.length < 2) return [];
+    const current = await store.getTraits(userId);
+
+    // 30-day dedup: last identity_growth comment.
+    const lastComment = await prisma.insight.findFirst({
+      where: { userId, source: 'v2-proactivity', kind: 'identity_growth' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const daysSince = lastComment
+      ? (Date.now() - lastComment.createdAt.getTime()) / 86400_000
+      : Infinity;
+    if (daysSince < 30) return [];
+
+    // Baseline = first snapshot after last comment, else oldest snapshot.
+    const baseline = lastComment
+      ? history.find((h) => h.recordedAt > lastComment.createdAt) ?? history[0]
+      : history[0];
+    const depthShift = current.relationshipDepth - baseline.depth;
+    if (depthShift < 0.15) return [];
+
+    const cand: NudgeCandidate = {
+      source: 'identity_growth',
+      significance: 0,
+      payload: { depthShift, baseline, current },
+      toneHint: 'warm' as any,
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[proactivity:identity-growth] failed:', err);
+    return [];
+  }
+}
+
 async function detectGoalNoProgress(userId: string): Promise<NudgeCandidate[]> {
   try {
     const goals = await prisma.yearlyGoal.findMany({
@@ -401,6 +451,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectMoodShift(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),
+      detectIdentityGrowth(userId),
     ]);
     const out: NudgeCandidate[] = [];
     for (const r of results) {
@@ -479,6 +530,24 @@ export class V2ProactivityEngine implements ProactivityEngine {
     userId: string,
     candidate: NudgeCandidate,
   ): Promise<string> {
+    // Special case: identity_growth — use growth narrative.
+    if (candidate.source === 'identity_growth') {
+      try {
+        const identity = await getBotIdentityService().getIdentity(userId);
+        const payload = candidate.payload as {
+          baseline: { warmth: number; directness: number; humor: number; playfulness: number; depth: number; recordedAt: Date };
+          current: { warmth: number; directness: number; humor: number; playfulness: number; relationshipDepth: number };
+        };
+        return await generateGrowthNarrative(
+          { ...payload.baseline },
+          { ...payload.current, lastComputedAt: null },
+          identity.botName,
+        );
+      } catch {
+        return 'Знаешь, я заметила, что мы стали ближе за это время. Мне нравится, какими мы стали.';
+      }
+    }
+
     // 1) Template lookup — fast, deterministic, free.
     const template = TEMPLATES[candidate.source]?.[candidate.toneHint];
     if (template) {
