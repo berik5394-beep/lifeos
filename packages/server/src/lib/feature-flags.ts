@@ -102,3 +102,16 @@ export function isV2HermesEnabled(userId: string): boolean {
   if (flag === 'all' || flag === 'true') return true;
   return flag.split(',').some((s) => s.trim() === `user-${userId}`);
 }
+
+/**
+ * Reflector v2 — Per-user gate for cross-tier synthesis. Same shape as
+ * isV2HermesEnabled: "all"/"true", "none"/"false"/unset, or "user-X,user-Y".
+ */
+export function isV2ReflectorEnabled(userId: string): boolean {
+  const raw = process.env.FEATURE_V2_REFLECTOR;
+  if (raw === undefined) return false;
+  const flag = raw.trim();
+  if (flag === '' || flag === 'none' || flag === 'false') return false;
+  if (flag === 'all' || flag === 'true') return true;
+  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
+}

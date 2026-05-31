@@ -6,7 +6,8 @@ import { deliverTopInsight } from './insight-store.js';
 import { runReflectorDaily } from './reflector-service.js';
 import { runProfileSynthesisWeekly } from './profile-synthesizer.js';
 import { runTherapeuticDetectorsDaily } from './therapeutic-detector-service.js';
-import { isV2ProactivityEnabled, isV2CronEnabled } from '../lib/feature-flags.js';
+import { isV2ProactivityEnabled, isV2CronEnabled, isV2ReflectorEnabled } from '../lib/feature-flags.js';
+import { runWeekly, runEventCheck } from './reflector-v2/index.js';
 import { getProactivityEngine } from './v2-proactivity-engine.singleton.js';
 import { withCronLock } from './cron-runner.js';
 import { runMoodRetention } from './cron/mood-retention-cron.js';
@@ -225,6 +226,14 @@ async function tick(): Promise<void> {
           `[scheduler] reflector failed user=${userId}:`,
           err instanceof Error ? err.message : err,
         );
+      }
+      if (isV2ReflectorEnabled(userId)) {
+        try {
+          await runWeekly(userId, new Date());
+          await runEventCheck(userId, new Date());
+        } catch (err) {
+          console.warn('[reflector-v2:scheduler] failed:', err);
+        }
       }
 
       // Phase 6 C2.5 — недельный синтез UserProfile. Каденс-гард в
