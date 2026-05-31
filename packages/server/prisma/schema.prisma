@@ -101,6 +101,8 @@ model User {
   botTraitSnapshots      BotTraitSnapshot[]
   // v2.0 Phase B3 — Cross-Session Learning: feedback-loop audit
   correctionLogs         CorrectionLog[]
+  // v2.0 Phase B4 — Hermes composable skills
+  skills                 SkillDefinition[]
 }
 
 // Phase 6 C2 — синтезированный профиль личности. ВАЖНО (#4 SSOT):
@@ -1153,4 +1155,24 @@ model CorrectionLog {
   recordedAt     DateTime @default(now())
 
   @@index([userId, recordedAt])
+}
+
+// v2.0 Phase B4 — Hermes composable skills: learnable, executable skill cards.
+model SkillDefinition {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  name        String
+  description String
+  triggers    String[]
+  plan        Json
+  synthesis   String
+  source      String    // 'proactive' | 'explicit'
+  active      Boolean   @default(true)
+  useCount    Int       @default(0)
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, name])
+  @@index([userId, active])
 }
