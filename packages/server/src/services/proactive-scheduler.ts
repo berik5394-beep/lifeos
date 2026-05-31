@@ -11,6 +11,7 @@ import { getProactivityEngine } from './v2-proactivity-engine.singleton.js';
 import { withCronLock } from './cron-runner.js';
 import { runMoodRetention } from './cron/mood-retention-cron.js';
 import { runPatternExtraction } from './cron/pattern-extraction-cron.js';
+import { getBotTraitsStore } from './bot-traits/index.js';
 
 /**
  * Фаза 4.1 — планировщик проактивности.
@@ -129,6 +130,31 @@ async function tick(): Promise<void> {
           '[cron:pattern-extraction] tick hook failed:',
           err instanceof Error ? err.message : err,
         );
+      }
+      // v2 Phase B2 — weekly bot-traits snapshot + refresh.
+      try {
+        await withCronLock('bot-traits-snapshot', 7 * 24 * 60 * 60 * 1000, null, async () => {
+          const store = getBotTraitsStore();
+          // Reuse the active-user set already computed for pattern-extraction
+          // if available; otherwise fetch users active in last 7 days.
+          const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          const activeUserRows = await prisma.chatMessage.findMany({
+            where: { createdAt: { gte: since } },
+            select: { userId: true },
+            distinct: ['userId'],
+          });
+          for (const { userId } of activeUserRows) {
+            try {
+              await store.refreshTraits(userId);
+              await store.snapshot(userId);
+            } catch (err) {
+              console.warn(`[cron:bot-traits] user=${userId}:`, err);
+            }
+          }
+          console.log(`[cron:bot-traits] snapshotted ${activeUserRows.length} active users`);
+        });
+      } catch (err) {
+        console.warn('[cron:bot-traits] tick failed:', err);
       }
     }
 
