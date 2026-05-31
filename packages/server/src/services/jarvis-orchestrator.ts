@@ -943,25 +943,14 @@ export async function handleMessage(
       const stepCount = extractStepCount(reply);
       const gate1 = shouldForceOneStep(axes, stepCount);
       if (gate1.force) {
+        // Dev-only signal — MUST stay server-side. Do NOT create a
+        // user-facing Insight and do NOT prepend a marker to `reply`:
+        // those leaked internal diagnostics straight to the user (the
+        // "⚠️ Gate 1 rule fired" Telegram message + the "(gate-1: 1-step)"
+        // reply prefix). Detection is kept as the hook; real 1-step
+        // enforcement (reply regeneration under a step constraint) is a
+        // deliberate follow-up, not a UI-text stub.
         console.log(`[axes:gate1] ${gate1.reason}`);
-        // Log to insights for transparency
-        try {
-          await prisma.insight.create({
-            data: {
-              userId,
-              severity: 5,
-              scope: { rule: 'gate1', stepCount, reason: gate1.reason } as any,
-              message: `⚠️ Gate 1 rule fired: ${gate1.reason}`,
-            },
-          });
-        } catch {
-          /* swallow — log-only */
-        }
-        // Strategy: ask Claude to regenerate with 1-step constraint.
-        // For B1 implementation: prepend a sentinel marker to reply
-        // alerting the user, since regen adds latency and complexity.
-        // Full regen-loop is a follow-up enhancement.
-        reply = '⚠️ (gate-1: 1-step) ' + reply;
       }
     } catch (err) {
       console.warn('[axes:postprocess] failed:', err);
