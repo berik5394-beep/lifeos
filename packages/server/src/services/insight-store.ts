@@ -3,12 +3,15 @@ import {
   selectInsights,
   flatInsightToCandidate,
   chooseInsightToPush,
+  severityBand,
   type FlatInsight,
   type ActiveInsight,
   type InsightCandidate,
 } from './insight-core.js';
 import { localHour, localDayStartUTC } from '../lib/tz.js';
 import { deliverNotification } from './push-service.js';
+import { getEngagement, isReceptiveHour } from './engagement/index.js';
+import { isV2EngagementEnabled } from '../lib/feature-flags.js';
 
 /**
  * Phase 5 R5 P4-fold — DB-glue ЕДИНОГО Insight-стора. Вся ЛОГИКА
@@ -227,6 +230,21 @@ export async function deliverTopInsight(
   if (!chosen) return { deliveredId: null };
 
   const row = undelivered.find((r) => r.id === chosen.id)!;
+
+  // v2 P2 — engagement: defer NON-critical delivery outside the user's
+  // active hours. Critical (severity>=8) always delivers. Best-effort; on
+  // any failure or sparse data, isReceptiveHour returns true → no deferral.
+  if (isV2EngagementEnabled(userId) && severityBand(row.severity) !== 'critical') {
+    try {
+      const eng = await getEngagement(userId, now);
+      if (!isReceptiveHour(eng.activeHours, hour)) {
+        return { deliveredId: null }; // defer; next tick retries (deliveredAt stays null)
+      }
+    } catch (err) {
+      console.warn('[engagement:deliver] failed:', err);
+    }
+  }
+
   const res = await deliverNotification(
     userId,
     row.rationale ?? 'JARVIS',
