@@ -5,8 +5,12 @@ import { join } from 'node:path';
 const SCHEMA = readFileSync(join(process.cwd(), 'prisma/schema.prisma'), 'utf-8');
 const TYPES = readFileSync(
   join(process.cwd(), 'src/services/user-axes/types.ts'), 'utf-8');
+// Standard Prisma migration folder — this is what `prisma migrate deploy`
+// (Dockerfile CMD) actually applies to prod. A `manual/` SQL file would be
+// IGNORED by migrate deploy, so the deployable migration must live here.
 const MIG = readFileSync(
-  join(process.cwd(), 'prisma/migrations/manual/2026-05-31-correction-log.sql'),
+  join(process.cwd(),
+    'prisma/migrations/20260531200000_v2_correction_log/migration.sql'),
   'utf-8');
 
 describe('B3 schema — AxisSignalSource', () => {
