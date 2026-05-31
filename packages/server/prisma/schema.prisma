@@ -99,6 +99,8 @@ model User {
   axisSignals            AxisSignal[]
   // v2.0 Phase B2 — Identity Evolution: weekly trait snapshots
   botTraitSnapshots      BotTraitSnapshot[]
+  // v2.0 Phase B3 — Cross-Session Learning: feedback-loop audit
+  correctionLogs         CorrectionLog[]
 }
 
 // Phase 6 C2 — синтезированный профиль личности. ВАЖНО (#4 SSOT):
@@ -1129,4 +1131,26 @@ model AxisSignal {
   @@index([userId, axis, recordedAt])
   @@index([userId, recordedAt])
   @@index([msgId])
+}
+
+// v2.0 Phase B3 — Cross-Session Learning: feedback-loop audit log.
+// Records every detected correction signal so the feedback-detector
+// service can review, tune, and replay signals without touching raw chat.
+model CorrectionLog {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  userMsgId      String?
+  botExcerpt     String
+  userExcerpt    String
+  signalType     String   // 'explicit' | 'mood_drop' | 're_ask'
+  valence        String   // 'positive' | 'negative' | 'neutral'
+  dimension      String   // 'tone' | 'content' | 'understanding' | 'style'
+  appliedSignals Json
+  styleNote      String?
+  moodDelta      Float?
+  reaskSim       Float?
+  recordedAt     DateTime @default(now())
+
+  @@index([userId, recordedAt])
 }

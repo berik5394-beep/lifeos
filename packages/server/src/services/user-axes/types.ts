@@ -58,7 +58,8 @@ export type AxisSignalSource =
   | 'claude_classifier'
   | 'system_signal'
   | 'bootstrap'
-  | 'manual';
+  | 'manual'
+  | 'feedback';
 
 export interface UserAxesStore {
   /** Read current values; auto-initialise row at 0.5 if missing. */
