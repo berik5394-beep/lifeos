@@ -9,6 +9,7 @@ import { getBotIdentityService } from './bot-identity.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type AxisName } from './user-axes/index.js';
 import { isV2AxesEnabled } from '../lib/feature-flags.js';
+import { getFeedbackStore } from './feedback/index.js';
 import { getBotTraitsStore, traitLabel } from './bot-traits/index.js';
 import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
@@ -421,6 +422,22 @@ async function formatAxesForTelegram(userId: string): Promise<string> {
     lines.push('');
   }
   lines.push(`Всего сигналов: ${axes.signalCount}`);
+
+  // v2 B3 — recent feedback corrections (transparency). Hidden if none.
+  try {
+    const corrections = await getFeedbackStore().recentCorrections(userId, 5);
+    const withNote = corrections.filter((c) => c.styleNote);
+    if (withNote.length > 0) {
+      lines.push('');
+      lines.push('🔧 Недавние коррекции:');
+      for (const c of withNote) {
+        lines.push(`• ${c.styleNote}`);
+      }
+    }
+  } catch (err) {
+    console.warn('[telegram:axes:corrections] failed:', err);
+  }
+
   return lines.join('\n').trim();
 }
 
