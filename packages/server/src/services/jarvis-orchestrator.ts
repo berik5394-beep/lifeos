@@ -310,6 +310,30 @@ export async function runConfirmedAction(
   input: Record<string, unknown>,
 ): Promise<string> {
   try {
+    // v2 H2 — batched skill action steps (from runSkillPlan Phase 2). On «да»
+    // the user confirmed the money/confirm steps collected by the runner;
+    // execute each through the registry (audit + zod per step). Money runs
+    // ONLY here, never automatically.
+    if (action === 'run_skill_actions') {
+      const steps = Array.isArray((input as { steps?: unknown }).steps)
+        ? ((input as { steps: Array<{ toolName: string; args: Record<string, unknown> }> }).steps)
+        : [];
+      const results: string[] = [];
+      for (const s of steps) {
+        try {
+          const stepOut = (await runRegistryTool(s.toolName, s.args, { userId })) as { message?: string };
+          results.push(stepOut.message ?? 'Готово.');
+        } catch (stepErr) {
+          console.warn(`[jarvis] skill action ${s.toolName} failed:`,
+            stepErr instanceof Error ? stepErr.message : stepErr);
+          results.push(`Не получилось: ${s.toolName}.`);
+        }
+      }
+      const batchMessage = results.join('\n') || 'Готово.';
+      await saveTurn(userId, '(подтверждено)', batchMessage);
+      return batchMessage;
+    }
+
     // SSOT 9B.2: ВСЁ подтверждённое исполняется через РЕЕСТР
     // (аудит ToolCall + zod). legacy action-executor удалён —
     // send_telegram теперь тоже tool реестра (needsConfirm:true).
