@@ -12,9 +12,10 @@ describe('reflector-v2 index', () => {
     expect(SRC).toMatch(/export async function runWeekly/);
     expect(SRC).toMatch(/export async function runEventCheck/);
   });
-  it('weekly is rate-gated (rolling 7d) and event uses shouldFireEvent', () => {
+  it('weekly is rate-gated (rolling 7d) and event uses significanceScore threshold', () => {
     expect(SRC).toMatch(/reflector_v2_weekly/);
-    expect(SRC).toMatch(/shouldFireEvent/);
+    // shouldFireEvent replaced by adaptive significanceScore(facts) < thr gate (C1)
+    expect(SRC).toMatch(/significanceScore/);
   });
   it('persists via the existing insight store with source reflector_v2', () => {
     expect(SRC).toMatch(/persistCandidates/);

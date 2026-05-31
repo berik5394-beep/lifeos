@@ -9,7 +9,9 @@ import { persistCandidates } from '../insight-store.js';
 import type { InsightCandidate } from '../insight-core.js';
 import { gatherFacts } from './gather-facts.js';
 import { synthesizeKeystone } from './synthesize.js';
-import { shouldFireEvent, type Keystone } from './types.js';
+import { significanceScore, EVENT_THRESHOLD, type Keystone } from './types.js';
+import { getEngagement, adaptiveThreshold } from '../engagement/index.js';
+import { isV2EngagementEnabled } from '../../lib/feature-flags.js';
 
 export { gatherFacts } from './gather-facts.js';
 export { synthesizeKeystone } from './synthesize.js';
@@ -73,7 +75,16 @@ export async function runWeekly(userId: string, now: Date = new Date()): Promise
 export async function runEventCheck(userId: string, now: Date = new Date()): Promise<{ emitted: boolean }> {
   try {
     const facts = await gatherFacts(userId, now);
-    if (!shouldFireEvent(facts)) return { emitted: false };
+    let thr = EVENT_THRESHOLD;
+    if (isV2EngagementEnabled(userId)) {
+      try {
+        const eng = await getEngagement(userId, now);
+        thr = adaptiveThreshold(EVENT_THRESHOLD, eng.receptiveness);
+      } catch (err) {
+        console.warn('[engagement:event] failed:', err);
+      }
+    }
+    if (significanceScore(facts) < thr) return { emitted: false };
 
     const keystone = await synthesizeKeystone(facts, await userStyle(userId));
     if (!keystone) return { emitted: false };

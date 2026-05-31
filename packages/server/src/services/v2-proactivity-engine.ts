@@ -157,6 +157,8 @@ import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localHour } from '../lib/tz.js';
 import { runAgent } from './claude-agent.js';
+import { getEngagement, adaptiveThreshold } from './engagement/index.js';
+import { isV2EngagementEnabled } from '../lib/feature-flags.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { persistCandidates } from './insight-store.js';
 import type { InsightCandidate } from './insight-core.js';
@@ -579,9 +581,18 @@ export class V2ProactivityEngine implements ProactivityEngine {
     // Gate 1 + 2 are user-scoped, shortcircuit early.
     if (!(await gate1_DND(userId, now))) return [];
     if (!(await gate2_RateLimit(userId, now))) return [];
+    let sigThreshold = 0.6;
+    if (isV2EngagementEnabled(userId)) {
+      try {
+        const eng = await getEngagement(userId, now);
+        sigThreshold = adaptiveThreshold(0.6, eng.receptiveness);
+      } catch (err) {
+        console.warn('[engagement:gate3] failed:', err);
+      }
+    }
     const passed: NudgeCandidate[] = [];
     for (const c of candidates) {
-      if (!gate3_Significance(c)) continue;
+      if (!gate3_Significance(c, sigThreshold)) continue;
       if (!(await gate4_Dedup(userId, c, now))) continue;
       passed.push(c);
     }
