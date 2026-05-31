@@ -16,7 +16,14 @@ import { getEntityGraph } from './entity-graph/index.js';
 import { recordEvent } from './episodic-memory.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { analyzeMessage as userAxesAnalyzeMessage } from './user-axes/analyze-message.js';
-import { isV2AxesEnabled } from '../lib/feature-flags.js';
+import { isV2AxesEnabled, isV2FeedbackEnabled } from '../lib/feature-flags.js';
+import {
+  classifyFeedback,
+  detectMoodDrop,
+  detectReAsk,
+  getFeedbackStore,
+  type FeedbackSignalType,
+} from './feedback/index.js';
 import { prisma } from '../lib/prisma.js';
 import type { JsonValue } from '@prisma/client/runtime/library';
 
@@ -112,6 +119,43 @@ export async function captureV2InBackground(
           } catch (err) {
             console.warn('[v2-capture:axes] failed:', err);
           }
+        }
+      })(),
+      // v2 Phase B3 — feedback loop (best-effort). Learns from the user's
+      // reaction to the bot's previous reply; corrections flow into B1
+      // axes (source='feedback'), B2 traits follow deterministically.
+      (async () => {
+        if (!isV2FeedbackEnabled(userId)) return;
+        try {
+          const botLast = await prisma.chatMessage.findFirst({
+            where: { userId, role: 'assistant' },
+            orderBy: { createdAt: 'desc' },
+            select: { content: true },
+          });
+          if (!botLast?.content) return; // nothing to react to yet
+
+          const [mood, reask] = await Promise.all([
+            detectMoodDrop(userId),
+            detectReAsk(userId, text, msgId),
+          ]);
+          const flags = { ...mood, ...reask };
+
+          const result = await classifyFeedback(botLast.content, text, flags);
+          if (!result.isReaction) return;
+
+          const signalType: FeedbackSignalType =
+            result.dimension === 'style' ? 'explicit'
+            : mood.moodDropped ? 'mood_drop'
+            : reask.isReAsk ? 're_ask'
+            : 'explicit';
+
+          await getFeedbackStore().applyFeedback(
+            userId, msgId,
+            botLast.content, text,
+            result, signalType, flags,
+          );
+        } catch (err) {
+          console.warn('[v2-capture:feedback] failed:', err);
         }
       })(),
     ]);
