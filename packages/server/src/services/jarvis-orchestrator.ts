@@ -46,6 +46,7 @@ import {
   routeToSkill,
   buildSkillInstruction,
   getHermesStore,
+  runSkillPlan,
   type SkillSpec,
 } from './hermes/index.js';
 
@@ -867,22 +868,37 @@ export async function handleMessage(
   // v2 Phase B4 — Hermes: if the message routes to a saved skill, seed the
   // agent turn with the skill's plan. The existing loop executes it, so
   // money/write steps still hit their normal confirm gates. Best-effort.
+  // H2 composition routing: skills whose plan contains a confirm step
+  // (money/irreversible) run through the deterministic runSkillPlan runner
+  // (two-phase: batch → confirm); all other skills seed the agent loop as
+  // before (zero regression).
   let hermesForceTools = false;
+  let skillReply: string | null = null;
   if (isV2HermesEnabled(userId)) {
     try {
       const skills = await getHermesStore().activeSkills(userId);
       const matched = await routeToSkill(userId, text, skills);
       if (matched) {
-        const spec: SkillSpec = {
-          name: matched.name,
-          description: matched.description,
-          triggers: matched.triggers,
-          plan: matched.plan as unknown as SkillSpec['plan'],
-          synthesis: matched.synthesis,
-        };
-        system = system + '\n\n' + buildSkillInstruction(spec);
-        hermesForceTools = true;
-        void getHermesStore().bumpUsage(matched.id);
+        const plan = (matched.plan as unknown as { toolName: string }[]) ?? [];
+        const hasConfirm = plan.some((s) => toolConfirmRequired(s.toolName, {}));
+        if (hasConfirm) {
+          // v2 H2 — action skill: deterministic two-phase runner (money steps
+          // batch into a confirm); bypasses the agent loop.
+          skillReply = await runSkillPlan(userId, matched, text);
+          void getHermesStore().bumpUsage(matched.id);
+        } else {
+          // read/write-non-money skill: existing agent-loop seed (unchanged).
+          const spec: SkillSpec = {
+            name: matched.name,
+            description: matched.description,
+            triggers: matched.triggers,
+            plan: matched.plan as unknown as SkillSpec['plan'],
+            synthesis: matched.synthesis,
+          };
+          system = system + '\n\n' + buildSkillInstruction(spec);
+          hermesForceTools = true;
+          void getHermesStore().bumpUsage(matched.id);
+        }
       }
     } catch (err) {
       console.warn('[hermes:run-seed] failed:', err);
@@ -890,70 +906,74 @@ export async function handleMessage(
   }
 
   let reply: string;
-  try {
-    reply = await runAgent({
-      system,
-      userMessage: text,
-      history,
-      webSearch: true,
-      maxSearches: 3,
-      maxTokens: 900,
-      // Fix D: localTools НЕ на каждом сообщении. Для явной болтовни
-      // («расскажи анекдот») они только грузят запрос (7 схем + риск
-      // web_search+tools combo) без пользы. Включаем когда сообщение
-      // правдоподобно требует данных/действия юзера.
-      localTools: hermesForceTools || mayNeedLocalTools(text),
-      userId,
-    });
-  } catch (agentErr) {
-    // Fix B/A: раньше этот catch был немой — отказ агентного цикла
-    // (в т.ч. возможная несовместимость web_search + custom tools)
-    // был невидим. Теперь логируем И деградируем ступенчато:
-    // 1) повтор БЕЗ localTools (чистый web_search-чат) — изолирует,
-    //    виноват ли tool-combo, и всё равно даёт умный ответ;
-    // 2) только если и это упало — не-агентный getAssistantReply.
-    console.warn(
-      `[jarvis] runAgent(localTools) failed user=${userId}: ${
-        agentErr instanceof Error ? agentErr.message : agentErr
-      } — retry without localTools`,
-    );
-    // ISSUE-1: если сообщение требовало инструментов юзера (данные/
-    // действие — mayNeedLocalTools=true), а tool-путь упал, то
-    // деградированный (web_search-only / не-агентный) ответ ЭТИХ
-    // инструментов НЕ имеет и МОЖЕТ выдумать «нашёл/записал/сделал».
-    // Это страховка перед 9A.8: при поломке агент-цикла честный
-    // отказ, а не тихая фабрикация. Чистая болтовня/инфо (tools не
-    // нужны) деградирует как раньше — web_search легитимен.
-    if (mayNeedLocalTools(text) || hermesForceTools) {
-      // hermesForceTools: навык подсеян в system, но без localTools агент
-      // не сможет вызвать его инструменты — честный отказ лучше, чем
-      // ответ с «использовал инструмент X», которого в наборе нет.
+  if (skillReply !== null) {
+    reply = skillReply;
+  } else {
+    try {
+      reply = await runAgent({
+        system,
+        userMessage: text,
+        history,
+        webSearch: true,
+        maxSearches: 3,
+        maxTokens: 900,
+        // Fix D: localTools НЕ на каждом сообщении. Для явной болтовни
+        // («расскажи анекдот») они только грузят запрос (7 схем + риск
+        // web_search+tools combo) без пользы. Включаем когда сообщение
+        // правдоподобно требует данных/действия юзера.
+        localTools: hermesForceTools || mayNeedLocalTools(text),
+        userId,
+      });
+    } catch (agentErr) {
+      // Fix B/A: раньше этот catch был немой — отказ агентного цикла
+      // (в т.ч. возможная несовместимость web_search + custom tools)
+      // был невидим. Теперь логируем И деградируем ступенчато:
+      // 1) повтор БЕЗ localTools (чистый web_search-чат) — изолирует,
+      //    виноват ли tool-combo, и всё равно даёт умный ответ;
+      // 2) только если и это упало — не-агентный getAssistantReply.
       console.warn(
-        `[jarvis] degraded+actionable user=${userId} → честный отказ (ISSUE-1), не фабрикуем`,
+        `[jarvis] runAgent(localTools) failed user=${userId}: ${
+          agentErr instanceof Error ? agentErr.message : agentErr
+        } — retry without localTools`,
       );
-      reply = DEGRADED_ACTIONABLE_REFUSAL;
-    } else {
-      try {
-        reply = await runAgent({
-          system,
-          userMessage: text,
-          history,
-          webSearch: true,
-          maxSearches: 3,
-          maxTokens: 900,
-        });
+      // ISSUE-1: если сообщение требовало инструментов юзера (данные/
+      // действие — mayNeedLocalTools=true), а tool-путь упал, то
+      // деградированный (web_search-only / не-агентный) ответ ЭТИХ
+      // инструментов НЕ имеет и МОЖЕТ выдумать «нашёл/записал/сделал».
+      // Это страховка перед 9A.8: при поломке агент-цикла честный
+      // отказ, а не тихая фабрикация. Чистая болтовня/инфо (tools не
+      // нужны) деградирует как раньше — web_search легитимен.
+      if (mayNeedLocalTools(text) || hermesForceTools) {
+        // hermesForceTools: навык подсеян в system, но без localTools агент
+        // не сможет вызвать его инструменты — честный отказ лучше, чем
+        // ответ с «использовал инструмент X», которого в наборе нет.
         console.warn(
-          `[jarvis] degraded OK user=${userId}: web_search-only ответ сработал ` +
-            `(сообщение не требовало tools — фабрикации нет)`,
+          `[jarvis] degraded+actionable user=${userId} → честный отказ (ISSUE-1), не фабрикуем`,
         );
-      } catch (webErr) {
-        console.warn(
-          `[jarvis] runAgent(web_search-only) тоже упал user=${userId}: ${
-            webErr instanceof Error ? webErr.message : webErr
-          } — fallback getAssistantReply`,
-        );
-        const r = await getAssistantReply(userId, text, finalTherapeutic);
-        reply = r.text;
+        reply = DEGRADED_ACTIONABLE_REFUSAL;
+      } else {
+        try {
+          reply = await runAgent({
+            system,
+            userMessage: text,
+            history,
+            webSearch: true,
+            maxSearches: 3,
+            maxTokens: 900,
+          });
+          console.warn(
+            `[jarvis] degraded OK user=${userId}: web_search-only ответ сработал ` +
+              `(сообщение не требовало tools — фабрикации нет)`,
+          );
+        } catch (webErr) {
+          console.warn(
+            `[jarvis] runAgent(web_search-only) тоже упал user=${userId}: ${
+              webErr instanceof Error ? webErr.message : webErr
+            } — fallback getAssistantReply`,
+          );
+          const r = await getAssistantReply(userId, text, finalTherapeutic);
+          reply = r.text;
+        }
       }
     }
   }
