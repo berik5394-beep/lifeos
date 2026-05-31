@@ -67,3 +67,44 @@ describe('postgres-impl.ts structural — refreshTraits', () => {
     expect(body).toMatch(/catch/);
   });
 });
+
+describe('postgres-impl.ts structural — refreshTraitsIfStale', () => {
+  it('reads current traits then compares lastComputedAt against staleMs', () => {
+    const start = SRC.indexOf('async refreshTraitsIfStale');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toContain('lastComputedAt');
+    expect(body).toMatch(/staleMs/);
+  });
+  it('default stale window 6h', () => {
+    const start = SRC.indexOf('async refreshTraitsIfStale');
+    const body = SRC.slice(start, start + 1200);
+    expect(body).toMatch(/6\s*\*\s*60\s*\*\s*60\s*\*\s*1000|21_?600_?000/);
+  });
+  it('calls refreshTraits when stale', () => {
+    const start = SRC.indexOf('async refreshTraitsIfStale');
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toMatch(/this\.refreshTraits\(/);
+  });
+});
+
+describe('postgres-impl.ts structural — snapshot', () => {
+  it('writes BotTraitSnapshot row with current traits', () => {
+    const start = SRC.indexOf('async snapshot');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toContain('prisma.botTraitSnapshot.create');
+    expect(body).toContain('warmth');
+    expect(body).toContain('depth');
+  });
+});
+
+describe('postgres-impl.ts structural — snapshotHistory', () => {
+  it('queries BotTraitSnapshot ordered by recordedAt ASC (oldest first)', () => {
+    const start = SRC.indexOf('async snapshotHistory');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1500);
+    expect(body).toContain('prisma.botTraitSnapshot.findMany');
+    expect(body).toMatch(/orderBy.*recordedAt.*asc/s);
+  });
+});

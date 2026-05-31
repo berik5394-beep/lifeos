@@ -103,15 +103,59 @@ export class PostgresBotTraits implements BotTraitsStore {
     }
   }
 
-  async refreshTraitsIfStale(_userId: string, _staleMs?: number): Promise<BotTraits> {
-    throw new Error('refreshTraitsIfStale not yet implemented — Task B3');
+  async refreshTraitsIfStale(
+    userId: string,
+    staleMs: number = 6 * 60 * 60 * 1000,
+  ): Promise<BotTraits> {
+    try {
+      const current = await this.getTraits(userId);
+      const fresh =
+        current.lastComputedAt !== null &&
+        Date.now() - current.lastComputedAt.getTime() < staleMs;
+      if (fresh) return current;
+      return this.refreshTraits(userId);
+    } catch (err) {
+      console.warn('[bot-traits:refreshTraitsIfStale] failed:', err);
+      return this.getTraits(userId);
+    }
   }
 
-  async snapshot(_userId: string): Promise<void> {
-    throw new Error('snapshot not yet implemented — Task B3');
+  async snapshot(userId: string): Promise<void> {
+    try {
+      const t = await this.getTraits(userId);
+      await prisma.botTraitSnapshot.create({
+        data: {
+          userId,
+          warmth: t.warmth,
+          directness: t.directness,
+          humor: t.humor,
+          playfulness: t.playfulness,
+          depth: t.relationshipDepth,
+        },
+      });
+    } catch (err) {
+      console.warn('[bot-traits:snapshot] failed:', err);
+    }
   }
 
-  async snapshotHistory(_userId: string, _limit?: number): Promise<TraitSnapshot[]> {
-    throw new Error('snapshotHistory not yet implemented — Task B3');
+  async snapshotHistory(
+    userId: string,
+    limit: number = 50,
+  ): Promise<TraitSnapshot[]> {
+    try {
+      const rows = await prisma.botTraitSnapshot.findMany({
+        where: { userId },
+        orderBy: { recordedAt: 'asc' },
+        take: limit,
+        select: {
+          warmth: true, directness: true, humor: true,
+          playfulness: true, depth: true, recordedAt: true,
+        },
+      });
+      return rows;
+    } catch (err) {
+      console.warn('[bot-traits:snapshotHistory] failed:', err);
+      return [];
+    }
   }
 }
