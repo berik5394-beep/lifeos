@@ -880,6 +880,11 @@ export async function handleMessage(
       const matched = await routeToSkill(userId, text, skills);
       if (matched) {
         const plan = (matched.plan as unknown as { toolName: string }[]) ?? [];
+        // ASSUMPTION: all confirm-tools today use a boolean needsConfirm
+        // (add-expense/add-income/send-telegram/suggest-goal). We probe with
+        // {} args at routing time (before arg-resolve). If a tool ever uses an
+        // input-DEPENDENT needsConfirm lambda, this under-detects → re-evaluate
+        // hasConfirm after resolveSkillArgs (or add availableToAgent decoupling).
         const hasConfirm = plan.some((s) => toolConfirmRequired(s.toolName, {}));
         if (hasConfirm) {
           // v2 H2 — action skill: deterministic two-phase runner (money steps
@@ -901,7 +906,10 @@ export async function handleMessage(
         }
       }
     } catch (err) {
-      console.warn('[hermes:run-seed] failed:', err);
+      // Guards routeToSkill + runSkillPlan + buildSkillInstruction. On any
+      // throw, skillReply stays null + hermesForceTools false → clean
+      // fall-through to the normal agent loop (best-effort degradation).
+      console.warn('[hermes:run-seed/runSkillPlan] failed:', err);
     }
   }
 
