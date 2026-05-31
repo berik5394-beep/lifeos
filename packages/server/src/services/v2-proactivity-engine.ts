@@ -22,7 +22,8 @@ export type NudgeSource =
   | 'mood_shift'
   | 'streak_break'
   | 'goal_no_progress'
-  | 'identity_growth';
+  | 'identity_growth'
+  | 'skill_suggestion';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -77,6 +78,11 @@ export function scoreSignificance(c: NudgeCandidate): number {
     case 'identity_growth': {
       const depthShift = Number(c.payload.depthShift ?? 0);
       return Math.min(1, depthShift * 3);
+    }
+    case 'skill_suggestion': {
+      const recurrence = Number(c.payload.recurrence ?? 0);
+      const size = Number(c.payload.clusterSize ?? 0);
+      return Math.min(1, (recurrence / 10) * (size / 4));
     }
   }
 }
@@ -135,6 +141,10 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
   identity_growth: {
     // identity_growth uses growth narrative (Claude haiku), not templates.
     // Leave empty to skip template lookup in generateNudge.
+  },
+  skill_suggestion: {
+    curious: 'Заметил, что ты часто просишь одно и то же подряд. Хочешь, соберу это в навык — будешь запускать одной фразой?',
+    gentle: 'Могу сделать тебе навык из того, что ты часто делаешь вместе. Сэкономит время. Сделать?',
   },
 };
 
@@ -375,6 +385,56 @@ async function detectGoalNoProgress(userId: string): Promise<NudgeCandidate[]> {
   }
 }
 
+/**
+ * v2 Phase B4 — propose a skill when the user repeatedly invokes the same
+ * cluster of tools. Reads ToolCall history: groups same-day tool sets,
+ * finds a cluster of >=3 distinct tools that recurs on >=3 distinct days.
+ * Returns at most one candidate. Best-effort.
+ */
+export async function detectSkillOpportunity(
+  userId: string,
+): Promise<NudgeCandidate[]> {
+  try {
+    const since = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000);
+    const calls = await prisma.toolCall.findMany({
+      where: { userId, createdAt: { gte: since }, error: null },
+      select: { toolName: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+      take: 2000,
+    });
+    if (calls.length < 9) return [];
+    const byDay = new Map<string, Set<string>>();
+    for (const c of calls) {
+      const day = c.createdAt.toISOString().slice(0, 10);
+      const set = byDay.get(day) ?? new Set<string>();
+      set.add(c.toolName);
+      byDay.set(day, set);
+    }
+    const dayCount = new Map<string, number>();
+    for (const set of byDay.values()) {
+      for (const t of set) dayCount.set(t, (dayCount.get(t) ?? 0) + 1);
+    }
+    const cluster = [...dayCount.entries()]
+      .filter(([, n]) => n >= 3)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([t]) => t);
+    if (cluster.length < 3) return [];
+    const recurrence = Math.max(...cluster.map((t) => dayCount.get(t) ?? 0));
+    const candidate: NudgeCandidate = {
+      source: 'skill_suggestion',
+      significance: 0,
+      payload: { cluster, clusterSize: cluster.length, recurrence },
+      toneHint: 'curious',
+    };
+    candidate.significance = scoreSignificance(candidate);
+    return [candidate];
+  } catch (err) {
+    console.warn('[v2-proactivity:skill] failed:', err);
+    return [];
+  }
+}
+
 // ---- Gates (A4) -------------------------------------------------------
 
 async function gate1_DND(userId: string, now: Date): Promise<boolean> {
@@ -452,6 +512,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),
       detectIdentityGrowth(userId),
+      detectSkillOpportunity(userId),
     ]);
     const out: NudgeCandidate[] = [];
     for (const r of results) {
