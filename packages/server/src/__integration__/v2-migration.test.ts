@@ -58,12 +58,12 @@ describe('migrate-to-v2 — script wiring', () => {
     expect(SRC).toMatch(/upsertEntity\(/);
   });
 
-  it('step 2 — type mapping covers person, place, decision→goal (spec §11)', () => {
-    expect(SRC).toMatch(/case\s+['"]person['"]/);
-    expect(SRC).toMatch(/case\s+['"]place['"]/);
-    expect(SRC).toMatch(/case\s+['"]decision['"]/);
-    // decision returns type: 'goal'
-    expect(SRC).toMatch(/type:\s*['"]goal['"]/);
+  it('step 2 — type mapping via Claude extractor (Q3 rewrite)', () => {
+    // Q3 (2026-05-31) replaced naive case/switch mapMemoryToEntity with
+    // Claude haiku extractor that returns canonical names + correct types.
+    // Test now verifies the new architecture, not the old.
+    expect(SRC).toMatch(/extractEntitiesFromMemory|extractEntities\(/);
+    expect(SRC).toMatch(/userName/); // self-ref filter threaded through (Q1)
   });
 
   it('step 3 — BotIdentity upsert with default Эля + warm', () => {
@@ -72,10 +72,17 @@ describe('migrate-to-v2 — script wiring', () => {
     expect(SRC).toMatch(/['"]warm['"]/);
   });
 
-  it('step 4 — extractPatterns at the end', () => {
-    const step4Idx = SRC.indexOf('Step 4');
-    const after = SRC.slice(step4Idx);
-    expect(after).toMatch(/extractPatterns\(/);
+  it('step 4 — UserProfile.relationships lift (Q2 addition)', () => {
+    // Q2 (2026-05-31) added a step between Memory lift and extractPatterns
+    // to copy UserProfile.relationships into the Entity graph.
+    expect(SRC).toMatch(/userprofile_lift/);
+    expect(SRC).toContain('profile_note');
+  });
+
+  it('step 5 — extractPatterns at the end', () => {
+    // Q3 renumbered steps: extractPatterns moved from 4 → 5 after the
+    // UserProfile lift was inserted as the new step 4.
+    expect(SRC).toMatch(/extractPatterns\(/);
   });
 
   it('no $transaction (corpus is small, partial fail recoverable)', () => {
