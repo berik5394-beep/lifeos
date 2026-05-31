@@ -17,6 +17,9 @@ import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
 import { isV2AxesEnabled } from '../lib/feature-flags.js';
+import { getBotTraitsStore } from './bot-traits/index.js';
+import { formatToneSection } from './bot-traits/tone-section.js';
+import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 
 export type V2EnrichmentData = {
   identity: { botName: string; style: string } | null;
@@ -192,6 +195,24 @@ export async function fetchV2EnrichmentAxesSection(userId: string): Promise<stri
     return formatAxesSection(axes);
   } catch (err) {
     console.warn('[v2-enrichment:axes] failed:', err);
+    return '';
+  }
+}
+
+/**
+ * v2 Phase B2 — Fetch bot traits and render tone section for enrichment block.
+ * Separate helper called by orchestrator after axes section.
+ */
+export async function fetchV2EnrichmentToneSection(userId: string): Promise<string> {
+  if (!isV2IdentityEnabled(userId)) {
+    return '';
+  }
+  try {
+    const traits = await getBotTraitsStore().getTraits(userId);
+    const msgCount = await prisma.chatMessage.count({ where: { userId } });
+    return formatToneSection(traits, msgCount);
+  } catch (err) {
+    console.warn('[v2-enrichment:tone] failed:', err);
     return '';
   }
 }

@@ -60,3 +60,17 @@ export function isV2CronEnabled(): boolean {
   if (!flag || flag === 'none' || flag === 'false') return false;
   return flag === 'true' || flag === 'all';
 }
+
+/**
+ * v2 Phase B2 — Per-user gate for bot Identity Evolution feature.
+ * Same shape as isV2AxesEnabled: "all"/"true", "none"/"false"/unset,
+ * or comma list "user-X,user-Y".
+ */
+export function isV2IdentityEnabled(userId: string): boolean {
+  const raw = process.env.FEATURE_V2_IDENTITY;
+  if (raw === undefined) return false;
+  const flag = raw.trim();
+  if (flag === '' || flag === 'none' || flag === 'false') return false;
+  if (flag === 'all' || flag === 'true') return true;
+  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
+}

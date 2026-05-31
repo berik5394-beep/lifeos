@@ -39,6 +39,8 @@ import {
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js';
+import { getBotTraitsStore } from './bot-traits/index.js';
+import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 
 /**
  * JARVIS Orchestrator — единый мозг. Любое сообщение (текст или
@@ -822,6 +824,17 @@ export async function handleMessage(
 
   const optIn = gathered?.context.therapeuticMode !== false;
   const finalTherapeutic = therapeuticMode && optIn;
+
+  // v2 Phase B2 — lazy refresh bot traits (recompute if stale > 6h).
+  // Cheap (pure compute + small queries); persists into BotIdentity.traits
+  // so the enrichment block's getTraits sees fresh values.
+  if (isV2IdentityEnabled(userId)) {
+    try {
+      await getBotTraitsStore().refreshTraitsIfStale(userId);
+    } catch (err) {
+      console.warn('[orchestrator:identity-refresh] failed:', err);
+    }
+  }
 
   let system = gathered
     ? buildJarvisPrompt(gathered.context, {

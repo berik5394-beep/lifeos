@@ -4,6 +4,7 @@ import {
   isV2ProactivityEnabled,
   isV2AxesEnabled,
   isV2CronEnabled,
+  isV2IdentityEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -130,5 +131,38 @@ describe('isV2CronEnabled — global flag (no userId arg)', () => {
   it('"  true  " → true (whitespace tolerant)', () => {
     process.env.FEATURE_V2_CRON = '  true  ';
     expect(isV2CronEnabled()).toBe(true);
+  });
+});
+
+describe('isV2IdentityEnabled', () => {
+  const orig = process.env.FEATURE_V2_IDENTITY;
+  afterEach(() => {
+    if (orig === undefined) delete process.env.FEATURE_V2_IDENTITY;
+    else process.env.FEATURE_V2_IDENTITY = orig;
+  });
+  it('unset → false', () => {
+    delete process.env.FEATURE_V2_IDENTITY;
+    expect(isV2IdentityEnabled('user-abc')).toBe(false);
+  });
+  it('none/false → false', () => {
+    process.env.FEATURE_V2_IDENTITY = 'none';
+    expect(isV2IdentityEnabled('abc')).toBe(false);
+    process.env.FEATURE_V2_IDENTITY = 'false';
+    expect(isV2IdentityEnabled('abc')).toBe(false);
+  });
+  it('all/true → true', () => {
+    process.env.FEATURE_V2_IDENTITY = 'all';
+    expect(isV2IdentityEnabled('anybody')).toBe(true);
+    process.env.FEATURE_V2_IDENTITY = 'true';
+    expect(isV2IdentityEnabled('anybody')).toBe(true);
+  });
+  it('per-user comma list', () => {
+    process.env.FEATURE_V2_IDENTITY = 'user-abc,user-def';
+    expect(isV2IdentityEnabled('abc')).toBe(true);
+    expect(isV2IdentityEnabled('xyz')).toBe(false);
+  });
+  it('tolerates whitespace', () => {
+    process.env.FEATURE_V2_IDENTITY = '  user-abc , user-def ';
+    expect(isV2IdentityEnabled('abc')).toBe(true);
   });
 });
