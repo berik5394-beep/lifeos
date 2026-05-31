@@ -22,7 +22,9 @@ describe('v2 hermes flow — safety', () => {
   it('createSkill validates against the live registry + blocklist', () => {
     expect(IMPL).toMatch(/validateSkillTools/);
   });
-  it('explicit creation tool needs confirmation', () => {
-    expect(TOOL).toMatch(/needsConfirm:\s*true/);
+  it('explicit creation tool is agent-reachable (needsConfirm:false)', () => {
+    // Save = non-money reversible write; needsConfirm:true would hide it
+    // from the agent loop. Money safety stays at RUN time + create-blocklist.
+    expect(TOOL).toMatch(/needsConfirm:\s*false/);
   });
 });

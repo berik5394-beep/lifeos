@@ -10,8 +10,10 @@ describe('create-skill tool', () => {
   it('exports createSkillTool', () => {
     expect(SRC).toMatch(/export const createSkillTool/);
   });
-  it('needs confirmation (write to a saved skill)', () => {
-    expect(SRC).toMatch(/needsConfirm:\s*true/);
+  it('is agent-reachable: needsConfirm false (non-money write, like create-task)', () => {
+    // needsConfirm:true would exclude it from agentToolSchemasForUser →
+    // the agent could never call it → create_skill would be a dead tool.
+    expect(SRC).toMatch(/needsConfirm:\s*false/);
   });
   it('category system', () => {
     expect(SRC).toMatch(/category:\s*'system'/);
