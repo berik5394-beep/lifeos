@@ -13,6 +13,7 @@ import { getFeedbackStore } from './feedback/index.js';
 import { getBotTraitsStore, traitLabel } from './bot-traits/index.js';
 import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
+import { getHermesStore } from './hermes/index.js';
 
 /**
  * LifeOS Telegram Bot — полноценный JARVIS в Telegram.
@@ -269,6 +270,48 @@ export function createTelegramBot(): Telegraf {
     } catch (err) {
       console.warn('[telegram:identity] failed:', err);
       await ctx.reply('Не получилось показать identity. Попробуй позже.');
+    }
+  });
+
+  // v2 Phase B4 — Hermes skills management
+  bot.command('skills', async (ctx) => {
+    if (!ctx.message) return;
+    try {
+      const chatId = String(ctx.chat?.id);
+      const from = ctx.from;
+      if (!chatId || !from) return;
+      const userId = await findOrCreateUser(
+        chatId,
+        from.id,
+        from.first_name || '',
+        from.username,
+      );
+      const parts = (ctx.message.text ?? '').split(' ').slice(1);
+      const sub = (parts[0] ?? 'list').toLowerCase();
+      const arg = parts.slice(1).join(' ').trim();
+      const store = getHermesStore();
+
+      if (sub === 'delete' && arg) {
+        const ok = await store.deleteSkill(userId, arg);
+        await ctx.reply(ok ? `Удалил навык «${arg}».` : `Навык «${arg}» не найден.`);
+        return;
+      }
+
+      const skills = await store.listSkills(userId);
+      if (skills.length === 0) {
+        await ctx.reply('У тебя пока нет навыков. Скажи «сделай навык …» — и я соберу.');
+        return;
+      }
+      const lines = ['🛠 Твои навыки:', ''];
+      for (const s of skills) {
+        const used = s.useCount > 0 ? ` · запусков: ${s.useCount}` : '';
+        lines.push(`• ${s.name} — ${s.description}${used}`);
+      }
+      lines.push('', 'Запустить: напиши название навыка. Удалить: /skills delete <название>.');
+      await ctx.reply(lines.join('\n'));
+    } catch (err) {
+      console.warn('[telegram:skills] failed:', err);
+      await ctx.reply('Не получилось показать навыки. Попробуй позже.');
     }
   });
 
