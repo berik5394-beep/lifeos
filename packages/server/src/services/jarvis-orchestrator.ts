@@ -42,7 +42,12 @@ import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js'
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 import { isV2HermesEnabled } from '../lib/feature-flags.js';
-import { routeToSkill, buildSkillInstruction, getHermesStore } from './hermes/index.js';
+import {
+  routeToSkill,
+  buildSkillInstruction,
+  getHermesStore,
+  type SkillSpec,
+} from './hermes/index.js';
 
 /**
  * JARVIS Orchestrator — единый мозг. Любое сообщение (текст или
@@ -868,14 +873,14 @@ export async function handleMessage(
       const skills = await getHermesStore().activeSkills(userId);
       const matched = await routeToSkill(userId, text, skills);
       if (matched) {
-        const spec = {
+        const spec: SkillSpec = {
           name: matched.name,
           description: matched.description,
           triggers: matched.triggers,
-          plan: matched.plan as unknown as { toolName: string }[],
+          plan: matched.plan as unknown as SkillSpec['plan'],
           synthesis: matched.synthesis,
         };
-        system = system + '\n\n' + buildSkillInstruction(spec as any);
+        system = system + '\n\n' + buildSkillInstruction(spec);
         hermesForceTools = true;
         void getHermesStore().bumpUsage(matched.id);
       }
@@ -919,7 +924,10 @@ export async function handleMessage(
     // Это страховка перед 9A.8: при поломке агент-цикла честный
     // отказ, а не тихая фабрикация. Чистая болтовня/инфо (tools не
     // нужны) деградирует как раньше — web_search легитимен.
-    if (mayNeedLocalTools(text)) {
+    if (mayNeedLocalTools(text) || hermesForceTools) {
+      // hermesForceTools: навык подсеян в system, но без localTools агент
+      // не сможет вызвать его инструменты — честный отказ лучше, чем
+      // ответ с «использовал инструмент X», которого в наборе нет.
       console.warn(
         `[jarvis] degraded+actionable user=${userId} → честный отказ (ISSUE-1), не фабрикуем`,
       );
