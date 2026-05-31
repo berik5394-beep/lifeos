@@ -9,6 +9,9 @@ import { getBotIdentityService } from './bot-identity.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type AxisName } from './user-axes/index.js';
 import { isV2AxesEnabled } from '../lib/feature-flags.js';
+import { getBotTraitsStore, traitLabel } from './bot-traits/index.js';
+import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
+import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 
 /**
  * LifeOS Telegram Bot — полноценный JARVIS в Telegram.
@@ -243,6 +246,31 @@ export function createTelegramBot(): Telegraf {
     }
   });
 
+  // v2 Phase B2 — /identity persona + growth narrative
+  bot.command('identity', async (ctx) => {
+    if (!ctx.message) return;
+    try {
+      const chatId = String(ctx.chat?.id);
+      const from = ctx.from;
+      if (!chatId || !from) return;
+      const userId = await findOrCreateUser(
+        chatId,
+        from.id,
+        from.first_name || '',
+        from.username,
+      );
+      if (!isV2IdentityEnabled(userId)) {
+        await ctx.reply('Identity evolution выключена для тебя.');
+        return;
+      }
+      const text = await formatIdentityForTelegram(userId);
+      await ctx.reply(text);
+    } catch (err) {
+      console.warn('[telegram:identity] failed:', err);
+      await ctx.reply('Не получилось показать identity. Попробуй позже.');
+    }
+  });
+
   // Голосовое → транскрипция → ОРКЕСТРАТОР (не всегда диктофон!).
   // Раньше голос всегда шёл в processDictation (просто запись задач) —
   // это и делало бота "блокнотом". Теперь: расшифровали → отдали мозгу,
@@ -394,6 +422,31 @@ async function formatAxesForTelegram(userId: string): Promise<string> {
   }
   lines.push(`Всего сигналов: ${axes.signalCount}`);
   return lines.join('\n').trim();
+}
+
+async function formatIdentityForTelegram(userId: string): Promise<string> {
+  const store = getBotTraitsStore();
+  const traits = await store.getTraits(userId);
+  const identity = await getBotIdentityService().getIdentity(userId);
+  const history = await store.snapshotHistory(userId, 50);
+  const oldest = history.length >= 2 ? history[0] : null;
+  const narrative = await generateGrowthNarrative(oldest, traits, identity.botName);
+
+  const lines: string[] = [
+    `Я — ${identity.botName} ${identity.avatar}`,
+    '',
+    'Сейчас с тобой я:',
+    `🔥 warmth: ${traits.warmth.toFixed(2)} (${traitLabel(traits.warmth)})`,
+    `🎯 directness: ${traits.directness.toFixed(2)} (${traitLabel(traits.directness)})`,
+    `😄 humor: ${traits.humor.toFixed(2)} (${traitLabel(traits.humor)})`,
+    `⚡ playfulness: ${traits.playfulness.toFixed(2)} (${traitLabel(traits.playfulness)})`,
+    '',
+    `Глубина связи: ${traits.relationshipDepth.toFixed(2)}`,
+    '',
+    'Как я изменилась:',
+    narrative,
+  ];
+  return lines.join('\n');
 }
 
 function relativeDate(d: Date): string {
