@@ -97,6 +97,8 @@ model User {
   // v2.0 Phase B1 — USER NEST axes
   userAxes               UserAxes?
   axisSignals            AxisSignal[]
+  // v2.0 Phase B2 — Identity Evolution: weekly trait snapshots
+  botTraitSnapshots      BotTraitSnapshot[]
 }
 
 // Phase 6 C2 — синтезированный профиль личности. ВАЖНО (#4 SSOT):
@@ -1049,6 +1051,27 @@ model BotIdentity {
   traits    Json     @default("{}")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// v2 Phase B2 — Identity Evolution: weekly snapshots of BOT traits.
+// Spec: docs/superpowers/specs/2026-05-31-v2-phase-b2-identity-evolution-design.md
+// BotIdentity.traits (existing Json) holds CURRENT traits; these snapshots
+// power the growth narrative (compare oldest vs current).
+// ───────────────────────────────────────────────────────────────────────────
+
+model BotTraitSnapshot {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warmth      Float
+  directness  Float
+  humor       Float
+  playfulness Float
+  depth       Float
+  recordedAt  DateTime @default(now())
+
+  @@index([userId, recordedAt])
 }
 
 // v2.0 Week 6 (spec §9.6) — cron job audit log used for idempotency.
