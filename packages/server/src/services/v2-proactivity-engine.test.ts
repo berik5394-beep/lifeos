@@ -122,13 +122,14 @@ describe('interpolate — pure', () => {
 });
 
 describe('TEMPLATES — table', () => {
-  it('covers all 6 sources', () => {
+  it('covers all known sources', () => {
     expect(Object.keys(TEMPLATES).sort()).toEqual(
       [
         'commitment_due',
         'goal_no_progress',
         'identity_growth',
         'mood_shift',
+        'skill_suggestion',
         'stale_entity',
         'streak_break',
       ].sort(),
