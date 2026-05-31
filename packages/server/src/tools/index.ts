@@ -26,6 +26,7 @@ import { getUserProfileTool } from './get-user-profile.js';
 import { sendTelegramTool } from './send-telegram.js';
 import { decomposeGoalTool } from './decompose-goal.js';
 import { applyInsightTool } from './apply-insight.js';
+import { createSkillTool } from './create-skill.js';
 import { rememberEntityTool } from './remember-entity.js';
 import { linkRelationshipTool } from './link-relationship.js';
 import { suggestGoalTool } from './suggest-goal.js';
@@ -61,6 +62,8 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   decomposeGoalTool,
   // P3/R8 — применение инсайта рефлектора ТОЛЬКО через confirm-гейт
   applyInsightTool,
+  // v2.0 Phase B4 C1 — explicit skill creation (needsConfirm:true)
+  createSkillTool,
   // agent-only read-tools, миграция 9A (claude-agent свич — 9A.8)
   getTasksTool,
   getCalendarTool,
