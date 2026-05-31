@@ -17,6 +17,8 @@ export {
 export { buildSkillFromRequest, proposeSkillFromPattern } from './skill-builder.js';
 export { routeToSkill } from './skill-router.js';
 export { PostgresHermes, type HermesStore } from './postgres-impl.js';
+export { runSkillPlan, partitionSteps } from './skill-runner.js';
+export { resolveSkillArgs, parseArgsResponse } from './arg-resolver.js';
 
 import { PostgresHermes } from './postgres-impl.js';
 import type { HermesStore } from './postgres-impl.js';
