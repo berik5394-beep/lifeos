@@ -125,6 +125,10 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
       where: { id },
       data: { active: false },
     });
+    captureActivity(request.userId, {
+      type: 'habit_deleted',
+      content: `Убрал привычку «${habit.name}»`,
+    });
     return reply.send({ success: true });
   });
 

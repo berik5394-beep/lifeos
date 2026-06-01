@@ -228,6 +228,10 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
     }
 
     await prisma.calendarEvent.delete({ where: { id } });
+    captureActivity(request.userId, {
+      type: 'event_deleted',
+      content: `Убрал встречу «${event.title}»`,
+    });
     return reply.send({ success: true });
   });
 }

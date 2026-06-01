@@ -198,6 +198,10 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return true;
     });
     if (!deleted) throw new NotFoundError('Задача');
+    captureActivity(request.userId, {
+      type: 'task_deleted',
+      content: `Убрал задачу (id ${id})`,
+    });
     return reply.send({ success: true });
   });
 

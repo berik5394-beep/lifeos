@@ -206,6 +206,10 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ message: 'Расход не найден' });
     }
     await prisma.expense.delete({ where: { id } });
+    captureActivity(request.userId, {
+      type: 'expense_deleted',
+      content: `Убрал расход ${expense.amount} ₸ · ${expense.category}`,
+    });
     return reply.send({ success: true });
   });
 
@@ -259,6 +263,10 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ message: 'Доход не найден' });
     }
     await prisma.income.delete({ where: { id } });
+    captureActivity(request.userId, {
+      type: 'income_deleted',
+      content: `Убрал доход ${income.amount} ₸ · ${income.source}`,
+    });
     return reply.send({ success: true });
   });
 

@@ -123,6 +123,10 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
     }
 
     await prisma.weeklyGoal.delete({ where: { id } });
+    captureActivity(request.userId, {
+      type: 'weekly_goal_deleted',
+      content: `Убрал цель недели «${goal.goalText}»`,
+    });
     return reply.send({ success: true });
   });
 
@@ -206,6 +210,10 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
     }
 
     await prisma.yearlyGoal.delete({ where: { id } });
+    captureActivity(request.userId, {
+      type: 'yearly_goal_deleted',
+      content: `Убрал годовую цель «${goal.goalText}»`,
+    });
     return reply.send({ success: true });
   });
 }
