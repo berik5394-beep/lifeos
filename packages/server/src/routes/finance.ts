@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth as validateMonth, invalidDateReply } from '../middleware/validate.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
 
 // B.3: enum-валидация категории (аудит 3.12 — раньше любая строка).
 // Список из CLAUDE.md (expenseCategories).
@@ -186,6 +187,10 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
       }
     }
 
+    captureActivity(request.userId, {
+      type: 'expense_added',
+      content: `Расход ${data.amount} ₸ · ${data.category} · ${data.description}`,
+    });
     return reply.status(201).send({
       ...expense,
       ...(budgetInfo ? { budgetInfo } : {}),
@@ -237,6 +242,10 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
         amount: data.amount,
         userId: request.userId,
       },
+    });
+    captureActivity(request.userId, {
+      type: 'income_added',
+      content: `Доход ${data.amount} ₸ · ${data.source}`,
     });
     return reply.status(201).send(income);
   });
@@ -293,6 +302,10 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
+    captureActivity(request.userId, {
+      type: 'budget_set',
+      content: `Лимит ${data.category}: ${data.monthlyLimit} ₸ (${data.month}/${data.year})`,
+    });
     return reply.status(201).send(budget);
   });
 
