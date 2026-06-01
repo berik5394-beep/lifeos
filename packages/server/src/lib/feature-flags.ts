@@ -128,3 +128,12 @@ export function isV2EngagementEnabled(userId: string): boolean {
   if (flag === 'all' || flag === 'true') return true;
   return flag.split(',').some((s) => s.trim() === `user-${userId}`);
 }
+
+/**
+ * D (spec 2026-06-01): inline-проактивность из длинного текста.
+ * Off → байт-в-байт сегодняшнее поведение. Env FEATURE_V2_INLINE_NUDGE
+ * в форме "all"/"true" / "none"/unset / "user-X,user-Y".
+ */
+export function isV2InlineNudgeEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_INLINE_NUDGE, userId);
+}
