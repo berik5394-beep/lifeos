@@ -14,6 +14,8 @@ import { getBotTraitsStore, traitLabel } from './bot-traits/index.js';
 import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 import { getHermesStore } from './hermes/index.js';
+import { analyzeFinancePhoto, buildFinancePending } from './finance-vision.js';
+import { setPendingAction } from './pending-actions.js';
 
 /**
  * LifeOS Telegram Bot — полноценный JARVIS в Telegram.
@@ -378,6 +380,42 @@ export function createTelegramBot(): Telegraf {
     } catch (err) {
       console.error('TG text error:', err);
       await ctx.reply('Что-то пошло не так. Попробуй ещё раз через секунду.');
+    }
+  });
+
+  // A (spec 2026-06-01): фото → чек/скрин банка → предложить записать расход/доход.
+  // MONEY-SAFE: только setPendingAction (предложение). Реальная запись происходит
+  // через существующий confirm-FSM (bot.on('text') → handleMessage → peekPendingAction
+  // → readConfirmSignal → runConfirmedAction). Не перехватываем нефинансовые фото.
+  bot.on('photo', async (ctx) => {
+    const chatId = String(ctx.chat.id);
+    const from = ctx.from;
+    try {
+      const userId = await findOrCreateUser(
+        chatId,
+        from.id,
+        from.first_name || '',
+        from.username,
+      );
+      const sizes = ctx.message.photo;
+      const fileId = sizes[sizes.length - 1].file_id; // самый крупный размер
+      const link = await bot.telegram.getFileLink(fileId);
+      const res = await fetch(link.href);
+      if (!res.ok) throw new Error(`Не удалось скачать фото: ${res.status}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      const base64 = buf.toString('base64');
+      const result = await analyzeFinancePhoto(base64, 'image/jpeg');
+      const pending = buildFinancePending(result);
+      if (!pending) {
+        // НЕ перехватываем — фото не финансовое или непонятное.
+        await ctx.reply('Не разобрал сумму на фото. Если это расход/доход — напиши суммой, или пришли чётче.');
+        return;
+      }
+      await setPendingAction(userId, pending.action, pending.input, pending.confirmationText);
+      await ctx.reply(pending.confirmationText);
+    } catch (err) {
+      console.warn('[telegram] photo handler failed:', err instanceof Error ? err.message : err);
+      await ctx.reply('Не смог обработать фото. Попробуй ещё раз?');
     }
   });
 
