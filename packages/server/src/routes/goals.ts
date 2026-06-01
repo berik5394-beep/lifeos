@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseYear, invalidDateReply } from '../middleware/validate.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
 
 // B.3: enum/диапазоны (аудит 3.12). area из CLAUDE.md (goalAreas),
 // year ограничен, weekStart — строгий ISO (раньше z.string() →
@@ -80,6 +81,10 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
         order: (maxOrder._max.order ?? -1) + 1,
       },
     });
+    captureActivity(request.userId, {
+      type: 'weekly_goal_created',
+      content: `Цель недели «${goal.goalText}» (${data.weekStart})`,
+    });
     return reply.status(201).send(goal);
   });
 
@@ -99,6 +104,10 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
     const updated = await prisma.weeklyGoal.update({
       where: { id },
       data,
+    });
+    captureActivity(request.userId, {
+      type: 'weekly_goal_updated',
+      content: `Изменил цель недели «${updated.goalText}»`,
     });
     return reply.send(updated);
   });
@@ -155,6 +164,10 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
         goalText: data.goalText,
       },
     });
+    captureActivity(request.userId, {
+      type: 'yearly_goal_created',
+      content: `Годовая цель «${goal.goalText}» (${data.area}, ${data.year})`,
+    });
     return reply.status(201).send(goal);
   });
 
@@ -174,6 +187,10 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
     const updated = await prisma.yearlyGoal.update({
       where: { id },
       data,
+    });
+    captureActivity(request.userId, {
+      type: 'yearly_goal_updated',
+      content: `Изменил годовую цель «${updated.goalText}»`,
     });
     return reply.send(updated);
   });
