@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../lib/models.js';
+import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 import { reflect, type ReflectorFacts } from './reflector-core.js';
 import { persistCandidates } from './insight-store.js';
@@ -129,7 +129,7 @@ async function phrase(
   const user = JSON.stringify(candidates.map((c) => c.message));
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = createAnthropic(apiKey);
     const resp = await client.messages.create({
       model: MODELS.sonnet,
       max_tokens: 1024,

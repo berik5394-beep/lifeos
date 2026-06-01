@@ -3,12 +3,12 @@
  * never throws; returns null on any failure. Mirrors user-axes/analyze-message.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../../lib/models.js';
+import { createAnthropic } from '../../lib/anthropic.js';
 import { registryToolNames } from '../../tools/index.js';
 import { parseSkillSpec, type SkillSpec } from './types.js';
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 function toolMenu(): string {
   return registryToolNames().join(', ');

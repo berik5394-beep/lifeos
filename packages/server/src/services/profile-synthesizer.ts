@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../lib/models.js';
+import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 import {
   shouldSynthesize,
@@ -139,7 +139,7 @@ export async function runProfileSynthesis(
 
   let raw = '';
   try {
-    const client = new Anthropic({ apiKey });
+    const client = createAnthropic(apiKey);
     const resp = await client.messages.create({
       model: MODELS.sonnet,
       max_tokens: 1024,

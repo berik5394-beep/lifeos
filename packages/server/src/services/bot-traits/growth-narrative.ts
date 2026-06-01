@@ -8,9 +8,10 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../../lib/models.js';
+import { createAnthropic } from '../../lib/anthropic.js';
 import type { BotTraits, TraitSnapshot } from './types.js';
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 const SYSTEM_PROMPT_TEMPLATE = (botName: string) =>
   `Ты — ${botName}, AI-друг. Опиши как ты ИЗМЕНИЛАСЬ в общении с

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { MODELS } from '../lib/models.js';
 import { z } from 'zod';
-import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
@@ -16,7 +16,7 @@ const quickAddSchema = z.object({
 // а Railway/документация проекта задают `CLAUDE_API_KEY` (см. .env.example).
 // Без явного apiKey клиент падал с "Could not resolve authentication method"
 // 500 на каждом запросе.
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 const quickAddRateLimit = rateLimiter({ max: 15, windowMs: 60_000, keyPrefix: 'quick-add' });
 

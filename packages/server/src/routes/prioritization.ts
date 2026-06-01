@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { MODELS } from '../lib/models.js';
-import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
@@ -8,7 +8,7 @@ import { AiModelError } from '../lib/errors.js';
 
 // Same fix as quick-add.ts: проект использует ENV `CLAUDE_API_KEY`, а не
 // дефолтный `ANTHROPIC_API_KEY` — без явного apiKey клиент 500-ит.
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 // POST /tasks/prioritize зовёт Claude Sonnet 4 с полным списком задач
 // (до 50 штук) — это дорогой вызов (~$0.01-0.05 за раз). Без лимита клиент

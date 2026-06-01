@@ -5,15 +5,15 @@
  * NO confirm steps; this runner is for skills containing money/confirm steps.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../../lib/models.js';
+import { createAnthropic } from '../../lib/anthropic.js';
 import { runRegistryTool, toolConfirmRequired } from '../../tools/index.js';
 import { setPendingAction } from '../pending-actions.js';
 import { resolveSkillArgs } from './arg-resolver.js';
 import type { SkillDefinition } from '@prisma/client';
 import type { SkillStep } from './types.js';
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 export interface RunnerStep {
   toolName: string;

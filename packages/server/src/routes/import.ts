@@ -5,14 +5,14 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import multipart from '@fastify/multipart';
 import ExcelJS from 'exceljs';
-import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropic } from '../lib/anthropic.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { AppError, NotFoundError, ValidationError } from '../lib/errors.js';
 
 // Import calls Claude API + parses files — tight cap per IP
 const importRateLimit = rateLimiter({ max: 5, windowMs: 60_000, keyPrefix: 'import' });
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 // Security limits
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB

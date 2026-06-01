@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../lib/models.js';
+import { createAnthropic } from '../lib/anthropic.js';
 
 /**
  * #7 — справочник ПРОВЕРЕННЫХ доменов. Разбор: модель парротит
@@ -34,7 +34,7 @@ import { AiModelError } from '../lib/errors.js';
  * Когда подключим affiliate API, заменим URL builder, остальное не меняем.
  */
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 export type BookingType = 'flight' | 'taxi' | 'hotel' | 'unknown';
 

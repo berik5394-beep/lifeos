@@ -3,7 +3,7 @@ import { MODELS } from '../lib/models.js';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import crypto from 'node:crypto';
-import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropic } from '../lib/anthropic.js';
 import Groq from 'groq-sdk';
 import { prisma } from '../lib/prisma.js';
 import { AiModelError } from '../lib/errors.js';
@@ -20,7 +20,7 @@ import { AiModelError } from '../lib/errors.js';
  */
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 export interface ExtractedTask {
   title: string;

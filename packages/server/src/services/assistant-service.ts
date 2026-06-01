@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../lib/models.js';
+import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 import {
   buildJarvisPrompt,
@@ -25,7 +25,7 @@ import {
  * один билдер (jarvis-prompt).
  */
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 export interface GatheredContext {
   context: AssistantContext;

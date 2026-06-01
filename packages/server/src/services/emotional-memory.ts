@@ -15,14 +15,14 @@
  * { valence: 0, arousal: 0.5, emotion: 'neutral' } and never throw.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 import { MODELS } from '../lib/models.js';
 import type { MoodSnapshot } from '@prisma/client';
 
 export type { MoodSnapshot };
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 // ---------------------------------------------------------------------------
 // Interface

@@ -40,13 +40,13 @@ const PARTIAL_DEADLINE =
 const DECOMPOSE =
   /(книг|прочита|чита(?:ть|ю)|страниц|выучи|изучи|научи|освои|язык|английск|испанск|немецк|француз|курс|накопи|сэконом|накоплен|млн|миллион|похуд|сброси|набра|кг|бега|пробеж|трениров|спорт|медитац|форм[уы]|здоров|подтяну|подтягив|каждый день|раз[а]? в недел|в день по|зарабат)/i;
 
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../lib/models.js';
+import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 import { AiModelError } from '../lib/errors.js';
 import { localDateStr } from '../lib/tz.js';
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 /** Узел недельного уровня (→ WeeklyGoal на шаге 3c). */
 export interface PlanWeek {

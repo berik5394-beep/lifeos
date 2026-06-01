@@ -4,11 +4,11 @@
  * (or {}). Pure parseArgsResponse is unit-tested without Claude.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../../lib/models.js';
+import { createAnthropic } from '../../lib/anthropic.js';
 import type { SkillStep } from './types.js';
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 /** Defensive parse: always returns exactly `planLen` plain objects. */
 export function parseArgsResponse(raw: string, planLen: number): Record<string, unknown>[] {

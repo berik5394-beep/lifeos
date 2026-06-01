@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../lib/models.js';
+import { createAnthropic } from '../lib/anthropic.js';
 import { AiModelError } from '../lib/errors.js';
 // SSOT 9A.8: агент-цикл больше НЕ ходит в legacy LOCAL_TOOLS/
 // runLocalTool. Источник правды — реестр. agentToolSchemas =
@@ -88,7 +89,7 @@ async function enforceTenge(text: string): Promise<string> {
  * связный текст из всех text-блоков.
  */
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 export interface AgentOptions {
   system: string;

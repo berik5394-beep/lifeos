@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { MODELS } from '../lib/models.js';
 import { z } from 'zod';
-import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropic } from '../lib/anthropic.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { prisma } from '../lib/prisma.js';
@@ -60,9 +60,7 @@ function assertImageSizeOk(base64: string, mediaType: string): void {
   }
 }
 
-const anthropic = new Anthropic({
-  apiKey: process.env.CLAUDE_API_KEY || '',
-});
+const anthropic = createAnthropic();
 
 const VISION_MODEL = MODELS.sonnet;
 

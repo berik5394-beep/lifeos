@@ -1,5 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../lib/models.js';
+import { createAnthropic } from '../lib/anthropic.js';
 
 /**
  * Phase 6 C3.1 — классификатор эмоциональных сообщений.
@@ -70,7 +70,7 @@ export async function classifyEmotional(text: string): Promise<boolean> {
   if (!apiKey || !text || text.length < 8) return false;
 
   try {
-    const client = new Anthropic({ apiKey });
+    const client = createAnthropic(apiKey);
     const resp = await client.messages.create({
       model: MODELS.haiku,
       max_tokens: 8,

@@ -7,12 +7,12 @@
  * Cost: ~$0.0001 per call. For Berik's 24 msgs/day = ~$0.07/month.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../../lib/models.js';
+import { createAnthropic } from '../../lib/anthropic.js';
 import { parseAxisResponse } from './parse-response.js';
 import { getUserAxesStore } from './index.js';
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 const AXIS_SYSTEM_PROMPT = `Ты — анализатор личности LifeOS. Из одного сообщения пользователя извлеки
 сигналы по 4 осям личности.

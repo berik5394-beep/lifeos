@@ -5,8 +5,8 @@
  * and produces fact-based insights with no sugarcoating.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../lib/models.js';
+import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 
 // ---------------------------------------------------------------------------
@@ -708,7 +708,7 @@ async function callClaude(systemPrompt: string): Promise<string> {
     return 'AI-анализ недоступен: не настроен CLAUDE_API_KEY.';
   }
 
-  const client = new Anthropic({ apiKey });
+  const client = createAnthropic(apiKey);
 
   try {
     const response = await client.messages.create({

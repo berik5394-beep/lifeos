@@ -1,9 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../lib/models.js';
+import { createAnthropic } from '../lib/anthropic.js';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.CLAUDE_API_KEY || '',
-});
+const anthropic = createAnthropic();
 
 interface VoiceIntent {
   action: string;

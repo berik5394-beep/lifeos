@@ -6,8 +6,8 @@
  * message exists. Mirrors user-axes/analyze-message.ts.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../../lib/models.js';
+import { createAnthropic } from '../../lib/anthropic.js';
 import {
   parseFeedbackResponse,
   NO_REACTION,
@@ -15,7 +15,7 @@ import {
   type ImplicitFlags,
 } from './types.js';
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 const FEEDBACK_SYSTEM_PROMPT = `Ты — анализатор РЕАКЦИЙ пользователя на ответы
 ассистента LifeOS. Тебе дают последний ответ бота и ответ пользователя на него.

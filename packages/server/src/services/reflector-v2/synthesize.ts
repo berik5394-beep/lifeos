@@ -3,11 +3,11 @@
  * Best-effort: any failure → null (caller emits nothing; never fabricates).
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../../lib/models.js';
+import { createAnthropic } from '../../lib/anthropic.js';
 import { summariseFactsForPrompt, parseKeystone, type ReflectorV2Facts, type Keystone } from './types.js';
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 const SYS = `Ты — рефлексирующий AI-друг LifeOS. Тебе дают КРОСС-СРЕЗ жизни
 пользователя по разным слоям (личность, тон, настроение, привычки, финансы,

@@ -14,8 +14,8 @@
  * separately for unit testing without DB/Claude.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../lib/models.js';
+import { createAnthropic } from '../lib/anthropic.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -134,7 +134,7 @@ export function parseExtractorResponse(raw: string): ExtractorResult {
 // Async API (Claude call — implemented in Task C2)
 // ---------------------------------------------------------------------------
 
-const anthropic = new Anthropic({ apiKey: process.env.CLAUDE_API_KEY || '' });
+const anthropic = createAnthropic();
 
 const ENTITY_TYPES = ['person', 'place', 'concept', 'goal', 'organization'] as const;
 const RELATIONSHIP_TYPES = [
