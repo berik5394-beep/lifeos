@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseMonth, invalidDateReply } from '../middleware/validate.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
 
 const journalSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD'),
@@ -84,6 +85,18 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
+    const journalParts = [
+      data.sleepHours != null ? `сон ${data.sleepHours}ч` : null,
+      data.energy != null ? `энергия ${data.energy}` : null,
+      data.mood != null ? `настроение ${data.mood}` : null,
+    ].filter(Boolean);
+    captureActivity(request.userId, {
+      type: 'journal_logged',
+      content:
+        journalParts.length > 0
+          ? `Дневник за ${data.date}: ${journalParts.join(', ')}`
+          : `Дневник за ${data.date} обновлён`,
+    });
     return reply.send(entry);
   });
 }
