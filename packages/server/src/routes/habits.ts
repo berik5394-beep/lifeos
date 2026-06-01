@@ -6,6 +6,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 import { rateLimiter } from '../middleware/security.js';
 import { addXP } from './pet.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
 
 // CLAUDE.md spec: выполнил привычку = +10 XP.
 const HABIT_XP_REWARD = 10;
@@ -68,6 +69,10 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
         order: (maxOrder._max.order ?? -1) + 1,
       },
     });
+    captureActivity(request.userId, {
+      type: 'habit_created',
+      content: `Новая привычка «${habit.name}»`,
+    });
     return reply.status(201).send(habit);
   });
 
@@ -98,6 +103,10 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
     const updated = await prisma.habit.update({
       where: { id },
       data: updateData,
+    });
+    captureActivity(request.userId, {
+      type: 'habit_updated',
+      content: `Изменил привычку «${updated.name}»`,
     });
     return reply.send(updated);
   });
@@ -176,6 +185,12 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
       return created;
     });
 
+    captureActivity(request.userId, {
+      type: 'habit_logged',
+      content: completed
+        ? `Отметил привычку «${habit.name}»`
+        : `Снял отметку с привычки «${habit.name}»`,
+    });
     return reply.send(log);
   });
 
