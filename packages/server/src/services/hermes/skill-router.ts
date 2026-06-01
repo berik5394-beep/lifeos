@@ -33,8 +33,14 @@ export async function routeToSkill(
     let best: SkillDefinition | null = null;
     let bestSim = -1;
     for (const s of activeSkills) {
-      const probe = [s.name, s.description, ...(s.triggers ?? [])].join('. ');
-      const emb = await embedQuery(probe);
+      let emb: number[] | null | undefined;
+      const stored = (s as { embedding?: unknown }).embedding;
+      if (Array.isArray(stored) && stored.length > 0 && typeof stored[0] === 'number') {
+        emb = stored as number[];
+      } else {
+        const probe = [s.name, s.description, ...(s.triggers ?? [])].join('. ');
+        emb = await embedQuery(probe);
+      }
       if (!emb || emb.length === 0) continue;
       const sim = cosineSimilarity(q, emb);
       if (sim > bestSim) { bestSim = sim; best = s; }

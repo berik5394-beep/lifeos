@@ -9,6 +9,7 @@ import { Prisma, type SkillDefinition } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { registry } from '../../tools/index.js';
 import { validateSkillTools, type SkillSpec, type SkillStep } from './types.js';
+import { embedQuery, embeddingsEnabled } from '../embeddings.js';
 
 export interface HermesStore {
   createSkill(userId: string, spec: SkillSpec, source: string): Promise<SkillDefinition>;
@@ -45,6 +46,20 @@ export class PostgresHermes implements HermesStore {
       name = `${spec.name} (${i})`;
     }
 
+    // Follow-up: cache the probe embedding so the router doesn't re-embed
+    // this skill on every message. Best-effort — null on failure/disabled.
+    let embedding: number[] | null = null;
+    if (embeddingsEnabled()) {
+      try {
+        const probe = [spec.name, spec.description, ...(spec.triggers ?? [])].join('. ');
+        const vec = await embedQuery(probe);
+        if (Array.isArray(vec) && vec.length > 0) embedding = vec;
+      } catch (err) {
+        console.warn('[hermes:createSkill:embed] failed:',
+          err instanceof Error ? err.message : err);
+      }
+    }
+
     return prisma.skillDefinition.create({
       data: {
         userId,
@@ -52,6 +67,7 @@ export class PostgresHermes implements HermesStore {
         description: spec.description,
         triggers: spec.triggers,
         plan: spec.plan as unknown as Prisma.InputJsonValue,
+        embedding: embedding ? (embedding as unknown as Prisma.InputJsonValue) : undefined,
         synthesis: spec.synthesis,
         source,
       },

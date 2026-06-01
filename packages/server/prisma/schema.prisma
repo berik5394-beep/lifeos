@@ -1166,6 +1166,7 @@ model SkillDefinition {
   description String
   triggers    String[]
   plan        Json
+  embedding   Json?
   synthesis   String
   source      String    // 'proactive' | 'explicit'
   active      Boolean   @default(true)
