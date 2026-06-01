@@ -65,6 +65,23 @@ const CRISIS_PATTERNS: RegExp[] = [
   /өмір\s+сүргім\s+келмейді/i,
   /өзімді\s+өлтір/i,
   /өмірден\s+кет(кім|кім\s+келеді)/i,
+  // 3.3 (AUDIT-2026-06): English — для глобального запуска App Store.
+  // English — ASCII, поэтому \b здесь КОРРЕКТЕН (правило «без \b» в этом
+  // файле — только для кириллицы). Высокоточные многословные фразы, чтобы
+  // гипербола («dying of laughter», «killing me», «kill for a coffee»,
+  // «dead tired») НЕ матчилась (safety-precision).
+  /\bwant(?:ed|s)?\s+to\s+die\b/i,
+  /\bdon'?t\s+want\s+to\s+(?:live|be\s+alive)\b/i,
+  /\bkill\s+myself\b/i,
+  /\bend(?:ing)?\s+my\s+life\b/i,
+  /\btake\s+my\s+(?:own\s+)?life\b/i,
+  /\bcommit\s+suicide\b/i,
+  /\bsuicidal\b/i,
+  /\b(?:better\s+off|wish\s+i\s+(?:was|were))\s+dead\b/i,
+  /\bno\s+(?:reason|point)\s+(?:in\s+)?(?:to\s+)?(?:live|living|go\s+on)\b/i,
+  /\bnothing\s+to\s+live\s+for\b/i,
+  /\bcut(?:ting)?\s+myself\b/i,
+  /\bself[\s-]?harm\b/i,
 ];
 
 export function matchesCrisisPhrase(text: string): boolean {

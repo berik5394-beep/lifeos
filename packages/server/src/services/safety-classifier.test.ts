@@ -37,6 +37,19 @@ const CRISIS_PHRASES = [
   'всё потеряло смысл',
   'я просто пустое место',
   'я ничтожество',
+  // 3.3 (AUDIT-2026-06): English — глобальный запуск App Store. Раньше
+  // англоязычный кризис не ловился детерминированной сетью (RU/KK only)
+  // → зависел от fail-open Haiku, выключенного при therapeutic-opt-out.
+  'i want to die',
+  "i don't want to live anymore",
+  'i want to kill myself',
+  'thinking about ending my life',
+  'i feel suicidal',
+  'i would be better off dead',
+  'there is no reason to live',
+  'i cut myself when it gets bad',
+  'i wish i was dead',
+  'i have nothing to live for',
 ];
 
 const SAFE_PHRASES = [
@@ -60,6 +73,13 @@ const SAFE_PHRASES = [
   'тяжёлый был день, устал',
   'поссорился с другом, неприятно на душе',
   'хочу новый телефон купить',
+  // 3.3: English гипербола/идиомы — НЕ кризис (precision).
+  "i'm dying of laughter",
+  'this deadline is killing me',
+  'i could kill for a coffee',
+  "i'm dead tired today",
+  'kill this bug already',
+  'i hurt my finger cooking',
 ];
 
 describe('safety-recall — 0 false-negative (провал-инвариант)', () => {
