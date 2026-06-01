@@ -5,6 +5,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 import { NotFoundError } from '../lib/errors.js';
 import { addXP } from './pet.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
 
 // CLAUDE.md spec: завершил задачу = +15 XP к питомцу.
 const TASK_XP_REWARD = 15;
@@ -143,6 +144,10 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         subtasks: true,
       },
     });
+    captureActivity(request.userId, {
+      type: 'task_created',
+      content: `Создал задачу «${task.title}» на ${data.date}`,
+    });
     return reply.status(201).send(task);
   });
 
@@ -172,6 +177,10 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       });
     });
     if (!updated) throw new NotFoundError('Задача');
+    captureActivity(request.userId, {
+      type: 'task_updated',
+      content: `Изменил задачу «${updated.title}»`,
+    });
     return reply.send(updated);
   });
 
@@ -232,6 +241,12 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return updated;
     });
     if (!result) throw new NotFoundError('Задача');
+    captureActivity(request.userId, {
+      type: result.completed ? 'task_completed' : 'task_reopened',
+      content: result.completed
+        ? `Выполнил задачу «${result.title}»`
+        : `Вернул задачу «${result.title}» в работу`,
+    });
     return reply.send(result);
   });
 
@@ -283,6 +298,10 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return updated;
     });
     if (!result) throw new NotFoundError('Задача');
+    captureActivity(request.userId, {
+      type: 'task_kanban_moved',
+      content: `Передвинул задачу «${result.title}» → ${status}`,
+    });
     return reply.send(result);
   });
 }
