@@ -23,6 +23,18 @@ import { capabilityText } from '../tools/index.js';
 import { CONSTRAINTS_TEXT } from './capabilities.js';
 import { THERAPEUTIC_STYLE_BLOCK } from './therapeutic-mode.js';
 
+// D (spec 2026-06-01): inline-подсказка из длинного рассказа. ОДНО мягкое
+// предложение оформить скрытое намерение в задачу/цель, вопросом, легко
+// проигнорировать. На «да» сработают обычные create_task/suggest_goal
+// (через подтверждение). Добавляется ТОЛЬКО за флагом (см. orchestrator).
+export const INLINE_NUDGE_BLOCK =
+  '\n\nПРОАКТИВНОСТЬ ИЗ ТЕКСТА: если сообщение — длинный рассказ и в нём есть ' +
+  'скрытое НАМЕРЕНИЕ или возможность (свидание, звонок, идея, дело, цель), ' +
+  'в КОНЦЕ ответа задай ОДИН мягкий вопрос-предложение оформить это в задачу ' +
+  'или цель (напр. «…кстати, давай пригласим её — поставить в задачу?»). ' +
+  'Строго ОДНО предложение, не настаивай, легко проигнорировать. Если явного ' +
+  'намерения нет — НЕ предлагай ничего.';
+
 export type AssistantStyle = 'friendly' | 'strict' | 'calm' | 'toxic';
 
 export interface AssistantContext {
@@ -203,6 +215,9 @@ export interface JarvisPromptOpts {
    *  > toxic by construction (тон выше стиля для эмоций). Safety
    *  выше всего перебивает раньше — сюда уже НЕ-кризис. */
   therapeuticMode?: boolean;
+  /** D (spec 2026-06-01): inline-проактивность из длинного рассказа.
+   *  За флагом isV2InlineNudgeEnabled — off → поведение не меняется. */
+  inlineNudge?: boolean;
 }
 
 // ISSUE-4: голос — это TTS, длинный ответ = 25с речи (Берик в проде).
@@ -226,6 +241,7 @@ export function buildJarvisPrompt(
     ? THERAPEUTIC_STYLE_BLOCK
     : STYLE[style];
   const parts = [core(ctx.userName, getTimeOfDay()), styleBlock];
+  if (opts.inlineNudge) parts.push(INLINE_NUDGE_BLOCK);
   let body = parts.join('\n\n');
   if (opts.ritual) body += ritualBlock(opts.ritual, opts.dayCompletionPercent);
   if (opts.channel === 'voice') body += VOICE_BREVITY;

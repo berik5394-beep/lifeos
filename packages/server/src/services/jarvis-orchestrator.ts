@@ -42,6 +42,7 @@ import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js'
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 import { isV2HermesEnabled } from '../lib/feature-flags.js';
+import { isV2InlineNudgeEnabled } from '../lib/feature-flags.js';
 import {
   routeToSkill,
   buildSkillInstruction,
@@ -879,6 +880,7 @@ export async function handleMessage(
         ...ritualOptsFor(intent, gathered.dayCompletionPercent),
         channel,
         therapeuticMode: finalTherapeutic,
+        inlineNudge: isV2InlineNudgeEnabled(userId),
       })
     : 'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
 
