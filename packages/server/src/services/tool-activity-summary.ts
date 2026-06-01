@@ -151,10 +151,17 @@ export function captureActivity(
   summary: ActivitySummary | null,
 ): void {
   if (!summary) return;
-  if (!isV2MemoryEnabled(userId)) return;
-  void recordEvent(userId, {
-    type: summary.type,
-    content: summary.content,
-    importance: summary.importance,
-  }).catch((e) => console.warn('[capture] recordEvent failed', e));
+  try {
+    if (!isV2MemoryEnabled(userId)) return;
+    void recordEvent(userId, {
+      type: summary.type,
+      content: summary.content,
+      importance: summary.importance,
+    }).catch((e) => console.warn('[capture] recordEvent failed', e));
+  } catch (e) {
+    // Хот-путь (хук [A] в runRegistryTool + хуки [B] в роутах): захват
+    // НИКОГДА не должен ронять успешное действие/ответ юзеру. Любой
+    // синхронный сбой (флаг-чек и т.п.) гасим здесь.
+    console.warn('[capture] captureActivity failed', e);
+  }
 }

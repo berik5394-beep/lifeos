@@ -2,6 +2,10 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { Tool, ToolContext, IntegrationRequirement } from './_types.js';
 import { prisma } from '../lib/prisma.js';
 import { auditToolCall, type AuditSink } from '../services/tool-audit.js';
+import {
+  captureActivity,
+  summarizeToolAction,
+} from '../services/tool-activity-summary.js';
 import { getToday } from './get-today.js';
 import { getWeatherTool } from './get-weather.js';
 import { getBudgetTool } from './get-budget.js';
@@ -357,14 +361,27 @@ export async function runRegistryTool(
   // ToolCall на вызов» нарушался для validation failures (юзер видит
   // ошибку, но ToolCall row не создан → badges/honesty tests слепы).
   // Теперь любой throw (parse OR handler) ловится audit-layer.
-  return auditToolCall(
+  // M1 хук [A]: parsed выносим в let parsedInput, чтобы summarizeToolAction
+  // видел input ПОСЛЕ успешного исполнения. Внешний контракт runRegistryTool
+  // не меняется (тот же возврат result, тот же audit-инвариант «ровно одна
+  // строка ToolCall»). parse остаётся ВНУТРИ audit-замыкания (L99 #20).
+  let parsedInput: unknown;
+  const result = await auditToolCall(
     ctx.userId,
     name,
     rawInput,
     async () => {
-      const parsed = tool.schema.parse(rawInput ?? {});
-      return tool.handler(parsed, ctx);
+      parsedInput = tool.schema.parse(rawInput ?? {});
+      return tool.handler(parsedInput, ctx);
     },
     sink,
   );
+  // Захват факта в v2 episodic — fire-and-forget (captureActivity сам
+  // void recordEvent().catch). НЕ await, НЕ блокирует возврат. null для
+  // read/external/неизвестных имён → no-op. Сбой захвата не ломает tool.
+  captureActivity(
+    ctx.userId,
+    summarizeToolAction(name, parsedInput, result, tool.sideEffects),
+  );
+  return result;
 }
