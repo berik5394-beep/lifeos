@@ -65,6 +65,12 @@ import {
  * а не пассивно записывает.
  */
 
+// C (spec 2026-06-01): сколько символов сообщения храним/обрабатываем.
+// Раньше 4000 обрезало длинный рассказ. 16000 покрывает «рассказ»;
+// чанкинг гигантских — позже (YAGNI). Стоимость токенов ограничена
+// дневным AI-лимитом (security.aiDailyLimiter).
+const MAX_USER_TEXT = 16000;
+
 export interface JarvisResponse {
   reply: string;
   /** URL для бронирования если это booking-запрос */
@@ -233,11 +239,11 @@ async function saveTurn(
   try {
     await prisma.chatMessage.createMany({
       data: [
-        { userId, role: 'user', content: userText.slice(0, 4000), crisis },
+        { userId, role: 'user', content: userText.slice(0, MAX_USER_TEXT), crisis },
         {
           userId,
           role: 'assistant',
-          content: assistantText.slice(0, 4000),
+          content: assistantText.slice(0, MAX_USER_TEXT),
           crisis,
         },
       ],

@@ -16,3 +16,12 @@ describe('jarvis-orchestrator — 1.4 capture non-blocking', () => {
     expect(SRC).not.toMatch(/await captureInBackground\(/);
   });
 });
+
+describe('jarvis-orchestrator — C larger text window (AUDIT/spec 2026-06-01)', () => {
+  it('uses MAX_USER_TEXT SSOT constant (16000), not a 4000 hardcode', () => {
+    expect(SRC).toMatch(/const MAX_USER_TEXT = 16000/);
+    expect(SRC).toMatch(/slice\(0, MAX_USER_TEXT\)/);
+    // старого хардкода 4000 в persist-срезах не осталось
+    expect(SRC).not.toMatch(/\.slice\(0, 4000\)/);
+  });
+});
