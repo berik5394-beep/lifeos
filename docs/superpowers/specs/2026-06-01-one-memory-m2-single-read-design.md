@@ -1,72 +1,74 @@
-# ОДНА ПАМЯТЬ — M2: Единое чтение (read from v2 only) — Design Spec
+# ОДНА ПАМЯТЬ — M2: Один писатель (single writer) — Design Spec
 
-**Status:** DRAFT → awaiting Berik review
+**Status:** DRAFT (REWRITTEN после checkpoint-находки) → awaiting Berik review
 **Author:** Claude (brainstormed with Berik 2026-06-01)
-**Часть инициативы:** ОДНА ПАМЯТЬ (M1 capture ✅ prod → **M2 single-read** → M3 remove-legacy → M4 commitment-reliability).
+**Часть инициативы:** ОДНА ПАМЯТЬ (M1 capture ✅ prod → **M2 single-writer** → M4 commitment-reliability). Бывший «M3 remove-legacy» сворачивается СЮДА (legacy убирается на записи).
 
-## 1. Контекст и решение
-M1 (захват всего в v2) — в проде, v2 теперь полная (включая кнопки-действия). Сейчас мозг ЧИТАЕТ память из **двух** источников параллельно: legacy `getRelevantMemories` (семантический поиск по плоской Memory) + v2-enrichment (фиксированные секции). M2 переключает **чтение релевантных фактов на v2** и убирает legacy-feed.
+## 0. ВАЖНО — почему спека переписана (checkpoint)
+Первая версия M2 («переключить ЧТЕНИЕ на v2») оказалась **редундантной**. Доказано по коду:
+- Есть ОДНА таблица `Memory`. И legacy `captureMemory`, и v2 `recordEvent` (вкл. M1) пишут в неё (`prisma.memory.create`).
+- v2-строки: `source:'v2-episodic'`, `expiresAt:null` → проходят фильтр чтения.
+- `getRelevantMemories` читает ВСЕ строки без фильтра по source → **уже** возвращает v2/M1-данные.
+→ **Чтение уже единое.** Строить `getRelevantV2Memories` не нужно. Berik 2026-06-01 выбрал реальную задачу: **«Один писатель».**
 
-**Подтверждено Berik (2026-06-01):**
-- Накопленные legacy-факты — **тестовые, выбрасываемые**; миграция прошлых фактов НЕ нужна (ни Berik, ни Aydana).
-- **Поведение/личность/стили/терапевт/кризис-safety/инструменты/логика/приложение — НЕ трогаются** (это код промпта/личности, не таблица Memory). M2 меняет ТОЛЬКО источник «релевантных прошлых фактов».
-- Решение: **SWAP** (флаг on → читаем ТОЛЬКО v2; off → сегодняшнее legacy). Не additive. M3 (удаление legacy) — сразу следом, безопасным порядком.
+## 1. Реальная проблема — ДВА писателя в одну таблицу пишут РАЗНОЕ
+- **legacy `captureMemory`** (`jarvis-orchestrator.ts:182` цикл по `extracted.memories` + `:666`): структурные **извлечённые факты** `{type,content,details,tags,importance}`. Делает **дедуп** (`shouldOverwriteContent` + дубликат-запрос) + **embedding** (`storeEmbedding`→`embedDocument`, vector). Качественный писатель.
+- **v2 `captureV2InBackground`** (`v2-capture.ts:104`): `recordEvent({type:'message', content: text, entityRefs})` — **сырое сообщение** одним episodic-событием. Плюс entities (граф) + mood. **БЕЗ дедупа, БЕЗ embedding.**
+- **M1 `captureActivity`** (`tool-activity-summary.ts:175`): action-события через `recordEvent`. **БЕЗ дедупа, БЕЗ embedding.**
 
-## 2. Что читается из legacy сейчас (3 точки)
-Все через `getRelevantMemories(userId, text, n)` из `services/memory-service.ts`:
-1. **Главный канал промпта:** `gatherAssistantContext` → `ctx.memories` → `ai/jarvis-prompt.ts:183-187` (`slice(0,15)`). Источник: `assistant-service.ts:128` `getRelevantMemories(text, 20)`.
-2. Инструмент `tools/recall-person.ts:34` `getRelevantMemories(name, 6)`.
-3. Инструмент `tools/get-goal-progress.ts:140` `getRelevantMemories(memQuery, 5)`.
+Итог: двойная запись фактов чата + дубли-строки + v2/action-строки ищутся только FTS (нет вектора).
 
-v2-enrichment (`services/v2-enrichment.ts`) даёт ФИКСИРОВАННЫЕ секции (identity/patterns/mood/recent-entities/axes/tone) — НЕ relevance-поиск. Значит legacy `getRelevantMemories(text)` = «вспомнить релевантное к реплике»; v2-recall надо построить.
+## 2. Цель M2
+**ОДИН write-путь** в `Memory` с лучшим из обоих (episodic-поля v2 + дедуп + embedding legacy). Все источники (чат-факты, episodic-событие, action-события M1) пишут через него. Потом отключаем legacy `captureMemory`. Чтение (`getRelevantMemories`) НЕ трогаем — уже единое.
 
-## 3. Архитектура M2 (SWAP, флаг-гейт)
-**Новый флаг `isV2ReadEnabled(userId)`** (env `FEATURE_V2_READ`, форма как у сиблингов: `all`/`none`/`user-X`). Default **off** → байт-в-байт сегодня. Отдельный от `FEATURE_V2_MEMORY` (тот гейтит захват+enrichment, уже `all`) — чтобы чтение включить независимо: собрать втёмную → флипнуть для Berik → SMOKE → all.
+## 3. Архитектура (single writer, флаг-гейт)
+**Новый флаг `isV2WriteEnabled(userId)`** (env `FEATURE_V2_WRITE`, форма как у сиблингов). off → сегодняшняя двойная запись (байт-в-байт). on → один писатель (legacy captureMemory НЕ вызывается).
 
-### 3.1 Компонент 1 — `getRelevantV2Memories(userId, text, limit)` (новый `services/v2-recall.ts`)
-- Переиспользует существующую v2-инфру:
-  - **entity-graph** `resolveEntity` (FTS+embedding hybrid — «как legacy getRelevantMemories») → релевантные entities (люди/вещи/места) по `text`.
-  - **episodic** query-методы (`services/episodic-memory.ts`) → релевантные/недавние события (факты-действия, включая кнопки из M1).
-- Возвращает `{ content: string }[]` — строки, аналогичные legacy-памяти (формат под `jarvis-prompt:187` `- ${m.content}` не меняется).
-- **Чистая сборка-часть** (ранжирование/слияние/дедуп/limit) выносится в pure-функцию `assembleV2Recall(entities, events, limit)` → юнит-тест без сети.
-- **Best-effort, НИКОГДА не бросает** (сбой/пусто → `[]`). Без legacy-fallback (это SWAP): пустой recall в ход — не крэш; флаг off — откат.
+### 3.1 Компонент 1 — `writeMemory(userId, input)` (единый писатель)
+Расширить путь записи (в `episodic-memory.ts` рядом с `recordEvent`, либо новый `memory-writer.ts`), вобрав смарты legacy:
+- Пишет в `Memory` с episodic-полями (validAt/invalidAt/entityRefs/mood/source) — как `recordEvent` сейчас.
+- **Дедуп:** портировать `shouldOverwriteContent` + дубликат-запрос из `memory-service.captureMemory` → update-in-place (importance=max, обновить content/details) ИЛИ create. (Чистую часть `shouldOverwriteContent` переиспользуем как есть — она уже в memory-service.)
+- **Embedding:** портировать `storeEmbedding`/`embedDocument` → эмбедить на запись. **Условно по стоимости:** эмбедим контент с recall-ценностью (чат-факты, importance≥N); высокочастотные дешёвые action-события (`source` экшена) можем НЕ эмбедить (FTS хватает) — knob в `input` (напр. `embed?: boolean`, default по типу). Бюджет: 1 embed-вызов на «ценную» запись.
+- Best-effort, никогда не роняет горячий путь (как сейчас recordEvent/captureActivity).
 
-### 3.2 Компонент 2 — переключить 3 точки (флаг-гейт)
-- `gatherAssistantContext`/`ctx.memories`: `isV2ReadEnabled` → наполнить `ctx.memories` из `getRelevantV2Memories`; иначе legacy `getRelevantMemories`. (Минимальная правка источника, формат промпта неизменен.)
-- `recall_person`: флаг → v2-recall (entity/episodic); иначе legacy.
-- `get_goal_progress`: флаг → v2-recall; иначе legacy.
+### 3.2 Компонент 2 — все источники через единый писатель
+- **Чат извлечённые факты:** `jarvis-orchestrator.ts:182` цикл → `writeMemory` (с теми же `{type,content,details,tags,importance}`) вместо `captureMemory`. `:666` preference-write → `writeMemory`.
+- **Чат episodic-событие:** `v2-capture.ts:104` `recordEvent` → уже единый писатель (recordEvent = writeMemory или зовёт его).
+- **Action-события M1:** `captureActivity`→`recordEvent` → автоматически получают дедуп (и опц. embedding).
+- Всё за флагом `isV2WriteEnabled`: on → captureMemory не вызывается; off → как сейчас.
 
-### 3.3 Поведение НЕ трогаем
-`jarvis-prompt`/`assistant-personality`/`therapeutic-mode`/стили/кризис — без изменений. v2-enrichment фиксированные секции — без изменений (остаются сверху). Меняется только наполнение `ctx.memories` + 2 recall-инструмента.
+### 3.3 Что НЕ трогаем
+Чтение (`getRelevantMemories`) — без изменений (уже единое). Извлечение фактов (`extracted.memories` из intent-parser) — оставляем как есть, меняем только КУДА оно пишет. Поведение/личность/инструменты/v2-enrichment секции — не трогаем. Entity-граф/mood/axes ветки captureV2 — без изменений.
 
 ## 4. Деградация / безопасность
-- v2-recall best-effort → сбой = пустой recall в этот ход (бот не крэшится, просто меньше вспомнил). Флаг off = мгновенный откат к legacy.
-- Поведение/деньги/инструменты не затронуты by-construction (не трогаем их код).
+- writeMemory best-effort → сбой записи = факт не записан в этот раз (не крэш), как сейчас.
+- Флаг off = текущая двойная запись (мгновенный откат).
+- Дедуп/embedding — перенос ПРОВЕРЕННОЙ legacy-логики, не новая (риск низкий).
 
 ## 5. Тесты
-- `assembleV2Recall` — pure unit (entities+events → ожидаемые строки, дедуп, limit, пустые входы → []).
-- `getRelevantV2Memories` — structural (never-throws обёртка, использует resolveEntity + episodic).
-- 3 точки — structural: флаг-ветка `isV2ReadEnabled` присутствует, off-путь = legacy без изменений.
-- Базовая сюита (~1913) зелёная. Zero `vi.mock`. createAnthropic() only (M2 Claude не добавляет; embedding — существующий путь).
+- `shouldOverwriteContent` — уже покрыт (legacy); переиспользуем.
+- pure-часть нового writeMemory (выбор update-vs-create по дубликату; embed-knob по типу) — unit без сети.
+- structural: orchestrator:182/:666 зовут `writeMemory` (не `captureMemory`) под флагом; captureV2/captureActivity идут через единый писатель; off-путь = legacy.
+- Базовая сюита (~1913) зелёная. Zero `vi.mock`. createAnthropic() only (embedding — существующий путь embeddings.ts).
 
 ## 6. Rollout (по явному слову Berik)
-1. Локальные коммиты per-step, tsc+vitest зелёные, `FEATURE_V2_READ` off (втёмную).
-2. Push → deploy. 3. Флаг `FEATURE_V2_READ=user-{berik}`.
-4. **SMOKE:** спросить бота вспомнить (а) прошлый факт из чата, (б) человека (recall_person), (в) что говорил о цели (get_goal_progress) — бот вспоминает из v2 нормально. Сравнить ощущение с legacy.
-5. Ок → `FEATURE_V2_READ=all`.
-6. **M3 следом:** удалить legacy (Memory table, captureMemory, getRelevantMemories) — отдельная спека, после аудита всех консьюмеров Memory-таблицы.
+1. Локальные коммиты per-step, tsc+vitest зелёные, `FEATURE_V2_WRITE` off (втёмную).
+2. Push → deploy. 3. Флаг `FEATURE_V2_WRITE=user-{berik}`.
+4. **SMOKE (по факту БД):** написать боту факт («Серик переехал в Астану») → проверить ОДНУ строку в Memory (не дубль, с embedding); повторить факт → апдейт, не вторая строка; спросить бота вспомнить → находит. Создать задачу кнопкой → action-строка. Затем `FEATURE_V2_WRITE=all`.
+5. **Follow-up (после подтверждения):** удалить функцию `captureMemory` + мёртвый код (когда флаг доказан). Read оставляем.
 
 ## 7. Non-Goals
-- ❌ Удаление legacy-таблицы/captureMemory/getRelevantMemories — это **M3** (следом).
+- ❌ Менять ЧТЕНИЕ (`getRelevantMemories`) — уже единое.
+- ❌ Менять извлечение фактов (intent-parser) — только место записи.
+- ❌ Удаление таблицы Memory (она и есть единая память; не удаляем).
+- ❌ Поведение/личность/инструменты/enrichment.
 - ❌ Миграция старых фактов (выбрасываемые, подтверждено Berik).
-- ❌ Изменение поведения/личности/инструментов/v2-enrichment секций.
-- ❌ Новая embedding-инфра (переиспользуем episodic/entity resolve).
 
 ## Self-review checklist
-- [x] Только чтение (SWAP на v2), поведение не трогаем. Удаление = M3.
-- [x] Флаг-гейт `FEATURE_V2_READ` (off=байт-в-байт), отдельный от FEATURE_V2_MEMORY.
-- [x] Pure `assembleV2Recall` + structural тесты, zero vi.mock, never-throws.
-- [x] 3 legacy-read точки перечислены и покрыты.
-- [x] Безопасный порядок: build v2-recall → swap → SMOKE → M3 delete (не delete-first).
+- [x] Спека переписана под факт «чтение уже единое» (checkpoint). Реальная цель — один ПИСАТЕЛЬ.
+- [x] Покрыты ВСЕ 3 источника записи (чат-факты, episodic-событие, action-события) + дедуп + embedding.
+- [x] Флаг `FEATURE_V2_WRITE` (off=байт-в-байт), обратимо; удаление captureMemory — follow-up после доказательства.
+- [x] Переиспуем проверенную legacy-логику (shouldOverwriteContent/storeEmbedding), не пишем новую с нуля.
+- [x] Стоимость embedding ограничена knob'ом (не эмбедим дешёвые высокочастотные action-события).
 
 **Awaiting Berik review → writing-plans.**
