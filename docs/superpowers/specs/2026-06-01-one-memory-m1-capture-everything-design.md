@@ -1,0 +1,158 @@
+# ОДНА ПАМЯТЬ — M1: Захват всего через инструменты — Design Spec
+
+**Status:** DRAFT → awaiting Berik review
+**Author:** Claude (brainstormed with Berik 2026-06-01)
+**Quality bar:** «Умный Джарвис», один мозг. YAGNI. Money-safe. Degrade-safe.
+**Часть инициативы:** «ОДНА ПАМЯТЬ / ЦЕЛЬНОЕ ПРИЛОЖЕНИЕ» (4 под-проекта: **M1 захват всего** → M2 единое чтение → M3 снос legacy → M4 надёжность commitment→действие). Этот документ — только M1.
+
+---
+
+## 1. Контекст и цель
+
+LifeOS = AI-друг с памятью. Сейчас **две памяти параллельно**:
+- LEGACY (`Memory` + `memory-service.captureMemory`, всегда вкл, плоская, кормит промпт через `ctx.memories.slice(0,15)` в `jarvis-prompt.ts:187`).
+- v2 (5 tiers + entity graph + reflector, `captureV2InBackground` + enrichment-блок, флаг `FEATURE_V2_MEMORY=all`).
+
+**Проблема, которую решает M1:** в v2 пишет **только chat-пайплайн** (telegram/voice/chat → `handleMessage`). Прямые mobile-CRUD действия (создал задачу/расход/привычку/цель/журнал/событие **кнопкой**) в v2 **НЕ попадают** — проверено: ни один роут не зовёт `captureV2InBackground`. Память неполная → друг «не знает» половину жизни юзера.
+
+**Цель M1:** каждое значимое действие приложения **И** каждый инструмент пишут событие в v2. v2 становится **полным** — фундамент для M2 (единое чтение) и M3 (снос legacy). Legacy в M1 **не трогаем** (бот не должен терять контекст).
+
+**Решения Berik (2026-06-01, brainstorm):**
+- ✅ Механизм = **C: всё через инструменты**. Mobile write-роуты идут через тот же слой инструментов, что и чат. Один слой действий = одно место захвата.
+- ✅ Глубина = **лёгкое эпизодическое событие** для структурных CRUD (без Claude-вызова на каждый тап). Полное извлечение сущностей (Claude) остаётся только для свободного текста чата.
+- ✅ Объём первой спеки = **все core-модули сразу**; план раскладывается помодульно (каждый модуль — рабочий закоммиченный срез).
+
+---
+
+## 2. Архитектура
+
+### 2.1 Главный инсайт — захват на chokepoint
+
+`runRegistryTool(name, rawInput, ctx, sink?)` (`src/tools/index.ts`) — **единственная точка исполнения** любого инструмента: `auditToolCall → schema.parse → handler`. Confirm-гейт в нём НЕ стоит (решает вызывающий). Значит:
+
+```
+mobile-роут ─┐
+chat-агент   ─┼─► runRegistryTool ─► audit ─► parse ─► handler (Prisma write)
+voice        ─┘                                   │
+                                                  └─► [НОВОЕ] после успешного write-инструмента:
+                                                      fire-and-forget recordEvent(v2 episodic)
+свободный текст чата ───────────────────────────► v2 full extraction (как сейчас, без изменений)
+```
+
+Один хук на chokepoint покрывает **и чат, и мобайл** автоматически. Нельзя «забыть» точку.
+
+### 2.2 Компоненты
+
+**A. `summarizeToolAction(name, input, result, sideEffects)` — чистый хелпер** (новый файл `src/services/tool-activity-summary.ts`).
+- Вход: имя инструмента, распарсенный input, результат handler, `sideEffects`.
+- Выход: `{ type: string; content: string; importance?: number } | null`.
+- `null` ⇒ не захватываем (read-инструменты `sideEffects !== 'write'`; неизвестные имена).
+- Для каждого write-инструмента — человекочитаемая строка на русском:
+  - `create_task` → `{ type: 'task_created', content: 'Создал задачу «{title}» на {date}{ , приоритет X}' }`
+  - `complete_task` → `{ type: 'task_completed', content: 'Выполнил задачу «{title}»' }`
+  - `add_expense` → `{ type: 'expense_added', content: 'Расход {amount} ₸ · {category}{ · merchant}' }`
+  - `add_income` → `{ type: 'income_added', content: 'Доход {amount} ₸ · {source}' }`
+  - `create_event` / `update_event` → `{ type: 'event_*', content: 'Встреча «{title}» {date}{ время}' }`
+  - `journal_entry` → `{ type: 'journal_logged', content: 'Дневник: сон {h}ч, энергия {e}, настроение {m}' }`
+  - `create_habit`/`update_habit`/`log_habit`/`complete_habit` → `habit_*`
+  - `set_budget` → `budget_set`; `create/update_weekly_goal`, `create/update_yearly_goal` → `goal_*`
+- Чистая, без сети/Prisma → **юнит-тестируется** (каждый кейс + null для read/неизвестных). Никогда не бросает.
+
+**B. Хук в `runRegistryTool`** — после успешного исполнения write-инструмента:
+```
+const result = await auditToolCall(...);   // как сейчас
+const summary = summarizeToolAction(name, parsedInput, result, tool.sideEffects);
+if (summary) void recordEvent(ctx.userId, { type: summary.type, content: summary.content, importance: summary.importance })
+  .catch((e) => console.warn('[capture] recordEvent failed', e));
+return result;
+```
+- **Fire-and-forget** (`void … .catch`), как `captureInBackground` (правило 1.4 — захват не блокирует ответ). Сбой захвата НЕ ломает действие.
+- Нужен доступ к `parsedInput` — вынести `tool.schema.parse` так, чтобы результат был виден после audit (либо повторно безопасно использовать rawInput, если parse не трансформирует; для money-инструментов parse нормализует — берём parsed). Реализация уточняется в плане без изменения контракта `runRegistryTool`.
+- `recordEvent` уже существует (`episodic-memory.ts`), вход `{type, content, importance?, mood?, …}`.
+
+**C. Mobile write-роуты → тонкие адаптеры над инструментами.**
+Каждый роут: auth + zod-валидация (как сейчас) → `runRegistryTool('<tool>', input, { userId })` → вернуть **тот же JSON-ответ, что и сегодня** (мобайл-контракт неизменен). Где инструмент не возвращает достаточно для ответа — расширить **возврат** инструмента (бэк-совместимо: чат читает `.message`, мобайл — добавленное поле `entity`).
+
+### 2.3 Money-safety (инвариант цел)
+- Mobile-вызов денежного инструмента (`add_expense`/`add_income`) **минует chat confirm-FSM** — и это правильно: юзер **сам** ввёл сумму и нажал «Сохранить» (явное намерение). Confirm-FSM существует для пути, где **ИИ предложил** действие. Инвариант «нет автономных денег у ИИ» сохранён: деньги создаёт ЮЗЕР.
+- Денежный путь через инструмент по-прежнему **zod-валидируется + аудируется** (`auditToolCall`) — строго не хуже текущего прямого `prisma.create` в роуте.
+
+---
+
+## 3. Инструменты: реестр и пробелы
+
+**Уже есть (переиспользуем):** `create_task`, `complete_task`, `add_expense`, `add_income`, `complete_habit`, `journal_entry`, `create_event`.
+
+**Создаём (write-инструменты, `needsConfirm:false`, `sideEffects:'write'`):**
+| Инструмент | Роут | Примечание |
+|-----------|------|-----------|
+| `update_task` | `PUT /tasks/:id` | правка полей задачи по id |
+| `move_task_kanban` | `PATCH /tasks/:id/kanban` | смена колонки/статуса 1:1 с роутом |
+| `log_habit` | `POST /habits/:id/log` | `{habitId, date, completed}` — шире, чем `complete_habit` (произвольная дата) |
+| `create_habit` | `POST /habits` | |
+| `update_habit` | `PUT /habits/:id` | |
+| `set_budget` | `POST /finance/budget` | лимит категории на месяц |
+| `create_weekly_goal` | `POST /goals/weekly` | |
+| `update_weekly_goal` | `PUT /goals/weekly/:id` | |
+| `create_yearly_goal` | `POST /goals/yearly` | |
+| `update_yearly_goal` | `PUT /goals/yearly/:id` | |
+| `update_event` | `PUT /events/:id` | (`create_event` уже есть) |
+
+Каждый новый инструмент: zod-схема = текущая валидация роута, handler = текущая логика записи роута (перенос 1:1, TZ-coherence сохранить), регистрация в `tools/index.ts`. Эти инструменты **скрыты от автономного агент-цикла по умолчанию** (он берёт только `needsConfirm===false` write — проверить, не «зашумят» ли они чат-агента; при необходимости пометить как «не для агент-предложений», но доступные для прямого `runRegistryTool`). Уточнить в плане, опираясь на текущие фильтры реестра.
+
+---
+
+## 4. Объём (границы M1)
+
+**Входит:** core life-модули — задачи, привычки, цели (недельные+годовые), финансы (расходы/доходы/бюджет), журнал, события. Действия: **create / update / complete / log**. Плюс chokepoint-захват для ВСЕХ инструментов (включая уже существующие чат-инструменты — сегодня их действия в v2 не пишутся).
+
+**Non-Goals (явно вне M1):**
+- ❌ **M2/M3/M4** — единое чтение, снос legacy, надёжность commitment→действие. Отдельные спеки.
+- ❌ **Полное Claude-извлечение сущностей на CRUD** — только лёгкое эпизодическое.
+- ❌ **steps** (`POST /steps`) — авто-сенсоры/HealthKit, высокочастотный шум; не пишем по-событийно (агрегат — отдельно, позже).
+- ❌ **DELETE-действия** (удалил задачу/привычку/цель/расход/событие) — **открытый вопрос на твою проверку** (раздел 8): захватывать ли удаления как события памяти, или отложить. Сейчас в M1 НЕ включены (нет delete-инструментов; «no deletion» в твоих constraints).
+- ❌ **Не-core мутации**: pet, arena, challenge, tags, shared-spaces, integrations, auth-профиль, themes, documents, vision-capture, achievements. Не «события жизни» для памяти.
+- ❌ **Мобильный UI** — слой представления, вне сервера.
+
+---
+
+## 5. Поток данных и деградация
+- Действие (чат ИЛИ мобайл) → `runRegistryTool` → write выполнен → ответ юзеру **немедленно**; захват в v2 идёт фоном (fire-and-forget).
+- Сбой `recordEvent` / `summarizeToolAction` → лог + игнор; **действие и ответ юзеру не страдают**.
+- Флаг `FEATURE_V2_MEMORY` off (для будущих юзеров/отката) → chokepoint-хук проверяет `isV2MemoryEnabled(userId)`; off ⇒ захват не пишется, поведение байт-в-байт текущее.
+- Миграция роутов **сохраняет response-shape** — мобайл-контракт неизменен (см. тесты).
+
+---
+
+## 6. Тестирование
+- **`summarizeToolAction`** — pure unit: каждый write-инструмент → ожидаемый `{type, content}`; read-инструмент и неизвестное имя → `null`; не бросает на кривом input.
+- **chokepoint-хук** — structural: в `runRegistryTool` есть `void recordEvent(…).catch(`, под флагом `isV2MemoryEnabled`, только для `sideEffects:'write'`, не `await` на горячем пути.
+- **новые инструменты** — каждый: pure/handler-тест записи (как существующие write-tool тесты) + регистрация в реестре (registry-consistency).
+- **роут-адаптеры** — structural + **response-shape тест**: ответ роута идентичен прежнему контракту (ключевые поля), роут зовёт `runRegistryTool`.
+- **money-safety** — существующая сюита зелёная; mobile add_expense/add_income через инструмент по-прежнему аудируется.
+- Базовая сюита (~1860) зелёная. Zero `vi.mock`. `createAnthropic()` only (хотя M1 Claude не добавляет). Структурные тесты через `readFileSync`+grep.
+
+---
+
+## 7. Rollout (явное одобрение Berik на каждый шаг)
+1. Задачи локально, commit-per-step, `tsc`+`vitest` зелёные.
+2. Push (на «пуш»). 3. Deploy. 4. Флаг уже `FEATURE_V2_MEMORY=all`.
+5. **SMOKE (по факту БД):** создать задачу/расход **кнопкой в мобайле** (или прямым роут-вызовом) → проверить, что в v2 (episodic `MemoryEvent`/эквивалент) появилась строка события (НЕ нарратив, факт в БД). Затем спросить бота «что я сегодня делал» — он должен знать действие, сделанное вне чата.
+
+---
+
+## 8. Открытые вопросы на ревью Berik
+1. **DELETE-действия** — захватывать удаления как события памяти (создать delete-инструменты + захват) в M1, или отложить? Сейчас отложено.
+2. **steps** — точно исключаем из событийного захвата? (предлагаю да; агрегат шагов — отдельно).
+3. **Не-core модули** (pet/arena/tags/…) — подтверждаешь, что они вне «памяти жизни»?
+
+---
+
+## Self-review checklist
+- [x] Только M1 (захват); M2/M3/M4 — Non-Goals.
+- [x] Механизм C (через инструменты) + лёгкое эпизодическое — по решению Berik.
+- [x] Money-safe (валидация+аудит; mobile = явный юзер, не ИИ). [x] Degrade-safe (fire-and-forget + флаг).
+- [x] Pure helper + structural + response-shape тесты, zero vi.mock.
+- [x] Границы объёма явные; спорные (deletes/steps/не-core) вынесены на ревью, не решены молча.
+
+**Awaiting Berik review → writing-plans.**
