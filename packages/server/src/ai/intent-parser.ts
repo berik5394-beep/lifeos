@@ -312,21 +312,33 @@ export async function parseIntent(text: string): Promise<VoiceIntent> {
 - "Найди отель в Дубае на 5 ночей" → plan_travel
 - "Полечу в Стамбул в субботу" → plan_travel`;
 
-  const response = await anthropic.messages.create({
-    model: MODELS.sonnet,
-    max_tokens: 256,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: text }],
-  });
-
-  const content = response.content[0];
-  if (content.type !== 'text') {
-    return { action: 'unknown', text };
-  }
-
   try {
-    return JSON.parse(content.text) as VoiceIntent;
-  } catch {
-    return { action: 'unknown', text: content.text };
+    const response = await anthropic.messages.create({
+      model: MODELS.sonnet,
+      max_tokens: 256,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: text }],
+    });
+
+    const content = response.content[0];
+    if (content.type !== 'text') {
+      return { action: 'unknown', text };
+    }
+
+    try {
+      return JSON.parse(content.text) as VoiceIntent;
+    } catch {
+      return { action: 'unknown', text: content.text };
+    }
+  } catch (err) {
+    // C1 (AUDIT-2026-06): Claude недоступен / таймаут / rate-limit на шаге
+    // разбора интента. НЕ роняем весь чат в 500 — откатываемся на free-form
+    // 'unknown'. Orchestrator уведёт это в agent-путь, у которого есть своя
+    // лестница деградации (честный «сбой на моей стороне» вместо краша).
+    console.warn(
+      '[parseIntent] LLM call failed, degrading to unknown:',
+      err instanceof Error ? err.message : err,
+    );
+    return { action: 'unknown', text };
   }
 }

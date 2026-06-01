@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { deterministicIntent } from './intent-parser.js';
+
+const SRC = readFileSync(join(process.cwd(), 'src/ai/intent-parser.ts'), 'utf-8');
 
 /**
  * Тесты детерминированного префильтра. Это критичный путь: 0мс, 0$,
@@ -165,3 +169,19 @@ describe('deterministicIntent — обычный чат не перехваты�
       expect(r?.action).toBe('create_task');
     });
   });
+
+// Claude-путь не тестим поведенчески (нужны сеть/ключ). Но C1-guard —
+// критичный для прода инвариант: сбой LLM на разборе интента НЕ должен
+// ронять чат в 500. Проверяем структурно, что вызов модели обёрнут и
+// деградирует на free-form 'unknown'.
+describe('parseIntent — C1 LLM-failure guard (AUDIT-2026-06)', () => {
+  it('Claude-вызов обёрнут, на сбой логирует и не пробрасывает throw', () => {
+    expect(SRC).toMatch(/anthropic\.messages\.create/);
+    expect(SRC).toMatch(/\[parseIntent\] LLM call failed/);
+  });
+  it('в catch-ветке откат на free-form unknown с исходным текстом', () => {
+    const idx = SRC.indexOf('LLM call failed');
+    expect(idx).toBeGreaterThan(-1);
+    expect(SRC.slice(idx)).toMatch(/return \{ action: 'unknown', text \}/);
+  });
+});
