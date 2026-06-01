@@ -30,20 +30,27 @@ LifeOS = AI-друг с памятью. Сейчас **две памяти па�
 
 ## 2. Архитектура
 
-### 2.1 Главный инсайт — захват на chokepoint
+### 2.1 Гибрид: один захват с двух сторон в ОДНУ память
 
-`runRegistryTool(name, rawInput, ctx, sink?)` (`src/tools/index.ts`) — **единственная точка исполнения** любого инструмента: `auditToolCall → schema.parse → handler`. Confirm-гейт в нём НЕ стоит (решает вызывающий). Значит:
+**Решение Berik (2026-06-01):** мобильные роуты и чат-инструменты в коде **разошлись** — роуты богаче (у `POST /tasks` есть parentId/IDOR, notes, kanbanStatus, recurrence, теги, подзадачи; `complete` — toggle с XP питомца; расходы считают budgetInfo; события ищут конфликты). Загонять роуты в существующие чат-инструменты = либо сломать контракт приложения, либо тащить логику роутов (вкл. питомца, которого удаляем) в инструменты. Поэтому M1 — **гибрид**: голова (память) ОДНА, питается с двух сторон, руки остаются на местах.
 
 ```
-mobile-роут ─┐
-chat-агент   ─┼─► runRegistryTool ─► audit ─► parse ─► handler (Prisma write)
-voice        ─┘                                   │
-                                                  └─► [НОВОЕ] после успешного write-инструмента:
-                                                      fire-and-forget recordEvent(v2 episodic)
-свободный текст чата ───────────────────────────► v2 full extraction (как сейчас, без изменений)
+chat-агент / voice ─► runRegistryTool ─► audit ─► parse ─► handler (write)
+                                              │
+                                              └─► [A] после write-инструмента:
+                                                  fire-and-forget captureActivity(v2 episodic)
+
+mobile-роут ─► auth+zod ─► (своя логика+Prisma, как сейчас) ─► ответ
+                              │
+                              └─► [B] один вызов captureActivity(v2 episodic), fire-and-forget
+
+свободный текст чата ───────► v2 full extraction (как сейчас, без изменений)
 ```
 
-Один хук на chokepoint покрывает **и чат, и мобайл** автоматически. Нельзя «забыть» точку.
+- **[A]** покрывает все действия чат-инструментов (сегодня они в v2 НЕ пишутся).
+- **[B]** покрывает все mobile-кнопки — роуты НЕ переписываем, добавляем **один** вызов захвата.
+- Обе стороны пишут через **один** хелпер в **одну** v2-память. «Голова одна, руки докладывают».
+- Полную миграцию роутов в инструменты (чистый «один слой действий») **откладываем** на потом (после удаления питомца) — отдельный под-проект, не M1.
 
 ### 2.2 Компоненты
 
@@ -62,49 +69,68 @@ voice        ─┘                                   │
   - `set_budget` → `budget_set`; `create/update_weekly_goal`, `create/update_yearly_goal` → `goal_*`
 - Чистая, без сети/Prisma → **юнит-тестируется** (каждый кейс + null для read/неизвестных). Никогда не бросает.
 
-**B. Хук в `runRegistryTool`** — после успешного исполнения write-инструмента:
+**B. `captureActivity(userId, summary)` — общий fire-and-forget хелпер** (тот же файл `tool-activity-summary.ts`).
 ```
-const result = await auditToolCall(...);   // как сейчас
-const summary = summarizeToolAction(name, parsedInput, result, tool.sideEffects);
-if (summary) void recordEvent(ctx.userId, { type: summary.type, content: summary.content, importance: summary.importance })
-  .catch((e) => console.warn('[capture] recordEvent failed', e));
-return result;
+export function captureActivity(userId, summary /* {type, content, importance?} | null */) {
+  if (!summary) return;
+  if (!isV2MemoryEnabled(userId)) return;
+  void recordEvent(userId, { type: summary.type, content: summary.content, importance: summary.importance })
+    .catch((e) => console.warn('[capture] recordEvent failed', e));
+}
 ```
-- **Fire-and-forget** (`void … .catch`), как `captureInBackground` (правило 1.4 — захват не блокирует ответ). Сбой захвата НЕ ломает действие.
-- Нужен доступ к `parsedInput` — вынести `tool.schema.parse` так, чтобы результат был виден после audit (либо повторно безопасно использовать rawInput, если parse не трансформирует; для money-инструментов parse нормализует — берём parsed). Реализация уточняется в плане без изменения контракта `runRegistryTool`.
+- **Fire-and-forget** (`void … .catch`), как `captureInBackground` (правило 1.4 — не блокирует ответ). Сбой захвата НЕ ломает действие. За флагом `isV2MemoryEnabled`.
 - `recordEvent` уже существует (`episodic-memory.ts`), вход `{type, content, importance?, mood?, …}`.
 
-**C. Mobile write-роуты → тонкие адаптеры над инструментами.**
-Каждый роут: auth + zod-валидация (как сейчас) → `runRegistryTool('<tool>', input, { userId })` → вернуть **тот же JSON-ответ, что и сегодня** (мобайл-контракт неизменен). Где инструмент не возвращает достаточно для ответа — расширить **возврат** инструмента (бэк-совместимо: чат читает `.message`, мобайл — добавленное поле `entity`).
+**C. Хук [A] в `runRegistryTool`** (chat/tool сторона) — после успешного исполнения write-инструмента:
+```
+const result = await auditToolCall(...);   // как сейчас
+captureActivity(ctx.userId, summarizeToolAction(name, parsedInput, result, tool.sideEffects));
+return result;
+```
+- Нужен доступ к `parsedInput` — вынести так, чтобы parsed-значение было видно после audit, **без изменения внешнего контракта** `runRegistryTool` (напр. `let parsedInput` снаружи, присвоить внутри audited-замыкания до вызова handler). Реализация в плане.
+
+**D. Хук [B] в mobile-роутах** (mobile сторона) — каждый mutation-роут после успешной записи добавляет **один** вызов:
+```
+captureActivity(request.userId, { type: 'task_created', content: `Создал задачу «${data.title}» на ${data.date}` });
+```
+- Роут НЕ переписываем: вся текущая логика (parentId/IDOR, питомец, теги, budgetInfo, конфликты, формат ответа) остаётся. Добавляется одна строка захвата перед `return`.
+- Каждый роут строит свой `{type, content}` (тот же словарь `type`, что и `summarizeToolAction`, для консистентности голоса памяти).
 
 ### 2.3 Money-safety (инвариант цел)
-- Mobile-вызов денежного инструмента (`add_expense`/`add_income`) **минует chat confirm-FSM** — и это правильно: юзер **сам** ввёл сумму и нажал «Сохранить» (явное намерение). Confirm-FSM существует для пути, где **ИИ предложил** действие. Инвариант «нет автономных денег у ИИ» сохранён: деньги создаёт ЮЗЕР.
-- Денежный путь через инструмент по-прежнему **zod-валидируется + аудируется** (`auditToolCall`) — строго не хуже текущего прямого `prisma.create` в роуте.
+- Mobile-роуты денег (`POST /finance/expenses|incomes`) **не меняются** — та же валидация, тот же расчёт budgetInfo, тот же ответ. Добавляется только fire-and-forget захват факта в память. Инвариант «нет автономных денег у ИИ» не затронут: деньги вводит ЮЗЕР, ИИ только запоминает факт.
+- Confirm-FSM денежного **чат**-пути не трогаем.
 
 ---
 
-## 3. Инструменты: реестр и пробелы
+## 3. Объём захвата — без новых инструментов
 
-**Уже есть (переиспользуем):** `create_task`, `complete_task`, `add_expense`, `add_income`, `complete_habit`, `journal_entry`, `create_event`.
+Гибрид ⇒ **новые инструменты НЕ создаём, роуты НЕ переписываем.** Захват = один вызов `captureActivity` на каждой точке.
 
-**Создаём (write-инструменты, `needsConfirm:false`, `sideEffects:'write'`):**
-| Инструмент | Роут | Примечание |
-|-----------|------|-----------|
-| `update_task` | `PUT /tasks/:id` | правка полей задачи по id |
-| `move_task_kanban` | `PATCH /tasks/:id/kanban` | смена колонки/статуса 1:1 с роутом |
-| `log_habit` | `POST /habits/:id/log` | `{habitId, date, completed}` — шире, чем `complete_habit` (произвольная дата) |
-| `create_habit` | `POST /habits` | |
-| `update_habit` | `PUT /habits/:id` | |
-| `set_budget` | `POST /finance/budget` | лимит категории на месяц |
-| `create_weekly_goal` | `POST /goals/weekly` | |
-| `update_weekly_goal` | `PUT /goals/weekly/:id` | |
-| `create_yearly_goal` | `POST /goals/yearly` | |
-| `update_yearly_goal` | `PUT /goals/yearly/:id` | |
-| `update_event` | `PUT /events/:id` | (`create_event` уже есть) |
+**[A] chat/tool сторона (хук в `runRegistryTool`):** автоматически ловит все существующие write-инструменты: `create_task, complete_task, add_expense, add_income, complete_habit, journal_entry, create_event` + любые будущие write-инструменты. Ничего поштучно прописывать не надо — `summarizeToolAction` мапит по имени.
 
-**Delete-инструменты (последняя, низкоприоритетная группа плана):** `delete_task`, `delete_habit`, `delete_expense`, `delete_income`, `delete_weekly_goal`, `delete_yearly_goal`, `delete_event` — для роутов `DELETE /...`. Захватывают событие «убрал X». Идут в конце; можно отрезать без вреда ядру M1.
+**[B] mobile сторона — добавить `captureActivity` в эти mutation-роуты:**
+| Роут | type | content (пример) |
+|------|------|------------------|
+| `POST /tasks` | `task_created` | Создал задачу «{title}» на {date} |
+| `PATCH /tasks/:id/complete` | `task_completed` / `task_reopened` | Выполнил/вернул задачу «{title}» (по факту toggle) |
+| `PUT /tasks/:id` | `task_updated` | Изменил задачу «{title}» |
+| `PATCH /tasks/:id/kanban` | `task_kanban_moved` | Передвинул задачу «{title}» → {status} |
+| `POST /finance/expenses` | `expense_added` | Расход {amount} ₸ · {category} |
+| `POST /finance/incomes` | `income_added` | Доход {amount} ₸ · {source} |
+| `POST /finance/budget` | `budget_set` | Лимит {category}: {limit} ₸ |
+| `POST /habits` | `habit_created` | Новая привычка «{name}» |
+| `PUT /habits/:id` | `habit_updated` | Изменил привычку «{name}» |
+| `POST /habits/:id/log` | `habit_logged` | Отметил привычку «{name}» |
+| `POST /journal` | `journal_logged` | Дневник: сон/энергия/настроение |
+| `POST /goals/weekly` · `PUT /goals/weekly/:id` | `weekly_goal_*` | Цель недели «{text}» |
+| `POST /goals/yearly` · `PUT /goals/yearly/:id` | `yearly_goal_*` | Годовая цель «{text}» |
+| `PUT /events/:id` | `event_updated` | Встреча «{title}» {date} |
 
-Каждый новый инструмент: zod-схема = текущая валидация роута, handler = текущая логика записи роута (перенос 1:1, TZ-coherence сохранить), регистрация в `tools/index.ts`. Эти инструменты **скрыты от автономного агент-цикла по умолчанию** (он берёт только `needsConfirm===false` write — проверить, не «зашумят» ли они чат-агента; при необходимости пометить как «не для агент-предложений», но доступные для прямого `runRegistryTool`). Уточнить в плане, опираясь на текущие фильтры реестра.
+(Создание события `POST /events` уже захватывается, если идёт через `create_event`; если у роута своя запись — добавить `captureActivity` так же.)
+
+**[C] DELETE-роуты (последняя, низкоприоритетная группа):** `DELETE /tasks/:id`, `/habits/:id`, `/finance/expenses/:id`, `/finance/incomes/:id`, `/goals/weekly/:id`, `/goals/yearly/:id`, `/events/:id` → `*_deleted` («Убрал X»). Можно отрезать без вреда ядру M1.
+
+`summarizeToolAction` (для [A]) покрывает имена тех же типов, чтобы голос памяти был единым с [B].
 
 ---
 
@@ -123,20 +149,20 @@ return result;
 ---
 
 ## 5. Поток данных и деградация
-- Действие (чат ИЛИ мобайл) → `runRegistryTool` → write выполнен → ответ юзеру **немедленно**; захват в v2 идёт фоном (fire-and-forget).
-- Сбой `recordEvent` / `summarizeToolAction` → лог + игнор; **действие и ответ юзеру не страдают**.
-- Флаг `FEATURE_V2_MEMORY` off (для будущих юзеров/отката) → chokepoint-хук проверяет `isV2MemoryEnabled(userId)`; off ⇒ захват не пишется, поведение байт-в-байт текущее.
-- Миграция роутов **сохраняет response-shape** — мобайл-контракт неизменен (см. тесты).
+- Действие (чат ИЛИ мобайл) → write выполнен → ответ юзеру **немедленно**; захват в v2 идёт фоном (fire-and-forget) через `captureActivity`.
+- Сбой `recordEvent` / `summarizeToolAction` / `captureActivity` → лог + игнор; **действие и ответ юзеру не страдают**.
+- Флаг `FEATURE_V2_MEMORY` off (для будущих юзеров/отката) → `captureActivity` проверяет `isV2MemoryEnabled(userId)`; off ⇒ захват не пишется, поведение байт-в-байт текущее.
+- Роуты **не переписываются** — мобайл-контракт неизменен by-construction (добавляется одна строка захвата перед `return`).
 
 ---
 
 ## 6. Тестирование
 - **`summarizeToolAction`** — pure unit: каждый write-инструмент → ожидаемый `{type, content}`; read-инструмент и неизвестное имя → `null`; не бросает на кривом input.
-- **chokepoint-хук** — structural: в `runRegistryTool` есть `void recordEvent(…).catch(`, под флагом `isV2MemoryEnabled`, только для `sideEffects:'write'`, не `await` на горячем пути.
-- **новые инструменты** — каждый: pure/handler-тест записи (как существующие write-tool тесты) + регистрация в реестре (registry-consistency).
-- **роут-адаптеры** — structural + **response-shape тест**: ответ роута идентичен прежнему контракту (ключевые поля), роут зовёт `runRegistryTool`.
-- **money-safety** — существующая сюита зелёная; mobile add_expense/add_income через инструмент по-прежнему аудируется.
-- Базовая сюита (~1860) зелёная. Zero `vi.mock`. `createAnthropic()` only (хотя M1 Claude не добавляет). Структурные тесты через `readFileSync`+grep.
+- **`captureActivity`** — structural/unit: `null`→no-op; за флагом `isV2MemoryEnabled`; `void recordEvent(…).catch(` (не await).
+- **хук [A] в `runRegistryTool`** — structural: вызывает `captureActivity(ctx.userId, summarizeToolAction(...))`, не `await`, только после успешного исполнения.
+- **хуки [B] в роутах** — structural (per-route): роут содержит `captureActivity(request.userId, { type: '<ожидаемый>' …})`; существующая логика/ответ роута не изменены (тест не трогает контракт — проверяет только наличие захвата).
+- **money-safety** — существующая сюита зелёная; финанс-роуты не изменены по логике.
+- Базовая сюита (~1860) зелёная. Zero `vi.mock`. `createAnthropic()` only (M1 Claude не добавляет). Структурные тесты через `readFileSync`+grep.
 
 ---
 
@@ -148,18 +174,19 @@ return result;
 ---
 
 ## 8. Решения по границам (уточнено Berik 2026-06-01)
-1. **Питомец / арена** — НЕТ. Питомца не берём; арены нет (комната робота за донат — отложена). Вне M1. ✅ решено.
-2. **DELETE-действия** — **включены** (полнота «помнит всё»), но это **самая низкоприоритетная группа задач** в плане (идёт последней; при желании можно отрезать без вреда ядру M1).
-3. **steps** — исключены из событийного захвата (сенсорный шум). ✅ решено.
-4. **Категории** (духовная/финансовая/поездка/встреча) — это категории задач/целей/событий, отдельных модулей не требуют. ✅ решено.
+1. **Механизм = ГИБРИД** (а не полный C). Чат-инструменты → хук [A] в chokepoint; mobile-роуты → один вызов [B] `captureActivity`. Полная миграция роутов→инструменты **отложена** (после удаления питомца) — отдельный под-проект. Причина: роуты и инструменты разошлись; полный C ломает контракт приложения или тащит логику питомца в инструменты.
+2. **Питомец / арена** — НЕТ. Вне M1.
+3. **DELETE-действия** — включены (полнота «помнит всё»), но **низший приоритет** (последняя группа; можно отрезать).
+4. **steps** — исключены из захвата; функцию шагомера/сенсоров удаляем отдельной чисткой ПОСЛЕ M1.
+5. **Категории** (духовная/финансовая/поездка/встреча) — категории задач/целей/событий, отдельных модулей не требуют.
 
 ---
 
 ## Self-review checklist
 - [x] Только M1 (захват); M2/M3/M4 — Non-Goals.
-- [x] Механизм C (через инструменты) + лёгкое эпизодическое — по решению Berik.
-- [x] Money-safe (валидация+аудит; mobile = явный юзер, не ИИ). [x] Degrade-safe (fire-and-forget + флаг).
-- [x] Pure helper + structural + response-shape тесты, zero vi.mock.
-- [x] Границы объёма явные; спорные (deletes/steps/не-core) вынесены на ревью, не решены молча.
+- [x] Гибрид (хук [A] chokepoint + [B] captureActivity в роутах) — по решению Berik; роуты не переписываем, контракт цел.
+- [x] Money-safe (финанс-роуты не изменены). [x] Degrade-safe (fire-and-forget + флаг `isV2MemoryEnabled`).
+- [x] Pure helper + structural тесты, zero vi.mock. Новых инструментов нет → нет response-shape риска.
+- [x] Границы объёма явные; спорные (deletes/steps/не-core/механизм) решены с Berik, не молча.
 
-**Awaiting Berik review → writing-plans.**
+**Approved by Berik (гибрид) → writing-plans.**
