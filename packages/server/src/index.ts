@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import { prisma } from './lib/prisma.js';
+import { alertError } from './lib/alert.js';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import { authRoutes } from './routes/auth.js';
@@ -290,9 +291,11 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 // состоянии. (Alerting на эти логи придёт в Phase 2.4.)
 process.on('unhandledRejection', (reason) => {
   app.log.error({ reason }, 'unhandledRejection (backstop)');
+  void alertError('unhandledRejection', reason); // 2.4: в Telegram
 });
 process.on('uncaughtException', (err) => {
   app.log.error({ err }, 'uncaughtException (backstop) — graceful shutdown');
+  void alertError('uncaughtException', err); // 2.4: в Telegram до shutdown
   void shutdown('uncaughtException');
 });
 

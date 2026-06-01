@@ -21,4 +21,10 @@ describe('index — 1.5 process-level backstop', () => {
     expect(idx).toBeGreaterThan(-1);
     expect(SRC.slice(idx)).toMatch(/shutdown\('uncaughtException'\)/);
   });
+  it('2.4: оба backstop-хендлера шлют alertError в Telegram', () => {
+    const u = SRC.indexOf("process.on('unhandledRejection'");
+    const e = SRC.indexOf("process.on('uncaughtException'");
+    expect(SRC.slice(u, u + 220)).toMatch(/alertError\('unhandledRejection'/);
+    expect(SRC.slice(e, e + 220)).toMatch(/alertError\('uncaughtException'/);
+  });
 });
