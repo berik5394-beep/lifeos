@@ -355,7 +355,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     // GDPR / закон РК о перс. данных: «забыть меня» = стереть ВСЁ.
     // Аудит 2.8: раньше список был неполным (17 моделей), а
-    // UserInterest/NutritionLog/ArenaProfile без onDelete:Cascade и
+    // UserInterest/ArenaProfile без onDelete:Cascade и
     // не в списке → tx.user.delete() падал по FK и вся транзакция
     // откатывалась (delete-account был фактически сломан для активных
     // юзеров). Теперь — исчерпывающий FK-упорядоченный проход.
@@ -394,7 +394,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       // Task/ConversationSession (onDelete:Cascade в схеме).
       await tx.insightDismissal.deleteMany({ where: { userId } });
       await tx.userInterest.deleteMany({ where: { userId } });
-      await tx.nutritionLog.deleteMany({ where: { userId } });
       await tx.chatMessage.deleteMany({ where: { userId } });
       await tx.conversationSession.deleteMany({ where: { userId } });
       await tx.dictationSession.deleteMany({ where: { userId } });

@@ -11,7 +11,6 @@ export type RootStackParamList = {
   Achievements: undefined;
   'character-select': undefined;
   Arena: undefined;
-  Nutrition: undefined;
   ScheduleImport: undefined;
   TaskCapture: undefined;
   VoiceConversation: undefined;

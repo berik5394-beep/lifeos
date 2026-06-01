@@ -40,7 +40,6 @@ const CharacterSelectScreen = React.lazy(() => import('@/screens/character-selec
 const ArenaScreen = React.lazy(() => import('@/screens/arena'));
 const BattleScreen = React.lazy(() => import('@/screens/battle-screen'));
 const ExerciseTrackerScreen = React.lazy(() => import('@/screens/exercise-tracker'));
-const NutritionScreen = React.lazy(() => import('@/screens/nutrition'));
 const ScheduleImportScreen = React.lazy(() => import('@/screens/schedule-import'));
 const TaskCaptureScreen = React.lazy(() => import('@/screens/task-capture'));
 const VoiceConversationScreen = React.lazy(() => import('@/screens/voice-conversation'));
@@ -399,7 +398,6 @@ export default function Navigation() {
             <RootStack.Screen name="Arena" component={ArenaScreen} />
             <RootStack.Screen name="BattleScreen" component={BattleScreen} options={{ headerShown: false, animation: 'fade' }} />
             <RootStack.Screen name="ExerciseTracker" component={ExerciseTrackerScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
-            <RootStack.Screen name="Nutrition" component={NutritionScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="ScheduleImport" component={ScheduleImportScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="TaskCapture" component={TaskCaptureScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="VoiceConversation" component={VoiceConversationScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />

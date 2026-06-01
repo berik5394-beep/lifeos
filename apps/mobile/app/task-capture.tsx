@@ -26,7 +26,7 @@ import { taskCategories } from '@/constants/categories';
 import { SectionHeader } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
 
-// Same image size budget as /nutrition.tsx — 1.5 MB before base64
+// Image size budget — 1.5 MB before base64
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
 
 type Priority = 'low' | 'medium' | 'high' | 'critical';

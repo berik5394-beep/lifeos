@@ -53,7 +53,6 @@ model User {
   achievements           Achievement[]
   interests              UserInterest[]
   arenaProfile           ArenaProfile?
-  nutritionLogs          NutritionLog[]
   refreshTokens          RefreshToken[]
   conversationSessions   ConversationSession[]
   travelPlans            TravelPlan[]
@@ -626,25 +625,6 @@ model Challenge {
   @@index([attackerId])
   @@index([defenderId])
   @@index([status])
-}
-
-model NutritionLog {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  date       DateTime @db.Date
-  foodName   String
-  portion    String?
-  calories   Float    @default(0)
-  carbs      Float    @default(0)
-  protein    Float    @default(0)
-  fat        Float    @default(0)
-  confidence Float?
-  imageUrl   String?
-  notes      String?
-  createdAt  DateTime @default(now())
-
-  @@index([userId, date])
 }
 
 // ===== JARVIS VOICE CONVERSATION SYSTEM =====

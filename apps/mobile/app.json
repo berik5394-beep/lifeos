@@ -20,11 +20,9 @@
       "infoPlist": {
         "NSMicrophoneUsageDescription": "LifeOS использует микрофон для голосового ввода задач, привычек и общения с AI-помощником",
         "NSSpeechRecognitionUsageDescription": "LifeOS использует распознавание речи для голосовых команд",
-        "NSCameraUsageDescription": "LifeOS использует камеру для счётчика калорий и сканирования расписания уроков",
-        "NSPhotoLibraryUsageDescription": "LifeOS использует фото для распознавания еды и расписаний",
+        "NSCameraUsageDescription": "LifeOS использует камеру для сканирования расписания и заметок",
+        "NSPhotoLibraryUsageDescription": "LifeOS использует фото для распознавания расписаний и заметок",
         "NSMotionUsageDescription": "LifeOS считает ваши шаги для отслеживания активности и автозакрытия привычек",
-        "NSHealthShareUsageDescription": "LifeOS читает данные о шагах и активности для трекера здоровья",
-        "NSHealthUpdateUsageDescription": "LifeOS сохраняет данные о тренировках в Apple Health",
         "UIBackgroundModes": [
           "fetch",
           "processing",

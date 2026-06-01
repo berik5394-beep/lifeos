@@ -283,15 +283,6 @@ export default function SwipeHome() {
     {/* AI камеры — большие плитки */}
     <View style={s.aiTilesRow}>
       <TouchableOpacity
-        style={[s.aiTile,{borderColor:c.warning,backgroundColor:'rgba(245,158,11,0.15)'}]}
-        onPress={()=>nav.navigate('Nutrition')}
-        activeOpacity={0.85}
-      >
-        <Text style={s.aiTileIc}>🍽️</Text>
-        <Text style={s.aiTileT}>Счётчик{'\n'}углеводов</Text>
-        <Text style={s.aiTileS}>Сфоткай еду</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
         style={[s.aiTile,{borderColor:c.primary,backgroundColor:'rgba(99,102,241,0.15)'}]}
         onPress={()=>nav.navigate('ScheduleImport')}
         activeOpacity={0.85}
