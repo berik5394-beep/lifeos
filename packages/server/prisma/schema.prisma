@@ -1068,6 +1068,9 @@ model CronJobRun {
   jobName String
   userId  String?
   ranAt   DateTime @default(now())
+  // 2.1 (AUDIT-2026-06): атомарный claim-ключ "job:user:периодБакет".
+  // unique → конкурентные тики/инстансы гонят на insert, выигрывает один.
+  lockKey String?  @unique
 
   @@index([jobName, ranAt])
   @@index([userId, jobName, ranAt])

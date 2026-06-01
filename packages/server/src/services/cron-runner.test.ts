@@ -44,15 +44,21 @@ describe('structural — async wrappers', () => {
     expect(SRC).toMatch(/export async function recordRun\(/);
     expect(SRC).toMatch(/prisma\.cronJobRun\.create/);
   });
-  it('exports withCronLock that records only on success', () => {
+  it('withCronLock claims atomically (unique lockKey) BEFORE fn — 2.1', () => {
     expect(SRC).toMatch(/export async function withCronLock</);
-    // recordRun is called inside try block AFTER fn(); on throw it must NOT be called.
-    const fnStartIdx = SRC.indexOf('export async function withCronLock');
-    const body = SRC.slice(fnStartIdx);
+    const body = SRC.slice(SRC.indexOf('export async function withCronLock'));
+    const claimIdx = body.indexOf('cronJobRun.create');
     const fnCallIdx = body.indexOf('const result = await fn(');
-    const recordIdx = body.indexOf('await recordRun(');
-    expect(fnCallIdx).toBeGreaterThan(0);
-    expect(recordIdx).toBeGreaterThan(fnCallIdx);
+    expect(claimIdx).toBeGreaterThan(0);
+    // claim ДО fn (атомарность вместо read-then-write гонки)
+    expect(fnCallIdx).toBeGreaterThan(claimIdx);
+    expect(body).toMatch(/lockKey/);
+    // конкурентный claim → P2002 → пропуск
+    expect(body).toMatch(/P2002/);
+  });
+  it('withCronLock освобождает claim если fn бросил (retry next tick)', () => {
+    const body = SRC.slice(SRC.indexOf('export async function withCronLock'));
+    expect(body).toMatch(/deleteMany\(\{\s*where:\s*\{\s*lockKey/);
   });
   it('withCronLock returns { ran, result? } shape', () => {
     expect(SRC).toMatch(/ran:\s*true/);
