@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseMonth as validateMonthRange, invalidDateReply } from '../middleware/validate.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
 
 const createEventSchema = z.object({
   title: z.string().min(1, 'Название обязательно').max(500),
@@ -144,6 +145,10 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
+      captureActivity(request.userId, {
+        type: 'event_created',
+        content: `Встреча «${event.title}» ${data.date}${data.startTime ? ' в ' + data.startTime : ''}`,
+      });
       return reply.status(201).send({
         ...event,
         ...(conflicts.length > 0 ? { conflicts } : {}),
@@ -199,6 +204,10 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
+      captureActivity(request.userId, {
+        type: 'event_updated',
+        content: `Изменил встречу «${updated.title}»`,
+      });
       return reply.send({
         ...updated,
         ...(conflicts.length > 0 ? { conflicts } : {}),
