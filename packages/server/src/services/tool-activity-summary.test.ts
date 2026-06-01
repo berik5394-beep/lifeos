@@ -64,6 +64,30 @@ describe('summarizeToolAction — write tools → {type, content}', () => {
     expect(r?.content).toContain('бег');
   });
 
+  it('complete_multiple_habits → habit_logged со списком имён', () => {
+    const r = summarizeToolAction(
+      'complete_multiple_habits',
+      { habitNames: ['бег', 'медитация'] },
+      { count: 2 },
+      'write',
+    );
+    expect(r?.type).toBe('habit_logged');
+    expect(r?.content).toContain('бег');
+    expect(r?.content).toContain('медитация');
+  });
+
+  it('complete_multiple_habits без имён (только ids) → безопасный generic', () => {
+    const r = summarizeToolAction(
+      'complete_multiple_habits',
+      { habitIds: ['h1', 'h2'] },
+      { count: 2 },
+      'write',
+    );
+    expect(r?.type).toBe('habit_logged');
+    expect(typeof r?.content).toBe('string');
+    expect((r?.content ?? '').length).toBeGreaterThan(0);
+  });
+
   it('journal_entry → journal_logged', () => {
     const r = summarizeToolAction(
       'journal_entry',

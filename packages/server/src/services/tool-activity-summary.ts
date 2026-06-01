@@ -102,6 +102,25 @@ export function summarizeToolAction(
           content: `Отметил привычку «${habit}»`,
         };
       }
+      case 'complete_multiple_habits': {
+        const raw =
+          input && typeof input === 'object'
+            ? (input as Record<string, unknown>).habitNames
+            : undefined;
+        const list = Array.isArray(raw)
+          ? raw
+              .filter(
+                (n): n is string => typeof n === 'string' && n.trim().length > 0,
+              )
+              .map((n) => n.trim())
+          : [];
+        return {
+          type: 'habit_logged',
+          content: list.length
+            ? `Отметил привычки: ${list.join(', ')}`
+            : 'Отметил несколько привычек',
+        };
+      }
       case 'journal_entry': {
         const sleep = num(input, 'sleepHours');
         const energy = num(input, 'energy');
