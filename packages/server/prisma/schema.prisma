@@ -1076,6 +1076,18 @@ model CronJobRun {
   @@index([userId, jobName, ranAt])
 }
 
+// 2.3 (AUDIT-2026-06): durable дневной AI-бюджет (per-user). Раньше счётчик
+// жил в in-memory Map → терялся при рестарте и не шарился между инстансами
+// (единственный гард стоимости Claude «течёт»). Теперь — Postgres, атомарный
+// upsert-increment. Одна строка на (userId, день).
+model AiUsageDaily {
+  userId String
+  day    DateTime @db.Date
+  count  Int      @default(0)
+
+  @@id([userId, day])
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // v2 Phase B1 — USER NEST Axes (added 2026-05-31)
 // Spec: docs/superpowers/specs/2026-05-31-v2-phase-b1-user-axes-design.md

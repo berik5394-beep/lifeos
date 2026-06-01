@@ -12,6 +12,7 @@
  */
 
 import type { FastifyRequest, FastifyReply, FastifyInstance, onRequestHookHandler } from 'fastify';
+import { prisma } from '../lib/prisma.js';
 
 // ============================================================================
 // 1. Получение IP клиента (учитывает прокси)
@@ -142,11 +143,52 @@ const aiDailyMax = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : AI_DAILY_LIMIT_DEFAULT;
 })();
 
-export const aiDailyLimiter: onRequestHookHandler = rateLimiter({
-  max: aiDailyMax,
-  windowMs: 24 * 60 * 60 * 1000,
-  keyPrefix: 'ai-daily',
-});
+/**
+ * 2.3 (AUDIT-2026-06): DURABLE дневной AI-бюджет. Раньше это был in-memory
+ * token-bucket (rateLimiter) → счётчик терялся при каждом рестарте/деплое и
+ * не шарился между инстансами, т.е. единственный гард стоимости Claude «течёт».
+ * Теперь — Postgres: атомарный upsert-increment одной строки на (userId, день
+ * в UTC). Per-minute лимитеры роутов остаются in-memory (сброс при рестарте
+ * для анти-бёрста приемлем; per-request обращение в БД было бы регрессией).
+ * Fail-open при сбое БД: легитимных юзеров не блокируем (без БД чат и так не
+ * работает), но логируем.
+ */
+export const aiDailyLimiter: onRequestHookHandler = async (request, reply) => {
+  const userId = (request as FastifyRequest & { userId?: string }).userId;
+  // AI-роуты всегда после authMiddleware; без userId (теоретически) —
+  // пропускаем: per-route IP-лимитер уже отработал.
+  if (!userId) return;
+
+  const now = new Date();
+  const day = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+
+  let count: number;
+  try {
+    const row = await prisma.aiUsageDaily.upsert({
+      where: { userId_day: { userId, day } },
+      create: { userId, day, count: 1 },
+      update: { count: { increment: 1 } },
+      select: { count: true },
+    });
+    count = row.count;
+  } catch (err) {
+    console.warn(
+      '[aiDailyLimiter] DB error, failing open:',
+      err instanceof Error ? err.message : err,
+    );
+    return;
+  }
+
+  reply.header('X-RateLimit-Limit', String(aiDailyMax));
+  reply.header('X-RateLimit-Remaining', String(Math.max(0, aiDailyMax - count)));
+  if (count > aiDailyMax) {
+    return reply.status(429).send({
+      message: 'Дневной лимит AI-запросов исчерпан. Попробуй завтра.',
+    });
+  }
+};
 
 // ============================================================================
 // 3. Security headers (минимальный helmet)
