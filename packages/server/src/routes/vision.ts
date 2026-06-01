@@ -7,6 +7,7 @@ import { validate } from '../middleware/validate.js';
 import { prisma } from '../lib/prisma.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { AppError, AiModelError } from '../lib/errors.js';
+import { analyzeFinancePhoto, buildFinancePending } from '../services/finance-vision.js';
 
 // Vision endpoints hit Claude Vision API (expensive per call) — tight cap
 const visionRateLimit = rateLimiter({ max: 15, windowMs: 60_000, keyPrefix: 'vision' });
@@ -76,6 +77,11 @@ type SupportedMediaType = (typeof SUPPORTED_MEDIA_TYPES)[number];
 const mediaTypeSchema = z.enum(SUPPORTED_MEDIA_TYPES).default('image/jpeg');
 
 const analyzeScheduleSchema = z.object({
+  image: z.string().min(100, 'Image обязателен (base64)'),
+  mediaType: mediaTypeSchema,
+});
+
+const analyzeFinanceSchema = z.object({
   image: z.string().min(100, 'Image обязателен (base64)'),
   mediaType: mediaTypeSchema,
 });
@@ -182,6 +188,24 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(500).send({
         message: 'Не удалось распознать расписание. Попробуй другое фото.',
       });
+    }
+  });
+
+  // ----- Analyze receipt / bank-screenshot → expense|income proposal -------
+  app.post('/vision/analyze-finance', {
+    bodyLimit: PHOTO_BODY_LIMIT,
+    preHandler: [visionRateLimit, aiDailyLimiter, validate(analyzeFinanceSchema)],
+  }, async (request, reply) => {
+    try {
+      const { image, mediaType } = request.body as { image: string; mediaType: typeof SUPPORTED_MEDIA_TYPES[number] };
+      const result = await analyzeFinancePhoto(image, mediaType);
+      const pending = buildFinancePending(result);
+      // Возвращаем распознанное + готовую запись (если есть). НЕ пишем —
+      // запись только после подтверждения (confirm-FSM / клиент).
+      return reply.send({ result, pending });
+    } catch (err) {
+      app.log.error({ err }, 'Vision analyze-finance error');
+      return reply.status(500).send({ message: 'Ошибка чтения фото' });
     }
   });
 
