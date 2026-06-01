@@ -1017,7 +1017,16 @@ export async function handleMessage(
   // задачу). Осмысленный ambient-capture («купи продукты», «надо
   // позвонить врачу») сохраняется.
   if (looksCaptureWorthy(text)) {
-    await captureInBackground(userId, text, String(Date.now()));
+    // 1.4 (AUDIT-2026-06): fire-and-forget. Раньше await блокировал ответ
+    // на +1 Sonnet-вызов (extractFromTranscript) на «важных» сообщениях.
+    // Результат не используется; capture идёт в фоне. .catch — чтобы не
+    // было unhandled rejection при сбое.
+    void captureInBackground(userId, text, String(Date.now())).catch((err) => {
+      console.warn(
+        '[captureInBackground] failed:',
+        err instanceof Error ? err.message : err,
+      );
+    });
   }
 
   // Трекинг интересов (спорт/финансы/...) — fire-and-forget, не ждём.

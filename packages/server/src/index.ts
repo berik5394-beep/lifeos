@@ -281,4 +281,19 @@ const shutdown = async (signal: string): Promise<void> => {
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
 
+// 1.5 (AUDIT-2026-06): process-level backstop. Раньше unhandled rejection /
+// uncaught exception нигде не логировались — инцидент был невидим, а в Node
+// ≥15 unhandledRejection по умолчанию роняет процесс молча. Теперь rejection
+// логируем (процесс продолжает жить — большинство наших async-ошибок и так
+// best-effort), а uncaughtException логируем и делаем graceful shutdown →
+// Railway рестартит на чистом процессе вместо работы в неопределённом
+// состоянии. (Alerting на эти логи придёт в Phase 2.4.)
+process.on('unhandledRejection', (reason) => {
+  app.log.error({ reason }, 'unhandledRejection (backstop)');
+});
+process.on('uncaughtException', (err) => {
+  app.log.error({ err }, 'uncaughtException (backstop) — graceful shutdown');
+  void shutdown('uncaughtException');
+});
+
 start();
