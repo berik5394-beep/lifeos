@@ -16,7 +16,28 @@ export interface Engagement {
   activeHours: number[]; // 24-slot histogram (empty array if unknown)
 }
 
+// Follow-up: getEngagement is called up to 3× per scheduler tick (proactivity
+// gate3 + reflector event + deliver). A short per-user TTL memo coalesces those
+// intra-tick calls into one DB round-trip. Engagement is slow-moving, so 60s
+// staleness is irrelevant; ticks are ~10min apart so cross-tick reads stay fresh.
+const CACHE_TTL_MS = 60 * 1000;
+const cache = new Map<string, { value: Engagement; at: number }>();
+
 export async function getEngagement(userId: string, now: Date = new Date()): Promise<Engagement> {
+  const nowMs = now.getTime();
+  const hit = cache.get(userId);
+  if (hit && nowMs - hit.at < CACHE_TTL_MS) return hit.value;
+  const value = await computeEngagement(userId, now);
+  cache.set(userId, { value, at: nowMs });
+  return value;
+}
+
+/** For tests only — clear the memo between cases. */
+export function _resetEngagementCache(): void {
+  cache.clear();
+}
+
+async function computeEngagement(userId: string, now: Date): Promise<Engagement> {
   try {
     const since14 = new Date(now.getTime() - 14 * DAY);
     const since30 = new Date(now.getTime() - 30 * DAY);

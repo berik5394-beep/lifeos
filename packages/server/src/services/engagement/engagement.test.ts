@@ -23,4 +23,9 @@ describe('getEngagement structure', () => {
     expect(SRC).toMatch(/catch/);
     expect(SRC).toMatch(/receptiveness: 0\.5/);
   });
+  it('memoizes per-user with a short TTL (coalesce intra-tick calls)', () => {
+    expect(SRC).toMatch(/CACHE_TTL_MS/);
+    expect(SRC).toMatch(/cache\.get\(userId\)/);
+    expect(SRC).toMatch(/export function _resetEngagementCache/);
+  });
 });
