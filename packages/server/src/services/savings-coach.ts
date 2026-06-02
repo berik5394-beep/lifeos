@@ -1,27 +1,33 @@
-import type { SavingsStatus } from './savings-pace.js';
+import type { PortfolioStatus } from './savings-pace.js';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
 import { isV2SavingsCoachEnabled } from '../lib/feature-flags.js';
 import { gatherReflectorFacts } from './reflector-service.js';
-import { computeSavingsPace } from './savings-pace.js';
+import { computePortfolioPace, describePortfolioPace } from './savings-pace.js';
 
 /**
  * Чистый гейт реактивного коуча: после расхода говорить ТОЛЬКО когда он
  * «бьёт по цели». Защищает от занудства (см. spec §7a).
  */
 export interface NudgeGateInput {
-  status: SavingsStatus;
+  status: PortfolioStatus;
   monthToDateExpense: number;
   monthlyIncome: number;
-  requiredMonthly: number;
+  requiredAnchor: number; // требование главной цели (₸/мес)
   expenseAmount: number;
   alreadyCoachedToday: boolean;
 }
 
 export function shouldNudgeOnExpense(g: NudgeGateInput): boolean {
   if (g.alreadyCoachedToday) return false;
-  if (g.status !== 'behind' && g.status !== 'stalled') return false;
-  const goalBudget = g.monthlyIncome - g.requiredMonthly; // макс. трат/мес чтобы успевать
+  if (
+    g.status !== 'anchor_at_risk' &&
+    g.status !== 'collision' &&
+    g.status !== 'stalled'
+  ) {
+    return false;
+  }
+  const goalBudget = g.monthlyIncome - g.requiredAnchor; // макс. трат/мес под главную
   const monthOverBudget = g.monthToDateExpense > goalBudget;
   const largeSingle = g.monthlyIncome > 0 && g.expenseAmount >= 0.1 * g.monthlyIncome;
   return monthOverBudget || largeSingle;
@@ -54,16 +60,16 @@ export async function maybeSavingsCoachLine(
           expenseInput.price,
       ) || 0;
     const facts = await gatherReflectorFacts(userId, now);
-    if (facts.financeGoalTarget === null || facts.financeGoalTarget <= 0) {
-      return null; // нет числовой фин-цели → молчим
-    }
-    const pace = computeSavingsPace({
-      target: facts.financeGoalTarget,
-      targetDate: facts.targetDate,
-      savedSoFar: facts.savedSoFar,
-      monthlyPace: facts.monthlyIncome - facts.monthlyBurn,
+    if (facts.financeGoals.length === 0) return null; // нет фин-целей → молчим
+
+    const pf = computePortfolioPace({
+      goals: facts.financeGoals,
+      capacity: facts.monthlyIncome - facts.monthlyBurn,
       now,
     });
+    if (!pf.anchor || pf.status === 'none' || pf.status === 'on_track_all') {
+      return null;
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -83,19 +89,17 @@ export async function maybeSavingsCoachLine(
     ]);
 
     const nudge = shouldNudgeOnExpense({
-      status: pace.status,
+      status: pf.status,
       monthToDateExpense: mtdExp._sum.amount ?? 0,
       monthlyIncome: facts.monthlyIncome,
-      requiredMonthly: pace.requiredMonthly,
+      requiredAnchor: pf.requiredAnchor,
       expenseAmount,
       alreadyCoachedToday: coachedToday > 0,
     });
     if (!nudge) return null;
 
-    const line =
-      `Кстати — это уже выводит месяц за темп к цели «${facts.financeGoalText ?? 'накопить'}». ` +
-      `Чтобы успеть, надо откладывать ~${Math.round(pace.requiredMonthly)}₸/мес — ` +
-      `дальше лучше попридержать.`;
+    const line = describePortfolioPace(pf);
+    if (!line) return null;
 
     // Маркер дневного дедупа: сразу deliveredAt=now → не будет ещё и
     // запушен deliverTopInsight, и следующий реактив/дневной за сутки молчит.
