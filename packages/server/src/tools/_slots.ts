@@ -69,3 +69,33 @@ export function findFreeSlots(
   }
   return slots;
 }
+
+/**
+ * Свободные минуты СЕГОДНЯ от max(окно-старт, «сейчас») до окна-конца,
+ * минус события (HH:MM). События — только сегодняшние (фильтрует вызывающий).
+ * Окно 09:00–20:00 по дефолту (как findFreeSlots). Чистое.
+ */
+export function availableMinutesToday(
+  events: Array<{ startTime: string | null; endTime: string | null }>,
+  nowHHMM: string,
+  windowStart = '09:00',
+  windowEnd = '20:00',
+): number {
+  const start = nowHHMM > windowStart ? nowHHMM : windowStart;
+  if (start >= windowEnd) return 0;
+  const evs = events
+    .filter((e) => e.startTime && e.endTime && e.endTime > start && e.startTime < windowEnd)
+    .map((e) => ({
+      s: (e.startTime as string) < start ? start : (e.startTime as string),
+      e: (e.endTime as string) > windowEnd ? windowEnd : (e.endTime as string),
+    }))
+    .sort((a, b) => a.s.localeCompare(b.s));
+  let free = 0;
+  let cursor = start;
+  for (const e of evs) {
+    if (e.s > cursor) free += timeDiff(cursor, e.s);
+    if (e.e > cursor) cursor = e.e;
+  }
+  if (cursor < windowEnd) free += timeDiff(cursor, windowEnd);
+  return free;
+}
