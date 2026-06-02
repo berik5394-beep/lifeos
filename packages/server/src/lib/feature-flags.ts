@@ -158,3 +158,11 @@ export function isV2WriteEnabled(userId: string): boolean {
 export function isV2SavingsCoachEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_SAVINGS_COACH, userId);
 }
+
+/**
+ * Движок пересечения, срез 1 (день перегружен). Off → create_task ответ
+ * байт-в-байт (нет оценки времени, нет строки нагрузки).
+ */
+export function isV2DayLoadEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_DAY_LOAD, userId);
+}
