@@ -45,6 +45,7 @@ import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 import { AiModelError } from '../lib/errors.js';
 import { localDateStr } from '../lib/tz.js';
+import { parseGoalDeadline } from './goal-deadline.js';
 
 const anthropic = createAnthropic();
 
@@ -588,6 +589,9 @@ export async function persistPlan(
         where: { id: yg!.id },
         data: {
           target: rows.yearlyPatch.target,
+          // Коуч: срок из текста цели («к декабрю»…); null→undefined =
+          // не затираем уже стоящий срок, если в тексте даты нет.
+          targetDate: parseGoalDeadline(g, todayUTC) ?? undefined,
           pacingMode: rows.yearlyPatch.pacingMode,
           pacingPlan:
             rows.yearlyPatch.pacingPlan === null
