@@ -15,8 +15,12 @@ describe('maybeSavingsCoachLine — проводка хука', () => {
     expect(SRC).toContain('computePortfolioPace');
     expect(SRC).toContain('shouldNudgeOnExpense');
   });
-  it('дневной дедуп по scopeKey finance:goal_pace', () => {
+  it('дневной дедуп по scopeKey finance:goal_pace — scoped по source savings_coach', () => {
     expect(SRC).toContain("'finance:goal_pace'");
     expect(SRC).toContain('localDayStartUTC');
+    // Реактив дедупится ТОЛЬКО против СВОИХ (source 'savings_coach'), НЕ
+    // против дневного рефлектора — тот пишет тот же scopeKey и недоставленным
+    // глушил реактив на весь день (живой баг 2026-06-02).
+    expect(SRC).toMatch(/count\([\s\S]*?source: 'savings_coach'[\s\S]*?gte: dayStart/);
   });
 });

@@ -80,7 +80,15 @@ export async function maybeSavingsCoachLine(
 
     const [coachedToday, mtdExp] = await Promise.all([
       prisma.insight.count({
-        where: { userId, scopeKey: GOAL_PACE_SCOPE, createdAt: { gte: dayStart } },
+        // Дедуп ТОЛЬКО против СВОИХ реактивных инсайтов — НЕ против
+        // дневного рефлектора (тот пишет тот же scopeKey 'finance:goal_pace'
+        // и недоставленным глушил реактив на весь день; живой баг 2026-06-02).
+        where: {
+          userId,
+          scopeKey: GOAL_PACE_SCOPE,
+          source: 'savings_coach',
+          createdAt: { gte: dayStart },
+        },
       }),
       prisma.expense.aggregate({
         where: { userId, date: { gte: monthStart } },
