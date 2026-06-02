@@ -132,3 +132,72 @@ describe('reflect — кросс-модуль: отстаёт И план уст
     expect(r).toHaveLength(0);
   });
 });
+
+describe('reflect — portfolio pacing (флаг on)', () => {
+  const RNOW = new Date('2026-06-01T00:00:00Z');
+  const MS = 30.44 * 86_400_000;
+  const inM = (n: number) => new Date(RNOW.getTime() + n * MS);
+  const pbase: ReflectorFacts = {
+    monthlyIncome: 100_000,
+    monthlyBurn: 0,
+    financeGoalTarget: null,
+    financeGoalText: null,
+    goalVerdicts: [],
+    savedSoFar: 0,
+    targetDate: inM(12),
+    pacingEnabled: true,
+    now: RNOW,
+    financeGoals: [],
+  };
+
+  it('anchor_at_risk → инсайт finance:goal_pace с «опоздаешь»', () => {
+    const out = reflect({
+      ...pbase,
+      monthlyIncome: 40_000, // темп 40k
+      financeGoals: [
+        { text: 'Квартира', target: 1_000_000, targetDate: inM(10), saved: 0 }, // req 100k
+      ],
+    });
+    const ins = out.find((c) => c.scope === 'finance:goal_pace');
+    expect(ins).toBeTruthy();
+    expect(ins!.kind).toBe('goal_pace_behind');
+    expect(ins!.message).toContain('опоздаешь');
+  });
+
+  it('collision → kind goal_pace_collision', () => {
+    const out = reflect({
+      ...pbase,
+      monthlyIncome: 60_000,
+      financeGoals: [
+        { text: 'Квартира', target: 1_000_000, targetDate: inM(20), saved: 0 }, // req 50k
+        { text: 'Велик', target: 100_000, targetDate: inM(2), saved: 0 }, // req 50k
+      ],
+    });
+    const ins = out.find((c) => c.scope === 'finance:goal_pace');
+    expect(ins?.kind).toBe('goal_pace_collision');
+  });
+
+  it('on_track_all → молчит (нет finance:goal_pace)', () => {
+    const out = reflect({
+      ...pbase,
+      monthlyIncome: 500_000,
+      financeGoals: [
+        { text: 'Квартира', target: 1_000_000, targetDate: inM(20), saved: 0 },
+      ],
+    });
+    expect(out.find((c) => c.scope === 'finance:goal_pace')).toBeUndefined();
+  });
+
+  it('off-путь (pacingEnabled=false) — старый horizon-блок жив', () => {
+    const out = reflect({
+      ...pbase,
+      pacingEnabled: false,
+      monthlyIncome: 100_000,
+      monthlyBurn: 99_000, // savings 1000/мес
+      financeGoalTarget: 35_000_000,
+      financeGoalText: 'Большая цель',
+      financeGoals: [], // off-путь игнорит массив
+    });
+    expect(out.find((c) => c.scope === 'finance:goal_horizon')).toBeTruthy();
+  });
+});

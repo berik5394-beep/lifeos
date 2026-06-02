@@ -1,6 +1,10 @@
 import type { InsightCandidate } from './insight-core.js';
 import type { GoalVerdict } from './plan-vs-fact.js';
-import { computeSavingsPace } from './savings-pace.js';
+import {
+  computePortfolioPace,
+  describePortfolioPace,
+  type PortfolioStatus,
+} from './savings-pace.js';
 
 /**
  * Phase 5 P3.b — ДЕТЕРМИНИСТСКОЕ ядро рефлектора (чистое, без БД/AI).
@@ -54,6 +58,28 @@ const YEAR_MONTHS = 12;
 /** Горизонт, дальше которого «цель практически недостижима». */
 const UNREACHABLE_YEARS = 30;
 
+/** Статус портфеля → метаданные инсайта. none/on_track_all отсутствуют
+ *  → молчим (describePortfolioPace тоже вернёт null). */
+const PORTFOLIO_INSIGHT: Partial<
+  Record<PortfolioStatus, { kind: string; severity: number; dismissKey: string }>
+> = {
+  stalled: {
+    kind: 'goal_pace_stalled',
+    severity: 7,
+    dismissKey: 'reflector_goal_pace_stalled',
+  },
+  anchor_at_risk: {
+    kind: 'goal_pace_behind',
+    severity: 6,
+    dismissKey: 'reflector_goal_pace_behind',
+  },
+  collision: {
+    kind: 'goal_pace_collision',
+    severity: 6,
+    dismissKey: 'reflector_goal_pace_collision',
+  },
+};
+
 /**
  * Чистое решение рефлектора. Возвращает кандидатов для ЕДИНОГО
  * стора (R5). severity 1..10 детерминирована по величине проблемы.
@@ -86,54 +112,38 @@ export function reflect(f: ReflectorFacts): InsightCandidate[] {
     });
   }
 
-  // 2. Горизонт фин-цели. pacingEnabled (флаг коуча) → новый расчёт по
-  //    сроку (savings-pace); off → старый блок «≥30 лет» (байт-в-байт).
-  if (
+  // 2. Pacing фин-цели. ON (флаг коуча) → portfolio по ВСЕМ целям
+  //    (computePortfolioPace, якорь = самая денежная); OFF → старый
+  //    одно-целевой horizon-блок «≥30 лет» (байт-в-байт, rollback-safety).
+  if (f.pacingEnabled) {
+    if (f.monthlyIncome > 0 && f.financeGoals.length > 0) {
+      const pf = computePortfolioPace({
+        goals: f.financeGoals,
+        capacity: monthlySavings,
+        now: f.now,
+      });
+      const line = describePortfolioPace(pf);
+      const meta = PORTFOLIO_INSIGHT[pf.status];
+      if (line && meta) {
+        out.push({
+          kind: meta.kind,
+          scope: 'finance:goal_pace',
+          severity: meta.severity,
+          message: line,
+          rationale: `portfolio ${pf.status} anchorDelta=${Math.round(
+            pf.anchorDelta,
+          )} collisionDelta=${Math.round(pf.collisionDelta)}`,
+          source: 'reflector',
+          dismissKey: meta.dismissKey,
+        });
+      }
+    }
+  } else if (
     f.financeGoalTarget !== null &&
     f.financeGoalTarget > 0 &&
     f.monthlyIncome > 0
   ) {
-    if (f.pacingEnabled) {
-      const pace = computeSavingsPace({
-        target: f.financeGoalTarget,
-        targetDate: f.targetDate,
-        savedSoFar: f.savedSoFar,
-        monthlyPace: monthlySavings,
-        now: f.now,
-      });
-      if (pace.status === 'stalled') {
-        out.push({
-          kind: 'goal_pace_stalled',
-          scope: 'finance:goal_pace',
-          severity: 7,
-          message:
-            `Цель «${f.financeGoalText ?? 'финансовая'}» (${Math.round(
-              f.financeGoalTarget,
-            )}₸): при нулевых/отрицательных сбережениях она НЕ приближается. ` +
-            `Сначала вывести денежный поток в плюс.`,
-          rationale: `pace stalled savings<=0`,
-          source: 'reflector',
-          dismissKey: 'reflector_goal_pace_stalled',
-        });
-      } else if (pace.status === 'behind') {
-        out.push({
-          kind: 'goal_pace_behind',
-          scope: 'finance:goal_pace',
-          severity: 6,
-          message:
-            `Цель «${f.financeGoalText ?? 'финансовая'}» (${Math.round(
-              f.financeGoalTarget,
-            )}₸): при темпе ~${Math.round(monthlySavings)}₸/мес к сроку будет ` +
-            `~${Math.round(pace.projected)}₸ — не хватит ${Math.round(
-              pace.shortfall,
-            )}₸. Надо откладывать ~${Math.round(pace.requiredMonthly)}₸/мес.`,
-          rationale: `behind paceGap=${Math.round(pace.paceGap)}`,
-          source: 'reflector',
-          dismissKey: 'reflector_goal_pace_behind',
-        });
-      }
-      // on_track / ahead / reached → молчим (хорошие новости не пушим)
-    } else if (monthlySavings <= 0) {
+    if (monthlySavings <= 0) {
       out.push({
         kind: 'goal_horizon_stalled',
         scope: 'finance:goal_horizon',
