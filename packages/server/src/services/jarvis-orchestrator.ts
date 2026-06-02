@@ -366,10 +366,7 @@ export async function runConfirmedAction(
     // Коуч по накоплениям: после подтверждённого расхода — дописать
     // строку, если трата бьёт по фин-цели (гейт+флаг внутри хука).
     if (action === 'add_expense') {
-      const coach = await maybeSavingsCoachLine(
-        userId,
-        Number((input as { amount?: unknown }).amount) || 0,
-      );
+      const coach = await maybeSavingsCoachLine(userId, input);
       if (coach) message += `\n\n${coach}`;
     }
     console.log(
@@ -823,10 +820,7 @@ export async function handleMessage(
       // Коуч по накоплениям: тот же хук в прямой (без confirm) ветке
       // расхода — точка схождения текст/голос/фото покрыта обеими.
       if (intent.action === 'add_expense') {
-        const coach = await maybeSavingsCoachLine(
-          userId,
-          Number((input as { amount?: unknown }).amount) || 0,
-        );
+        const coach = await maybeSavingsCoachLine(userId, input);
         if (coach) replyText += `\n\n${coach}`;
       }
       // Фаза 1.5: логируем решение мозга (вход → интент → действие).

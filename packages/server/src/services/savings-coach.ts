@@ -37,11 +37,22 @@ const GOAL_PACE_SCOPE = 'finance:goal_pace';
  */
 export async function maybeSavingsCoachLine(
   userId: string,
-  expenseAmount: number,
+  expenseInput: Record<string, unknown>,
   now: Date = new Date(),
 ): Promise<string | null> {
   if (!isV2SavingsCoachEnabled(userId)) return null;
   try {
+    // Сумма расхода через те же синонимы, что у add_expense
+    // (sum/cost/price→amount). Оркестратор передаёт СЫРОЙ вход —
+    // нормализация имён живёт в runRegistryTool, поэтому читаем алиасы
+    // здесь, иначе largeSingle не сработает на естественных именах.
+    const expenseAmount =
+      Number(
+        expenseInput.amount ??
+          expenseInput.sum ??
+          expenseInput.cost ??
+          expenseInput.price,
+      ) || 0;
     const facts = await gatherReflectorFacts(userId, now);
     if (facts.financeGoalTarget === null || facts.financeGoalTarget <= 0) {
       return null; // нет числовой фин-цели → молчим

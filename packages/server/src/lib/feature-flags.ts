@@ -149,8 +149,10 @@ export function isV2WriteEnabled(userId: string): boolean {
 }
 
 /**
- * Коуч по накоплениям (deadline-pacing + reactive-on-expense). Та же
- * форма, что у соседей: "all"/"true", "none"/"false"/unset, "user-X,user-Y".
+ * Коуч по накоплениям (deadline-pacing + reactive-on-expense). Через
+ * isEnabledForUser: "all" → все; "none"/"false"/unset → никто;
+ * "user-X,user-Y" → перечисленные. ВНИМАНИЕ: "true" НЕ включает — для
+ * глобального включения ставь "all".
  * Off → рефлектор и расходный путь работают как сегодня (байт-в-байт).
  */
 export function isV2SavingsCoachEnabled(userId: string): boolean {
