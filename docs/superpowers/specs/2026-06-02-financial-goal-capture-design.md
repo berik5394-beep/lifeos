@@ -69,3 +69,16 @@ SMOKE: «разбери цель накопить 100000 к концу меся�
 
 ## 5. Выкатка
 Локальные коммиты по шагам; push/deploy/флаг — только по слову Berik. Флаг `FEATURE_V2_SAVINGS_COACH` уже `all` в проде (коуч), так что при деплое петля включится для всех. Миграций нет (target/targetDate уже в схеме). SMOKE по факту БД.
+
+## 6. IMPLEMENTATION NOTE (2026-06-02) — дизайн эволюционировал при сборке
+
+Глубинная находка при кодировании (фиксирую честно): **`suggest_goal` был недостижим из чата.** `needsConfirm:true` исключал его из набора агента (`agentToolSchemasForUser` фильтрует needsConfirm) — это и есть истинный корень SMOKE (цель не предлагалась/не сохранялась), глубже «нет поля».
+
+Поправка Berik: **бот НЕ пишет без «да» — спрашивает.** Финальная схема (паттерн денег propose→confirm→write):
+- **`suggest_goal` = агент-вызываемый ПРЕДЛОЖИТЕЛЬ** (`needsConfirm:false`, но САМ не мутирует): ставит `setPendingAction('commit_goal', …)` + возвращает дружеский вопрос. Достижим из чата; деньги-инвариант цел (не пишет).
+- **`commitGoal` (services/goal-commit.ts)** — реальная запись на «да»: `runConfirmedAction` ветка `commit_goal` (как `run_skill_actions`). create-or-update (`decideGoalWrite`) + резолв срока + `target`/`targetDate`.
+- **Промпт** `GOAL_CAPTURE_BLOCK` (buildJarvisPrompt `opts.goalCapture`, за `isV2SavingsCoachEnabled`): читай между строк → предложи через suggest_goal с target+срок. Off → байт-в-байт.
+- Замена пункта «confirmationText case»: вопрос строит сам предложитель (возвращает его), отдельный кейс в `confirmationText` не нужен.
+- Проактивный детектор (Секция 3, отдельный сигнал) — **отложен** как осознанный follow-up; ядро (предложение-в-разговоре + правка + запись) закрывает SMOKE-дыру.
+
+Источник правды по коду — сами файлы + их комментарии. Сюита 2064 зелёная, tsc 0.
