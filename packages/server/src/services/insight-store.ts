@@ -247,7 +247,10 @@ export async function deliverTopInsight(
 
   const res = await deliverNotification(
     userId,
-    row.rationale ?? 'JARVIS',
+    // Юзеру — ТОЛЬКО текст инсайта. Внутренний rationale (напр.
+    // 'v2-proactivity:skill_suggestion') НЕ показываем как заголовок —
+    // он просачивался в сообщение. Провенанс остаётся в БД (row.rationale).
+    '',
     row.message,
     { type: 'insight', insightId: row.id },
   );

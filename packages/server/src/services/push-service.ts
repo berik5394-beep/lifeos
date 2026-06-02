@@ -144,7 +144,9 @@ export async function deliverNotification(
   const chatId = await getTelegramChatId(userId);
   if (chatId) {
     // В Telegram заголовок + тело одним сообщением (у бота нет «title»).
-    telegram = await sendTelegramTo(chatId, `${title}\n\n${body}`);
+    // Пустой title → шлём ТОЛЬКО тело (без префикса) — чтобы внутренние
+    // лейблы (provenance инсайта) не просачивались в текст юзеру.
+    telegram = await sendTelegramTo(chatId, title ? `${title}\n\n${body}` : body);
   }
 
   return { push, telegram };
