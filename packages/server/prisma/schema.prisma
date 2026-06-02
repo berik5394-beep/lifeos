@@ -320,6 +320,7 @@ model YearlyGoal {
   // milestone'ы в pacingPlan (JSON, БЕЗ отдельной таблицы Milestone;
   // если понадобится — мигрируем из JSON одной командой).
   target     Float?
+  targetDate DateTime? // срок фин-цели для коуча; null → адаптер берёт 31 дек
   pacingMode String @default("uniform")
   pacingPlan Json?
 
