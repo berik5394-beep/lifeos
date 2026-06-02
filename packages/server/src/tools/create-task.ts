@@ -18,6 +18,8 @@ export const createTaskTool = defineTool({
     'в дерево (план под цель: год → кварталы → недели) — используй ' +
     'decompose_goal, не create_task в цикле.',
   category: 'task',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { name: 'title', taskTitle: 'title', task: 'title', due_date: 'date', dueDate: 'date', deadline: 'date' },
   schema: z.object({
     title: z.string().min(1).max(300),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),

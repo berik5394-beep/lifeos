@@ -14,6 +14,8 @@ export const linkRelationshipTool = defineTool({
     'Связать два запомненных entities направленным ребром (мама → Серик, ' +
     'type=family). Если endpoint ещё не записан — создастся как person.',
   category: 'memory',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { from: 'fromName', to: 'toName', from_name: 'fromName', to_name: 'toName', relation: 'type', relationType: 'type', relationshipType: 'type' },
   schema: z.object({
     fromName: z.string().min(1).max(120),
     toName: z.string().min(1).max(120),

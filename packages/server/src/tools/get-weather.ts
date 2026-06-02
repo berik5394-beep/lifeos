@@ -15,6 +15,8 @@ export const getWeatherTool = defineTool({
     'Вызывай на «какая погода», «что надеть», «во сколько выезжать» ' +
     '— особенно если у юзера сегодня встреча/поездка.',
   category: 'info',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { location: 'city', place: 'city', town: 'city' },
   schema: z.object({
     city: z
       .string()

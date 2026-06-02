@@ -16,6 +16,8 @@ export const suggestGoalTool = defineTool({
     'годовой план. Используй когда из разговора видно сильное желание/' +
     'намерение, ещё не оформленное как цель.',
   category: 'task',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { goal: 'goalText', text: 'goalText', title: 'goalText', goal_text: 'goalText', category: 'area' },
   schema: z.object({
     area: z.enum(['finance', 'career', 'health', 'spirituality']),
     goalText: z.string().min(3).max(300),

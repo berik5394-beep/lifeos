@@ -15,6 +15,8 @@ export const recallPersonTool = defineTool({
     'про него говорил (память). Read-only. Вызывай на «кто такой X», ' +
     '«телефон X», «напомни про X», «что я говорил про X».',
   category: 'memory',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { person: 'name', personName: 'name', who: 'name', person_name: 'name' },
   schema: z.object({
     name: z.string().max(120),
   }),

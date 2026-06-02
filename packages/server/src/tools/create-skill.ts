@@ -27,6 +27,8 @@ export const createSkillTool = defineTool({
     'по запросу пользователя. Используй, когда пользователь просит ' +
     '«сделай навык», «запомни это как навык».',
   category: 'system',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { name: 'request', description: 'request', task: 'request', goal: 'request', skill: 'request', prompt: 'request' },
   schema,
   needsConfirm: false,
   sideEffects: 'write',

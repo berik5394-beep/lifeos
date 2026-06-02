@@ -13,6 +13,8 @@ export const journalEntryTool = defineTool({
     '«запиши в дневник», «энергия Z». НЕ путать с create_task — это ' +
     'субъективное состояние, не дело.',
   category: 'task',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { note: 'notes', text: 'notes', comment: 'notes' },
   schema: z.object({
     sleepHours: z.number().min(0).max(24).optional(),
     energy: z.number().int().min(1).max(10).optional(),

@@ -20,6 +20,8 @@ export const sendTelegramTool = defineTool({
     'отправка — выполняется только после явного подтверждения ' +
     '(«да»). Не подтверждай сам.',
   category: 'system',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { message: 'text', body: 'text', content: 'text', msg: 'text' },
   schema: z.object({
     text: z.string().min(1).max(4000),
   }),

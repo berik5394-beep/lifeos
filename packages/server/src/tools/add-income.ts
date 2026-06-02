@@ -14,6 +14,8 @@ export const addIncomeTool = defineTool({
     'Записать доход. ДЕНЬГИ — выполняется только после явного ' +
     'подтверждения пользователя («да»). Не подтверждай сам.',
   category: 'finance',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { sum: 'amount', cost: 'amount', from: 'source', description: 'source', desc: 'source', note: 'source' },
   schema: z.object({
     amount: z.number().positive().max(1_000_000_000),
     source: z.string().max(120).optional(),

@@ -28,6 +28,8 @@ export const searchFlightsTool = defineTool({
     'поездки юзера, search_flights ищет НОВЫЕ. IATA коды 3 буквы ' +
     '(Алматы=ALA, Астана=NQZ, Москва=MOW, Дубай=DXB).',
   category: 'travel',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { from: 'origin', to: 'destination', fromCity: 'origin', toCity: 'destination', departureDate: 'departureAt', departure: 'departureAt', departAt: 'departureAt' },
   schema: z.object({
     origin: z
       .string()

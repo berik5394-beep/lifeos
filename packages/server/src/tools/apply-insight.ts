@@ -26,6 +26,8 @@ export const applyInsightTool = defineTool({
     'Применить действие, предложенное в инсайте рефлектора (по ' +
     'insightId). Денежное/внешнее — только после явного «да».',
   category: 'system',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { id: 'insightId', insight: 'insightId', insight_id: 'insightId' },
   schema: z.object({
     insightId: z.string().min(1).max(64),
   }),

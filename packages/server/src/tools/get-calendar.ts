@@ -16,6 +16,8 @@ export const getCalendarTool = defineTool({
     'Для проверки занятости/конфликтов перед планированием. Для ' +
     'поиска СВОБОДНЫХ окон — используй get_free_slots, не считай в уме.',
   category: 'calendar',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { dateFrom: 'from', fromDate: 'from', startDate: 'from', start: 'from', dateTo: 'to', toDate: 'to', endDate: 'to', end: 'to' },
   schema: z.object({
     // L99 R9 #5 fix: regex YYYY-MM-DD (раньше z.string().max(20)
     // принимал "yesterday" → new Date("yesterday") = Invalid Date →

@@ -9,6 +9,8 @@ export const completeTaskTool = defineTool({
     'Отметить задачу выполненной. Вызывай на «закрой задачу X», ' +
     '«сделал X», «выполнил задачу X», «X готово».',
   category: 'task',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { taskTitle: 'title', task: 'title', name: 'title', task_title: 'title' },
   schema: z.object({
     title: z.string().max(300).optional(),
     taskId: z.string().max(60).optional(),

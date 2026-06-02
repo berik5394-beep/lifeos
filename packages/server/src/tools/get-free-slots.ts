@@ -14,6 +14,8 @@ export const getFreeSlotsTool = defineTool({
     'Вызывай когда юзер просит «когда я свободен», «найди время для», ' +
     'перед предложением времени встречи/задачи.',
   category: 'calendar',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { from: 'dateFrom', to: 'dateTo', startDate: 'dateFrom', endDate: 'dateTo', start: 'dateFrom', end: 'dateTo' },
   schema: z.object({
     dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
     dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),

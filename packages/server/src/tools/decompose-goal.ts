@@ -34,6 +34,8 @@ export const decomposeGoalTool = defineTool({
     'под цель», «как достичь <цель>». Разовые встречи/покупки НЕ ' +
     'разбивает.',
   category: 'system',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { goalText: 'goal', text: 'goal', title: 'goal', name: 'goal', target: 'goal' },
   schema: z.object({
     goal: z
       .string()

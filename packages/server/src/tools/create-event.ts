@@ -26,6 +26,8 @@ export const createEventTool = defineTool({
     'Создать или перенести встречу/событие в календаре. Похожее ' +
     'событие в ±3 дня обновляется (не плодит дубль).',
   category: 'calendar',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { name: 'title', eventTitle: 'title', due_date: 'date', dueDate: 'date', day: 'date', place: 'location', desc: 'description', notes: 'description', note: 'description' },
   schema: z.object({
     title: z.string().min(1).max(300),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),

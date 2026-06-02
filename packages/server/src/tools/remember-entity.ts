@@ -15,6 +15,8 @@ export const rememberEntityTool = defineTool({
     'человека, место, концепцию, цель, организацию. Вызывай когда юзер ' +
     'явно просит «запомни X» или когда из разговора выделил нового важного.',
   category: 'memory',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { entityType: 'type', entityName: 'name', title: 'name' },
   schema: z.object({
     type: z.enum(['person', 'place', 'concept', 'goal', 'organization']),
     name: z.string().min(1).max(120),

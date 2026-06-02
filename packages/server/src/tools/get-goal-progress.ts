@@ -25,6 +25,8 @@ export const getGoalProgressTool = defineTool({
     'Вызывай на «как я иду к цели», «что с финансовой целью», ' +
     '«отстаю ли я по здоровью».',
   category: 'info',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { category: 'area', goalArea: 'area' },
   schema: z.object({
     area: z.string().max(40).optional(),
   }),

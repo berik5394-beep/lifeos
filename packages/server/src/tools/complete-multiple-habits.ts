@@ -15,6 +15,8 @@ export const completeMultipleHabitsTool = defineTool({
     'Отметить несколько привычек выполненными сегодня. Вызывай на ' +
     '«отметь бег и чтение», «закрой все утренние привычки».',
   category: 'habit',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { names: 'habitNames', habits: 'habitNames', habit_names: 'habitNames', ids: 'habitIds' },
   schema: z.object({
     habitNames: z.array(z.string().max(120)).max(30).optional(),
     habitIds: z.array(z.string().max(60)).max(30).optional(),

@@ -13,6 +13,8 @@ export const completeHabitTool = defineTool({
     'complete_multiple_habits. Вызывай на «отметь X», «сделал X», ' +
     '«выполнил X».',
   category: 'habit',
+  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
+  aliases: { habitName: 'name', habit: 'name', title: 'name', habit_name: 'name' },
   schema: z.object({
     name: z.string().max(120).optional(),
     habitId: z.string().max(60).optional(),
