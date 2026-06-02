@@ -1,32 +1,35 @@
 import { z } from 'zod';
 import { defineTool } from './_types.js';
-import { prisma } from '../lib/prisma.js';
-import { decideGoalWrite } from '../services/goal-write.js';
 import { parseGoalDeadline } from '../services/goal-deadline.js';
-import { isV2SavingsCoachEnabled } from '../lib/feature-flags.js';
+import { setPendingAction } from '../services/pending-actions.js';
 
 /**
- * v2.0 Week 5 — записать/обновить годовую цель. needsConfirm:true →
- * никогда не исполняется автономным agent-loop (security invariant в
- * tools/index.ts agentToolSchemas). Confirm-FSM в jarvis-orchestrator
- * ведёт «да» юзера обратно сюда.
+ * v2.0 Week 5 / 2026-06 — ПРЕДЛОЖИТЬ оформить годовую цель.
  *
- * 2026-06 — единый умный захват цели (spec financial-goal-capture).
- * За флагом FEATURE_V2_SAVINGS_COACH: пишет ИЗМЕРИМУЮ величину
- * (`target`) + срок (`targetDate`) и делает create-OR-update (не плодит
- * дубли, закрывает правку). Так коуч по накоплениям получает фин-цель
- * с числом+сроком, которую читает. Флаг off → поведение как раньше
- * (always create, без target/срока) — байт-в-байт.
+ * Друг СПРАШИВАЕТ перед записью: этот инструмент НЕ пишет цель, а ставит
+ * pending('commit_goal') + задаёт вопрос. Реальная запись — на «да»
+ * (runConfirmedAction → commitGoal). Тот же паттерн, что у денег: предложил
+ * → подтвердил → записал. Бот читает между строк и предлагает зафиксировать.
+ *
+ * needsConfirm:FALSE — намеренно: инструмент сам по себе НЕ мутирует данные
+ * (только ставит предложение), поэтому он агент-вызываемый (agentToolSchemas
+ * фильтрует needsConfirm). Если бы он был needsConfirm:true — был бы исключён
+ * из набора агента и недостижим из чата (корень того, что цель не
+ * предлагалась/не сохранялась, SMOKE). Деньги по-прежнему needsConfirm:true.
+ *
+ * Захват измеримой цели: передавай `target` (число) + `targetDate` (срок,
+ * относительный резолвим) — их пишет commitGoal, и читает коуч по
+ * накоплениям. `goalId` — если правим существующую цель.
  */
 export const suggestGoalTool = defineTool({
   name: 'suggest_goal',
   description:
-    'Записать или обновить годовую цель пользователя, в т.ч. ИЗМЕРИМУЮ ' +
-    '(сумма+срок): «накопить 100000 к концу месяца», «прочитать 50 книг ' +
-    'к декабрю». Юзер подтверждает. Передавай target (число) и targetDate ' +
-    '(срок) когда они есть; goalId — если ПРАВИШЬ существующую цель. ' +
-    'Вызывай и на прямое «поставь/хочу цель …», и когда из разговора ' +
-    'видно намерение, ещё не оформленное как цель.',
+    'ПРЕДЛОЖИТЬ пользователю оформить годовую цель (бот спросит, запишет ' +
+    'на «да»), в т.ч. ИЗМЕРИМУЮ (сумма+срок): «накопить 100000 к концу ' +
+    'месяца», «прочитать 50 книг к декабрю». Передавай target (число) и ' +
+    'targetDate (срок), когда они есть; goalId — если правим существующую. ' +
+    'Вызывай и на прямое «поставь/хочу цель …», и когда из разговора видно ' +
+    'намерение, ещё не оформленное как цель (читай между строк).',
   category: 'task',
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: {
@@ -66,7 +69,7 @@ export const suggestGoalTool = defineTool({
       .optional()
       .describe('id существующей цели — если ПРАВИМ её (бот видит id целей в контексте)'),
   }),
-  needsConfirm: true,
+  needsConfirm: false,
   sideEffects: 'write',
   examples: [
     'предложи цель «бегать 3 раза в неделю»',
@@ -74,79 +77,42 @@ export const suggestGoalTool = defineTool({
     'хочу накопить 3 млн к декабрю',
   ],
   handler: async (input, ctx) => {
-    // Confirm-FSM ensures this fires only after the user said «да».
+    // НЕ пишем — ставим предложение и задаём вопрос. Запись на «да».
     const now = new Date();
-    const year = now.getFullYear();
 
-    // Флаг off → поведение как раньше: всегда create, без target/срока.
-    if (!isV2SavingsCoachEnabled(ctx.userId)) {
-      const goal = await prisma.yearlyGoal.create({
-        data: {
-          userId: ctx.userId,
-          year,
-          area: input.area,
-          goalText: input.goalText,
-        },
-      });
-      return {
-        message: `Цель записана: «${input.goalText}» (${input.area}, ${year})`,
-        goalId: goal.id,
-      };
-    }
-
-    // Резолв срока: ISO как есть, иначе относительная фраза → дата.
-    let targetDate: Date | null = null;
+    // Превью срока для вопроса (резолвим относительную фразу).
+    let when = '';
     const rawDate =
       typeof input.targetDate === 'string' ? input.targetDate.trim() : '';
     if (rawDate) {
-      targetDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
+      const d = /^\d{4}-\d{2}-\d{2}$/.test(rawDate)
         ? new Date(rawDate + 'T12:00:00Z')
         : parseGoalDeadline(rawDate, now);
+      when = d ? ` к ${d.toISOString().slice(0, 10)}` : ` ${rawDate}`;
     }
-    const target =
+    const amount =
       typeof input.target === 'number' && Number.isFinite(input.target)
-        ? input.target
-        : null;
+        ? ` (${Math.round(input.target)}₸)`
+        : '';
 
-    // create-OR-update: не плодим дубли, закрываем правку.
-    const existing = await prisma.yearlyGoal.findMany({
-      where: { userId: ctx.userId, year, area: input.area },
-      select: { id: true, goalText: true },
-    });
-    const decision = decideGoalWrite(existing, {
-      goalId: input.goalId,
-      goalText: input.goalText,
-    });
+    const question =
+      `Зафиксировать цель: «${input.goalText}»${amount}${when}? ` +
+      `Скажи «да» — запишу и буду вести.`;
 
-    const fields = {
-      goalText: input.goalText,
-      ...(target !== null ? { target } : {}),
-      ...(targetDate !== null ? { targetDate } : {}),
-    };
+    await setPendingAction(
+      ctx.userId,
+      'commit_goal',
+      {
+        area: input.area,
+        goalText: input.goalText,
+        rationale: input.rationale,
+        target: input.target,
+        targetDate: input.targetDate,
+        goalId: input.goalId,
+      },
+      question,
+    );
 
-    let goalId: string;
-    let verb: string;
-    if (decision.mode === 'update') {
-      const g = await prisma.yearlyGoal.update({
-        where: { id: decision.goalId },
-        data: fields,
-      });
-      goalId = g.id;
-      verb = 'обновлена';
-    } else {
-      const g = await prisma.yearlyGoal.create({
-        data: { userId: ctx.userId, year, area: input.area, ...fields },
-      });
-      goalId = g.id;
-      verb = 'записана';
-    }
-
-    const parts = [`«${input.goalText}»`];
-    if (target !== null) parts.push(`${Math.round(target)}`);
-    if (targetDate) parts.push(`к ${targetDate.toISOString().slice(0, 10)}`);
-    return {
-      message: `Цель ${verb}: ${parts.join(' ')} (${input.area})`,
-      goalId,
-    };
+    return { message: question, pending: true };
   },
 });

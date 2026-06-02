@@ -21,9 +21,15 @@ describe('v2 tools wired into registry', () => {
     expect(SRC).toMatch(/\blinkRelationshipTool\b/);
     expect(SRC).toMatch(/\bsuggestGoalTool\b/);
   });
-  it('suggest_goal correctly excluded from autonomous agent loop', () => {
-    // Mirror existing money-safety invariant test pattern.
+  it('suggest_goal — агент-вызываемый предложитель, запись confirm-gated', () => {
     const t = registry.get('suggest_goal')!;
-    expect(t.needsConfirm).toBe(true);
+    // needsConfirm:false → агент ВИДИТ и вызывает (раньше needsConfirm:true
+    // исключал его из набора → недостижим → цель не предлагалась, SMOKE).
+    // Инвариант сохранён иначе: сам инструмент НЕ пишет — ставит pending
+    // commit_goal + вопрос; реальная запись на «да» (confirm-gated).
+    expect(t.needsConfirm).toBe(false);
+    const toolSrc = readFileSync(join(__dirname, 'suggest-goal.ts'), 'utf8');
+    expect(toolSrc).toContain("'commit_goal'");
+    expect(toolSrc).not.toMatch(/prisma\.yearlyGoal\.(create|update)/);
   });
 });

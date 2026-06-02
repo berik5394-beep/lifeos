@@ -5,7 +5,7 @@ import { suggestGoalTool } from './suggest-goal.js';
 
 const SRC = readFileSync(join(process.cwd(), 'src/tools/suggest-goal.ts'), 'utf-8');
 
-describe('suggest_goal — единый захват цели (target/targetDate + create-or-update)', () => {
+describe('suggest_goal — предложитель цели (target/targetDate + ask-before-write)', () => {
   it('схема принимает target/targetDate/goalId (опц.)', () => {
     expect(() =>
       suggestGoalTool.schema.parse({
@@ -29,20 +29,15 @@ describe('suggest_goal — единый захват цели (target/targetDate
     ).not.toThrow();
   });
 
-  it('хендлер: create-or-update за флагом + резолв срока', () => {
-    expect(SRC).toContain('isV2SavingsCoachEnabled');
-    expect(SRC).toContain('decideGoalWrite');
-    expect(SRC).toContain('parseGoalDeadline');
-    expect(SRC).toContain('yearlyGoal.update');
+  it('агент-вызываемый (needsConfirm:false) → достижим из чата', () => {
+    expect(suggestGoalTool.needsConfirm).toBe(false);
   });
 
-  it('флаг off → старое поведение (always create) раньше update-ветки', () => {
-    const iFlag = SRC.indexOf('if (!isV2SavingsCoachEnabled');
-    const iCreate = SRC.indexOf('yearlyGoal.create', iFlag);
-    const iUpdate = SRC.indexOf('yearlyGoal.update');
-    expect(iFlag).toBeGreaterThan(-1);
-    expect(iCreate).toBeGreaterThan(iFlag); // create в off-ветке
-    expect(iCreate).toBeLessThan(iUpdate); // off-create раньше on-update
+  it('предлагает (pending commit_goal + вопрос), резолвит срок для превью', () => {
+    expect(SRC).toContain('setPendingAction');
+    expect(SRC).toContain("'commit_goal'");
+    expect(SRC).toContain('parseGoalDeadline'); // превью относительного срока
+    expect(SRC).toMatch(/Зафиксировать цель/); // дружеский вопрос
   });
 
   it('aliases несут сумму/срок (amount/sum→target, deadline→targetDate)', () => {

@@ -24,6 +24,7 @@ import { writeMemory } from './episodic-memory.js';
 import { trackInterests } from './interest-service.js';
 import { runRegistryTool, toolConfirmRequired } from '../tools/index.js';
 import { maybeSavingsCoachLine } from './savings-coach.js';
+import { commitGoal, type CommitGoalInput } from './goal-commit.js';
 import { getToolCounts } from './tool-audit.js';
 import {
   peekPendingAction,
@@ -354,6 +355,18 @@ export async function runConfirmedAction(
       const batchMessage = results.join('\n') || 'Готово.';
       await saveTurn(userId, '(подтверждено)', batchMessage);
       return batchMessage;
+    }
+
+    // Захват цели: «да» на предложение suggest_goal → реальная запись
+    // (create-or-update + target/срок). Деньгами не двигает; commit_goal —
+    // НЕ зарегистрированный tool, исполняется здесь (как run_skill_actions).
+    if (action === 'commit_goal') {
+      const message = await commitGoal(
+        userId,
+        input as unknown as CommitGoalInput,
+      );
+      await saveTurn(userId, '(подтверждено)', message);
+      return message;
     }
 
     // SSOT 9B.2: ВСЁ подтверждённое исполняется через РЕЕСТР

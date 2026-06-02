@@ -6,9 +6,11 @@ import { suggestGoalTool } from './suggest-goal.js';
 const SRC = readFileSync(join(__dirname, 'suggest-goal.ts'), 'utf8');
 
 describe('suggestGoalTool — shape', () => {
-  it('needsConfirm: true (creates YearlyGoal)', () => {
+  it('needsConfirm: false (agent-callable — обратимая не-денежная запись)', () => {
     expect(suggestGoalTool.name).toBe('suggest_goal');
-    expect(suggestGoalTool.needsConfirm).toBe(true);
+    // FALSE → агент видит и вызывает напрямую (как create_task). Иначе
+    // suggest_goal недостижим из чата (фильтр agentToolSchemasForUser).
+    expect(suggestGoalTool.needsConfirm).toBe(false);
     expect(suggestGoalTool.sideEffects).toBe('write');
   });
   it('schema enforces area enum + rationale required', () => {
@@ -33,7 +35,10 @@ describe('suggestGoalTool — shape', () => {
       }),
     ).toThrow();
   });
-  it('handler creates YearlyGoal via prisma', () => {
-    expect(SRC).toMatch(/prisma\.yearlyGoal\.create/);
+  it('handler ПРЕДЛАГАЕТ (ставит pending commit_goal), НЕ пишет напрямую', () => {
+    expect(SRC).toContain('setPendingAction');
+    expect(SRC).toContain("'commit_goal'");
+    // Реальная запись — в commitGoal (на «да»), не в самом инструменте.
+    expect(SRC).not.toMatch(/prisma\.yearlyGoal\.(create|update)/);
   });
 });
