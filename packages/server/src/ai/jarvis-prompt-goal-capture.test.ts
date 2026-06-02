@@ -28,4 +28,8 @@ describe('goal-capture промпт-блок (читай между строк �
     expect(ORCH).toContain('goalCapture: isV2SavingsCoachEnabled(userId)');
     expect(ASST).toContain('goalCapture: isV2SavingsCoachEnabled(userId)');
   });
+  it('контекст целей за флагом несёт goalId (для надёжной правки)', () => {
+    expect(ASST).toContain('goalCaptureCtx');
+    expect(ASST).toContain('[id:');
+  });
 });

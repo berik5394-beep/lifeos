@@ -67,7 +67,9 @@ export async function commitGoal(
   }
 
   const parts = [`«${input.goalText}»`];
-  if (target !== null) parts.push(`${Math.round(target)}₸`);
+  if (target !== null) {
+    parts.push(`${Math.round(target)}${input.area === 'finance' ? '₸' : ''}`);
+  }
   if (targetDate) parts.push(`к ${targetDate.toISOString().slice(0, 10)}`);
   return `Цель ${verb}: ${parts.join(' ')} (${input.area}). Буду вести.`;
 }

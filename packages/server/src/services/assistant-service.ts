@@ -124,7 +124,14 @@ export async function gatherAssistantContext(
     calculateWeekProgress(userId, today),
     prisma.yearlyGoal.findMany({
       where: { userId, year: ly },
-      select: { area: true, goalText: true, progress: true },
+      select: {
+        id: true,
+        area: true,
+        goalText: true,
+        progress: true,
+        target: true,
+        targetDate: true,
+      },
     }),
     getRelevantMemories(userId, text, 20),
     knownIntent ? Promise.resolve(knownIntent) : parseIntent(text),
@@ -166,10 +173,28 @@ export async function gatherAssistantContext(
   const spentThisMonth = expenseAgg._sum.amount ?? 0;
   const budgetLimit = budgetAgg._sum.monthlyLimit ?? 0;
   const tasksCompleted = todayTasks.filter((t) => t.completed).length;
+  // За флагом коуча: к сводке целей добавляем сумму/срок/id, чтобы бот мог
+  // сослаться на goalId при ПРАВКЕ («передвинь срок», «цель теперь 150к»)
+  // → надёжный update вместо текст-матча. Off → строка байт-в-байт.
+  const goalCaptureCtx = isV2SavingsCoachEnabled(userId);
   const yearlyGoalsSummary =
     yearlyGoals.length > 0
       ? yearlyGoals
-          .map((g) => `${g.area}: ${g.goalText} (${Math.round(g.progress)}%)`)
+          .map((g) => {
+            if (!goalCaptureCtx) {
+              return `${g.area}: ${g.goalText} (${Math.round(g.progress)}%)`;
+            }
+            const num =
+              g.target != null
+                ? `, ${Math.round(g.target)}${g.area === 'finance' ? '₸' : ''}`
+                : '';
+            const due = g.targetDate
+              ? `, к ${g.targetDate.toISOString().slice(0, 10)}`
+              : '';
+            return `${g.area}: ${g.goalText} (${Math.round(
+              g.progress,
+            )}%${num}${due}) [id:${g.id}]`;
+          })
           .join('; ')
       : 'Не заданы';
 

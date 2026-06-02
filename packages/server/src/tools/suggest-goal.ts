@@ -92,7 +92,7 @@ export const suggestGoalTool = defineTool({
     }
     const amount =
       typeof input.target === 'number' && Number.isFinite(input.target)
-        ? ` (${Math.round(input.target)}₸)`
+        ? ` (${Math.round(input.target)}${input.area === 'finance' ? '₸' : ''})`
         : '';
 
     const question =
