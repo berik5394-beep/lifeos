@@ -35,6 +35,20 @@ export const INLINE_NUDGE_BLOCK =
   'Строго ОДНО предложение, не настаивай, легко проигнорировать. Если явного ' +
   'намерения нет — НЕ предлагай ничего.';
 
+// 2026-06 (financial-goal-capture): захват цели. Бот ЗАПИСЫВАЕТ цель
+// инструментом suggest_goal (тот спрашивает, пишет на «да»), а не только
+// советует; для измеримой — с target+срок. За флагом isV2SavingsCoachEnabled
+// (opts.goalCapture). Off → блок не добавляется, промпт байт-в-байт.
+export const GOAL_CAPTURE_BLOCK =
+  '\n\nЦЕЛИ — ЗАПИСЫВАЙ, НЕ ТОЛЬКО СОВЕТУЙ: когда пользователь ставит или ' +
+  'выражает цель — прямо («поставь/хочу цель …») или между строк («хочу ' +
+  'накопить на машину», «надо бы в форму к лету») — ВЫЗОВИ suggest_goal, ' +
+  'чтобы предложить её оформить (инструмент сам спросит, запишет на «да»). ' +
+  'Для ИЗМЕРИМОЙ цели обязательно передай target (число: сумма в ₸, кол-во) ' +
+  'и targetDate (срок: «к концу месяца», «к декабрю», дата) — не теряй их. ' +
+  'Не хватает суммы или срока — спроси ОДИН вопрос, потом предложи. Совет ' +
+  '(сколько в день/неделю) давай ПОВЕРХ оформления, не вместо него.';
+
 export type AssistantStyle = 'friendly' | 'strict' | 'calm' | 'toxic';
 
 export interface AssistantContext {
@@ -218,6 +232,9 @@ export interface JarvisPromptOpts {
   /** D (spec 2026-06-01): inline-проактивность из длинного рассказа.
    *  За флагом isV2InlineNudgeEnabled — off → поведение не меняется. */
   inlineNudge?: boolean;
+  /** 2026-06 financial-goal-capture: записывать цель инструментом
+   *  (suggest_goal спрашивает, пишет на «да»). За isV2SavingsCoachEnabled. */
+  goalCapture?: boolean;
 }
 
 // ISSUE-4: голос — это TTS, длинный ответ = 25с речи (Берик в проде).
@@ -242,6 +259,7 @@ export function buildJarvisPrompt(
     : STYLE[style];
   const parts = [core(ctx.userName, getTimeOfDay()), styleBlock];
   if (opts.inlineNudge) parts.push(INLINE_NUDGE_BLOCK);
+  if (opts.goalCapture) parts.push(GOAL_CAPTURE_BLOCK);
   let body = parts.join('\n\n');
   if (opts.ritual) body += ritualBlock(opts.ritual, opts.dayCompletionPercent);
   if (opts.channel === 'voice') body += VOICE_BREVITY;

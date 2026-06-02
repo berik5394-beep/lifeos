@@ -1,6 +1,7 @@
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
+import { isV2SavingsCoachEnabled } from '../lib/feature-flags.js';
 import {
   buildJarvisPrompt,
   type AssistantContext,
@@ -294,6 +295,7 @@ export async function getAssistantReply(
   const systemPrompt = buildJarvisPrompt(gathered.context, {
     ...ritualOptsFor(gathered.intent, gathered.dayCompletionPercent),
     therapeuticMode,
+    goalCapture: isV2SavingsCoachEnabled(userId),
   });
 
   const aiResponse = await anthropic.messages.create({
