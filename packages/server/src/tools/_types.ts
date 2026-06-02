@@ -69,6 +69,14 @@ export interface Tool<TIn = unknown, TOut = unknown> {
    * (`agentToolSchemasForUser`). undefined = always available.
    */
   requires?: IntegrationRequirement;
+  /**
+   * Tool-reliability: алиасы имён аргументов от модели → канонические
+   * поля схемы (напр. { due_date: 'date', description: 'notes' }).
+   * Применяются в `runRegistryTool` ДО zod-валидации (см.
+   * `_normalize-args.ts`). Чинит «барахлят инструменты»: LLM шлёт
+   * естественные имена, строгая схема отвергает. undefined = нет алиасов.
+   */
+  aliases?: Record<string, string>;
 }
 
 /**
@@ -89,6 +97,7 @@ export function defineTool<S extends z.ZodTypeAny, TOut>(t: {
   handler: (input: z.infer<S>, ctx: ToolContext) => Promise<TOut>;
   examples?: string[];
   requires?: IntegrationRequirement;
+  aliases?: Record<string, string>;
 }): Tool {
   return t as unknown as Tool;
 }

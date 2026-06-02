@@ -6,6 +6,9 @@ import {
   captureActivity,
   summarizeToolAction,
 } from '../services/tool-activity-summary.js';
+import { normalizeToolArgs, hasRelativeDate } from './_normalize-args.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { localDateStr } from '../lib/tz.js';
 import { getToday } from './get-today.js';
 import { getWeatherTool } from './get-weather.js';
 import { getBudgetTool } from './get-budget.js';
@@ -365,13 +368,20 @@ export async function runRegistryTool(
   // видел input ПОСЛЕ успешного исполнения. Внешний контракт runRegistryTool
   // не меняется (тот же возврат result, тот же audit-инвариант «ровно одна
   // строка ToolCall»). parse остаётся ВНУТРИ audit-замыкания (L99 #20).
+  // TOOLFIX («барахлят инструменты»): нормализуем вход ДО zod —
+  // алиасы имён полей (due_date→date) + относительные даты
+  // («сегодня»→ISO в TZ юзера). LLM шлёт естественные формы, строгая
+  // схема их отвергала → действие молча не происходило. Аудит пишет
+  // ОРИГИНАЛ rawInput (что реально прислала модель — для разбора), а
+  // парсим/исполняем нормализованный.
+  const normalizedInput = await normalizeToolInput(tool, rawInput, ctx.userId);
   let parsedInput: unknown;
   const result = await auditToolCall(
     ctx.userId,
     name,
     rawInput,
     async () => {
-      parsedInput = tool.schema.parse(rawInput ?? {});
+      parsedInput = tool.schema.parse(normalizedInput ?? {});
       return tool.handler(parsedInput, ctx);
     },
     sink,
@@ -384,4 +394,35 @@ export async function runRegistryTool(
     summarizeToolAction(name, parsedInput, result, tool.sideEffects),
   );
   return result;
+}
+
+/**
+ * TOOLFIX — нормализация входа инструмента ДО zod-валидации.
+ * Алиасы полей берём из `tool.aliases`; относительные даты резолвим в
+ * TZ юзера (инжектируем resolveDate в чистый normalizeToolArgs).
+ *
+ * Fast-path: нет ни алиасов, ни относительных дат → возвращаем
+ * исходный rawInput без работы (горячий путь чата/агента не платит).
+ * Best-effort: сбой TZ → UTC; функция НИКОГДА не роняет вызов tool.
+ */
+async function normalizeToolInput(
+  tool: Tool,
+  rawInput: unknown,
+  userId: string,
+): Promise<unknown> {
+  const aliases = tool.aliases;
+  const needsDate = hasRelativeDate(rawInput);
+  if (!aliases && !needsDate) return rawInput;
+  let resolveDate: ((offsetDays: number) => string) | undefined;
+  if (needsDate) {
+    let tz = 'UTC';
+    try {
+      tz = await getUserTimezone(userId);
+    } catch {
+      /* fallback UTC — TZ-резолв не критичен для нормализации */
+    }
+    resolveDate = (offsetDays) =>
+      localDateStr(tz, new Date(Date.now() + offsetDays * 86_400_000));
+  }
+  return normalizeToolArgs(rawInput, { aliases, resolveDate });
 }
