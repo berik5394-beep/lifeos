@@ -23,6 +23,7 @@ import { captureMemory } from './memory-service.js';
 import { writeMemory } from './episodic-memory.js';
 import { trackInterests } from './interest-service.js';
 import { runRegistryTool, toolConfirmRequired } from '../tools/index.js';
+import { maybeSavingsCoachLine } from './savings-coach.js';
 import { getToolCounts } from './tool-audit.js';
 import {
   peekPendingAction,
@@ -361,7 +362,16 @@ export async function runConfirmedAction(
     const out = (await runRegistryTool(action, input, { userId })) as {
       message?: string;
     };
-    const message = out.message ?? 'Готово.';
+    let message = out.message ?? 'Готово.';
+    // Коуч по накоплениям: после подтверждённого расхода — дописать
+    // строку, если трата бьёт по фин-цели (гейт+флаг внутри хука).
+    if (action === 'add_expense') {
+      const coach = await maybeSavingsCoachLine(
+        userId,
+        Number((input as { amount?: unknown }).amount) || 0,
+      );
+      if (coach) message += `\n\n${coach}`;
+    }
     console.log(
       `[jarvis] user=${userId} intent=${action} CONFIRMED → "${message.slice(0, 80)}"`,
     );
@@ -809,7 +819,16 @@ export async function handleMessage(
         input,
         { userId },
       )) as { message?: string };
-      const replyText = out.message ?? 'Готово.';
+      let replyText = out.message ?? 'Готово.';
+      // Коуч по накоплениям: тот же хук в прямой (без confirm) ветке
+      // расхода — точка схождения текст/голос/фото покрыта обеими.
+      if (intent.action === 'add_expense') {
+        const coach = await maybeSavingsCoachLine(
+          userId,
+          Number((input as { amount?: unknown }).amount) || 0,
+        );
+        if (coach) replyText += `\n\n${coach}`;
+      }
       // Фаза 1.5: логируем решение мозга (вход → интент → действие).
       console.log(
         `[jarvis] user=${userId} intent=${intent.action} executed → "${replyText.slice(0, 80)}"`,
