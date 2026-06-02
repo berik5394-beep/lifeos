@@ -34,3 +34,19 @@ describe('jarvis-orchestrator — M2 единый писатель за флаг
     expect(body).toMatch(/source:\s*['"]chat['"]/);
   });
 });
+
+describe('jarvis-orchestrator — M2 preference-write за флагом (:666)', () => {
+  it('purchase_explained: ветка isV2WriteEnabled → writeMemory, иначе captureMemory, оба fire-and-forget', () => {
+    // Якорь — уникальный `if (!purchaseFlag)` (preference-блок). НЕ indexOf
+    // по 'purchase_explained' (он впервые встречается выше, в вычислении
+    // purchaseFlag через tags.has).
+    const start = SRC.indexOf('if (!purchaseFlag)');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 700);
+    expect(body).toContain('isV2WriteEnabled(userId)');
+    expect(body).toMatch(/void writeMemory\(userId/);
+    expect(body).toMatch(/void captureMemory\(userId/);
+    expect(body).toContain("type: 'preference'");
+    expect(body).toContain("tags: ['purchase_explained']");
+  });
+});

@@ -677,13 +677,25 @@ export async function handleMessage(
     // #6: пометить, что про ручную покупку объяснили — чтобы в
     // следующий раз не повторять PCI-лекцию. Один раз, best-effort.
     if (!purchaseFlag) {
-      void captureMemory(userId, {
-        type: 'preference',
-        content: 'Юзеру объяснено: покупка билетов ручная (диплинк, не авто)',
-        source: 'chat',
-        tags: ['purchase_explained'],
-        importance: 4,
-      }).catch(() => {});
+      // ОДНА ПАМЯТЬ M2: под флагом — единый writeMemory; иначе legacy.
+      // Оба fire-and-forget (.catch) — горячий путь не блокируем.
+      if (isV2WriteEnabled(userId)) {
+        void writeMemory(userId, {
+          type: 'preference',
+          content: 'Юзеру объяснено: покупка билетов ручная (диплинк, не авто)',
+          source: 'chat',
+          tags: ['purchase_explained'],
+          importance: 4,
+        }).catch(() => {});
+      } else {
+        void captureMemory(userId, {
+          type: 'preference',
+          content: 'Юзеру объяснено: покупка билетов ручная (диплинк, не авто)',
+          source: 'chat',
+          tags: ['purchase_explained'],
+          importance: 4,
+        }).catch(() => {});
+      }
     }
 
     void trackInterests(userId, text);
