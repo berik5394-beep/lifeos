@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import type { Memory } from '@prisma/client';
 import { shouldOverwriteContent, computeExpiresAt } from './memory-service.js';
 import { embedDocument, embeddingsEnabled, toVectorLiteral } from './embeddings.js';
+import { isV2WriteEnabled } from '../lib/feature-flags.js';
 
 /**
  * v2.0 Tier 2 — Episodic Memory.
@@ -297,6 +298,27 @@ export async function recordEvent(
   const validAt = input.validAt ?? new Date();
   const mood = clampMood(input.mood);
 
+  // ОДНА ПАМЯТЬ M2: под флагом — ЕДИНЫЙ писатель (дедуп + условный embed).
+  // `embed` НЕ передаём → writeMemory.shouldEmbed решает по типу: 'message'
+  // (сырой чат-факт) эмбедится, высокочастотные action-типы (task_created,
+  // expense_added, …) — нет. Тем самым captureV2 и captureActivity авто-
+  // апгрейдятся под флагом без правки их файлов.
+  if (isV2WriteEnabled(userId)) {
+    const res = await writeMemory(userId, {
+      type: input.type,
+      content: input.content,
+      details: input.details ?? null,
+      source: 'v2-episodic',
+      importance: input.importance,
+      entityRefs: input.entityRefs,
+      mood: input.mood,
+      validAt: input.validAt,
+      invalidAt: input.invalidAt,
+    });
+    return { id: res.id };
+  }
+
+  // OFF — байт-в-байт сегодняшнее поведение (plain create, без дедупа/embed).
   const created = await prisma.memory.create({
     data: {
       userId,

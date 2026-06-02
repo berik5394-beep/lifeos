@@ -258,3 +258,34 @@ describe('episodic-memory.ts structural — writeMemory (единый писат
     expect(body).toMatch(/console\.warn\(\s*['`]\[memory\]/);
   });
 });
+
+describe('episodic-memory.ts structural — recordEvent M2 флаг-делегация', () => {
+  it('recordEvent проверяет isV2WriteEnabled', () => {
+    const start = SRC.indexOf('export async function recordEvent');
+    const body = SRC.slice(start, start + 1800);
+    expect(body).toContain('isV2WriteEnabled(');
+  });
+
+  it('ON-ветка делегирует в writeMemory с маппингом входа', () => {
+    const start = SRC.indexOf('export async function recordEvent');
+    const body = SRC.slice(start, start + 1800);
+    expect(body).toMatch(/writeMemory\(\s*userId/);
+  });
+
+  it('OFF-ветка сохраняет plain prisma.memory.create (байт-в-байт)', () => {
+    const start = SRC.indexOf('export async function recordEvent');
+    const body = SRC.slice(start, start + 1800);
+    expect(body).toContain('prisma.memory.create');
+    expect(body).toMatch(/source:\s*['"]v2-episodic['"]/);
+  });
+
+  it('recordEvent всё ещё валидирует и клампит до записи', () => {
+    const start = SRC.indexOf('export async function recordEvent');
+    const body = SRC.slice(start, start + 1800);
+    const validateIdx = body.indexOf('validateEventInput(');
+    const branchIdx = body.indexOf('isV2WriteEnabled(');
+    expect(validateIdx).toBeGreaterThan(-1);
+    expect(validateIdx).toBeLessThan(branchIdx);
+    expect(body).toContain('clampMood(');
+  });
+});
