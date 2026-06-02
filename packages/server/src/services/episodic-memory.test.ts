@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { validateEventInput, clampMood } from './episodic-memory.js';
+import {
+  validateEventInput,
+  clampMood,
+  shouldEmbed,
+  writeMemory,
+} from './episodic-memory.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -74,6 +79,31 @@ describe('validateEventInput', () => {
       ).not.toThrow();
     }
   });
+});
+
+describe('shouldEmbed — условный embedding по типу/knob (pure)', () => {
+  it('explicit embed:false → false (даже для message)', () => {
+    expect(shouldEmbed({ type: 'message', content: 'x', embed: false })).toBe(false);
+  });
+
+  it('explicit embed:true → true (даже для action-типа)', () => {
+    expect(shouldEmbed({ type: 'task_created', content: 'x', embed: true })).toBe(true);
+  });
+
+  it('default (no embed knob): message → true (recall-ценный чат-факт)', () => {
+    expect(shouldEmbed({ type: 'message', content: 'x' })).toBe(true);
+  });
+
+  it('default (no embed knob): fact → true (стабильный recall-ценный)', () => {
+    expect(shouldEmbed({ type: 'fact', content: 'x' })).toBe(true);
+  });
+
+  it.each(['task_created', 'expense_added', 'habit_logged', 'journal_logged'])(
+    'default: высокочастотный action-тип %s → false (FTS хватает, бюджет)',
+    (type) => {
+      expect(shouldEmbed({ type, content: 'x' })).toBe(false);
+    },
+  );
 });
 
 const SRC = readFileSync(
@@ -176,5 +206,55 @@ describe('episodic-memory.ts structural — query methods wiring', () => {
     const body = SRC.slice(start, start + 800);
     expect(body).toContain('invalidAt:');
     expect(body).toContain('null');
+  });
+});
+
+describe('episodic-memory.ts structural — writeMemory (единый писатель)', () => {
+  it('writeMemory экспортирован как async function', () => {
+    expect(SRC).toMatch(/export async function writeMemory\s*\(/);
+  });
+
+  it('дедуп: STABLE_TYPES + дубликат-$queryRaw по русскому FTS', () => {
+    const start = SRC.indexOf('export async function writeMemory');
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('STABLE_TYPES.has(');
+    expect(body).toContain('$queryRaw');
+    expect(body).toMatch(/to_tsvector\('russian'/);
+    expect(body).toMatch(/plainto_tsquery\('russian'/);
+  });
+
+  it('update-ветка зовёт shouldOverwriteContent и берёт importance = max', () => {
+    const start = SRC.indexOf('export async function writeMemory');
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('shouldOverwriteContent(');
+    expect(body).toMatch(/Math\.max\(/);
+    expect(body).toContain('prisma.memory.update');
+  });
+
+  it('create-ветка пишет episodic-поля (validAt/entityRefs/mood) + tags', () => {
+    const start = SRC.indexOf('export async function writeMemory');
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('prisma.memory.create');
+    expect(body).toContain('validAt');
+    expect(body).toContain('entityRefs');
+    expect(body).toContain('mood');
+    expect(body).toContain('tags');
+  });
+
+  it('условный embedding: shouldEmbed + embeddingsEnabled + UPDATE embedding', () => {
+    const start = SRC.indexOf('export async function writeMemory');
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('shouldEmbed(');
+    expect(body).toContain('embeddingsEnabled()');
+    expect(body).toMatch(/UPDATE "Memory" SET embedding/);
+    expect(body).toContain('embedDocument(');
+  });
+
+  it('never-throws: тело обёрнуто в try/catch (best-effort)', () => {
+    const start = SRC.indexOf('export async function writeMemory');
+    const body = SRC.slice(start, start + 4000);
+    expect(body).toContain('try {');
+    expect(body).toMatch(/catch\s*\(/);
+    expect(body).toMatch(/console\.warn\(\s*['`]\[memory\]/);
   });
 });

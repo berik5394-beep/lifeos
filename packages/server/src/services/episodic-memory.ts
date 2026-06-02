@@ -1,7 +1,7 @@
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { prisma } from '../lib/prisma.js'; // будет использовано в C2
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type { Memory } from '@prisma/client'; // будет использовано в C2
+import { prisma } from '../lib/prisma.js';
+import type { Memory } from '@prisma/client';
+import { shouldOverwriteContent, computeExpiresAt } from './memory-service.js';
+import { embedDocument, embeddingsEnabled, toVectorLiteral } from './embeddings.js';
 
 /**
  * v2.0 Tier 2 — Episodic Memory.
@@ -76,6 +76,204 @@ export function validateEventInput(input: RecordEventInput): void {
     if (input.importance < 1 || input.importance > 10) {
       throw new Error(`validateEventInput: importance must be in [1, 10], got ${input.importance}`);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ОДНА ПАМЯТЬ M2 — единый писатель (writeMemory)
+// ---------------------------------------------------------------------------
+
+/**
+ * Вход единого писателя. Объединяет legacy-факты ({type,content,details,
+ * source,tags,importance}) и v2-episodic-поля (entityRefs/mood/validAt/
+ * invalidAt) + knob `embed` (стоимость embedding).
+ */
+export type WriteMemoryInput = {
+  type: string;
+  content: string;
+  details?: string | null;
+  source?: string;
+  sourceId?: string | null;
+  tags?: string[];
+  importance?: number;
+  entityRefs?: string[];
+  mood?: number;
+  validAt?: Date;
+  invalidAt?: Date;
+  /** Условный embedding. undefined → по типу (см. shouldEmbed). */
+  embed?: boolean;
+};
+
+/**
+ * Стабильные типы сворачиваем дедупом (как legacy captureMemory).
+ * Эпизодические (event/emotion/place/message/action-типы) — нет: это
+ * разные события во времени.
+ */
+const STABLE_TYPES = new Set(['fact', 'preference', 'person', 'decision']);
+
+/**
+ * recall-ценные типы, которые эмбедим по умолчанию (semantic retrieval
+ * окупается). Высокочастотные дешёвые action-события (`task_created`,
+ * `expense_added`, …) сюда НЕ входят — им хватает FTS, embedding-бюджет
+ * не тратим. `message` — сырой чат-факт, recall-ценный.
+ */
+const EMBED_DEFAULT_TYPES = new Set([
+  'message',
+  'fact',
+  'preference',
+  'person',
+  'decision',
+  'event',
+]);
+
+/**
+ * Pure decision (тест без БД): эмбедить ли вход?
+ *  - явный knob input.embed имеет приоритет;
+ *  - иначе по типу: recall-ценные (EMBED_DEFAULT_TYPES) → true,
+ *    высокочастотные action-события → false.
+ */
+export function shouldEmbed(input: {
+  type: string;
+  embed?: boolean;
+  content?: string;
+}): boolean {
+  if (input.embed !== undefined) return input.embed;
+  return EMBED_DEFAULT_TYPES.has(input.type);
+}
+
+/**
+ * ОДНА ПАМЯТЬ M2 — ЕДИНЫЙ писатель в `Memory`.
+ *
+ * Вбирает лучшее из обоих legacy/v2:
+ *  1. ДЕДУП (портирован из memory-service.captureMemory): для STABLE_TYPES
+ *     ищем похожую запись того же типа русским FTS; если нашли —
+ *     update-in-place (importance=max, merge tags/details, sparse-overwrite
+ *     guard через shouldOverwriteContent, освежаем createdAt).
+ *  2. CREATE с episodic-полями (validAt/invalidAt/entityRefs/mood/source/
+ *     tags) + TTL default (computeExpiresAt) — как recordEvent + legacy.
+ *  3. УСЛОВНЫЙ EMBEDDING (порт storeEmbedding): если shouldEmbed(input) и
+ *     embeddingsEnabled() — UPDATE "Memory" SET embedding.
+ *
+ * Best-effort: НИКОГДА не бросает (top-level try/catch). На сбое возвращает
+ * { id: '', action: 'skipped' } — горячий путь не падает (как сегодня
+ * recordEvent/captureActivity/captureMemory best-effort).
+ */
+export async function writeMemory(
+  userId: string,
+  input: WriteMemoryInput,
+): Promise<{ id: string; action: 'created' | 'updated' | 'skipped' }> {
+  try {
+    const content = input.content.slice(0, 500);
+    const details = input.details?.slice(0, 2000) ?? null;
+    const tags = (input.tags || []).slice(0, 10).map((t) => t.slice(0, 32));
+    const importance = input.importance ?? 5;
+    const source = input.source ?? 'v2-episodic';
+
+    // --- 1. Дедуп (порт из captureMemory) для стабильных типов ---
+    if (STABLE_TYPES.has(input.type)) {
+      const dup = await prisma.$queryRaw<
+        Array<{ id: string; importance: number; tags: string[]; details: string | null }>
+      >`
+        SELECT m.id, m.importance, m.tags, m.details
+        FROM "Memory" m
+        WHERE m."userId" = ${userId}
+          AND m.type = ${input.type}
+          AND to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${content})
+        ORDER BY ts_rank(
+          to_tsvector('russian', coalesce(m.content, '')),
+          plainto_tsquery('russian', ${content})
+        ) DESC
+        LIMIT 1;
+      `;
+
+      if (dup.length > 0) {
+        const existing = dup[0];
+        const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags])).slice(0, 10);
+        const merged = details ?? existing.details;
+        const ex = await prisma.memory.findUnique({
+          where: { id: existing.id },
+          select: { content: true },
+        });
+        const oldContent = ex?.content ?? '';
+        const allowContentReplace = shouldOverwriteContent(oldContent, content);
+        const newContent = allowContentReplace ? content : oldContent;
+        console.warn(
+          `[memory] UPDATE type=${input.type} id=${existing.id} ` +
+            `oldLen=${oldContent.length} newLen=${content.length} ` +
+            `contentReplaced=${allowContentReplace} (user=${userId})`,
+        );
+        await prisma.memory.update({
+          where: { id: existing.id },
+          data: {
+            content: newContent,
+            details: merged,
+            tags: mergedTags,
+            importance: Math.max(existing.importance, importance),
+            createdAt: new Date(),
+          },
+        });
+        await storeMemoryEmbedding(existing.id, newContent, merged, input);
+        return { id: existing.id, action: 'updated' };
+      }
+    }
+
+    // --- 2. Create с episodic-полями + TTL default ---
+    const validAt = input.validAt ?? new Date();
+    const mood = clampMood(input.mood);
+    const expiresAt = computeExpiresAt(input.type);
+    const created = await prisma.memory.create({
+      data: {
+        userId,
+        type: input.type,
+        content,
+        details,
+        source,
+        sourceId: input.sourceId ?? null,
+        tags,
+        importance,
+        expiresAt,
+        validAt,
+        invalidAt: input.invalidAt ?? null,
+        entityRefs: input.entityRefs ?? [],
+        mood: mood ?? null,
+      },
+      select: { id: true },
+    });
+    await storeMemoryEmbedding(created.id, content, details, input);
+    return { id: created.id, action: 'created' };
+  } catch (err) {
+    console.warn(
+      '[memory] writeMemory failed:',
+      err instanceof Error ? err.message : err,
+    );
+    return { id: '', action: 'skipped' };
+  }
+}
+
+/**
+ * Условный embedding (порт приватного storeEmbedding из memory-service.ts).
+ * Эмбедим только если shouldEmbed(input) (knob/тип) И embeddingsEnabled().
+ * Best-effort: сбой Voyage не валит запись (семантика опциональна).
+ */
+async function storeMemoryEmbedding(
+  id: string,
+  content: string,
+  details: string | null,
+  input: WriteMemoryInput,
+): Promise<void> {
+  if (!id) return;
+  if (!shouldEmbed(input)) return;
+  if (!embeddingsEnabled()) return;
+  try {
+    const vec = await embedDocument(details ? `${content}. ${details}` : content);
+    if (!vec) return;
+    await prisma.$executeRawUnsafe(
+      'UPDATE "Memory" SET embedding = $1::vector WHERE id = $2',
+      toVectorLiteral(vec),
+      id,
+    );
+  } catch (err) {
+    console.warn('[memory] embed store failed:', err instanceof Error ? err.message : err);
   }
 }
 
