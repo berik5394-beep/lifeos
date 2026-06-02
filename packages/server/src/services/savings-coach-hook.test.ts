@@ -10,9 +10,9 @@ describe('maybeSavingsCoachLine — проводка хука', () => {
     expect(SRC).toContain('isV2SavingsCoachEnabled');
     expect(SRC).toMatch(/catch[\s\S]{0,400}return null/);
   });
-  it('переиспользует gatherReflectorFacts + computeSavingsPace + shouldNudgeOnExpense', () => {
+  it('переиспользует gatherReflectorFacts + computePortfolioPace + shouldNudgeOnExpense', () => {
     expect(SRC).toContain('gatherReflectorFacts');
-    expect(SRC).toContain('computeSavingsPace');
+    expect(SRC).toContain('computePortfolioPace');
     expect(SRC).toContain('shouldNudgeOnExpense');
   });
   it('дневной дедуп по scopeKey finance:goal_pace', () => {
