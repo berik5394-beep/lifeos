@@ -63,6 +63,49 @@ const MEMORY_TRIGGERS = [
   /^что ты знаешь про /i,
 ];
 
+export type MoneyIntent =
+  | { action: 'add_expense'; amount: number; category?: string; description?: string }
+  | { action: 'add_income'; amount: number; source?: string };
+
+/**
+ * Чистый детект денег. Расширен против старого inline-prefilter:
+ *  - допускает ведущие слова до money-слова (`(?:[а-яё]+\s+){0,3}?`) —
+ *    «я потратил», «сегодня купил на» (живой баг #189: «я потратил
+ *    100000» мимо якоря ^ → чат-агент сочинял запись, в БД 0 строк);
+ *  - НЕ дефолтит категорию/источник — отсутствует, если не указан
+ *    (оркестратор доспросит через FSM, без LLM-нарратива).
+ *  Консервативно: нужен money-глагол + число (голое «100000» → null).
+ *  `[а-яё]` (НЕ \w — кириллица).
+ */
+export function detectMoneyIntent(text: string): MoneyIntent | null {
+  let m = text.match(
+    /^(?:[а-яё]+\s+){0,3}?(?:запиши\s+)?(?:доход|получил[аи]?|заработал[аи]?|пришла зарплата|зарплат[ауы]?|преми[яю])\s+(?:[а-яё]+\s+){0,2}?(?:на\s+)?(\d[\d\s]*)\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:от|за|—|-)?\s*(.*)$/i,
+  );
+  if (m) {
+    const amount = Number(m[1].replace(/\s/g, ''));
+    if (Number.isFinite(amount) && amount > 0) {
+      const source = m[2].trim();
+      return source
+        ? { action: 'add_income', amount, source }
+        : { action: 'add_income', amount };
+    }
+  }
+  m =
+    text.match(
+      /^(?:[а-яё]+\s+){0,3}?(?:запиши\s+)?(?:расход|потратил[аи]?|потрачено|трата|купил[аи]?\s+на)\s+(?:на\s+)?(\d[\d\s]*)\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:на|за|—|-)?\s*(.*)$/i,
+    ) || text.match(/^(\d[\d\s]{2,})\s*(?:тенге|тг|₸)?\s+на\s+(.+)$/i);
+  if (m) {
+    const amount = Number(m[1].replace(/\s/g, ''));
+    if (Number.isFinite(amount) && amount > 0) {
+      const rest = m[2].trim();
+      return rest
+        ? { action: 'add_expense', amount, category: rest, description: rest }
+        : { action: 'add_expense', amount };
+    }
+  }
+  return null;
+}
+
 export function deterministicIntent(text: string): VoiceIntent | null {
   const lower = text.toLowerCase();
 
