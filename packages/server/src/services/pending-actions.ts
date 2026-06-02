@@ -112,6 +112,18 @@ export async function clearPendingAction(
   await store.remove(userId);
 }
 
+/**
+ * Ждёт ли pending значение слота (категория расхода / источник дохода)?
+ * Состояние — флаг в input JSON (durable, без миграции). #189: чтобы
+ * многошаговый ввод денег («100000» → «компьютер» → «да») шёл через FSM,
+ * а не сочинялся чат-агентом. Чистая.
+ */
+export function awaitingSlot(p: PendingAction): 'category' | 'source' | null {
+  if (p.input.__awaitingCategory) return 'category';
+  if (p.input.__awaitingSource) return 'source';
+  return null;
+}
+
 // -----------------------------------------------------------------------------
 // Распознавание «да/нет» в свободной речи (Telegram, голос). Чистая
 // функция (без БД). НЕ \b — в JS \w=[A-Za-z0-9_], кириллическая

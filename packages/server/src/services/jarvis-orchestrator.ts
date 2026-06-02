@@ -32,6 +32,7 @@ import {
   setPendingAction,
   clearPendingAction,
   readConfirmSignal,
+  awaitingSlot,
 } from './pending-actions.js';
 import { isV2MemoryEnabled, isV2WriteEnabled } from '../lib/feature-flags.js';
 import { captureV2InBackground } from './v2-capture.js';
@@ -442,6 +443,31 @@ export async function handleMessage(
   const pending = await peekPendingAction(userId);
   if (pending) {
     const signal = readConfirmSignal(text);
+    // #189 слот-филл: pending ждёт категорию (расход)/источник (доход).
+    // Следующее сообщение = значение слота (или «отмена»). Детерминир.,
+    // без LLM — деньги собираются и пишутся ТОЛЬКО через FSM.
+    const slot = awaitingSlot(pending);
+    if (slot) {
+      if (signal === 'cancel') {
+        await takePendingAction(userId);
+        const reply = 'Окей, отменил — ничего не записал.';
+        await saveTurn(userId, text, reply);
+        return { reply, intent: 'cancel_pending' };
+      }
+      const filled: Record<string, unknown> = {
+        amount: pending.input.amount,
+        [slot]: text.trim(),
+      };
+      const ctext = confirmationText(pending.action, filled);
+      await setPendingAction(userId, pending.action, filled, ctext);
+      await saveTurn(userId, text, ctext);
+      return {
+        reply: ctext,
+        pendingAction: { action: pending.action, input: filled },
+        confirmationText: ctext,
+        intent: pending.action,
+      };
+    }
     if (signal === 'confirm') {
       const p = (await takePendingAction(userId))!;
       const reply = await runConfirmedAction(userId, p.action, p.input);
@@ -801,6 +827,32 @@ export async function handleMessage(
         }
         input.text = body;
       }
+    }
+    // #189 деньги без слота → детерминированно доспрашиваем категорию/
+    // источник через FSM (сумма уже названа юзером), НЕ нарративом.
+    if (intent.action === 'add_expense' && input.category == null) {
+      const amount = Number(input.amount);
+      const q = `На что потратил ${amount}₸? (или «отмена»)`;
+      await setPendingAction(userId, 'add_expense', { amount, __awaitingCategory: true }, q);
+      await saveTurn(userId, text, q);
+      return {
+        reply: q,
+        pendingAction: { action: 'add_expense', input: { amount, __awaitingCategory: true } },
+        confirmationText: q,
+        intent: 'add_expense',
+      };
+    }
+    if (intent.action === 'add_income' && input.source == null) {
+      const amount = Number(input.amount);
+      const q = `Откуда доход ${amount}₸? (или «отмена»)`;
+      await setPendingAction(userId, 'add_income', { amount, __awaitingSource: true }, q);
+      await saveTurn(userId, text, q);
+      return {
+        reply: q,
+        pendingAction: { action: 'add_income', input: { amount, __awaitingSource: true } },
+        confirmationText: q,
+        intent: 'add_income',
+      };
     }
     // SSOT 9B.2: нужно ли подтверждение — ЕДИНСТВЕННЫЙ источник
     // правды реестр (needsConfirm на самом tool). Все EXECUTABLE

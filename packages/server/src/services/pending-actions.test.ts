@@ -5,6 +5,7 @@ import {
   takePendingAction,
   clearPendingAction,
   readConfirmSignal,
+  awaitingSlot,
   PENDING_TTL_MS,
   type PendingStore,
   type PendingAction,
@@ -63,6 +64,19 @@ function makeStore(): PendingStore {
     },
   };
 }
+
+describe('awaitingSlot — состояние слот-филла', () => {
+  const base: PendingAction = { action: 'add_expense', input: {}, confirmationText: 'q', createdAt: 0 };
+  it('category', () => {
+    expect(awaitingSlot({ ...base, input: { amount: 100, __awaitingCategory: true } })).toBe('category');
+  });
+  it('source', () => {
+    expect(awaitingSlot({ ...base, action: 'add_income', input: { amount: 100, __awaitingSource: true } })).toBe('source');
+  });
+  it('обычный confirm-pending → null', () => {
+    expect(awaitingSlot({ ...base, input: { amount: 100, category: 'еда' } })).toBeNull();
+  });
+});
 
 describe('confirm-FSM — set/peek/take/clear (инъектируемый стор)', () => {
   beforeEach(() => backing.clear());
