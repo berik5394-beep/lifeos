@@ -58,6 +58,7 @@ export async function gatherReflectorFacts(
         progress: true,
         target: true,
         targetDate: true,
+        createdAt: true,
         updatedAt: true,
       },
     }),
@@ -80,12 +81,32 @@ export async function gatherReflectorFacts(
 
   const monthlyIncome = (incAgg._sum.amount ?? 0) / WINDOW_MONTHS;
   const monthlyBurn = (expAgg._sum.amount ?? 0) / WINDOW_MONTHS;
-  // Коуч: «накоплено» = доход−расход с начала года (профицит=сбережения).
-  const savedSoFar = (incYtd._sum.amount ?? 0) - (expYtd._sum.amount ?? 0);
 
   // Де-хардкод 35M: реальная фин-цель юзера с числовым target.
   const finGoal =
     goals.find((g) => FIN_RE.test(g.area) && g.target != null) ?? null;
+
+  // Коуч: «накоплено» = доход−расход С ДАТЫ ПОСТАНОВКИ фин-цели (floor до
+  // дня), а не с 1 января — иначе короткая цель «100к за месяц» читается
+  // как уже выполненная из годового профицита. Нет фин-цели → fallback YTD.
+  let savedSoFar = (incYtd._sum.amount ?? 0) - (expYtd._sum.amount ?? 0);
+  if (finGoal) {
+    const c = finGoal.createdAt;
+    const since = new Date(
+      Date.UTC(c.getUTCFullYear(), c.getUTCMonth(), c.getUTCDate()),
+    );
+    const [incG, expG] = await Promise.all([
+      prisma.income.aggregate({
+        where: { userId, date: { gte: since } },
+        _sum: { amount: true },
+      }),
+      prisma.expense.aggregate({
+        where: { userId, date: { gte: since } },
+        _sum: { amount: true },
+      }),
+    ]);
+    savedSoFar = (incG._sum.amount ?? 0) - (expG._sum.amount ?? 0);
+  }
 
   const weeksByGoal = new Map<string, number>();
   const builtByGoal = new Map<string, Date>();

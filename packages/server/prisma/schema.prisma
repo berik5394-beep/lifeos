@@ -335,6 +335,10 @@ model YearlyGoal {
   // постройки плана ⟺ updatedAt > max(active planner-child.createdAt).
   // @updatedAt — Prisma сам трогает при апдейте YearlyGoal.
   updatedAt      DateTime @default(now()) @updatedAt
+  // Коуч по накоплениям: дата постановки цели — копим ОТ неё, а не с
+  // 1 января (короткая «100к за месяц» иначе читается как уже выполненная
+  // из годового профицита). savedSoFar = доход−расход с floor(createdAt).
+  createdAt      DateTime @default(now())
 
   @@index([userId, year])
   @@index([planParentId])

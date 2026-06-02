@@ -12,10 +12,13 @@ describe('ReflectorFacts расширены под коуча', () => {
     expect(CORE).toMatch(/pacingEnabled:\s*boolean/);
     expect(CORE).toMatch(/now:\s*Date/);
   });
-  it('gatherReflectorFacts считает savedSoFar с начала года и pacingEnabled по флагу', () => {
+  it('gatherReflectorFacts: savedSoFar с ДАТЫ ПОСТАНОВКИ цели + pacingEnabled по флагу', () => {
     expect(SVC).toContain('isV2SavingsCoachEnabled');
     expect(SVC).toContain('savedSoFar');
     expect(SVC).toContain('targetDate');
+    // Копим ОТ даты цели (createdAt), не с 1 января — иначе короткая
+    // цель читается как уже достигнутая из годового профицита.
+    expect(SVC).toContain('finGoal.createdAt');
   });
   it('gatherReflectorFacts экспортирован (для переиспользования коучем)', () => {
     expect(SVC).toMatch(/export\s+async\s+function\s+gatherReflectorFacts/);
