@@ -6,6 +6,7 @@ import { persistCandidates } from './insight-store.js';
 import { planVsFact } from './plan-vs-fact.js';
 import { localDayStartUTC } from '../lib/tz.js';
 import { isV2SavingsCoachEnabled } from '../lib/feature-flags.js';
+import { pickCoachableGoal } from './savings-pace.js';
 import type { InsightCandidate } from './insight-core.js';
 
 /**
@@ -82,31 +83,42 @@ export async function gatherReflectorFacts(
   const monthlyIncome = (incAgg._sum.amount ?? 0) / WINDOW_MONTHS;
   const monthlyBurn = (expAgg._sum.amount ?? 0) / WINDOW_MONTHS;
 
-  // Де-хардкод 35M: реальная фин-цель юзера с числовым target.
-  const finGoal =
-    goals.find((g) => FIN_RE.test(g.area) && g.target != null) ?? null;
-
-  // Коуч: «накоплено» = доход−расход С ДАТЫ ПОСТАНОВКИ фин-цели (floor до
-  // дня), а не с 1 января — иначе короткая цель «100к за месяц» читается
-  // как уже выполненная из годового профицита. Нет фин-цели → fallback YTD.
-  let savedSoFar = (incYtd._sum.amount ?? 0) - (expYtd._sum.amount ?? 0);
-  if (finGoal) {
-    const c = finGoal.createdAt;
-    const since = new Date(
-      Date.UTC(c.getUTCFullYear(), c.getUTCMonth(), c.getUTCDate()),
-    );
-    const [incG, expG] = await Promise.all([
-      prisma.income.aggregate({
-        where: { userId, date: { gte: since } },
-        _sum: { amount: true },
+  // Коуч: среди ВСЕХ фин-целей с числом берём ту, что НЕ достигнута и
+  // ближе по сроку (с несколькими целями find брал первую — могла быть
+  // уже достигнутая → коуч молчал на отстающей; живой баг 2026-06-02).
+  // savedSoFar считаем per-goal: доход−расход с floor(createdAt) — короткая
+  // «100к за месяц» иначе читается как выполненная из годового профицита.
+  const finCandidates = await Promise.all(
+    goals
+      .filter((g) => FIN_RE.test(g.area) && g.target != null)
+      .map(async (g) => {
+        const c = g.createdAt;
+        const since = new Date(
+          Date.UTC(c.getUTCFullYear(), c.getUTCMonth(), c.getUTCDate()),
+        );
+        const [incG, expG] = await Promise.all([
+          prisma.income.aggregate({
+            where: { userId, date: { gte: since } },
+            _sum: { amount: true },
+          }),
+          prisma.expense.aggregate({
+            where: { userId, date: { gte: since } },
+            _sum: { amount: true },
+          }),
+        ]);
+        return {
+          goal: g,
+          target: g.target as number,
+          targetDate: g.targetDate ?? new Date(year, 11, 31),
+          saved: (incG._sum.amount ?? 0) - (expG._sum.amount ?? 0),
+        };
       }),
-      prisma.expense.aggregate({
-        where: { userId, date: { gte: since } },
-        _sum: { amount: true },
-      }),
-    ]);
-    savedSoFar = (incG._sum.amount ?? 0) - (expG._sum.amount ?? 0);
-  }
+  );
+  const chosen = pickCoachableGoal(finCandidates);
+  const finGoal = chosen?.goal ?? null;
+  const savedSoFar = chosen
+    ? chosen.saved
+    : (incYtd._sum.amount ?? 0) - (expYtd._sum.amount ?? 0);
 
   const weeksByGoal = new Map<string, number>();
   const builtByGoal = new Map<string, Date>();

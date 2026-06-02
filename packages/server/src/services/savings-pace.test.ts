@@ -1,5 +1,33 @@
 import { describe, it, expect } from 'vitest';
-import { computeSavingsPace } from './savings-pace.js';
+import { computeSavingsPace, pickCoachableGoal } from './savings-pace.js';
+
+describe('pickCoachableGoal — выбор фин-цели среди нескольких', () => {
+  const d = (s: string) => new Date(s);
+  it('пусто → null', () => {
+    expect(pickCoachableGoal([])).toBeNull();
+  });
+  it('все достигнуты (saved>=target) → null (коучить нечего)', () => {
+    expect(
+      pickCoachableGoal([
+        { target: 100000, targetDate: d('2026-06-30'), saved: 152598 },
+      ]),
+    ).toBeNull();
+  });
+  it('берёт НЕ достигнутую, даже если достигнутая ближе по сроку (живой баг)', () => {
+    const r = pickCoachableGoal([
+      { target: 100000, targetDate: d('2026-06-30'), saved: 152598 }, // достигнута, ближе
+      { target: 800000, targetDate: d('2026-12-31'), saved: 152598 }, // отстаёт
+    ]);
+    expect(r?.target).toBe(800000);
+  });
+  it('из нескольких незакрытых — ближайший срок', () => {
+    const r = pickCoachableGoal([
+      { target: 800000, targetDate: d('2026-12-31'), saved: 0 },
+      { target: 50000, targetDate: d('2026-07-15'), saved: 0 },
+    ]);
+    expect(r?.target).toBe(50000);
+  });
+});
 
 const NOW = new Date('2026-06-01T00:00:00Z');
 const DEC = new Date('2026-12-31T00:00:00Z'); // ~7 мес

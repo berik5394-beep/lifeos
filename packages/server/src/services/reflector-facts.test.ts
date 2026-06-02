@@ -18,7 +18,10 @@ describe('ReflectorFacts расширены под коуча', () => {
     expect(SVC).toContain('targetDate');
     // Копим ОТ даты цели (createdAt), не с 1 января — иначе короткая
     // цель читается как уже достигнутая из годового профицита.
-    expect(SVC).toContain('finGoal.createdAt');
+    expect(SVC).toContain('createdAt');
+    // Среди НЕСКОЛЬКИХ фин-целей берём не достигнутую (живой баг 2026-06-02:
+    // find брал первую — уже достигнутую — и коуч молчал на отстающей).
+    expect(SVC).toContain('pickCoachableGoal');
   });
   it('gatherReflectorFacts экспортирован (для переиспользования коучем)', () => {
     expect(SVC).toMatch(/export\s+async\s+function\s+gatherReflectorFacts/);

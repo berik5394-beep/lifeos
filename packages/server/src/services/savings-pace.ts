@@ -67,3 +67,20 @@ export function computeSavingsPace(f: SavingsPaceFacts): SavingsPace {
     status,
   };
 }
+
+/**
+ * Выбор фин-цели для коуча среди НЕСКОЛЬКИХ. Раньше брали первую попавшуюся
+ * (goals.find) — с несколькими целями это могла быть уже достигнутая, и
+ * коуч молчал на той, что отстаёт (живой баг 2026-06-02). Берём НЕ
+ * достигнутую (saved < target) с ближайшим сроком (самая срочная незакрытая).
+ * Все достигнуты / нет целей → null (коучить нечего). Чистая, тестируется.
+ */
+export function pickCoachableGoal<
+  T extends { target: number; targetDate: Date; saved: number },
+>(goals: T[]): T | null {
+  const unmet = goals.filter((g) => g.saved < g.target);
+  if (unmet.length === 0) return null;
+  return unmet
+    .slice()
+    .sort((a, b) => a.targetDate.getTime() - b.targetDate.getTime())[0];
+}
