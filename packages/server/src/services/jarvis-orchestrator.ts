@@ -20,6 +20,7 @@ import { buildSafetyResponse } from './safety-response.js';
 import { classifyEmotional } from './emotional-classifier.js';
 import { isPlannerIntent } from './planner-service.js';
 import { captureMemory } from './memory-service.js';
+import { writeMemory } from './episodic-memory.js';
 import { trackInterests } from './interest-service.js';
 import { runRegistryTool, toolConfirmRequired } from '../tools/index.js';
 import { getToolCounts } from './tool-audit.js';
@@ -30,7 +31,7 @@ import {
   clearPendingAction,
   readConfirmSignal,
 } from './pending-actions.js';
-import { isV2MemoryEnabled } from '../lib/feature-flags.js';
+import { isV2MemoryEnabled, isV2WriteEnabled } from '../lib/feature-flags.js';
 import { captureV2InBackground } from './v2-capture.js';
 import {
   buildV2EnrichmentBlock,
@@ -179,14 +180,27 @@ async function captureInBackground(
     // (Фаза 2.2), а это собственные запросы — в tx неуместно. Память
     // best-effort, с задачами не атомарна по смыслу.
     for (const m of extracted.memories) {
-      await captureMemory(userId, {
-        type: m.type,
-        content: m.content,
-        details: m.details ?? null,
-        source: 'chat',
-        tags: m.tags,
-        importance: m.importance,
-      });
+      // ОДНА ПАМЯТЬ M2: под флагом — ЕДИНЫЙ писатель (дедуп+embedding+
+      // episodic-поля). Без флага — legacy captureMemory (байт-в-байт).
+      if (isV2WriteEnabled(userId)) {
+        await writeMemory(userId, {
+          type: m.type,
+          content: m.content,
+          details: m.details ?? null,
+          source: 'chat',
+          tags: m.tags,
+          importance: m.importance,
+        });
+      } else {
+        await captureMemory(userId, {
+          type: m.type,
+          content: m.content,
+          details: m.details ?? null,
+          source: 'chat',
+          tags: m.tags,
+          importance: m.importance,
+        });
+      }
       memories++;
     }
     // v2.0 Week 5 D3 — dual-write to new memory tiers behind flag.
