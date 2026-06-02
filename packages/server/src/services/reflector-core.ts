@@ -29,6 +29,14 @@ export interface ReflectorFacts {
   financeGoalTarget: number | null;
   /** Текст фин-цели — для человеческого message. */
   financeGoalText: string | null;
+  /** ВСЕ незакрытые фин-цели с числовым target — для portfolio-коуча
+   *  (on-path). Одиночные financeGoal* поля сохранены для off-пути. */
+  financeGoals: {
+    text: string;
+    target: number;
+    targetDate: Date;
+    saved: number;
+  }[];
   /** Вердикты план↔факт (R4 planVsFact). Рефлектор смотрит на
    *  пересечение «отстаёт» + «план устарел» — это глубже плоского. */
   goalVerdicts: GoalVerdict[];

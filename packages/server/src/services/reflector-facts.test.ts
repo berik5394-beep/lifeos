@@ -11,6 +11,8 @@ describe('ReflectorFacts расширены под коуча', () => {
     expect(CORE).toMatch(/targetDate:\s*Date/);
     expect(CORE).toMatch(/pacingEnabled:\s*boolean/);
     expect(CORE).toMatch(/now:\s*Date/);
+    // Portfolio: ВСЕ незакрытые фин-цели массивом (не одна).
+    expect(CORE).toMatch(/financeGoals:/);
   });
   it('gatherReflectorFacts: savedSoFar с ДАТЫ ПОСТАНОВКИ цели + pacingEnabled по флагу', () => {
     expect(SVC).toContain('isV2SavingsCoachEnabled');
@@ -22,6 +24,8 @@ describe('ReflectorFacts расширены под коуча', () => {
     // Среди НЕСКОЛЬКИХ фин-целей берём не достигнутую (живой баг 2026-06-02:
     // find брал первую — уже достигнутую — и коуч молчал на отстающей).
     expect(SVC).toContain('pickCoachableGoal');
+    // Portfolio: отдаём ВСЕ фин-цели массивом для коуча.
+    expect(SVC).toContain('financeGoals:');
   });
   it('gatherReflectorFacts экспортирован (для переиспользования коучем)', () => {
     expect(SVC).toMatch(/export\s+async\s+function\s+gatherReflectorFacts/);

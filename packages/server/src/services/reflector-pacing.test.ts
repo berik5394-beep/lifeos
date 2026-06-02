@@ -12,6 +12,7 @@ const base: ReflectorFacts = {
   targetDate: new Date('2026-12-31T00:00:00Z'),
   pacingEnabled: true,
   now: NOW,
+  financeGoals: [],
 };
 
 describe('reflect — pacing-ветка', () => {

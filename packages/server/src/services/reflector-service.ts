@@ -144,6 +144,14 @@ export async function gatherReflectorFacts(
   return {
     monthlyIncome,
     monthlyBurn,
+    // Portfolio-коуч: ВСЕ незакрытые фин-цели (каждая со своим saved от
+    // floor(createdAt)). Одиночные поля ниже — для off-пути.
+    financeGoals: finCandidates.map((c) => ({
+      text: c.goal.goalText,
+      target: c.target,
+      targetDate: c.targetDate,
+      saved: c.saved,
+    })),
     financeGoalTarget: finGoal?.target ?? null,
     financeGoalText: finGoal?.goalText ?? null,
     goalVerdicts,
