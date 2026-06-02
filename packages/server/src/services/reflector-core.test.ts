@@ -30,6 +30,12 @@ function facts(p: Partial<ReflectorFacts> = {}): ReflectorFacts {
     financeGoalTarget: null,
     financeGoalText: null,
     goalVerdicts: [],
+    // Коуч-поля: pacingEnabled=false → эти тесты проверяют СТАРУЮ
+    // горизонт-ветку (= поведение при флаге off, байт-в-байт).
+    savedSoFar: 0,
+    targetDate: new Date('2026-12-31T00:00:00Z'),
+    pacingEnabled: false,
+    now: new Date('2026-06-01T00:00:00Z'),
     ...p,
   };
 }

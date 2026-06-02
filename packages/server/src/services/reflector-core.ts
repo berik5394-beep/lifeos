@@ -1,5 +1,6 @@
 import type { InsightCandidate } from './insight-core.js';
 import type { GoalVerdict } from './plan-vs-fact.js';
+import { computeSavingsPace } from './savings-pace.js';
 
 /**
  * Phase 5 P3.b — ДЕТЕРМИНИСТСКОЕ ядро рефлектора (чистое, без БД/AI).
@@ -31,6 +32,14 @@ export interface ReflectorFacts {
   /** Вердикты план↔факт (R4 planVsFact). Рефлектор смотрит на
    *  пересечение «отстаёт» + «план устарел» — это глубже плоского. */
   goalVerdicts: GoalVerdict[];
+  /** Σ(Income) − Σ(Expense) с начала года — фактически «накоплено». */
+  savedSoFar: number;
+  /** Срок фин-цели (адаптер: targetDate или 31 дек). */
+  targetDate: Date;
+  /** Флаг коуча: true → новый pacing-блок; false → старый «30 лет». */
+  pacingEnabled: boolean;
+  /** Текущее время (для расчёта monthsLeft в чистом ядре). */
+  now: Date;
 }
 
 const YEAR_MONTHS = 12;
@@ -69,15 +78,54 @@ export function reflect(f: ReflectorFacts): InsightCandidate[] {
     });
   }
 
-  // 2. Горизонт фин-цели при текущем темпе сбережений. Де-хардкод:
-  //    target = реальная фин-цель юзера, НЕ 35M-константа. Нет цели
-  //    → не выдумываем (честно молчим про горизонт).
+  // 2. Горизонт фин-цели. pacingEnabled (флаг коуча) → новый расчёт по
+  //    сроку (savings-pace); off → старый блок «≥30 лет» (байт-в-байт).
   if (
     f.financeGoalTarget !== null &&
     f.financeGoalTarget > 0 &&
     f.monthlyIncome > 0
   ) {
-    if (monthlySavings <= 0) {
+    if (f.pacingEnabled) {
+      const pace = computeSavingsPace({
+        target: f.financeGoalTarget,
+        targetDate: f.targetDate,
+        savedSoFar: f.savedSoFar,
+        monthlyPace: monthlySavings,
+        now: f.now,
+      });
+      if (pace.status === 'stalled') {
+        out.push({
+          kind: 'goal_pace_stalled',
+          scope: 'finance:goal_pace',
+          severity: 7,
+          message:
+            `Цель «${f.financeGoalText ?? 'финансовая'}» (${Math.round(
+              f.financeGoalTarget,
+            )}₸): при нулевых/отрицательных сбережениях она НЕ приближается. ` +
+            `Сначала вывести денежный поток в плюс.`,
+          rationale: `pace stalled savings<=0`,
+          source: 'reflector',
+          dismissKey: 'reflector_goal_pace_stalled',
+        });
+      } else if (pace.status === 'behind') {
+        out.push({
+          kind: 'goal_pace_behind',
+          scope: 'finance:goal_pace',
+          severity: 6,
+          message:
+            `Цель «${f.financeGoalText ?? 'финансовая'}» (${Math.round(
+              f.financeGoalTarget,
+            )}₸): при темпе ~${Math.round(monthlySavings)}₸/мес к сроку будет ` +
+            `~${Math.round(pace.projected)}₸ — не хватит ${Math.round(
+              pace.shortfall,
+            )}₸. Надо откладывать ~${Math.round(pace.requiredMonthly)}₸/мес.`,
+          rationale: `behind paceGap=${Math.round(pace.paceGap)}`,
+          source: 'reflector',
+          dismissKey: 'reflector_goal_pace_behind',
+        });
+      }
+      // on_track / ahead / reached → молчим (хорошие новости не пушим)
+    } else if (monthlySavings <= 0) {
       out.push({
         kind: 'goal_horizon_stalled',
         scope: 'finance:goal_horizon',

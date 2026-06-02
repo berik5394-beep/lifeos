@@ -5,6 +5,7 @@ import { reflect, type ReflectorFacts } from './reflector-core.js';
 import { persistCandidates } from './insight-store.js';
 import { planVsFact } from './plan-vs-fact.js';
 import { localDayStartUTC } from '../lib/tz.js';
+import { isV2SavingsCoachEnabled } from '../lib/feature-flags.js';
 import type { InsightCandidate } from './insight-core.js';
 
 /**
@@ -23,20 +24,29 @@ const WINDOW_DAYS = 90;
 const WINDOW_MONTHS = 3;
 const FIN_RE = /financ|финанс/i;
 
-async function gatherReflectorFacts(
+export async function gatherReflectorFacts(
   userId: string,
   now: Date,
 ): Promise<ReflectorFacts> {
   const year = now.getFullYear();
   const since = new Date(now.getTime() - WINDOW_DAYS * 86_400_000);
+  const yearStart = new Date(year, 0, 1);
 
-  const [incAgg, expAgg, goals, planWeeks] = await Promise.all([
+  const [incAgg, expAgg, incYtd, expYtd, goals, planWeeks] = await Promise.all([
     prisma.income.aggregate({
       where: { userId, date: { gte: since } },
       _sum: { amount: true },
     }),
     prisma.expense.aggregate({
       where: { userId, date: { gte: since } },
+      _sum: { amount: true },
+    }),
+    prisma.income.aggregate({
+      where: { userId, date: { gte: yearStart } },
+      _sum: { amount: true },
+    }),
+    prisma.expense.aggregate({
+      where: { userId, date: { gte: yearStart } },
       _sum: { amount: true },
     }),
     prisma.yearlyGoal.findMany({
@@ -47,6 +57,7 @@ async function gatherReflectorFacts(
         goalText: true,
         progress: true,
         target: true,
+        targetDate: true,
         updatedAt: true,
       },
     }),
@@ -69,6 +80,8 @@ async function gatherReflectorFacts(
 
   const monthlyIncome = (incAgg._sum.amount ?? 0) / WINDOW_MONTHS;
   const monthlyBurn = (expAgg._sum.amount ?? 0) / WINDOW_MONTHS;
+  // Коуч: «накоплено» = доход−расход с начала года (профицит=сбережения).
+  const savedSoFar = (incYtd._sum.amount ?? 0) - (expYtd._sum.amount ?? 0);
 
   // Де-хардкод 35M: реальная фин-цель юзера с числовым target.
   const finGoal =
@@ -101,6 +114,11 @@ async function gatherReflectorFacts(
     financeGoalTarget: finGoal?.target ?? null,
     financeGoalText: finGoal?.goalText ?? null,
     goalVerdicts,
+    savedSoFar,
+    // Срок: из фин-цели или дефолт 31 дек текущего года.
+    targetDate: finGoal?.targetDate ?? new Date(year, 11, 31),
+    pacingEnabled: isV2SavingsCoachEnabled(userId),
+    now,
   };
 }
 
