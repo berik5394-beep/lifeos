@@ -137,3 +137,13 @@ export function isV2EngagementEnabled(userId: string): boolean {
 export function isV2InlineNudgeEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_INLINE_NUDGE, userId);
 }
+
+/**
+ * ОДНА ПАМЯТЬ M2 — Per-user gate для единого писателя (single writer).
+ * off → сегодняшняя двойная запись (captureMemory + recordEvent), байт-в-байт.
+ * on → ОДИН writeMemory; legacy captureMemory НЕ вызывается.
+ * Env FEATURE_V2_WRITE в форме "all" / "none"/"false"/unset / "user-X,user-Y".
+ */
+export function isV2WriteEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_WRITE, userId);
+}

@@ -5,6 +5,7 @@ import {
   isV2AxesEnabled,
   isV2CronEnabled,
   isV2IdentityEnabled,
+  isV2WriteEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -164,5 +165,47 @@ describe('isV2IdentityEnabled', () => {
   it('tolerates whitespace', () => {
     process.env.FEATURE_V2_IDENTITY = '  user-abc , user-def ';
     expect(isV2IdentityEnabled('abc')).toBe(true);
+  });
+});
+
+describe('isV2WriteEnabled', () => {
+  const ORIG = process.env.FEATURE_V2_WRITE;
+  afterEach(() => {
+    if (ORIG === undefined) delete process.env.FEATURE_V2_WRITE;
+    else process.env.FEATURE_V2_WRITE = ORIG;
+  });
+
+  it('returns false when env unset', () => {
+    delete process.env.FEATURE_V2_WRITE;
+    expect(isV2WriteEnabled('user1')).toBe(false);
+  });
+
+  it.each(['', 'none', 'false'])('returns false when env = %s', (v) => {
+    process.env.FEATURE_V2_WRITE = v;
+    expect(isV2WriteEnabled('user1')).toBe(false);
+  });
+
+  it('returns true for all users when env = "all"', () => {
+    process.env.FEATURE_V2_WRITE = 'all';
+    expect(isV2WriteEnabled('user1')).toBe(true);
+    expect(isV2WriteEnabled('user-zzz')).toBe(true);
+  });
+
+  it('returns true only for listed userIds (comma-separated)', () => {
+    process.env.FEATURE_V2_WRITE = 'user-berikId,user-aydanaId';
+    expect(isV2WriteEnabled('berikId')).toBe(true);
+    expect(isV2WriteEnabled('aydanaId')).toBe(true);
+    expect(isV2WriteEnabled('otherId')).toBe(false);
+  });
+
+  it('handles whitespace around entries', () => {
+    process.env.FEATURE_V2_WRITE = ' user-a , user-b ';
+    expect(isV2WriteEnabled('a')).toBe(true);
+    expect(isV2WriteEnabled('b')).toBe(true);
+  });
+
+  it('ignores trailing/leading whitespace in flag itself', () => {
+    process.env.FEATURE_V2_WRITE = '  all  ';
+    expect(isV2WriteEnabled('x')).toBe(true);
   });
 });
