@@ -170,33 +170,13 @@ export function deterministicIntent(text: string): VoiceIntent | null {
   // add_income → оркестратор → РЕЕСТР (needsConfirm:true) →
   // подтверждение → аудируемая запись. Чат-агент денег не видит.
 
-  // add_income: "получил/заработал зарплату 350000", "доход 50000 от ..."
-  let m =
-    text.match(/^(?:запиши\s+)?(?:доход|получил[аи]?|заработал[аи]?|пришла зарплата|зарплат[ауы]?|преми[яю])\s+(?:[а-яё]+\s+){0,2}?(?:на\s+)?(\d[\d\s]*)\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:от|за|—|-)?\s*(.*)$/i);
-  if (m) {
-    const amount = Number(m[1].replace(/\s/g, ''));
-    if (Number.isFinite(amount) && amount > 0) {
-      return { action: 'add_income', amount, source: m[2].trim() || 'доход' };
-    }
-  }
+  // SSOT Step 6 + #189: деньги — через чистый detectMoneyIntent
+  // (расширенный детект «я потратил…», без 'other'-дефолта). Чат-агент
+  // денег не видит → не сочиняет запись.
+  const money = detectMoneyIntent(text);
+  if (money) return money;
 
-  // add_expense: "потратил 5000 на еду", "запиши расход 5000 тенге на еду",
-  // "расход 3000 продукты", "5000 на такси"
-  m =
-    text.match(/^(?:запиши\s+)?(?:расход|потратил[аи]?|трата|купил[аи]?\s+на)\s+(?:на\s+)?(\d[\d\s]*)\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:на|за|—|-)?\s*(.*)$/i) ||
-    text.match(/^(\d[\d\s]{2,})\s*(?:тенге|тг|₸)?\s+на\s+(.+)$/i);
-  if (m) {
-    const amount = Number(m[1].replace(/\s/g, ''));
-    if (Number.isFinite(amount) && amount > 0) {
-      const rest = m[2].trim();
-      return {
-        action: 'add_expense',
-        amount,
-        category: rest || 'other',
-        description: rest,
-      };
-    }
-  }
+  let m: RegExpMatchArray | null = null;
 
   // complete_task: "закрой/заверши/закончи/выполни задачу X", "отметь
   // задачу X". ISSUE-5: раньше «закрой задачу отчёт» ловилось
