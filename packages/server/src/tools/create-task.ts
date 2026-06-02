@@ -3,6 +3,10 @@ import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
+import {
+  estimateTaskMinutesInBackground,
+  maybeDayLoadLine,
+} from '../services/day-load.js';
 
 /**
  * SSOT Step 5 — write-tool. Логика 1:1 с legacy action-executor
@@ -46,10 +50,21 @@ export const createTaskTool = defineTool({
         priority: input.priority || 'medium',
       },
     });
+    const message = `Задача "${input.title}" создана на ${input.date}${
+      input.time ? ' в ' + input.time : ''
+    }`;
+    // #engine slice1: фоновая ИИ-оценка времени задачи (для точности дня,
+    // не блокирует) + реактивная строка «день перегружен». Оба гейтнуты
+    // флагом FEATURE_V2_DAY_LOAD внутри (off → message байт-в-байт).
+    void estimateTaskMinutesInBackground(
+      task.id,
+      input.title,
+      input.category ?? null,
+      ctx.userId,
+    );
+    const dayLoad = await maybeDayLoadLine(ctx.userId, new Date());
     return {
-      message: `Задача "${input.title}" создана на ${input.date}${
-        input.time ? ' в ' + input.time : ''
-      }`,
+      message: dayLoad ? `${message}\n\n${dayLoad}` : message,
       taskId: task.id,
     };
   },
