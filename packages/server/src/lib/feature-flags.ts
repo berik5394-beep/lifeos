@@ -147,3 +147,12 @@ export function isV2InlineNudgeEnabled(userId: string): boolean {
 export function isV2WriteEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_WRITE, userId);
 }
+
+/**
+ * Коуч по накоплениям (deadline-pacing + reactive-on-expense). Та же
+ * форма, что у соседей: "all"/"true", "none"/"false"/unset, "user-X,user-Y".
+ * Off → рефлектор и расходный путь работают как сегодня (байт-в-байт).
+ */
+export function isV2SavingsCoachEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_SAVINGS_COACH, userId);
+}
