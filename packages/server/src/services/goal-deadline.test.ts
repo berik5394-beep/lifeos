@@ -15,6 +15,11 @@ describe('parseGoalDeadline', () => {
     expect(d.getMonth()).toBe(11);
     expect(d.getDate()).toBe(31);
   });
+  it('«к концу месяца» → последний день текущего месяца (фраза SMOKE)', () => {
+    const d = parseGoalDeadline('накопить 100000 к концу месяца', NOW)!;
+    expect(d.getMonth()).toBe(5); // июнь (NOW = 2026-06-01)
+    expect(d.getDate()).toBe(30); // 30 июня
+  });
   it('«до июня 2027» → 30 июня 2027', () => {
     const d = parseGoalDeadline('отложить на машину до июня 2027', NOW)!;
     expect(d.getFullYear()).toBe(2027);

@@ -14,6 +14,10 @@ export function parseGoalDeadline(text: string, now: Date): Date | null {
   if (/(к|до)\s+конц[а-яё]*\s+год/.test(t)) {
     return new Date(now.getFullYear(), 11, 31);
   }
+  // «к концу месяца» → последний день текущего месяца (фраза из SMOKE).
+  if (/(к|до)\s+конц[а-яё]*\s+месяц/.test(t)) {
+    return new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  }
   const m = t.match(/(?:к|до)\s+([а-яё]+)(?:\s+(\d{4}))?/);
   if (m) {
     const word = m[1];
