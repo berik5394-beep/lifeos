@@ -467,7 +467,7 @@ const MONTH_STEMS: Array<[string, number]> = [
 
 export function parseGoalDeadline(text: string, now: Date): Date | null {
   const t = text.toLowerCase();
-  if (/(к|до)\s+конц\w*\s+год/.test(t)) {
+  if (/(к|до)\s+конц[а-яё]*\s+год/.test(t)) {
     return new Date(now.getFullYear(), 11, 31);
   }
   const m = t.match(/(?:к|до)\s+([а-яё]+)(?:\s+(\d{4}))?/);
