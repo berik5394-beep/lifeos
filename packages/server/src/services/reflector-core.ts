@@ -233,7 +233,10 @@ export function reflect(f: ReflectorFacts): InsightCandidate[] {
         severity: 4,
         message: line,
         rationale: `goal pace ${pace.status} done=${Math.round(pace.done)}/${g.target}`,
-        source: 'goal_pace',
+        // ВАЖНО: проактив = 'reflector', реактив (maybeGoalPaceLine) =
+        // 'goal_pace'. Разные source → не глушат друг друга в один день
+        // (урок savings-coach 2026-06-02). scopeKey общий — для cooldown.
+        source: 'reflector',
         dismissKey: 'reflector_goal_pace_' + g.id,
       });
     }
