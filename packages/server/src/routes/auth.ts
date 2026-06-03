@@ -419,6 +419,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       await tx.achievement.deleteMany({ where: { userId } });
       await tx.arenaProfile.deleteMany({ where: { userId } });
       await tx.pet.deleteMany({ where: { userId } });
+      // Аудит-фикс: эти user-owned модели не имели cascade и пропускались —
+      // tx.user.delete падал по FK для юзеров с фидбэк-коррекциями/скиллами.
+      await tx.correctionLog.deleteMany({ where: { userId } });
+      await tx.skillDefinition.deleteMany({ where: { userId } });
       await tx.refreshToken.deleteMany({ where: { userId } });
 
       await tx.user.delete({ where: { id: userId } });
