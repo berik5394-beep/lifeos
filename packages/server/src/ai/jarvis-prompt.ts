@@ -49,6 +49,17 @@ export const GOAL_CAPTURE_BLOCK =
   'Не хватает суммы или срока — спроси ОДИН вопрос, потом предложи. Совет ' +
   '(сколько в день/неделю) давай ПОВЕРХ оформления, не вместо него.';
 
+export const OBLIGATION_CAPTURE_BLOCK =
+  '\n\nОБЯЗАТЕЛЬСТВА — ЛОВИ И ЗАПИСЫВАЙ: когда пользователь упоминает обещание ' +
+  'или долг с КОНКРЕТНЫМ человеком — он обещал кому-то («я обещал Серику отчёт ' +
+  'к пятнице») ИЛИ ему обещали/должны («Ахмет должен мне 500к», «Айгуль пришлёт ' +
+  'договор») — ПРЕДЛОЖИ записать через create_obligation (передай personName, ' +
+  'direction [«я должен» / «мне должны»], kind [action/money], description, ' +
+  'dueDate если есть, amount для денег). НЕ пиши молча — коротко предложи, запиши ' +
+  'на «да». Только ЯВНОЕ обязательство с человеком — расплывчатое «надо бы» или ' +
+  'дело без человека НЕ считается. Когда денежное обязательство закрывают, ' +
+  'settle_obligation вернёт предложение записать доход/расход — предложи его.';
+
 export type AssistantStyle = 'friendly' | 'strict' | 'calm' | 'toxic';
 
 export interface AssistantContext {
@@ -235,6 +246,9 @@ export interface JarvisPromptOpts {
   /** 2026-06 financial-goal-capture: записывать цель инструментом
    *  (suggest_goal спрашивает, пишет на «да»). За isV2SavingsCoachEnabled. */
   goalCapture?: boolean;
+  /** Obligations: ловить обещания/долги из диалога → предложить
+   *  create_obligation (запись на «да»). За isV2ObligationsEnabled. */
+  obligationCapture?: boolean;
 }
 
 // ISSUE-4: голос — это TTS, длинный ответ = 25с речи (Берик в проде).
@@ -260,6 +274,7 @@ export function buildJarvisPrompt(
   const parts = [core(ctx.userName, getTimeOfDay()), styleBlock];
   if (opts.inlineNudge) parts.push(INLINE_NUDGE_BLOCK);
   if (opts.goalCapture) parts.push(GOAL_CAPTURE_BLOCK);
+  if (opts.obligationCapture) parts.push(OBLIGATION_CAPTURE_BLOCK);
   let body = parts.join('\n\n');
   if (opts.ritual) body += ritualBlock(opts.ritual, opts.dayCompletionPercent);
   if (opts.channel === 'voice') body += VOICE_BREVITY;

@@ -50,6 +50,7 @@ import { isV2HermesEnabled } from '../lib/feature-flags.js';
 import {
   isV2InlineNudgeEnabled,
   isV2SavingsCoachEnabled,
+  isV2ObligationsEnabled,
 } from '../lib/feature-flags.js';
 import {
   routeToSkill,
@@ -990,6 +991,7 @@ export async function handleMessage(
         therapeuticMode: finalTherapeutic,
         inlineNudge: isV2InlineNudgeEnabled(userId),
         goalCapture: isV2SavingsCoachEnabled(userId),
+        obligationCapture: isV2ObligationsEnabled(userId),
       })
     : 'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
 
