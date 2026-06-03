@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { availableMinutesToday } from './_slots.js';
+import { availableMinutesToday, sumWeekCapacity } from './_slots.js';
 
 const ev = (startTime: string, endTime: string) => ({ startTime, endTime });
 
@@ -22,5 +22,24 @@ describe('availableMinutesToday — свободные минуты сегодн
   it('событие частично до «сейчас» (11:30–13:00, сейчас 12:00) → урезается до 12:00–13:00', () => {
     // окно 12:00–20:00 = 480; минус 12:00–13:00 (60) = 420
     expect(availableMinutesToday([ev('11:30', '13:00')], '12:00')).toBe(420);
+  });
+});
+
+describe('sumWeekCapacity — ёмкость недели (сумма дней)', () => {
+  it('сегодня от 18:00 + 2 полных будущих дня (нет событий)', () => {
+    expect(sumWeekCapacity([
+      { events: [], isToday: true },
+      { events: [], isToday: false },
+      { events: [], isToday: false },
+    ], '18:00')).toBe(120 + 660 + 660);
+  });
+  it('событие на будущем дне вычитается', () => {
+    expect(sumWeekCapacity([
+      { events: [], isToday: true },
+      { events: [ev('14:00', '15:00')], isToday: false },
+    ], '09:00')).toBe(660 + 600);
+  });
+  it('пусто → 0', () => {
+    expect(sumWeekCapacity([], '09:00')).toBe(0);
   });
 });

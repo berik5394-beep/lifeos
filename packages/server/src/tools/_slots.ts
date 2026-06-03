@@ -99,3 +99,18 @@ export function availableMinutesToday(
   if (cursor < windowEnd) free += timeDiff(cursor, windowEnd);
   return free;
 }
+
+/**
+ * Ёмкость недели = Σ дневной свободной ёмкости по дням. Сегодня — от
+ * «сейчас» (nowHHMM), будущие дни — полное окно ('00:00' → старт окна).
+ * Переиспользует availableMinutesToday. Чистое.
+ */
+export function sumWeekCapacity(
+  days: Array<{ events: Array<{ startTime: string | null; endTime: string | null }>; isToday: boolean }>,
+  nowHHMM: string,
+): number {
+  return days.reduce(
+    (s, d) => s + availableMinutesToday(d.events, d.isToday ? nowHHMM : '00:00'),
+    0,
+  );
+}
