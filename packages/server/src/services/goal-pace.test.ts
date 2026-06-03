@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { isMoneyGoal, computeGoalPace, describeGoalPace } from './goal-pace.js';
 
 describe('isMoneyGoal', () => {
@@ -54,5 +56,14 @@ describe('describeGoalPace', () => {
   it('reached → null', () => {
     const p = computeGoalPace({ target: 50, targetDate: null, progress: 100, createdAt: created }, now);
     expect(describeGoalPace('x', p, 50)).toBeNull();
+  });
+});
+
+describe('goal-pace — проводка maybeGoalPaceLine (structural)', () => {
+  const SRC = readFileSync(join(process.cwd(), 'src/services/goal-pace.ts'), 'utf-8');
+  it('гейт флагом + дедуп против СВОИХ goal:pace + source goal_pace', () => {
+    expect(SRC).toContain('isV2YearLoadEnabled');
+    expect(SRC).toMatch(/count\([\s\S]*?source: 'goal_pace'[\s\S]*?gte: dayStart/);
+    expect(SRC).toContain("'goal:pace:'");
   });
 });

@@ -1,4 +1,8 @@
 import { computeSavingsPace, type SavingsStatus } from './savings-pace.js';
+import { prisma } from '../lib/prisma.js';
+import { localDayStartUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { isV2YearLoadEnabled } from '../lib/feature-flags.js';
 
 const MS_PER_MONTH = 30.44 * 86_400_000;
 const MIN_ELAPSED_MONTHS = 0.5; // раньше — темп не считаем (мало данных)
@@ -69,4 +73,56 @@ export function describeGoalPace(goalText: string, p: GoalPace, target: number):
     `📚 «${goalText}»: ${r(p.done)} из ${target}, осталось ~${r(p.monthsLeft)} мес — ` +
     `нужно ~${r(p.requiredMonthly)}/мес.${tempo} Поднажми.`
   );
+}
+
+/**
+ * Реактивная строка пейсинга для ОДНОЙ цели. Best-effort (→null), гейт флагом,
+ * дедуп ≤1/день против СВОИХ (source 'goal_pace'). Зеркало maybeSavingsCoachLine.
+ */
+export async function maybeGoalPaceLine(
+  userId: string,
+  goalId: string,
+  now: Date = new Date(),
+): Promise<string | null> {
+  if (!isV2YearLoadEnabled(userId)) return null;
+  try {
+    const g = await prisma.yearlyGoal.findFirst({
+      where: { id: goalId, userId },
+      select: { goalText: true, area: true, target: true, targetDate: true, progress: true, createdAt: true },
+    });
+    if (!g || g.target == null || isMoneyGoal(g.area, g.target)) return null;
+
+    const pace = computeGoalPace(
+      { target: g.target, targetDate: g.targetDate, progress: g.progress, createdAt: g.createdAt },
+      now,
+    );
+    const line = describeGoalPace(g.goalText, pace, g.target);
+    if (!line) return null;
+
+    const tz = await getUserTimezone(userId);
+    const dayStart = localDayStartUTC(tz, now);
+    const scopeKey = 'goal:pace:' + goalId;
+    const seen = await prisma.insight.count({
+      where: { userId, scopeKey, source: 'goal_pace', createdAt: { gte: dayStart } },
+    });
+    if (seen > 0) return null;
+
+    await prisma.insight
+      .create({
+        data: {
+          userId,
+          severity: 4,
+          scope: { key: scopeKey, kind: 'goal_pace_reactive' },
+          scopeKey,
+          source: 'goal_pace',
+          message: line,
+          deliveredAt: now,
+        },
+      })
+      .catch(() => {});
+    return line;
+  } catch (err) {
+    console.warn('[goal-pace] non-fatal:', err instanceof Error ? err.message : err);
+    return null;
+  }
 }
