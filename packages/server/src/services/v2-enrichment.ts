@@ -16,7 +16,8 @@ import { getProceduralMemory } from './procedural-memory.singleton.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
-import { isV2AxesEnabled } from '../lib/feature-flags.js';
+import { isV2AxesEnabled, isV2ObligationsEnabled } from '../lib/feature-flags.js';
+import { openObligationsForContext } from './obligations/index.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { formatToneSection } from './bot-traits/tone-section.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
@@ -34,6 +35,12 @@ export type V2EnrichmentData = {
     name: string;
     importance: number;
     daysSinceLastSeen: number;
+  }>;
+  obligations: Array<{
+    direction: string;
+    personName: string;
+    description: string;
+    due: string | null;
   }>;
 };
 
@@ -62,7 +69,25 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
       .join('; ');
     lines.push(`ключевые люди/места: ${top}`);
   }
+  const obl = formatObligationsSection(data.obligations);
+  if (obl) lines.push(obl);
   return lines.join('\n');
+}
+
+/**
+ * Pure helper — рендер блока открытых обязательств. Пусто → ''.
+ * Exported для юнит-теста.
+ */
+export function formatObligationsSection(
+  rows: Array<{ direction: string; personName: string; description: string; due: string | null }>,
+): string {
+  if (rows.length === 0) return '';
+  const lines = rows.map((o) => {
+    const head = o.direction === 'i_owe' ? 'ты должен' : 'тебе должен';
+    const due = o.due ? ` (срок ${o.due})` : '';
+    return `- ${head} ${o.personName}: ${o.description}${due}`;
+  });
+  return `обязательства:\n${lines.join('\n')}`;
 }
 
 /**
@@ -125,7 +150,7 @@ export async function fetchV2EnrichmentData(
   userId: string,
 ): Promise<V2EnrichmentData | null> {
   try {
-    const [identity, patterns, moodShift, entityRows] = await Promise.all([
+    const [identity, patterns, moodShift, entityRows, obligationRows] = await Promise.all([
       getBotIdentityService()
         .getIdentity(userId)
         .catch(() => null),
@@ -143,6 +168,9 @@ export async function fetchV2EnrichmentData(
           select: { name: true, importance: true, lastSeenAt: true },
         })
         .catch(() => []),
+      isV2ObligationsEnabled(userId)
+        ? openObligationsForContext(userId, 5).catch(() => [])
+        : Promise.resolve([]),
     ]);
     const now = Date.now();
     return {
@@ -174,6 +202,12 @@ export async function fetchV2EnrichmentData(
           0,
           Math.floor((now - (e.lastSeenAt?.getTime() ?? now)) / DAY_MS),
         ),
+      })),
+      obligations: obligationRows.map((o) => ({
+        direction: o.direction,
+        personName: o.personName,
+        description: o.description,
+        due: o.dueDate ? o.dueDate.toISOString().slice(0, 10) : null,
       })),
     };
   } catch (err) {
