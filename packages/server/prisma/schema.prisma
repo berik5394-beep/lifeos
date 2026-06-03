@@ -284,6 +284,8 @@ model WeeklyGoal {
   goalText  String
   completed Boolean  @default(false)
   order     Int      @default(0)
+  // Движок пересечения (срез МЕСЯЦ): ИИ-оценка усилия, минуты/нед.
+  estimatedMinutes Int?
 
   // Phase 5 P1 — планировочное дерево (см. Habit). Обычно
   // planParentType='YearlyGoal' (год → неделя).
