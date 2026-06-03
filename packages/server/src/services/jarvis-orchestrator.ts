@@ -40,6 +40,7 @@ import {
   buildV2EnrichmentBlock,
   fetchV2EnrichmentData,
 } from './v2-enrichment.js';
+import { withTimeout } from '../lib/with-timeout.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js';
@@ -996,7 +997,9 @@ export async function handleMessage(
   // dropped silently on fault → legacy prompt unaffected).
   if (gathered && isV2MemoryEnabled(userId)) {
     try {
-      const v2Data = await fetchV2EnrichmentData(userId);
+      // Бюджет 900мс: зависший pgvector-тиер НЕ должен блокировать ответ
+      // юзеру. Не успели — дропаем блок обогащения, чат идёт дальше.
+      const v2Data = await withTimeout(fetchV2EnrichmentData(userId), 900, null);
       if (v2Data) {
         system = system + '\n\n' + buildV2EnrichmentBlock(v2Data);
       }
