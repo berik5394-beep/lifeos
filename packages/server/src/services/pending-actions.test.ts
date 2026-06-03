@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   setPendingAction,
   peekPendingAction,
@@ -62,6 +64,13 @@ function makeStore(): PendingStore {
     async remove(userId) {
       backing.delete(userId);
     },
+    // Атомарно (get+delete без await между ними) — моделирует
+    // Postgres DELETE…RETURNING: consume-once даже при гонке.
+    async take(userId) {
+      const r = backing.get(userId);
+      backing.delete(userId);
+      return r ? { ...r } : null;
+    },
   };
 }
 
@@ -101,6 +110,25 @@ describe('confirm-FSM — set/peek/take/clear (инъектируемый сто
     const s = makeStore();
     await setPendingAction(U, 'add_expense', { amount: 1 }, 'q', s);
     expect(await peekPendingAction('other-user', s)).toBeNull();
+  });
+
+  it('ГОНКА: два одновременных «да» → ровно ОДИН берёт действие (нет дубля денег)', async () => {
+    const s = makeStore();
+    await setPendingAction(U, 'add_expense', { amount: 100000 }, 'q', s);
+    const [a, b] = await Promise.all([takePendingAction(U, s), takePendingAction(U, s)]);
+    const got = [a, b].filter((x) => x !== null);
+    expect(got).toHaveLength(1); // ровно один — второй получил null
+    expect(got[0]?.action).toBe('add_expense');
+  });
+});
+
+describe('pending-actions — прод-стор атомарен (structural)', () => {
+  it('take использует prisma.pendingAction.delete (DELETE…RETURNING), не load+remove', () => {
+    const SRC = readFileSync(join(process.cwd(), 'src/services/pending-actions.ts'), 'utf-8');
+    expect(SRC).toMatch(/take\(userId\)[\s\S]*?prisma\.pendingAction\.delete/);
+    expect(SRC).toContain("e.code === 'P2025'");
+    // takePendingAction должен звать store.take, а не peek+remove
+    expect(SRC).toMatch(/takePendingAction[\s\S]*?store\.take\(userId\)/);
   });
 });
 

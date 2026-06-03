@@ -34,6 +34,28 @@ export interface PendingStore {
   save(userId: string, rec: PendingAction): Promise<void>;
   load(userId: string): Promise<PendingAction | null>;
   remove(userId: string): Promise<void>;
+  /**
+   * АТОМАРНО забрать и удалить (consume-once). Гарантия «ровно один»:
+   * при гонке двух «да» (тап в app + «да» в Telegram, дабл-тап) только
+   * ОДИН вызов вернёт запись, второй — null. Иначе — двойная запись денег.
+   */
+  take(userId: string): Promise<PendingAction | null>;
+}
+
+type PendingRow = {
+  action: string;
+  inputJson: Prisma.JsonValue | null;
+  confirmationText: string;
+  createdAt: Date;
+};
+
+function mapRow(row: PendingRow): PendingAction {
+  return {
+    action: row.action,
+    input: (row.inputJson ?? {}) as Record<string, unknown>,
+    confirmationText: row.confirmationText,
+    createdAt: row.createdAt.getTime(),
+  };
 }
 
 const prismaPendingStore: PendingStore = {
@@ -52,17 +74,25 @@ const prismaPendingStore: PendingStore = {
   },
   async load(userId) {
     const row = await prisma.pendingAction.findUnique({ where: { userId } });
-    if (!row) return null;
-    return {
-      action: row.action,
-      input: (row.inputJson ?? {}) as Record<string, unknown>,
-      confirmationText: row.confirmationText,
-      createdAt: row.createdAt.getTime(),
-    };
+    return row ? mapRow(row) : null;
   },
   async remove(userId) {
     // deleteMany — не бросает, если строки нет (идемпотентно).
     await prisma.pendingAction.deleteMany({ where: { userId } });
+  },
+  async take(userId) {
+    // АТОМАРНО: Postgres DELETE ... RETURNING. userId @unique → при гонке
+    // двух «да» только ОДИН delete найдёт строку, второй бросит P2025 →
+    // null. Так дубль записи денег невозможен (раньше: load+remove = гонка).
+    try {
+      const row = await prisma.pendingAction.delete({ where: { userId } });
+      return mapRow(row);
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') {
+        return null; // строки нет (нет pending / проиграл гонку)
+      }
+      throw e;
+    }
   },
 };
 
@@ -95,13 +125,18 @@ export async function peekPendingAction(
   return p;
 }
 
-/** Забирает и удаляет pending (подтверждение/отмена). */
+/**
+ * Забирает и удаляет pending АТОМАРНО (consume-once). Гонку решает
+ * store.take (Postgres DELETE…RETURNING), не load+remove. TTL проверяем
+ * после: протухшее уже удалено, возвращаем null (не исполняем).
+ */
 export async function takePendingAction(
   userId: string,
   store: PendingStore = prismaPendingStore,
 ): Promise<PendingAction | null> {
-  const p = await peekPendingAction(userId, store);
-  if (p) await store.remove(userId);
+  const p = await store.take(userId);
+  if (!p) return null;
+  if (Date.now() - p.createdAt > PENDING_TTL_MS) return null;
   return p;
 }
 
