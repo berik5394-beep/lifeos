@@ -102,6 +102,8 @@ model User {
   correctionLogs         CorrectionLog[]
   // v2.0 Phase B4 — Hermes composable skills
   skills                 SkillDefinition[]
+  // Obligations — память отношений+обещаний
+  obligations            Obligation[]
 }
 
 // Phase 6 C2 — синтезированный профиль личности. ВАЖНО (#4 SSOT):
@@ -959,6 +961,7 @@ model Entity {
 
   relsFrom EntityRelationship[] @relation("FromEntity")
   relsTo   EntityRelationship[] @relation("ToEntity")
+  obligations Obligation[]      @relation("EntityObligations")
 
   @@unique([userId, type, name])
   @@index([userId, type])
@@ -1178,4 +1181,31 @@ model SkillDefinition {
 
   @@unique([userId, name])
   @@index([userId, active])
+}
+
+// Obligations — «кто кому что должен» (память отношений+обещаний).
+// Оба направления (i_owe/owed_to_me), действие/деньги, со сроком.
+model Obligation {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // context7/Prisma 6: опциональная СВЯЗЬ relation+scalar, onDelete: SetNull —
+  // если человека-сущность удалят, обязательство живёт, остаётся personName.
+  personEntityId String?
+  person         Entity?   @relation("EntityObligations", fields: [personEntityId], references: [id], onDelete: SetNull)
+  personName     String
+  direction      String // 'i_owe' | 'owed_to_me'
+  kind           String // 'action' | 'money'
+  description    String
+  amount         Float?
+  currency       String?   @default("₸")
+  dueDate        DateTime? @db.Date
+  status         String    @default("open") // 'open' | 'done' | 'cancelled'
+  source         String // 'manual' | 'ai_suggested'
+  note           String?
+  createdAt      DateTime  @default(now())
+  settledAt      DateTime?
+
+  @@index([userId, status, dueDate])
+  @@index([userId, personEntityId])
 }
