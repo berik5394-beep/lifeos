@@ -16,4 +16,9 @@ describe('create_task — хук движка пересечения (день)'
     expect(SRC).toContain('maybeWeekLoadLine');
     expect(SRC).toMatch(/dayLoad \? null : await maybeWeekLoadLine/);
   });
+  it('month-хук — третий уровень каскада (после дня и недели)', () => {
+    expect(SRC).toContain('maybeMonthLoadLine');
+    expect(SRC).toMatch(/dayLoad \|\| weekLoad \? null : await maybeMonthLoadLine/);
+    expect(SRC).toMatch(/\?\? weekLoad \?\? monthLoad/);
+  });
 });
