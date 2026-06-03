@@ -1,9 +1,11 @@
 -- Baseline-reconcile (ИДЕМПОТЕНТНАЯ): примиряет migrations-историю со schema.prisma.
 -- Прод исторически жил на db push → ~19 таблиц/24 FK/34 индекса/десятки колонок есть
--- в БД, но не в migrations/. Эта миграция БЕЗОПАСНА в обе стороны:
---   • чистая БД → migrate deploy ВЫПОЛНЯЕТ её и достраивает полную схему;
---   • существующая (прод) → каждый стейтмент no-op (IF NOT EXISTS / DROP-then-ADD FK).
--- Поэтому НЕ нужен ручной migrate resolve — deploy безопасен везде. Источник: prisma
+-- в БД, но не в migrations/. БЕЗОПАСНА в обе стороны:
+--   • чистая БД → migrate deploy выполняет её, достраивает полную схему;
+--   • существующая (прод) → каждый стейтмент no-op. FK добавляются УСЛОВНО
+--     (DO-блок с проверкой pg_constraint) → существующие FK НЕ трогаются,
+--     НЕТ ре-валидации данных. CREATE/ADD — через IF NOT EXISTS.
+-- Поэтому migrate resolve НЕ нужен — deploy безопасен везде. Источник: prisma
 -- migrate diff (from-migrations → schema), переписан в идемпотентную форму.
 
 -- DropForeignKey
@@ -448,98 +450,122 @@ CREATE INDEX IF NOT EXISTS "Task_parentId_idx" ON "Task"("parentId");
 CREATE INDEX IF NOT EXISTS "Task_sharedSpaceId_idx" ON "Task"("sharedSpaceId");
 
 -- AddForeignKey
-ALTER TABLE "SentNotification" DROP CONSTRAINT IF EXISTS "SentNotification_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SentNotification_userId_fkey') THEN
 ALTER TABLE "SentNotification" ADD CONSTRAINT "SentNotification_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "RefreshToken" DROP CONSTRAINT IF EXISTS "RefreshToken_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'RefreshToken_userId_fkey') THEN
 ALTER TABLE "RefreshToken" ADD CONSTRAINT "RefreshToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "UserInterest" DROP CONSTRAINT IF EXISTS "UserInterest_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'UserInterest_userId_fkey') THEN
 ALTER TABLE "UserInterest" ADD CONSTRAINT "UserInterest_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "Task" DROP CONSTRAINT IF EXISTS "Task_parentId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Task_parentId_fkey') THEN
 ALTER TABLE "Task" ADD CONSTRAINT "Task_parentId_fkey" FOREIGN KEY ("parentId") REFERENCES "Task"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "Task" DROP CONSTRAINT IF EXISTS "Task_sharedSpaceId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Task_sharedSpaceId_fkey') THEN
 ALTER TABLE "Task" ADD CONSTRAINT "Task_sharedSpaceId_fkey" FOREIGN KEY ("sharedSpaceId") REFERENCES "SharedSpace"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "PetItem" DROP CONSTRAINT IF EXISTS "PetItem_petId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'PetItem_petId_fkey') THEN
 ALTER TABLE "PetItem" ADD CONSTRAINT "PetItem_petId_fkey" FOREIGN KEY ("petId") REFERENCES "Pet"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "ArenaProfile" DROP CONSTRAINT IF EXISTS "ArenaProfile_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ArenaProfile_userId_fkey') THEN
 ALTER TABLE "ArenaProfile" ADD CONSTRAINT "ArenaProfile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "Battle" DROP CONSTRAINT IF EXISTS "Battle_attackerId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Battle_attackerId_fkey') THEN
 ALTER TABLE "Battle" ADD CONSTRAINT "Battle_attackerId_fkey" FOREIGN KEY ("attackerId") REFERENCES "ArenaProfile"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "Battle" DROP CONSTRAINT IF EXISTS "Battle_defenderId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Battle_defenderId_fkey') THEN
 ALTER TABLE "Battle" ADD CONSTRAINT "Battle_defenderId_fkey" FOREIGN KEY ("defenderId") REFERENCES "ArenaProfile"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "ConversationSession" DROP CONSTRAINT IF EXISTS "ConversationSession_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ConversationSession_userId_fkey') THEN
 ALTER TABLE "ConversationSession" ADD CONSTRAINT "ConversationSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "ConversationMessage" DROP CONSTRAINT IF EXISTS "ConversationMessage_sessionId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ConversationMessage_sessionId_fkey') THEN
 ALTER TABLE "ConversationMessage" ADD CONSTRAINT "ConversationMessage_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "ConversationSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "TravelPlan" DROP CONSTRAINT IF EXISTS "TravelPlan_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TravelPlan_userId_fkey') THEN
 ALTER TABLE "TravelPlan" ADD CONSTRAINT "TravelPlan_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "ContactCache" DROP CONSTRAINT IF EXISTS "ContactCache_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ContactCache_userId_fkey') THEN
 ALTER TABLE "ContactCache" ADD CONSTRAINT "ContactCache_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "DocumentVault" DROP CONSTRAINT IF EXISTS "DocumentVault_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'DocumentVault_userId_fkey') THEN
 ALTER TABLE "DocumentVault" ADD CONSTRAINT "DocumentVault_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "TaskDependency" DROP CONSTRAINT IF EXISTS "TaskDependency_dependentTaskId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TaskDependency_dependentTaskId_fkey') THEN
 ALTER TABLE "TaskDependency" ADD CONSTRAINT "TaskDependency_dependentTaskId_fkey" FOREIGN KEY ("dependentTaskId") REFERENCES "Task"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "TaskDependency" DROP CONSTRAINT IF EXISTS "TaskDependency_prerequisiteTaskId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TaskDependency_prerequisiteTaskId_fkey') THEN
 ALTER TABLE "TaskDependency" ADD CONSTRAINT "TaskDependency_prerequisiteTaskId_fkey" FOREIGN KEY ("prerequisiteTaskId") REFERENCES "Task"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "Tag" DROP CONSTRAINT IF EXISTS "Tag_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Tag_userId_fkey') THEN
 ALTER TABLE "Tag" ADD CONSTRAINT "Tag_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "TaskTag" DROP CONSTRAINT IF EXISTS "TaskTag_taskId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TaskTag_taskId_fkey') THEN
 ALTER TABLE "TaskTag" ADD CONSTRAINT "TaskTag_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "Task"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "TaskTag" DROP CONSTRAINT IF EXISTS "TaskTag_tagId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'TaskTag_tagId_fkey') THEN
 ALTER TABLE "TaskTag" ADD CONSTRAINT "TaskTag_tagId_fkey" FOREIGN KEY ("tagId") REFERENCES "Tag"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "SharedSpace" DROP CONSTRAINT IF EXISTS "SharedSpace_ownerId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SharedSpace_ownerId_fkey') THEN
 ALTER TABLE "SharedSpace" ADD CONSTRAINT "SharedSpace_ownerId_fkey" FOREIGN KEY ("ownerId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "SharedSpaceMember" DROP CONSTRAINT IF EXISTS "SharedSpaceMember_sharedSpaceId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SharedSpaceMember_sharedSpaceId_fkey') THEN
 ALTER TABLE "SharedSpaceMember" ADD CONSTRAINT "SharedSpaceMember_sharedSpaceId_fkey" FOREIGN KEY ("sharedSpaceId") REFERENCES "SharedSpace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "SharedSpaceMember" DROP CONSTRAINT IF EXISTS "SharedSpaceMember_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SharedSpaceMember_userId_fkey') THEN
 ALTER TABLE "SharedSpaceMember" ADD CONSTRAINT "SharedSpaceMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "DictationSession" DROP CONSTRAINT IF EXISTS "DictationSession_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'DictationSession_userId_fkey') THEN
 ALTER TABLE "DictationSession" ADD CONSTRAINT "DictationSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+END IF; END $$;
 
 -- AddForeignKey
-ALTER TABLE "SkillDefinition" DROP CONSTRAINT IF EXISTS "SkillDefinition_userId_fkey";
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'SkillDefinition_userId_fkey') THEN
 ALTER TABLE "SkillDefinition" ADD CONSTRAINT "SkillDefinition_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+END IF; END $$;
 
