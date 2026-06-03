@@ -559,6 +559,41 @@ function relativeDate(d: Date): string {
 
 let activeBot: Telegraf | null = null;
 
+/**
+ * 409 Conflict = другой инстанс уже опрашивает getUpdates. Происходит в
+ * окне overlap при redeploy (Railway секунды держит старый+новый контейнер).
+ * Чистая — определяет именно конфликт поллеров. Telegraf кладёт код в
+ * err.response.error_code, текст — в message. Без сети.
+ */
+export function is409Conflict(err: unknown): boolean {
+  const e = err as { response?: { error_code?: number }; code?: number; message?: string };
+  if (e?.response?.error_code === 409 || e?.code === 409) return true;
+  return /\b409\b|conflict|terminated by other getupdates/i.test(String(e?.message ?? ''));
+}
+
+/** Backoff запуска: 5s,10s,20s,40s,60s,60s… (кап 60с). Чистая. */
+export function launchBackoffMs(attempt: number): number {
+  return Math.min(60_000, 5_000 * 2 ** Math.max(0, attempt));
+}
+
+/**
+ * Запуск polling с авто-ретраем. launch() резолвится только при graceful
+ * stop → .catch ловит ТОЛЬКО ошибки (409/сеть). На любую ошибку — ретрай
+ * через backoff: при redeploy старый поллер умрёт за ~минуту, новый
+ * перехватит getUpdates сам. Self-healing — деплой больше не глушит бота.
+ */
+function launchWithRetry(bot: Telegraf, attempt = 0): void {
+  bot.launch().catch((err) => {
+    const delay = launchBackoffMs(attempt);
+    const tag = is409Conflict(err) ? '409 (overlap деплоя)' : 'ошибка';
+    console.error(
+      `Telegram бот: ${tag}, попытка ${attempt + 1}, ретрай через ${Math.round(delay / 1000)}с:`,
+      err instanceof Error ? err.message : err,
+    );
+    setTimeout(() => launchWithRetry(bot, attempt + 1), delay);
+  });
+}
+
 export async function startBot(): Promise<Telegraf | null> {
   if (!process.env.TELEGRAM_BOT_TOKEN) {
     console.log('TELEGRAM_BOT_TOKEN не задан — бот не запускается');
@@ -567,10 +602,8 @@ export async function startBot(): Promise<Telegraf | null> {
   const bot = createTelegramBot();
   activeBot = bot;
   // launch() резолвится только при остановке — НЕ await'им, иначе сервер
-  // зависнет на старте. Запускаем в фоне, ошибки логируем.
-  bot.launch().catch((err) => {
-    console.error('Telegram бот упал:', err);
-  });
+  // зависнет на старте. Запускаем в фоне с авто-ретраем (409 при деплое).
+  launchWithRetry(bot);
   console.log('Telegram бот запущен (@LifeOS_jarvis_bot)');
   return bot;
 }
