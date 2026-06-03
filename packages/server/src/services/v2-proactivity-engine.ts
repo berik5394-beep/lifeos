@@ -23,7 +23,8 @@ export type NudgeSource =
   | 'streak_break'
   | 'goal_no_progress'
   | 'identity_growth'
-  | 'skill_suggestion';
+  | 'skill_suggestion'
+  | 'obligation_due';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -84,6 +85,10 @@ export function scoreSignificance(c: NudgeCandidate): number {
       const size = Number(c.payload.clusterSize ?? 0);
       return Math.min(1, (recurrence / 10) * (size / 4));
     }
+    case 'obligation_due': {
+      // Просроченные/висящие обязательства — стабильно значимы.
+      return 0.6;
+    }
   }
 }
 
@@ -120,6 +125,12 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     gentle:
       'Ты обещал «{{commitment}}» — прошло {{daysOverdue}} дней. Получилось?',
     curious: 'Как там «{{commitment}}»? Уже {{daysOverdue}} дней прошло.',
+  },
+  obligation_due: {
+    gentle: 'Ты обещал {{person}}: «{{description}}» — срок {{dueLabel}}. Закрыл?',
+    curious: 'Как там с {{person}} — «{{description}}»? {{dueLabel}}.',
+    supportive:
+      '{{person}} ждёт «{{description}}». Срок {{dueLabel}} — напомнить или закрыть?',
   },
   mood_shift: {
     supportive:
@@ -242,6 +253,47 @@ async function detectCommitmentDue(userId: string): Promise<NudgeCandidate[]> {
     return out;
   } catch (err) {
     console.warn('[v2-proactivity] detectCommitmentDue failed:', err);
+    return [];
+  }
+}
+
+// Obligations: открытые обязательства, просроченные ИЛИ висящие без срока >5 дней.
+async function detectObligationDue(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { prisma } = await import('../lib/prisma.js');
+    const now = Date.now();
+    const rows = await prisma.obligation.findMany({
+      where: { userId, status: 'open' },
+      orderBy: [{ dueDate: 'asc' }],
+      take: 20,
+    });
+    const out: NudgeCandidate[] = [];
+    for (const o of rows) {
+      const due = o.dueDate ? o.dueDate.getTime() : NaN;
+      const isDue = Number.isFinite(due) && due <= now;
+      const ageDays = Math.floor((now - o.createdAt.getTime()) / DAY_MS);
+      if (!isDue && !(Number.isNaN(due) && ageDays > 5)) continue;
+      const dueLabel = Number.isFinite(due)
+        ? `был ${o.dueDate!.toISOString().slice(0, 10)}`
+        : `висит ${ageDays} дней`;
+      const cand: NudgeCandidate = {
+        source: 'obligation_due',
+        significance: 0,
+        entityId: o.personEntityId ?? undefined,
+        payload: {
+          person: o.personName,
+          description: o.description,
+          dueLabel,
+          direction: o.direction,
+        },
+        toneHint: 'gentle',
+      };
+      cand.significance = scoreSignificance(cand);
+      out.push(cand);
+    }
+    return out;
+  } catch (err) {
+    console.warn('[v2-proactivity] detectObligationDue failed:', err);
     return [];
   }
 }
@@ -510,6 +562,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
     const results = await Promise.allSettled([
       detectStaleEntity(userId),
       detectCommitmentDue(userId),
+      detectObligationDue(userId),
       detectMoodShift(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),
