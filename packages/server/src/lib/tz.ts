@@ -81,6 +81,19 @@ export function localDayStartUTC(tz: string, at: Date = new Date()): Date {
   return new Date(guessUTC - off);
 }
 
+/**
+ * UTC-инстант 00:00 ЛОКАЛЬНОГО 1-го числа месяца, в который попадает
+ * `at`. Копия localDayStartUTC, но день=1. DST-устойчиво (re-нормализация
+ * смещения; KZ без DST → точно). Для границ месяца в month-load.
+ */
+export function localMonthStartUTC(tz: string, at: Date = new Date()): Date {
+  const zone = safeTz(tz);
+  const [y, m] = localDateStr(zone, at).split('-').map(Number);
+  const guessUTC = Date.UTC(y, m - 1, 1, 0, 0, 0);
+  const off = tzOffsetMs(zone, new Date(guessUTC));
+  return new Date(guessUTC - off);
+}
+
 /** Локальный час юзера 0..23 (R11 тихие часы — не серверный UTC). */
 /**
  * Phase 7 P4 (E) — день недели в локальной tz юзера.

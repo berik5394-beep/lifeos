@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   localDateStr,
   localDayStartUTC,
+  localMonthStartUTC,
   localDayStartUTCOffset,
   localTimeStr,
   isInQuietHours,
@@ -149,5 +150,20 @@ describe('isInQuietHours — DND friend respects time', () => {
     it('тот же UTC-инстант в UTC tz → тоже true (23:00 == start)', () => {
       expect(isInQuietHours('23:00', '08:00', 'UTC', at2300UTC)).toBe(true);
     });
+  });
+});
+
+describe('localMonthStartUTC — начало локального месяца как UTC', () => {
+  it('середина месяца (Алматы UTC+5) → 1-е 00:00 локально = пред. день 19:00 UTC', () => {
+    const r = localMonthStartUTC('Asia/Almaty', new Date('2026-05-16T19:30:00Z'));
+    expect(r.toISOString()).toBe('2026-04-30T19:00:00.000Z');
+  });
+  it('переход года: декабрь → 1 декабря', () => {
+    const r = localMonthStartUTC('Asia/Almaty', new Date('2026-12-20T10:00:00Z'));
+    expect(r.toISOString()).toBe('2026-11-30T19:00:00.000Z');
+  });
+  it('невалидная tz → не падает (фолбэк UTC, 1-е 00:00 UTC)', () => {
+    const r = localMonthStartUTC('Garbage/Zone', new Date('2026-05-16T10:00:00Z'));
+    expect(r.toISOString()).toBe('2026-05-01T00:00:00.000Z');
   });
 });
