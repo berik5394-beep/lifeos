@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseYear, invalidDateReply } from '../middleware/validate.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
+import { estimateWeeklyGoalMinutesInBackground } from '../services/estimate-goal-minutes.js';
 
 // B.3: enum/диапазоны (аудит 3.12). area из CLAUDE.md (goalAreas),
 // year ограничен, weekStart — строгий ISO (раньше z.string() →
@@ -85,6 +86,8 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
       type: 'weekly_goal_created',
       content: `Цель недели «${goal.goalText}» (${data.weekStart})`,
     });
+    // #engine: оценка усилия/нед фоном (под флагом month-load).
+    void estimateWeeklyGoalMinutesInBackground(goal.id, goal.goalText, request.userId);
     return reply.status(201).send(goal);
   });
 
