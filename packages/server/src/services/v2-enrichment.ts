@@ -69,7 +69,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
       .join('; ');
     lines.push(`ключевые люди/места: ${top}`);
   }
-  const obl = formatObligationsSection(data.obligations);
+  const obl = formatObligationsSection(data.obligations ?? []);
   if (obl) lines.push(obl);
   return lines.join('\n');
 }

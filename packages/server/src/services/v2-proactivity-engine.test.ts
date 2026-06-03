@@ -129,6 +129,7 @@ describe('TEMPLATES — table', () => {
         'goal_no_progress',
         'identity_growth',
         'mood_shift',
+        'obligation_due',
         'skill_suggestion',
         'stale_entity',
         'streak_break',
