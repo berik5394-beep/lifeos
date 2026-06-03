@@ -16,6 +16,18 @@ jobs:
     name: Server (typecheck + test)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: lifeos
+          POSTGRES_PASSWORD: lifeos
+          POSTGRES_DB: lifeos_test
+        ports:
+          - '5433:5432'
+        options: >-
+          --health-cmd "pg_isready -U lifeos -d lifeos_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     defaults:
       run:
         working-directory: packages/server
@@ -34,6 +46,13 @@ jobs:
         run: npx tsc --noEmit
       - name: Tests
         run: npm test
+      - name: Integration tests (real DB)
+        run: npm run test:it
+        env:
+          DATABASE_URL: postgresql://lifeos:lifeos@localhost:5433/lifeos_test
+          JWT_SECRET: test-jwt-secret-not-for-prod
+          ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef'
+          NODE_ENV: test
 
   mobile:
     name: Mobile (typecheck + test)
