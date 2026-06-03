@@ -13,6 +13,8 @@ import { getFeedbackStore } from './feedback/index.js';
 import { getBotTraitsStore, traitLabel } from './bot-traits/index.js';
 import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
+import { isV2ObligationsEnabled } from '../lib/feature-flags.js';
+import { listObligations } from './obligations/index.js';
 import { getHermesStore } from './hermes/index.js';
 import { analyzeFinancePhoto, buildFinancePending } from './finance-vision.js';
 import { setPendingAction } from './pending-actions.js';
@@ -247,6 +249,44 @@ export function createTelegramBot(): Telegraf {
     } catch (err) {
       console.warn('[telegram:axes] failed:', err);
       await ctx.reply('Не получилось получить axes. Попробуй позже.');
+    }
+  });
+
+  // Obligations — /obligations: что ты кому должен и кто должен тебе
+  bot.command('obligations', async (ctx) => {
+    if (!ctx.message) return;
+    try {
+      const chatId = String(ctx.chat?.id);
+      const from = ctx.from;
+      if (!chatId || !from) return;
+      const userId = await findOrCreateUser(
+        chatId,
+        from.id,
+        from.first_name || '',
+        from.username,
+      );
+      if (!isV2ObligationsEnabled(userId)) {
+        await ctx.reply('Обязательства выключены для тебя.');
+        return;
+      }
+      const rows = await listObligations(userId, { status: 'open' });
+      if (rows.length === 0) {
+        await ctx.reply('Открытых обязательств нет.');
+        return;
+      }
+      const iOwe = rows
+        .filter((o) => o.direction === 'i_owe')
+        .map((o) => `• ${o.personName} — ${o.description}`);
+      const owed = rows
+        .filter((o) => o.direction === 'owed_to_me')
+        .map((o) => `• ${o.personName} — ${o.description}`);
+      const parts: string[] = [];
+      if (iOwe.length) parts.push('Ты должен:\n' + iOwe.join('\n'));
+      if (owed.length) parts.push('Тебе должны:\n' + owed.join('\n'));
+      await ctx.reply(parts.join('\n\n'));
+    } catch (err) {
+      console.warn('[telegram:obligations] failed:', err);
+      await ctx.reply('Не получилось получить обязательства. Попробуй позже.');
     }
   });
 
