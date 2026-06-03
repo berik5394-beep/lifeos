@@ -1,5 +1,6 @@
 import type { InsightCandidate } from './insight-core.js';
 import type { GoalVerdict } from './plan-vs-fact.js';
+import { computeGoalPace, describeGoalPace } from './goal-pace.js';
 import {
   computePortfolioPace,
   describePortfolioPace,
@@ -52,6 +53,18 @@ export interface ReflectorFacts {
   pacingEnabled: boolean;
   /** Текущее время (для расчёта monthsLeft в чистом ядре). */
   now: Date;
+  /** ГОД-пейсинг: измеримые НЕ-денежные цели для goal-pace ветки.
+   *  Опционально (старые фикстуры/off-путь) — gather всегда заполняет. */
+  measurableGoals?: {
+    id: string;
+    goalText: string;
+    target: number;
+    targetDate: Date | null;
+    progress: number;
+    createdAt: Date;
+  }[];
+  /** Флаг ГОД-пейсинга (isV2YearLoadEnabled). */
+  yearPacingEnabled?: boolean;
 }
 
 const YEAR_MONTHS = 12;
@@ -199,6 +212,29 @@ export function reflect(f: ReflectorFacts): InsightCandidate[] {
         rationale: `gap=${v.gap} planStale`,
         source: 'reflector',
         dismissKey: `reflector_goal_behind_plan_stale_${v.area}`,
+      });
+    }
+  }
+
+  // 4. ГОД-пейсинг измеримых не-денежных целей (additive, под флагом).
+  //    Деньги уже покрыты блоком выше; здесь — книги/вес/навыки.
+  if (f.yearPacingEnabled) {
+    for (const g of f.measurableGoals ?? []) {
+      const pace = computeGoalPace(
+        { target: g.target, targetDate: g.targetDate, progress: g.progress, createdAt: g.createdAt },
+        f.now,
+      );
+      if (pace.monthsElapsed < 0.5) continue; // не нудим про свежие цели
+      const line = describeGoalPace(g.goalText, pace, g.target);
+      if (!line) continue;
+      out.push({
+        kind: 'goal_pace_behind',
+        scope: 'goal:pace:' + g.id,
+        severity: 4,
+        message: line,
+        rationale: `goal pace ${pace.status} done=${Math.round(pace.done)}/${g.target}`,
+        source: 'goal_pace',
+        dismissKey: 'reflector_goal_pace_' + g.id,
       });
     }
   }
