@@ -177,3 +177,8 @@ export function isV2WeekLoadEnabled(userId: string): boolean {
 export function isV2MonthLoadEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_MONTH_LOAD, userId);
 }
+
+/** Движок пересечения, горизонт ГОД (пейсинг измеримых целей). Off → байт-в-байт. */
+export function isV2YearLoadEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_YEAR_LOAD, userId);
+}
