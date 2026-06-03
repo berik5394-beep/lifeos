@@ -3,6 +3,7 @@ import {
   isV2MemoryEnabled,
   isV2ProactivityEnabled,
   isV2AxesEnabled,
+  isV2ObligationsEnabled,
   isV2CronEnabled,
   isV2IdentityEnabled,
   isV2WriteEnabled,
@@ -275,5 +276,23 @@ describe('isV2WriteEnabled', () => {
   it('ignores trailing/leading whitespace in flag itself', () => {
     process.env.FEATURE_V2_WRITE = '  all  ';
     expect(isV2WriteEnabled('x')).toBe(true);
+  });
+});
+
+describe('isV2ObligationsEnabled', () => {
+  afterEach(() => {
+    delete process.env.FEATURE_V2_OBLIGATIONS;
+  });
+  it('unset → false', () => {
+    expect(isV2ObligationsEnabled('u1')).toBe(false);
+  });
+  it('all → true', () => {
+    process.env.FEATURE_V2_OBLIGATIONS = 'all';
+    expect(isV2ObligationsEnabled('u1')).toBe(true);
+  });
+  it('user-list матчит только своих', () => {
+    process.env.FEATURE_V2_OBLIGATIONS = 'user-u1,user-u2';
+    expect(isV2ObligationsEnabled('u1')).toBe(true);
+    expect(isV2ObligationsEnabled('u3')).toBe(false);
   });
 });

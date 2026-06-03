@@ -48,6 +48,19 @@ export function isV2AxesEnabled(userId: string): boolean {
 }
 
 /**
+ * Obligations (память отношений+обещаний). Same shape as isV2AxesEnabled:
+ * "all"/"true", "none"/"false"/unset, or comma list "user-X,user-Y".
+ */
+export function isV2ObligationsEnabled(userId: string): boolean {
+  const raw = process.env.FEATURE_V2_OBLIGATIONS;
+  if (raw === undefined) return false;
+  const flag = raw.trim();
+  if (flag === '' || flag === 'none' || flag === 'false') return false;
+  if (flag === 'all' || flag === 'true') return true;
+  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
+}
+
+/**
  * v2.0 Week 6 — global cron flag.
  *
  * Crons are global jobs (one sweep affects all users), so no per-user
