@@ -166,3 +166,8 @@ export function isV2SavingsCoachEnabled(userId: string): boolean {
 export function isV2DayLoadEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_DAY_LOAD, userId);
 }
+
+/** Движок пересечения, срез 2 (неделя перегружена). Off → байт-в-байт. */
+export function isV2WeekLoadEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_WEEK_LOAD, userId);
+}
