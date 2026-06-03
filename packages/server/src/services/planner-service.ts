@@ -46,6 +46,7 @@ import { prisma } from '../lib/prisma.js';
 import { AiModelError } from '../lib/errors.js';
 import { localDateStr } from '../lib/tz.js';
 import { parseGoalDeadline } from './goal-deadline.js';
+import { estimateWeeklyGoalMinutesInBackground } from './estimate-goal-minutes.js';
 
 const anthropic = createAnthropic();
 
@@ -528,6 +529,7 @@ export async function persistPlan(
   // прогресс/история целы, ручные (derivedFrom='user') не тронуты.
   let created = 0;
   let archived = 0;
+  const createdWeeklyGoals: Array<{ id: string; goalText: string }> = [];
   await prisma.$transaction(async (tx) => {
     if (doArchive) {
       const now = new Date();
@@ -552,7 +554,7 @@ export async function persistPlan(
       archived = aw.count + ah.count;
     }
     for (const w of rows.weeklyGoals) {
-      await tx.weeklyGoal.create({
+      const wg = await tx.weeklyGoal.create({
         data: {
           userId,
           weekStart: w.weekStart,
@@ -563,6 +565,7 @@ export async function persistPlan(
           derivedFrom: w.derivedFrom,
         },
       });
+      createdWeeklyGoals.push({ id: wg.id, goalText: wg.goalText });
       created++;
     }
     if (rows.habit) {
@@ -601,6 +604,12 @@ export async function persistPlan(
       });
     }
   });
+
+  // #engine: оценка усилия/нед фоном для созданных целей (под флагом
+  // month-load). После коммита транзакции — не гоняем открытую tx.
+  for (const wg of createdWeeklyGoals) {
+    void estimateWeeklyGoalMinutesInBackground(wg.id, wg.goalText, userId);
+  }
 
   const habitNote = rows.habit
     ? ` + привычка «${rows.habit.name}» — отмечай каждый день, она ведёт к цели`
