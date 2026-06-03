@@ -48,8 +48,12 @@ model Obligation {
   id             String    @id @default(cuid())
   userId         String
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  personEntityId String?                       // → Entity(type='person'); null = «кто-то» (уточним позже)
-  personName     String                        // денормализованное имя (на случай если Entity ещё нет)
+  // Идиоматично (context7/Prisma 6): опциональная СВЯЗЬ relation+scalar, НЕ голый
+  // String?. onDelete: SetNull — если человека-сущность удалят, обязательство
+  // живёт, линк обнуляется, остаётся денормализованное personName.
+  personEntityId String?
+  person         Entity?   @relation("EntityObligations", fields: [personEntityId], references: [id], onDelete: SetNull)
+  personName     String                        // имя пишем всегда (резолв Entity — best-effort)
   direction      String                        // 'i_owe' | 'owed_to_me'
   kind           String                        // 'action' | 'money'
   description    String                        // «прислать договор» / «вернуть долг»
@@ -66,7 +70,8 @@ model Obligation {
   @@index([userId, personEntityId])
 }
 ```
-Связь `User.obligations Obligation[]`. **Миграция идемпотентная** (CREATE TABLE IF
+Back-relations: `User.obligations Obligation[]` и `Entity.obligations Obligation[]
+@relation("EntityObligations")`. **Миграция идемпотентная** (CREATE TABLE IF
 NOT EXISTS + guarded FK через DO/pg_constraint — как reconcile-миграция сегодня),
 `onDelete: Cascade` сразу. Добавить `Obligation` в guard-тест удаления аккаунта
 (`auth-delete-coverage.test.ts`) — он user-owned.
