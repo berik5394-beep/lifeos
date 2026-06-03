@@ -26,7 +26,6 @@ const FEATURES: FeatureRow[] = [
   { label: 'Календарь + синхронизация', free: true, pro: true },
   { label: 'Финансовый трекер', free: true, pro: true },
   { label: 'Дневник самочувствия', free: true, pro: true },
-  { label: 'Шагомер + GPS', free: true, pro: true },
   { label: 'Питомец', free: true, pro: true },
   { label: 'Офлайн-режим', free: true, pro: true },
   { label: 'Голосовые команды', free: '3/день', pro: '∞' },

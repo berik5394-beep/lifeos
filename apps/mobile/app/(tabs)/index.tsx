@@ -26,7 +26,6 @@ import { useTaskStore } from '@/stores/task-store';
 import { useGoalStore } from '@/stores/goal-store';
 import { useHabitStore } from '@/stores/habit-store';
 import { useAuthStore } from '@/stores/auth-store';
-import { useStepStore } from '@/stores/step-store';
 import { useJournalStore } from '@/stores/journal-store';
 import { useFinanceStore } from '@/stores/finance-store';
 import { usePetStore } from '@/stores/pet-store';
@@ -211,7 +210,6 @@ export default function PlannerScreen() {
   } = useGoalStore();
   const { habits, logs, fetchHabits } = useHabitStore();
   const user = useAuthStore((state) => state.user);
-  const { todaySteps } = useStepStore();
   const { todayEntry, fetchEntry: fetchJournalEntry } = useJournalStore();
   const petData = usePetStore((s) => s.petData);
   const petReaction = usePetStore((s) => s.lastReaction);
@@ -512,7 +510,6 @@ export default function PlannerScreen() {
   const handleDismissEveningRitual = useCallback(() => setShowEveningRitual(false), []);
 
   const handleNavigateJournal = useCallback(() => navigation.navigate('Journal' as never), [navigation]);
-  const handleNavigateActivity = useCallback(() => navigation.navigate('Activity' as never), [navigation]);
   const handleNavigateTaskCapture = useCallback(() => navigation.navigate('TaskCapture' as never), [navigation]);
   const handleNavigateArena = useCallback(() => navigation.navigate('Arena' as never), [navigation]);
   const handleNavigateFocusMode = useCallback(() => navigation.navigate('FocusMode' as never), [navigation]);
@@ -621,11 +618,6 @@ export default function PlannerScreen() {
               progress={habitProgress}
             />
             <SummaryCard
-              label="Шаги"
-              value={`\u{1F6B6} ${todaySteps}`}
-              color={c.warning}
-            />
-            <SummaryCard
               label="Настрой"
               value={getMoodEmoji(todayEntry?.mood)}
               color={c.secondary}
@@ -641,13 +633,6 @@ export default function PlannerScreen() {
             activeOpacity={0.7}
           >
             <Text style={styles.quickActionText}>{'\u{1F4DD}'} Дневник</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickActionPill}
-            onPress={handleNavigateActivity}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.quickActionText}>{'\u{1F6B6}'} Активность</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.quickActionPill}

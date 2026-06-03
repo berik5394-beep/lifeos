@@ -10,7 +10,6 @@ import { useAppStore } from '@/stores/app-store';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useThemeStore } from '@/stores/theme-store';
 import { useUIStore } from '@/stores/ui-store';
-import { registerBackgroundStepSync } from '@/services/background-steps';
 import { initOfflineManager, networkMonitor, offlineQueue } from '@/services/offline-manager';
 import { api } from '@/services/api';
 import { setupVoiceAlarmListener } from '@/services/voice-alarm';
@@ -29,7 +28,6 @@ import RegisterScreen from '@/screens/register';
 
 // Other screens — lazy loaded for faster startup
 const OnboardingScreen = React.lazy(() => import('@/screens/onboarding'));
-const ActivityScreen = React.lazy(() => import('@/screens/activity'));
 const JournalScreen = React.lazy(() => import('@/screens/journal'));
 const SettingsScreen = React.lazy(() => import('@/screens/settings'));
 const IntegrationsScreen = React.lazy(() => import('@/screens/integrations'));
@@ -39,7 +37,6 @@ const AchievementsScreen = React.lazy(() => import('@/screens/achievements'));
 const CharacterSelectScreen = React.lazy(() => import('@/screens/character-select'));
 const ArenaScreen = React.lazy(() => import('@/screens/arena'));
 const BattleScreen = React.lazy(() => import('@/screens/battle-screen'));
-const ExerciseTrackerScreen = React.lazy(() => import('@/screens/exercise-tracker'));
 const ScheduleImportScreen = React.lazy(() => import('@/screens/schedule-import'));
 const TaskCaptureScreen = React.lazy(() => import('@/screens/task-capture'));
 const VoiceConversationScreen = React.lazy(() => import('@/screens/voice-conversation'));
@@ -230,10 +227,6 @@ export default function Navigation() {
       } catch {
         // If refresh fails, user will need to re-login
       }
-      // Register background step counter (runs even when app is closed)
-      registerBackgroundStepSync().catch(() => {
-        // Non-critical — pedometer may not be available
-      });
       // Sync offline queue when network is restored
       const unsubscribeNetwork = networkMonitor.onChange(async (isConnected) => {
         if (isConnected && offlineQueue.pendingCount > 0) {
@@ -338,17 +331,6 @@ export default function Navigation() {
           <>
             <RootStack.Screen name="Tabs" component={TabNavigator} />
             <RootStack.Screen
-              name="Activity"
-              component={ActivityScreen}
-              options={{
-                headerShown: true,
-                title: 'Активность',
-                headerStyle: { backgroundColor: theme.background },
-                headerTintColor: theme.text,
-                headerTitleStyle: { fontWeight: '600' },
-              }}
-            />
-            <RootStack.Screen
               name="Journal"
               component={JournalScreen}
               options={{
@@ -397,7 +379,6 @@ export default function Navigation() {
             <RootStack.Screen name="character-select" component={CharacterSelectScreen} />
             <RootStack.Screen name="Arena" component={ArenaScreen} />
             <RootStack.Screen name="BattleScreen" component={BattleScreen} options={{ headerShown: false, animation: 'fade' }} />
-            <RootStack.Screen name="ExerciseTracker" component={ExerciseTrackerScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="ScheduleImport" component={ScheduleImportScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="TaskCapture" component={TaskCaptureScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="VoiceConversation" component={VoiceConversationScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
