@@ -12,4 +12,8 @@ describe('create_task — хук движка пересечения (день)'
     expect(SRC).toContain('maybeDayLoadLine');
     expect(SRC).toMatch(/maybeDayLoadLine[\s\S]*?message/);
   });
+  it('week-хук после дня (день в приоритете)', () => {
+    expect(SRC).toContain('maybeWeekLoadLine');
+    expect(SRC).toMatch(/dayLoad \? null : await maybeWeekLoadLine/);
+  });
 });

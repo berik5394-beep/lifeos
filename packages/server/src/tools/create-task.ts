@@ -7,6 +7,7 @@ import {
   estimateTaskMinutesInBackground,
   maybeDayLoadLine,
 } from '../services/day-load.js';
+import { maybeWeekLoadLine } from '../services/week-load.js';
 
 /**
  * SSOT Step 5 — write-tool. Логика 1:1 с legacy action-executor
@@ -62,9 +63,12 @@ export const createTaskTool = defineTool({
       input.category ?? null,
       ctx.userId,
     );
+    // #engine: день в приоритете; если день влезает — проверяем НЕДЕЛЮ.
     const dayLoad = await maybeDayLoadLine(ctx.userId, new Date());
+    const weekLoad = dayLoad ? null : await maybeWeekLoadLine(ctx.userId, new Date());
+    const extra = dayLoad ?? weekLoad;
     return {
-      message: dayLoad ? `${message}\n\n${dayLoad}` : message,
+      message: extra ? `${message}\n\n${extra}` : message,
       taskId: task.id,
     };
   },
