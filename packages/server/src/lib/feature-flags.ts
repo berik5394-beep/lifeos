@@ -171,3 +171,9 @@ export function isV2DayLoadEnabled(userId: string): boolean {
 export function isV2WeekLoadEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_WEEK_LOAD, userId);
 }
+
+/** Движок пересечения, срез 3 (месяц). Гейтит и data-слой (оценка целей),
+ *  и будущий month-load нудж. Off → байт-в-байт. */
+export function isV2MonthLoadEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_MONTH_LOAD, userId);
+}

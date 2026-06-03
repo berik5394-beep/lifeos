@@ -8,6 +8,7 @@ import {
   isV2WriteEnabled,
   isV2DayLoadEnabled,
   isV2WeekLoadEnabled,
+  isV2MonthLoadEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -18,6 +19,22 @@ afterEach(() => {
   else process.env.FEATURE_V2_MEMORY = ORIG_MEM;
   if (ORIG_PROAC === undefined) delete process.env.FEATURE_V2_PROACTIVITY;
   else process.env.FEATURE_V2_PROACTIVITY = ORIG_PROAC;
+});
+
+describe('isV2MonthLoadEnabled', () => {
+  const ORIG = process.env.FEATURE_V2_MONTH_LOAD;
+  afterEach(() => {
+    if (ORIG === undefined) delete process.env.FEATURE_V2_MONTH_LOAD;
+    else process.env.FEATURE_V2_MONTH_LOAD = ORIG;
+  });
+  it('off по умолчанию', () => {
+    delete process.env.FEATURE_V2_MONTH_LOAD;
+    expect(isV2MonthLoadEnabled('u1')).toBe(false);
+  });
+  it('all → включено', () => {
+    process.env.FEATURE_V2_MONTH_LOAD = 'all';
+    expect(isV2MonthLoadEnabled('u1')).toBe(true);
+  });
 });
 
 describe('isV2WeekLoadEnabled', () => {
