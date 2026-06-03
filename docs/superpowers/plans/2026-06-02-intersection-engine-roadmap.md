@@ -37,7 +37,12 @@ Berik: **день → неделя → месяц → год.**
 - [x] **МЕСЯЦ — ПОЛНОСТЬЮ done (ревью APPROVED, флаг `FEATURE_V2_MONTH_LOAD=all` в проде).** Σ обязательств месяца (недельные цели + задачи) vs ёмкость оставшихся дней. Доставлен в 2 шага под одним флагом:
   - [x] **Data-слой:** `WeeklyGoal.estimatedMinutes Int?` + `estimate-goal-minutes.ts` (haiku, фоном, идемпотентно) + хуки REST `/goals/weekly` + планировщик `persistPlan`. Коммиты f54d14d/1ed417d/c34cbc6/a26348e/f3dd63e.
   - [x] **Нудж `month-load.ts`:** `localMonthStartUTC` (tz-хелпер) + `gatherMonthLoad` (demand задачи+цели, capacity `sumWeekCapacity` по оставшимся дням) + `describeMonthLoad`/`maybeMonthLoadLine` + каскад в `create_task` (day>week>month). Дедуп ≤1/день source `month_load`. Коммиты 21b0c1e/92822d6/904c52e. Спека `specs/2026-06-03-month-load-design.md`, план `plans/2026-06-03-month-load.md`.
-- [ ] **ГОД** — годовые цели (вкл. духовное/карьеру) vs доступное время/усилие за год. Деньги-год уже покрыты коучем; время-год = новый адаптер. Здесь «важность» не-денежных целей нужна явная (приоритет/вес).
+- [x] **ГОД — done (ревью APPROVED-with-nits, фикс применён; флаг `FEATURE_V2_YEAR_LOAD`).** Framing = ПЕЙСИНГ измеримых не-денежных целей (Berik выбрал, не capacity-overload). Деньги-цели остаются у savings-coach. Доставлено целиком:
+  - **Y1 захват прогресса:** инструмент `update_goal_progress` («прочитал 25 книг» → находит измеримую цель → пишет progress% с конвертацией `pctFromValue`). Закрыл блокер «progress никогда не обновлялся».
+  - **Y2 пейсинг:** `goal-pace.ts` (`computeGoalPace` поверх прод-`computeSavingsPace`, `describeGoalPace`) — реактивно (строка в инструменте, source `goal_pace`) + проактивно (ветка дневного рефлектора, source `reflector`, гард свежести <0.5мес). Деньги/savings не тронуты.
+  - Коммиты cad80f1/6d05038/2c62ba2/b26e12c/eec7ab2/8f6aabb. Спека `specs/2026-06-03-year-goal-pace-design.md`, план `plans/2026-06-03-year-goal-pace.md`.
+
+**🏁 ДВИЖОК ПЕРЕСЕЧЕНИЯ ЗАВЕРШЁН: день ✅ → неделя ✅ → месяц ✅ → год ✅.** Все 4 горизонта + деньги — в коде. Деплой месяца+года ждёт «пуш и деплой».
 - [ ] (опц.) **ЭНЕРГИЯ** — ещё один ресурс (mood/настроение как ёмкость для тяжёлых задач).
 
 **Каждый горизонт = отдельный срез** через тот же процесс: brainstorm → спека → план → TDD-реализация → независимое ревью → деплой (как сделали день).
