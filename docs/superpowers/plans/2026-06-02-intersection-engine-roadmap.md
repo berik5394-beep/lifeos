@@ -34,9 +34,9 @@ Berik: **день → неделя → месяц → год.**
 
 - [x] **ДЕНЬ** — `day-load.ts` (готово, в проде).
 - [x] **НЕДЕЛЯ** — `week-load.ts` (КОД ГОТОВ, ревью APPROVED, флаг `FEATURE_V2_WEEK_LOAD` ещё НЕ выставлен в Railway — ждём «пуш и деплой»). Ёмкость = `sumWeekCapacity` (Σ дневной ёмкости по ОСТАВШИМСЯ дням пн–вс, tz-aware); спрос = Σ `estimatedMinutes` незакрытых задач недели. Реактив в `create_task` ПОСЛЕ дня (день в приоритете — нет двойной строки). Дедуп ≤1/день vs source `week_load`. Коммиты ff17b2d/e4fc3d1/fe4428e/e2c4cf0.
-- [~] **МЕСЯЦ** — Σ обязательств месяца (недельные цели + крупные задачи) vs ёмкость месяца. Адаптер `month-load.ts`. Флаг `FEATURE_V2_MONTH_LOAD` (один на весь срез, доставка в 2 шага).
-  - [x] **Data-слой (done, ревью APPROVED):** `WeeklyGoal.estimatedMinutes Int?` + `estimate-goal-minutes.ts` (haiku, фоном, идемпотентно) + хуки REST `/goals/weekly` + планировщик `persistPlan`. Закрывает пробел «у недельных целей нет числовой оценки времени». Коммиты f54d14d/1ed417d/c34cbc6/a26348e/f3dd63e. Спека `specs/2026-06-03-goal-effort-estimate-design.md`, план `plans/2026-06-03-goal-effort-estimate.md`.
-  - [ ] **Нудж month-load.ts:** demand = Σ `WeeklyGoal.estimatedMinutes ?? DEFAULT` по месяцу + задачи месяца; capacity = ёмкость месяца. Тот же `computeCapacityFit`.
+- [x] **МЕСЯЦ — ПОЛНОСТЬЮ done (ревью APPROVED, флаг `FEATURE_V2_MONTH_LOAD=all` в проде).** Σ обязательств месяца (недельные цели + задачи) vs ёмкость оставшихся дней. Доставлен в 2 шага под одним флагом:
+  - [x] **Data-слой:** `WeeklyGoal.estimatedMinutes Int?` + `estimate-goal-minutes.ts` (haiku, фоном, идемпотентно) + хуки REST `/goals/weekly` + планировщик `persistPlan`. Коммиты f54d14d/1ed417d/c34cbc6/a26348e/f3dd63e.
+  - [x] **Нудж `month-load.ts`:** `localMonthStartUTC` (tz-хелпер) + `gatherMonthLoad` (demand задачи+цели, capacity `sumWeekCapacity` по оставшимся дням) + `describeMonthLoad`/`maybeMonthLoadLine` + каскад в `create_task` (day>week>month). Дедуп ≤1/день source `month_load`. Коммиты 21b0c1e/92822d6/904c52e. Спека `specs/2026-06-03-month-load-design.md`, план `plans/2026-06-03-month-load.md`.
 - [ ] **ГОД** — годовые цели (вкл. духовное/карьеру) vs доступное время/усилие за год. Деньги-год уже покрыты коучем; время-год = новый адаптер. Здесь «важность» не-денежных целей нужна явная (приоритет/вес).
 - [ ] (опц.) **ЭНЕРГИЯ** — ещё один ресурс (mood/настроение как ёмкость для тяжёлых задач).
 
