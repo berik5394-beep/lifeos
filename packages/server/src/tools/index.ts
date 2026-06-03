@@ -37,6 +37,7 @@ import { createSkillTool } from './create-skill.js';
 import { rememberEntityTool } from './remember-entity.js';
 import { linkRelationshipTool } from './link-relationship.js';
 import { suggestGoalTool } from './suggest-goal.js';
+import { updateGoalProgressTool } from './update-goal-progress.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -86,6 +87,8 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   rememberEntityTool,
   linkRelationshipTool,
   suggestGoalTool,
+  // Движок пересечения, горизонт ГОД — захват прогресса измеримой цели.
+  updateGoalProgressTool,
 ];
 
 // L99 #14 fix: load-time dup-name guard. Раньше `new Map(...)` silent
