@@ -54,8 +54,7 @@
         "android.permission.READ_CALENDAR",
         "android.permission.WRITE_CALENDAR",
         "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.WAKE_LOCK",
-        "android.permission.WRITE_CONTACTS"
+        "android.permission.WAKE_LOCK"
       ]
     },
     "plugins": [
@@ -70,8 +69,8 @@
       [
         "expo-image-picker",
         {
-          "cameraPermission": "LifeOS использует камеру для счётчика калорий и сканирования расписания",
-          "photosPermission": "LifeOS использует фото для распознавания еды и расписаний"
+          "cameraPermission": "LifeOS использует камеру для сканирования расписаний и заметок",
+          "photosPermission": "LifeOS использует фото для распознавания расписаний и заметок"
         }
       ],
       "expo-secure-store",
