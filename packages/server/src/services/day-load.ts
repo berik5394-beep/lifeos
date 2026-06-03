@@ -10,7 +10,7 @@ import {
 } from './capacity-fit.js';
 import { estimateTaskMinutes } from './estimate-task-minutes.js';
 
-const DEFAULT_TASK_MINUTES = 30;
+export const DEFAULT_TASK_MINUTES = 30;
 const DAY_LOAD_SCOPE = 'time:day_load';
 
 /** priority-строка → числовая важность (для защиты важных задач). */
