@@ -12,23 +12,13 @@ export default async function setup(): Promise<void> {
     );
   }
   try {
-    // 1) migrate deploy — реальная история (создаёт pgvector extension + базу).
+    // migrate deploy воспроизводит ПОЛНУЮ схему: миграция reconcile_schema_drift
+    // (20260603000000) примирила исторический db-push-дрейф, поэтому отдельный
+    // db push больше НЕ нужен — migrate deploy один даёт схему = schema.prisma.
     execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
       stdio: 'pipe',
       env: process.env,
     });
-    // 2) db push — примиряет ДРЕЙФ: в schema.prisma есть колонки, которых нет в
-    //    migrations/ (напр. User.timezone, добавленная исторически через db push).
-    //    Сгенерированный Prisma client ждёт их → без этого шага .create() падает
-    //    «column does not exist». Тест-БД эфемерна → --accept-data-loss безопасен.
-    //    ПРИМЕЧАНИЕ: сам дрейф (migrations ≠ schema.prisma) — отдельная находка,
-    //    латентный риск при пересоздании прод-БД из миграций. Чинится отдельной
-    //    миграцией (prisma migrate diff), не здесь.
-    execFileSync(
-      'npx',
-      ['prisma', 'db', 'push', '--skip-generate', '--accept-data-loss'],
-      { stdio: 'pipe', env: process.env },
-    );
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     throw new Error(
