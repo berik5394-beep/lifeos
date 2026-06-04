@@ -16,6 +16,10 @@ describe('goal-impact read-only guard (money-safety)', () => {
       ).not.toMatch(
         /prisma\.\w+\.(create|update|delete|upsert|createMany|updateMany|deleteMany)\b/,
       );
+      // Backstop: raw SQL / transaction could smuggle a write past the above.
+      expect(src, `${f} must not use raw SQL / $transaction`).not.toMatch(
+        /prisma\.\$(executeRaw|executeRawUnsafe|queryRaw|queryRawUnsafe|transaction)\b/,
+      );
     }
   });
 });
