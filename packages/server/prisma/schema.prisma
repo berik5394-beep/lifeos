@@ -42,6 +42,7 @@ model User {
   yearlyGoals            YearlyGoal[]
   expenses               Expense[]
   incomes                Income[]
+  cashSnapshots          CashSnapshot[]
   journalEntries         JournalEntry[]
   stepLogs               StepLog[]
   importedFiles          ImportedFile[]
@@ -371,6 +372,17 @@ model Income {
   createdAt DateTime @default(now())
 
   @@index([userId, date])
+}
+
+model CashSnapshot {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  balance   Float
+  asOf      DateTime @db.Date
+  createdAt DateTime @default(now())
+
+  @@index([userId, asOf])
 }
 
 model JournalEntry {
