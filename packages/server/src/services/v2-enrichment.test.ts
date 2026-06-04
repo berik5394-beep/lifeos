@@ -97,6 +97,15 @@ describe('structural — fetcher', () => {
   it('returns null on top-level failure (best-effort)', () => {
     expect(SRC).toMatch(/return null/);
   });
+  it('caps each base Promise.all member with a per-member timeout', () => {
+    // Внешний бюджет (jarvis-orchestrator) оборачивает весь блок. Если ОДИН
+    // базовый член (identity/patterns/mood/entities/obligations) зависнет —
+    // он не должен ронять весь enrichment по внешнему таймауту. Каждый капнут.
+    expect(SRC).toMatch(/BASE_MEMBER_BUDGET_MS\s*=\s*\d+/);
+    // identity, patterns, mood, entities, obligations — все 5 в withTimeout(...BASE_MEMBER_BUDGET_MS...)
+    const baseTimeouts = SRC.match(/withTimeout\([^]*?BASE_MEMBER_BUDGET_MS/g) ?? [];
+    expect(baseTimeouts.length).toBeGreaterThanOrEqual(5);
+  });
 });
 
 describe('formatAxesSection (D1)', () => {

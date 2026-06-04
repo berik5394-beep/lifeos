@@ -35,6 +35,9 @@ import { withTimeout } from '../lib/with-timeout.js';
 // Кросс-домен билдеры читают много из БД — у каждого свой потолок, чтобы один
 // медленный/зависший НЕ ронял весь enrichment-блок по общему таймауту.
 const CROSS_DOMAIN_BUDGET_MS = 1500;
+// Базовые члены Promise.all (identity/patterns/mood/entities/obligations)
+// тоже капаем: один зависший НЕ должен ронять весь блок по внешнему 2500мс.
+const BASE_MEMBER_BUDGET_MS = 1200;
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { formatToneSection } from './bot-traits/tone-section.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
@@ -224,25 +227,45 @@ export async function fetchV2EnrichmentData(
       : Promise.resolve(null);
 
     const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship] = await Promise.all([
-      getBotIdentityService()
-        .getIdentity(userId)
-        .catch(() => null),
-      getProceduralMemory()
-        .getActivePatterns(userId, { minConfidence: 0.6 })
-        .catch(() => []),
-      getEmotionalMemory()
-        .detectMoodShift(userId)
-        .catch(() => null),
-      prisma.entity
-        .findMany({
-          where: { userId },
-          orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
-          take: 5,
-          select: { name: true, importance: true, lastSeenAt: true },
-        })
-        .catch(() => []),
+      withTimeout(
+        getBotIdentityService()
+          .getIdentity(userId)
+          .catch(() => null),
+        BASE_MEMBER_BUDGET_MS,
+        null,
+      ),
+      withTimeout(
+        getProceduralMemory()
+          .getActivePatterns(userId, { minConfidence: 0.6 })
+          .catch(() => []),
+        BASE_MEMBER_BUDGET_MS,
+        [],
+      ),
+      withTimeout(
+        getEmotionalMemory()
+          .detectMoodShift(userId)
+          .catch(() => null),
+        BASE_MEMBER_BUDGET_MS,
+        null,
+      ),
+      withTimeout(
+        prisma.entity
+          .findMany({
+            where: { userId },
+            orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
+            take: 5,
+            select: { name: true, importance: true, lastSeenAt: true },
+          })
+          .catch(() => []),
+        BASE_MEMBER_BUDGET_MS,
+        [],
+      ),
       isV2ObligationsEnabled(userId)
-        ? openObligationsForContext(userId, 5).catch(() => [])
+        ? withTimeout(
+            openObligationsForContext(userId, 5).catch(() => []),
+            BASE_MEMBER_BUDGET_MS,
+            [],
+          )
         : Promise.resolve([]),
       isV2GoalImpactEnabled(userId)
         ? withTimeout(
