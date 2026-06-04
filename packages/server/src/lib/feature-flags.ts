@@ -87,6 +87,18 @@ export function isV2RunwayEnabled(userId: string): boolean {
 }
 
 /**
+ * Energy↔Result (кросс-домен #2). Same shape as isV2AxesEnabled.
+ */
+export function isV2EnergyEnabled(userId: string): boolean {
+  const raw = process.env.FEATURE_V2_ENERGY;
+  if (raw === undefined) return false;
+  const flag = raw.trim();
+  if (flag === '' || flag === 'none' || flag === 'false') return false;
+  if (flag === 'all' || flag === 'true') return true;
+  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
+}
+
+/**
  * v2.0 Week 6 — global cron flag.
  *
  * Crons are global jobs (one sweep affects all users), so no per-user
