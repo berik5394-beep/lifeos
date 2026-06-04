@@ -97,6 +97,11 @@ describe('structural — fetcher', () => {
   it('returns null on top-level failure (best-effort)', () => {
     expect(SRC).toMatch(/return null/);
   });
+  it('wires decisions branch behind flag with builder', () => {
+    expect(SRC).toMatch(/isV2DecisionsEnabled\(userId\)/);
+    expect(SRC).toMatch(/buildDecisionsContext\(/);
+    expect(SRC).toMatch(/formatDecisionsSection\(/);
+  });
   it('caps each base Promise.all member with a per-member timeout', () => {
     // Внешний бюджет (jarvis-orchestrator) оборачивает весь блок. Если ОДИН
     // базовый член (identity/patterns/mood/entities/obligations) зависнет —

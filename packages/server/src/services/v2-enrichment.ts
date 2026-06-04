@@ -23,12 +23,14 @@ import {
   isV2RunwayEnabled,
   isV2EnergyEnabled,
   isV2RelationshipsEnabled,
+  isV2DecisionsEnabled,
 } from '../lib/feature-flags.js';
 import { openObligationsForContext } from './obligations/index.js';
 import { buildGoalImpact } from './goal-impact/index.js';
 import { buildRunway } from './runway/index.js';
 import { buildEnergyLink } from './energy-link/index.js';
 import { buildRelationshipNudge } from './relationship-link/index.js';
+import { buildDecisionsContext } from './decisions/index.js';
 import { gatherReflectorFacts } from './reflector-service.js';
 import { withTimeout } from '../lib/with-timeout.js';
 
@@ -70,6 +72,8 @@ export type V2EnrichmentData = {
   energyLink: string | null;
   /** Relationships (кросс-домен #3): вычисленный инсайт или null. */
   relationship: string | null;
+  /** Решения↔исходы (кросс-домен #4): решения на проверку + win-rate или null. */
+  decisions: string | null;
 };
 
 export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
@@ -107,6 +111,8 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (el) lines.push(el);
   const rel = formatRelationshipSection(data.relationship ?? null);
   if (rel) lines.push(rel);
+  const dec = formatDecisionsSection(data.decisions ?? null);
+  if (dec) lines.push(dec);
   return lines.join('\n');
 }
 
@@ -141,6 +147,37 @@ export function formatEnergyLinkSection(insightText: string | null): string {
 export function formatRelationshipSection(insightText: string | null): string {
   if (!insightText) return '';
   return `Отношения (вычислено): ${insightText}`;
+}
+
+/**
+ * Решения↔исходы (кросс-домен #4) — pure render. Empty → ''. Exported для теста.
+ */
+export function formatDecisionsSection(insightText: string | null): string {
+  if (!insightText) return '';
+  return `Решения (вычислено): ${insightText}`;
+}
+
+/**
+ * Контекст решений → компактная строка инсайта (решения на проверку + win-rate).
+ * null/пусто → null. Чистая, exported для теста.
+ */
+export function renderDecisionsInsight(
+  ctx: Awaited<ReturnType<typeof buildDecisionsContext>>,
+): string | null {
+  if (!ctx) return null;
+  const parts: string[] = [];
+  if (ctx.dueForReview.length > 0) {
+    const titles = ctx.dueForReview.map((d) => `«${d.title}»`).join(', ');
+    parts.push(`пора спросить, как вышло: ${titles}`);
+  }
+  if (ctx.winRate.reviewed >= 3 && ctx.winRate.rate !== null) {
+    parts.push(
+      `проверено ${ctx.winRate.reviewed}, сработало ${ctx.winRate.worked} — ${Math.round(
+        ctx.winRate.rate * 100,
+      )}%`,
+    );
+  }
+  return parts.length > 0 ? parts.join('; ') : null;
 }
 
 /**
@@ -226,7 +263,7 @@ export async function fetchV2EnrichmentData(
       ? gatherReflectorFacts(userId, new Date()).catch(() => null)
       : Promise.resolve(null);
 
-    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship] = await Promise.all([
+    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions] = await Promise.all([
       withTimeout(
         getBotIdentityService()
           .getIdentity(userId)
@@ -295,6 +332,13 @@ export async function fetchV2EnrichmentData(
             .then((r) => r?.insightText ?? null)
             .catch(() => null)
         : Promise.resolve(null),
+      isV2DecisionsEnabled(userId)
+        ? withTimeout(
+            buildDecisionsContext(userId).then((c) => renderDecisionsInsight(c)),
+            CROSS_DOMAIN_BUDGET_MS,
+            null,
+          ).catch(() => null)
+        : Promise.resolve(null),
     ]);
     const now = Date.now();
     return {
@@ -337,6 +381,7 @@ export async function fetchV2EnrichmentData(
       runway,
       energyLink,
       relationship,
+      decisions,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);
