@@ -81,6 +81,11 @@ export function describeRunway(
   // healthy / cash_positive — молчим, ЕСЛИ нет якоря-снапшота.
   if (!opts.hasAnchor) return null;
   if (r.status === 'cash_positive') {
+    // cash_positive = доход≥расход за окно ~90д, но якорный баланс (иной
+    // горизонт) может быть отрицательным — не печатаем «−50000₸ держится».
+    if (round(cashOnHand) <= 0) {
+      return '✅ По записям доход покрывает расходы — отток не растёт.' + tail;
+    }
     return (
       `✅ По записям расходы не превышают доход — баланс ~${round(cashOnHand)}₸ держится, хватит надолго.` +
       tail

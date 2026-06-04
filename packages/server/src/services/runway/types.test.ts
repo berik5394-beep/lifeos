@@ -91,6 +91,13 @@ describe('describeRunway — hasAnchor', () => {
     const s = describeRunway(r, 300_000, { hasAnchor: true, monthlyIncome: 400_000 });
     expect(s).toBeTruthy();
   });
+  it('cash_positive + hasAnchor + negative cash → no contradictory «держится» line', () => {
+    const r = { netBurnRate: -10_000, runwayMonths: null, status: 'cash_positive' as const };
+    const s = describeRunway(r, -50_000, { hasAnchor: true, monthlyIncome: 400_000 });
+    expect(s).toBeTruthy();
+    expect(s).not.toMatch(/держится/);
+    expect(s).not.toMatch(/-50000/);
+  });
   it('income tail appended when monthlyIncome<=0 and hasAnchor', () => {
     const r = { netBurnRate: 80_000, runwayMonths: 2, status: 'short' as const };
     const s = describeRunway(r, 160_000, { hasAnchor: true, monthlyIncome: 0 });
