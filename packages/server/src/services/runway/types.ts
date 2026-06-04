@@ -39,17 +39,57 @@ export function computeRunway(input: RunwayInput): RunwayResult {
 }
 
 /** Человеческая строка. null для healthy/cash_positive/no_data (молчим). */
-export function describeRunway(r: RunwayResult, cashOnHand: number): string | null {
+/** Якорный кэш: баланс со слов юзера минус траты после снапшота плюс доходы после. */
+export function computeAnchoredCash(input: {
+  balance: number;
+  expensesSince: number;
+  incomesSince: number;
+}): number {
+  return input.balance - input.expensesSince + input.incomesSince;
+}
+
+/**
+ * Человеческая строка. Без якоря — null для healthy/cash_positive/no_data
+ * (молчим, проактивный «ноет когда мало»). С якорем (юзер сам назвал баланс)
+ * — число для любого статуса кроме no_data; healthy/cash_positive позитивно.
+ */
+export function describeRunway(
+  r: RunwayResult,
+  cashOnHand: number,
+  opts: { hasAnchor?: boolean; monthlyIncome?: number } = {},
+): string | null {
   const round = (n: number) => Math.round(n);
+  const tail =
+    opts.hasAnchor && (opts.monthlyIncome ?? 0) <= 0
+      ? ' — считаю без учёта дохода, записывай зарплату → посчитаю точнее'
+      : '';
+  if (r.status === 'no_data') return null;
   if (r.status === 'underwater') {
-    return '💸 По записям расходы давно обгоняют доходы (накоплен минус). Стоит сократить траты.';
+    return (
+      '💸 По записям расходы давно обгоняют доходы (накоплен минус). Стоит сократить траты.' +
+      tail
+    );
   }
   if (r.status === 'critical' || r.status === 'short') {
     const months = r.runwayMonths == null ? 0 : Math.round(r.runwayMonths * 10) / 10;
     return (
       `💸 По записям у тебя ~${round(cashOnHand)}₸, чистый расход ~${round(r.netBurnRate)}₸/мес → ` +
-      `денег хватит на ~${months} мес.`
+      `денег хватит на ~${months} мес.` +
+      tail
     );
   }
-  return null;
+  // healthy / cash_positive — молчим, ЕСЛИ нет якоря-снапшота.
+  if (!opts.hasAnchor) return null;
+  if (r.status === 'cash_positive') {
+    return (
+      `✅ По записям расходы не превышают доход — баланс ~${round(cashOnHand)}₸ держится, хватит надолго.` +
+      tail
+    );
+  }
+  // healthy
+  const months = r.runwayMonths == null ? 0 : Math.round(r.runwayMonths * 10) / 10;
+  return (
+    `✅ По записям у тебя ~${round(cashOnHand)}₸, при текущем темпе хватит на ~${months} мес — спокойно.` +
+    tail
+  );
 }
