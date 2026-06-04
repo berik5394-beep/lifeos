@@ -7,6 +7,7 @@ import {
   isV2GoalImpactEnabled,
   isV2RunwayEnabled,
   isV2EnergyEnabled,
+  isV2RelationshipsEnabled,
   isV2CronEnabled,
   isV2IdentityEnabled,
   isV2WriteEnabled,
@@ -351,5 +352,23 @@ describe('isV2EnergyEnabled', () => {
     process.env.FEATURE_V2_ENERGY = 'user-u1';
     expect(isV2EnergyEnabled('u1')).toBe(true);
     expect(isV2EnergyEnabled('u2')).toBe(false);
+  });
+});
+
+describe('isV2RelationshipsEnabled', () => {
+  afterEach(() => {
+    delete process.env.FEATURE_V2_RELATIONSHIPS;
+  });
+  it('unset → false', () => {
+    expect(isV2RelationshipsEnabled('u1')).toBe(false);
+  });
+  it('all → true', () => {
+    process.env.FEATURE_V2_RELATIONSHIPS = 'all';
+    expect(isV2RelationshipsEnabled('u1')).toBe(true);
+  });
+  it('user-list матчит только своих', () => {
+    process.env.FEATURE_V2_RELATIONSHIPS = 'user-u1';
+    expect(isV2RelationshipsEnabled('u1')).toBe(true);
+    expect(isV2RelationshipsEnabled('u2')).toBe(false);
   });
 });
