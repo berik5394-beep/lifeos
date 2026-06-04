@@ -5,6 +5,7 @@ import {
   isV2AxesEnabled,
   isV2ObligationsEnabled,
   isV2GoalImpactEnabled,
+  isV2RunwayEnabled,
   isV2CronEnabled,
   isV2IdentityEnabled,
   isV2WriteEnabled,
@@ -313,5 +314,23 @@ describe('isV2GoalImpactEnabled', () => {
     process.env.FEATURE_V2_GOAL_IMPACT = 'user-u1';
     expect(isV2GoalImpactEnabled('u1')).toBe(true);
     expect(isV2GoalImpactEnabled('u2')).toBe(false);
+  });
+});
+
+describe('isV2RunwayEnabled', () => {
+  afterEach(() => {
+    delete process.env.FEATURE_V2_RUNWAY;
+  });
+  it('unset → false', () => {
+    expect(isV2RunwayEnabled('u1')).toBe(false);
+  });
+  it('all → true', () => {
+    process.env.FEATURE_V2_RUNWAY = 'all';
+    expect(isV2RunwayEnabled('u1')).toBe(true);
+  });
+  it('user-list матчит только своих', () => {
+    process.env.FEATURE_V2_RUNWAY = 'user-u1';
+    expect(isV2RunwayEnabled('u1')).toBe(true);
+    expect(isV2RunwayEnabled('u2')).toBe(false);
   });
 });
