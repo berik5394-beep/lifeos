@@ -21,6 +21,7 @@ import { createEventTool } from './create-event.js';
 import { journalEntryTool } from './journal-entry.js';
 import { addExpenseTool } from './add-expense.js';
 import { addIncomeTool } from './add-income.js';
+import { setBalanceTool } from './set-balance.js';
 import { getTasksTool } from './get-tasks.js';
 import { getCalendarTool } from './get-calendar.js';
 import { getEmailTriageTool } from './get-email-triage.js';
@@ -68,6 +69,8 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   // деньги, needsConfirm:true (Шаг 6)
   addExpenseTool,
   addIncomeTool,
+  // баланс счёта — точка отсчёта runway (флаг-гейт в хендлере)
+  setBalanceTool,
   // external, needsConfirm:true (9B.2) — авто-исключён из агент-цикла
   sendTelegramTool,
   // planner (Phase 5 P2) — декомпозиция цели в дерево (заглушка, шаг 2)
