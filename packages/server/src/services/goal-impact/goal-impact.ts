@@ -31,9 +31,11 @@ export interface GoalImpact {
 export async function buildGoalImpact(
   userId: string,
   now: Date = new Date(),
+  // Дедуп: enrichment делит reflector-факты с runway — не гоняем повторно.
+  prefetchedFacts?: Awaited<ReturnType<typeof gatherReflectorFacts>> | null,
 ): Promise<GoalImpact | null> {
   try {
-    const facts = await gatherReflectorFacts(userId, now);
+    const facts = prefetchedFacts ?? (await gatherReflectorFacts(userId, now));
     if (facts.financeGoals.length === 0) return null;
     const pf = computePortfolioPace({
       goals: facts.financeGoals,

@@ -19,10 +19,13 @@ export interface Runway {
 export async function buildRunway(
   userId: string,
   now: Date = new Date(),
+  // Дедуп: если reflector-факты уже посчитаны выше (enrichment делит их с
+  // goal-impact), переиспользуем — НЕ гоняем gatherReflectorFacts повторно.
+  prefetchedFacts?: Awaited<ReturnType<typeof gatherReflectorFacts>> | null,
 ): Promise<Runway | null> {
   try {
     const [facts, incAgg, expAgg] = await Promise.all([
-      gatherReflectorFacts(userId, now),
+      prefetchedFacts ?? gatherReflectorFacts(userId, now),
       prisma.income.aggregate({ _sum: { amount: true }, where: { userId } }),
       prisma.expense.aggregate({ _sum: { amount: true }, where: { userId } }),
     ]);
