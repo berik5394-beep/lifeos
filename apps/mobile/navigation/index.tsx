@@ -42,6 +42,7 @@ const TaskCaptureScreen = React.lazy(() => import('@/screens/task-capture'));
 const VoiceConversationScreen = React.lazy(() => import('@/screens/voice-conversation'));
 const FocusModeScreen = React.lazy(() => import('@/screens/focus-mode'));
 const KanbanBoardScreen = React.lazy(() => import('@/screens/kanban-board'));
+const CalendarScreen = React.lazy(() => import('@/screens/calendar'));
 const GanttViewScreen = React.lazy(() => import('@/screens/gantt-view'));
 const SharedSpacesScreen = React.lazy(() => import('@/screens/shared-spaces'));
 const SharedSpaceDetailScreen = React.lazy(() => import('@/screens/shared-space-detail'));
@@ -384,6 +385,7 @@ export default function Navigation() {
             <RootStack.Screen name="VoiceConversation" component={VoiceConversationScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="FocusMode" component={FocusModeScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="KanbanBoard" component={KanbanBoardScreen} options={{ headerShown: false }} />
+            <RootStack.Screen name="Calendar" component={CalendarScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="GanttView" component={GanttViewScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="SharedSpaces" component={SharedSpacesScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="SharedSpaceDetail" component={SharedSpaceDetailScreen} options={{ headerShown: false }} />
