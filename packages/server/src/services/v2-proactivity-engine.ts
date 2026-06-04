@@ -5,7 +5,7 @@
  * memory tiers (semantic / episodic / procedural / emotional). Runs per
  * scheduler tick (every 10 min, behind FEATURE_V2_PROACTIVITY flag).
  *
- * Flow: runForUser → detectCandidates (9 detectors) → filterCandidates
+ * Flow: runForUser → detectCandidates (10 detectors) → filterCandidates
  * (4 gates in order: DND, RateLimit, Significance, Dedup) → pick top by
  * significance → generateNudge (template lookup → Claude haiku fallback)
  * → deliverTopInsight (existing R6 push pipeline).
@@ -25,7 +25,8 @@ export type NudgeSource =
   | 'identity_growth'
   | 'skill_suggestion'
   | 'obligation_due'
-  | 'goal_impact';
+  | 'goal_impact'
+  | 'runway_low';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -95,6 +96,10 @@ export function scoreSignificance(c: NudgeCandidate): number {
       // 25% нормы ≈ 0.5; чем больше «съедает», тем значимее.
       const share = Number(c.payload.share ?? 0) / 100;
       return Math.max(0, Math.min(1, share * 2));
+    }
+    case 'runway_low': {
+      const status = String(c.payload.status ?? 'short');
+      return status === 'critical' ? 0.9 : status === 'underwater' ? 0.8 : 0.7;
     }
   }
 }
@@ -168,6 +173,11 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     gentle: '«{{category}}» съела {{share}}% месячной нормы на цель «{{goal}}». Поднажмём?',
     curious: 'Заметил: «{{category}}» = {{share}}% от того, что нужно на «{{goal}}». Подвинем?',
     supportive: 'Цель «{{goal}}» отстаёт; «{{category}}» ест {{share}}% нормы. Перенаправим — нагоним.',
+  },
+  runway_low: {
+    gentle: 'По записям денег хватит на ~{{months}} мес ({{cash}}₸). Поджать траты?',
+    curious: 'Заметил: при таком темпе кэша на ~{{months}} мес. Разберём бюджет?',
+    supportive: 'Запас короткий — ~{{months}} мес. Давай прикинем, где сократить.',
   },
 };
 
@@ -338,6 +348,36 @@ async function detectGoalImpact(userId: string): Promise<NudgeCandidate[]> {
     return [cand];
   } catch (err) {
     console.warn('[v2-proactivity] detectGoalImpact failed:', err);
+    return [];
+  }
+}
+
+// Runway: короткий запас денег (по записям). Кандидат при short/critical/underwater.
+async function detectRunwayLow(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2RunwayEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2RunwayEnabled(userId)) return [];
+    const { buildRunway } = await import('./runway/index.js');
+    const rw = await buildRunway(userId);
+    if (!rw) return [];
+    if (rw.status !== 'short' && rw.status !== 'critical' && rw.status !== 'underwater') {
+      return [];
+    }
+    const months = rw.runwayMonths == null ? 0 : Math.round(rw.runwayMonths * 10) / 10;
+    const cand: NudgeCandidate = {
+      source: 'runway_low',
+      significance: 0,
+      payload: {
+        months: String(months),
+        cash: String(Math.round(rw.cashOnHand)),
+        status: rw.status,
+      },
+      toneHint: 'gentle',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectRunwayLow failed:', err);
     return [];
   }
 }
@@ -608,6 +648,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectCommitmentDue(userId),
       detectObligationDue(userId),
       detectGoalImpact(userId),
+      detectRunwayLow(userId),
       detectMoodShift(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),
