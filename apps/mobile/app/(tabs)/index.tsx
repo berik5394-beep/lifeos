@@ -517,6 +517,7 @@ export default function PlannerScreen() {
   const handleNavigateVoiceConversation = useCallback(() => navigation.navigate('VoiceConversation' as never), [navigation]);
   const handleNavigatePet = useCallback(() => navigation.navigate('Pet' as never), [navigation]);
   const handleNavigateLifeInsights = useCallback(() => navigation.navigate('LifeInsights' as never), [navigation]);
+  const handleNavigateCalendar = useCallback(() => navigation.navigate('Calendar' as never), [navigation]);
 
   const handleQuoteMuteToggle = useCallback(() => {
     if (quoteMuted) {
@@ -668,6 +669,13 @@ export default function PlannerScreen() {
             activeOpacity={0.7}
           >
             <Text style={styles.quickActionText}>{'\u{1F4CB}'} Канбан</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickActionPill}
+            onPress={handleNavigateCalendar}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.quickActionText}>{'\u{1F4C5}'} Календарь</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.quickActionPill}
