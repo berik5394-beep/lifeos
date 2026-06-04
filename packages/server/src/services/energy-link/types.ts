@@ -14,7 +14,7 @@ export interface Contrast {
   gapPct: number | null; // goodAvg − poorAvg
 }
 
-const SLEEP_THRESHOLD_H = 7;
+export const SLEEP_THRESHOLD_H = 7;
 const MIN_PER_BUCKET = 4;
 const MIN_GAP_PCT = 15;
 

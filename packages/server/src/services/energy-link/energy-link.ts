@@ -3,12 +3,12 @@ import {
   pairDays,
   bucketContrast,
   describeEnergyLink,
+  SLEEP_THRESHOLD_H,
   type ContrastStatus,
 } from './types.js';
 
 const WINDOW_MS = 60 * 86_400_000;
 const RECENT_MS = 7 * 86_400_000;
-const SLEEP_THRESHOLD_H = 7;
 
 export interface EnergyLink {
   goodAvg: number | null;
