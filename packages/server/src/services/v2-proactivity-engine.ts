@@ -5,7 +5,7 @@
  * memory tiers (semantic / episodic / procedural / emotional). Runs per
  * scheduler tick (every 10 min, behind FEATURE_V2_PROACTIVITY flag).
  *
- * Flow: runForUser → detectCandidates (6 detectors) → filterCandidates
+ * Flow: runForUser → detectCandidates (9 detectors) → filterCandidates
  * (4 gates in order: DND, RateLimit, Significance, Dedup) → pick top by
  * significance → generateNudge (template lookup → Claude haiku fallback)
  * → deliverTopInsight (existing R6 push pipeline).
@@ -24,7 +24,8 @@ export type NudgeSource =
   | 'goal_no_progress'
   | 'identity_growth'
   | 'skill_suggestion'
-  | 'obligation_due';
+  | 'obligation_due'
+  | 'goal_impact';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -88,6 +89,12 @@ export function scoreSignificance(c: NudgeCandidate): number {
     case 'obligation_due': {
       // Просроченные/висящие обязательства — стабильно значимы.
       return 0.6;
+    }
+    case 'goal_impact': {
+      // Доля категории от месячной нормы цели (0..N) → значимость.
+      // 25% нормы ≈ 0.5; чем больше «съедает», тем значимее.
+      const share = Number(c.payload.share ?? 0) / 100;
+      return Math.max(0, Math.min(1, share * 2));
     }
   }
 }
@@ -156,6 +163,11 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
   skill_suggestion: {
     curious: 'Заметил, что ты часто просишь одно и то же подряд. Хочешь, соберу это в навык — будешь запускать одной фразой?',
     gentle: 'Могу сделать тебе навык из того, что ты часто делаешь вместе. Сэкономит время. Сделать?',
+  },
+  goal_impact: {
+    gentle: '«{{category}}» съела {{share}}% месячной нормы на цель «{{goal}}». Поднажмём?',
+    curious: 'Заметил: «{{category}}» = {{share}}% от того, что нужно на «{{goal}}». Подвинем?',
+    supportive: 'Цель «{{goal}}» отстаёт; «{{category}}» ест {{share}}% нормы. Перенаправим — нагоним.',
   },
 };
 
@@ -296,6 +308,36 @@ async function detectObligationDue(userId: string): Promise<NudgeCandidate[]> {
     return out;
   } catch (err) {
     console.warn('[v2-proactivity] detectObligationDue failed:', err);
+    return [];
+  }
+}
+
+// Goal-Impact: вычисленное влияние трат/долгов на денежную цель. Кандидат если
+// топ-категория ест ≥25% месячной нормы ИЛИ долги сдвигают цель на ≥1 мес.
+async function detectGoalImpact(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2GoalImpactEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2GoalImpactEnabled(userId)) return [];
+    const { buildGoalImpact } = await import('./goal-impact/index.js');
+    const gi = await buildGoalImpact(userId);
+    if (!gi) return [];
+    const share = gi.categoryShare ?? 0;
+    const delay = gi.monthsDelay ?? 0;
+    if (share < 0.25 && delay < 1) return [];
+    const cand: NudgeCandidate = {
+      source: 'goal_impact',
+      significance: 0,
+      payload: {
+        goal: gi.goalText,
+        category: gi.topCategory?.category ?? '',
+        share: String(Math.round(share * 100)),
+      },
+      toneHint: 'gentle',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectGoalImpact failed:', err);
     return [];
   }
 }
@@ -565,6 +607,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectStaleEntity(userId),
       detectCommitmentDue(userId),
       detectObligationDue(userId),
+      detectGoalImpact(userId),
       detectMoodShift(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),
