@@ -16,8 +16,13 @@ import { getProceduralMemory } from './procedural-memory.singleton.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
-import { isV2AxesEnabled, isV2ObligationsEnabled } from '../lib/feature-flags.js';
+import {
+  isV2AxesEnabled,
+  isV2ObligationsEnabled,
+  isV2GoalImpactEnabled,
+} from '../lib/feature-flags.js';
 import { openObligationsForContext } from './obligations/index.js';
+import { buildGoalImpact } from './goal-impact/index.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { formatToneSection } from './bot-traits/tone-section.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
@@ -42,6 +47,8 @@ export type V2EnrichmentData = {
     description: string;
     due: string | null;
   }>;
+  /** Goal-Impact (кросс-домен Срез 1): вычисленный инсайт или null. */
+  goalImpact: string | null;
 };
 
 export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
@@ -71,7 +78,18 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   }
   const obl = formatObligationsSection(data.obligations ?? []);
   if (obl) lines.push(obl);
+  const gi = formatGoalImpactSection(data.goalImpact ?? null);
+  if (gi) lines.push(gi);
   return lines.join('\n');
+}
+
+/**
+ * Goal-Impact (кросс-домен Срез 1) — pure render of the computed insight.
+ * Empty insight → ''. Exported для юнит-теста.
+ */
+export function formatGoalImpactSection(insightText: string | null): string {
+  if (!insightText) return '';
+  return `Влияние на цель (вычислено): ${insightText}`;
 }
 
 /**
@@ -150,7 +168,7 @@ export async function fetchV2EnrichmentData(
   userId: string,
 ): Promise<V2EnrichmentData | null> {
   try {
-    const [identity, patterns, moodShift, entityRows, obligationRows] = await Promise.all([
+    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact] = await Promise.all([
       getBotIdentityService()
         .getIdentity(userId)
         .catch(() => null),
@@ -171,6 +189,11 @@ export async function fetchV2EnrichmentData(
       isV2ObligationsEnabled(userId)
         ? openObligationsForContext(userId, 5).catch(() => [])
         : Promise.resolve([]),
+      isV2GoalImpactEnabled(userId)
+        ? buildGoalImpact(userId)
+            .then((gi) => gi?.insightText ?? null)
+            .catch(() => null)
+        : Promise.resolve(null),
     ]);
     const now = Date.now();
     return {
@@ -209,6 +232,7 @@ export async function fetchV2EnrichmentData(
         description: o.description,
         due: o.dueDate ? o.dueDate.toISOString().slice(0, 10) : null,
       })),
+      goalImpact,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);
