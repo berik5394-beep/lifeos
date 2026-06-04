@@ -22,11 +22,13 @@ import {
   isV2GoalImpactEnabled,
   isV2RunwayEnabled,
   isV2EnergyEnabled,
+  isV2RelationshipsEnabled,
 } from '../lib/feature-flags.js';
 import { openObligationsForContext } from './obligations/index.js';
 import { buildGoalImpact } from './goal-impact/index.js';
 import { buildRunway } from './runway/index.js';
 import { buildEnergyLink } from './energy-link/index.js';
+import { buildRelationshipNudge } from './relationship-link/index.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { formatToneSection } from './bot-traits/tone-section.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
@@ -57,6 +59,8 @@ export type V2EnrichmentData = {
   runway: string | null;
   /** Energy↔Result (кросс-домен #2): вычисленный инсайт или null. */
   energyLink: string | null;
+  /** Relationships (кросс-домен #3): вычисленный инсайт или null. */
+  relationship: string | null;
 };
 
 export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
@@ -92,6 +96,8 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (rw) lines.push(rw);
   const el = formatEnergyLinkSection(data.energyLink ?? null);
   if (el) lines.push(el);
+  const rel = formatRelationshipSection(data.relationship ?? null);
+  if (rel) lines.push(rel);
   return lines.join('\n');
 }
 
@@ -118,6 +124,14 @@ export function formatRunwaySection(insightText: string | null): string {
 export function formatEnergyLinkSection(insightText: string | null): string {
   if (!insightText) return '';
   return `Сон и продуктивность (вычислено): ${insightText}`;
+}
+
+/**
+ * Relationships (кросс-домен #3) — pure render. Empty → ''. Exported для теста.
+ */
+export function formatRelationshipSection(insightText: string | null): string {
+  if (!insightText) return '';
+  return `Отношения (вычислено): ${insightText}`;
 }
 
 /**
@@ -196,7 +210,7 @@ export async function fetchV2EnrichmentData(
   userId: string,
 ): Promise<V2EnrichmentData | null> {
   try {
-    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink] = await Promise.all([
+    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship] = await Promise.all([
       getBotIdentityService()
         .getIdentity(userId)
         .catch(() => null),
@@ -230,6 +244,11 @@ export async function fetchV2EnrichmentData(
       isV2EnergyEnabled(userId)
         ? buildEnergyLink(userId)
             .then((el) => el?.insightText ?? null)
+            .catch(() => null)
+        : Promise.resolve(null),
+      isV2RelationshipsEnabled(userId)
+        ? buildRelationshipNudge(userId)
+            .then((r) => r?.insightText ?? null)
             .catch(() => null)
         : Promise.resolve(null),
     ]);
@@ -273,6 +292,7 @@ export async function fetchV2EnrichmentData(
       goalImpact,
       runway,
       energyLink,
+      relationship,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);
