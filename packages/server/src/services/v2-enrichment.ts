@@ -29,6 +29,12 @@ import { buildGoalImpact } from './goal-impact/index.js';
 import { buildRunway } from './runway/index.js';
 import { buildEnergyLink } from './energy-link/index.js';
 import { buildRelationshipNudge } from './relationship-link/index.js';
+import { gatherReflectorFacts } from './reflector-service.js';
+import { withTimeout } from '../lib/with-timeout.js';
+
+// Кросс-домен билдеры читают много из БД — у каждого свой потолок, чтобы один
+// медленный/зависший НЕ ронял весь enrichment-блок по общему таймауту.
+const CROSS_DOMAIN_BUDGET_MS = 1500;
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { formatToneSection } from './bot-traits/tone-section.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
@@ -210,6 +216,13 @@ export async function fetchV2EnrichmentData(
   userId: string,
 ): Promise<V2EnrichmentData | null> {
   try {
+    // Дедуп: goal-impact и runway оба считают reflector-факты (тяжело: ~10
+    // агрегатов). Считаем ОДИН раз и делим между ними. Один промис, оба await'ят.
+    const needFacts = isV2GoalImpactEnabled(userId) || isV2RunwayEnabled(userId);
+    const factsPromise = needFacts
+      ? gatherReflectorFacts(userId, new Date()).catch(() => null)
+      : Promise.resolve(null);
+
     const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship] = await Promise.all([
       getBotIdentityService()
         .getIdentity(userId)
@@ -232,22 +245,30 @@ export async function fetchV2EnrichmentData(
         ? openObligationsForContext(userId, 5).catch(() => [])
         : Promise.resolve([]),
       isV2GoalImpactEnabled(userId)
-        ? buildGoalImpact(userId)
+        ? withTimeout(
+            factsPromise.then((f) => buildGoalImpact(userId, undefined, f)),
+            CROSS_DOMAIN_BUDGET_MS,
+            null,
+          )
             .then((gi) => gi?.insightText ?? null)
             .catch(() => null)
         : Promise.resolve(null),
       isV2RunwayEnabled(userId)
-        ? buildRunway(userId)
+        ? withTimeout(
+            factsPromise.then((f) => buildRunway(userId, undefined, f)),
+            CROSS_DOMAIN_BUDGET_MS,
+            null,
+          )
             .then((rw) => rw?.insightText ?? null)
             .catch(() => null)
         : Promise.resolve(null),
       isV2EnergyEnabled(userId)
-        ? buildEnergyLink(userId)
+        ? withTimeout(buildEnergyLink(userId), CROSS_DOMAIN_BUDGET_MS, null)
             .then((el) => el?.insightText ?? null)
             .catch(() => null)
         : Promise.resolve(null),
       isV2RelationshipsEnabled(userId)
-        ? buildRelationshipNudge(userId)
+        ? withTimeout(buildRelationshipNudge(userId), CROSS_DOMAIN_BUDGET_MS, null)
             .then((r) => r?.insightText ?? null)
             .catch(() => null)
         : Promise.resolve(null),

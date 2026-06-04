@@ -999,9 +999,13 @@ export async function handleMessage(
   // dropped silently on fault → legacy prompt unaffected).
   if (gathered && isV2MemoryEnabled(userId)) {
     try {
-      // Бюджет 900мс: зависший pgvector-тиер НЕ должен блокировать ответ
-      // юзеру. Не успели — дропаем блок обогащения, чат идёт дальше.
-      const v2Data = await withTimeout(fetchV2EnrichmentData(userId), 900, null);
+      // Бюджет 2500мс: enrichment теперь несёт кросс-домен инсайты (runway/
+      // goal-impact/energy/relationship), которые читают много из БД. Старые
+      // 900мс роняли ВЕСЬ блок (фича «инсайт с числом» не доходила до промпта,
+      // bug 2026-06-04). Внутри fetchV2EnrichmentData каждый тяжёлый билдер уже
+      // капается своим withTimeout(1500), + reflector-факты дедуплены, так что
+      // зависший тиер всё равно не блокирует дольше ~1.5с.
+      const v2Data = await withTimeout(fetchV2EnrichmentData(userId), 2500, null);
       if (v2Data) {
         system = system + '\n\n' + buildV2EnrichmentBlock(v2Data);
       }
