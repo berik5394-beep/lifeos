@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
+import { heatColor } from '@/components/calendar/calendar-logic';
 
 interface HeatmapProps {
   data: Record<string, number>; // 'YYYY-MM-DD' -> completion percentage (0-100)
@@ -19,14 +20,6 @@ const MONTH_LABELS = [
 const DAY_LABELS = [
   'Пн', '', 'Ср', '', 'Пт', '', 'Вс',
 ]; // Пн, '', Ср, '', Пт, '', Вс
-
-function getColor(value: number, surfaceColor: string): string {
-  if (value <= 0) return surfaceColor;
-  if (value <= 25) return '#064E3B';
-  if (value <= 50) return '#059669';
-  if (value <= 75) return '#34D399';
-  return '#22C55E';
-}
 
 function formatDateKey(d: Date): string {
   const y = d.getFullYear();
@@ -100,7 +93,7 @@ const HeatmapCell = React.memo(function HeatmapCell({
 }) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
-  const bgColor = value < 0 ? 'transparent' : getColor(value, surfaceColor);
+  const bgColor = value < 0 ? 'transparent' : heatColor(value, surfaceColor);
   return (
     <View
       style={[
@@ -185,7 +178,7 @@ export const Heatmap = React.memo(function Heatmap({
         {[0, 15, 40, 65, 90].map((v) => (
           <View
             key={v}
-            style={[styles.legendCell, { backgroundColor: getColor(v, c.surface) }]}
+            style={[styles.legendCell, { backgroundColor: heatColor(v, c.surface) }]}
           />
         ))}
         <Text style={styles.legendLabel}>
