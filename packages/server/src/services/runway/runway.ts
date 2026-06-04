@@ -26,6 +26,10 @@ export async function buildRunway(
       prisma.income.aggregate({ _sum: { amount: true }, where: { userId } }),
       prisma.expense.aggregate({ _sum: { amount: true }, where: { userId } }),
     ]);
+    // ВНИМАНИЕ (осознанно): cashOnHand — накопленный net за ВСЁ время, а
+    // monthlyIncome/monthlyBurn из reflector — за окно ~90 дней (свежий темп).
+    // Разные горизонты намеренны: «сколько накоплено» ÷ «текущий темп оттока».
+    // Не «чинить» в один горизонт. describeRunway честно говорит «по записям».
     const cashOnHand = (incAgg._sum.amount ?? 0) - (expAgg._sum.amount ?? 0);
     const r = computeRunway({
       cashOnHand,
