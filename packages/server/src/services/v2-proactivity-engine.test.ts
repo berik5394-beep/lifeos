@@ -132,6 +132,7 @@ describe('TEMPLATES — table', () => {
         'identity_growth',
         'mood_shift',
         'obligation_due',
+        'relationship_link',
         'runway_low',
         'skill_suggestion',
         'stale_entity',

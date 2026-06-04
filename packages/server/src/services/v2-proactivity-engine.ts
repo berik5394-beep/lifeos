@@ -5,7 +5,7 @@
  * memory tiers (semantic / episodic / procedural / emotional). Runs per
  * scheduler tick (every 10 min, behind FEATURE_V2_PROACTIVITY flag).
  *
- * Flow: runForUser → detectCandidates (11 detectors) → filterCandidates
+ * Flow: runForUser → detectCandidates (12 detectors) → filterCandidates
  * (4 gates in order: DND, RateLimit, Significance, Dedup) → pick top by
  * significance → generateNudge (template lookup → Claude haiku fallback)
  * → deliverTopInsight (existing R6 push pipeline).
@@ -27,7 +27,8 @@ export type NudgeSource =
   | 'obligation_due'
   | 'goal_impact'
   | 'runway_low'
-  | 'energy_link';
+  | 'energy_link'
+  | 'relationship_link';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -105,6 +106,11 @@ export function scoreSignificance(c: NudgeCandidate): number {
     case 'energy_link': {
       const gap = Math.abs(Number(c.payload.gap ?? 0));
       return Math.max(0, Math.min(0.85, gap / 50));
+    }
+    case 'relationship_link': {
+      const days = Number(c.payload.daysSince ?? 0);
+      const imp = Number(c.payload.importance ?? 5);
+      return Math.max(0, Math.min(0.85, (days / 30) * (imp / 10)));
     }
   }
 }
@@ -188,6 +194,11 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     gentle: 'Ты продуктивнее при сне ≥7ч ({{goodAvg}}% против {{poorAvg}}%). На этой неделе спишь меньше — выспись?',
     curious: 'Заметил: при сне ≥7ч у тебя {{goodAvg}}% дел, при <7ч — {{poorAvg}}%. Недосып бьёт по делам.',
     supportive: 'Похоже, недосып тянет продуктивность ({{goodAvg}}% vs {{poorAvg}}%). Дай себе отдохнуть.',
+  },
+  relationship_link: {
+    gentle: 'Не общался с {{name}} уже {{days}} дн, а по нему висит: «{{description}}». Напишешь?',
+    curious: 'Кстати, {{name}} — {{days}} дн тишины, а у вас открыто «{{description}}». Решим?',
+    supportive: '{{name}} давно без вестей ({{days}} дн), и есть «{{description}}». Хочешь — помогу составить сообщение.',
   },
 };
 
@@ -415,6 +426,34 @@ async function detectEnergyLink(userId: string): Promise<NudgeCandidate[]> {
     return [cand];
   } catch (err) {
     console.warn('[v2-proactivity] detectEnergyLink failed:', err);
+    return [];
+  }
+}
+
+// Relationships: застоявшийся человек × открытое обязательство по нему (FK).
+async function detectRelationshipLink(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2RelationshipsEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2RelationshipsEnabled(userId)) return [];
+    const { buildRelationshipNudge } = await import('./relationship-link/index.js');
+    const rn = await buildRelationshipNudge(userId);
+    if (!rn) return [];
+    const cand: NudgeCandidate = {
+      source: 'relationship_link',
+      significance: 0,
+      payload: {
+        name: rn.personName,
+        description: rn.description,
+        days: String(rn.daysSince),
+        daysSince: String(rn.daysSince),
+        importance: String(rn.importance),
+      },
+      toneHint: 'gentle',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectRelationshipLink failed:', err);
     return [];
   }
 }
@@ -687,6 +726,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectGoalImpact(userId),
       detectRunwayLow(userId),
       detectEnergyLink(userId),
+      detectRelationshipLink(userId),
       detectMoodShift(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),
