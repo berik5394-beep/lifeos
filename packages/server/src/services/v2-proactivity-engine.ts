@@ -5,7 +5,7 @@
  * memory tiers (semantic / episodic / procedural / emotional). Runs per
  * scheduler tick (every 10 min, behind FEATURE_V2_PROACTIVITY flag).
  *
- * Flow: runForUser → detectCandidates (10 detectors) → filterCandidates
+ * Flow: runForUser → detectCandidates (11 detectors) → filterCandidates
  * (4 gates in order: DND, RateLimit, Significance, Dedup) → pick top by
  * significance → generateNudge (template lookup → Claude haiku fallback)
  * → deliverTopInsight (existing R6 push pipeline).
@@ -26,7 +26,8 @@ export type NudgeSource =
   | 'skill_suggestion'
   | 'obligation_due'
   | 'goal_impact'
-  | 'runway_low';
+  | 'runway_low'
+  | 'energy_link';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -100,6 +101,10 @@ export function scoreSignificance(c: NudgeCandidate): number {
     case 'runway_low': {
       const status = String(c.payload.status ?? 'short');
       return status === 'critical' ? 0.9 : status === 'underwater' ? 0.8 : 0.7;
+    }
+    case 'energy_link': {
+      const gap = Math.abs(Number(c.payload.gap ?? 0));
+      return Math.max(0, Math.min(0.85, gap / 50));
     }
   }
 }
@@ -178,6 +183,11 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     gentle: 'По записям денег хватит на ~{{months}} мес ({{cash}}₸). Поджать траты?',
     curious: 'Заметил: при таком темпе кэша на ~{{months}} мес. Разберём бюджет?',
     supportive: 'Запас короткий — ~{{months}} мес. Давай прикинем, где сократить.',
+  },
+  energy_link: {
+    gentle: 'Ты продуктивнее при сне ≥7ч ({{goodAvg}}% против {{poorAvg}}%). На этой неделе спишь меньше — выспись?',
+    curious: 'Заметил: при сне ≥7ч у тебя {{goodAvg}}% дел, при <7ч — {{poorAvg}}%. Недосып бьёт по делам.',
+    supportive: 'Похоже, недосып тянет продуктивность ({{goodAvg}}% vs {{poorAvg}}%). Дай себе отдохнуть.',
   },
 };
 
@@ -378,6 +388,33 @@ async function detectRunwayLow(userId: string): Promise<NudgeCandidate[]> {
     return [cand];
   } catch (err) {
     console.warn('[v2-proactivity] detectRunwayLow failed:', err);
+    return [];
+  }
+}
+
+// Energy↔Result: связь сон↔выполнение подтверждена И недавно недосып.
+async function detectEnergyLink(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2EnergyEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2EnergyEnabled(userId)) return [];
+    const { buildEnergyLink } = await import('./energy-link/index.js');
+    const el = await buildEnergyLink(userId);
+    if (!el) return [];
+    if (el.status !== 'link' || !el.recentSleepLow) return [];
+    const cand: NudgeCandidate = {
+      source: 'energy_link',
+      significance: 0,
+      payload: {
+        goodAvg: String(el.goodAvg ?? ''),
+        poorAvg: String(el.poorAvg ?? ''),
+        gap: String(el.gapPct ?? 0),
+      },
+      toneHint: 'gentle',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectEnergyLink failed:', err);
     return [];
   }
 }
@@ -649,6 +686,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectObligationDue(userId),
       detectGoalImpact(userId),
       detectRunwayLow(userId),
+      detectEnergyLink(userId),
       detectMoodShift(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),
