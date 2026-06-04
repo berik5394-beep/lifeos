@@ -5,7 +5,7 @@
  * memory tiers (semantic / episodic / procedural / emotional). Runs per
  * scheduler tick (every 10 min, behind FEATURE_V2_PROACTIVITY flag).
  *
- * Flow: runForUser → detectCandidates (12 detectors) → filterCandidates
+ * Flow: runForUser → detectCandidates (13 detectors) → filterCandidates
  * (4 gates in order: DND, RateLimit, Significance, Dedup) → pick top by
  * significance → generateNudge (template lookup → Claude haiku fallback)
  * → deliverTopInsight (existing R6 push pipeline).
@@ -28,7 +28,8 @@ export type NudgeSource =
   | 'goal_impact'
   | 'runway_low'
   | 'energy_link'
-  | 'relationship_link';
+  | 'relationship_link'
+  | 'decision_review';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -93,6 +94,10 @@ export function scoreSignificance(c: NudgeCandidate): number {
       // Просроченные/висящие обязательства — стабильно значимы.
       return 0.6;
     }
+    case 'decision_review': {
+      // Решение, которому пора ретро — стабильно значимо.
+      return 0.55;
+    }
     case 'goal_impact': {
       // Доля категории от месячной нормы цели (0..N) → значимость.
       // 25% нормы ≈ 0.5; чем больше «съедает», тем значимее.
@@ -154,6 +159,12 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     curious: 'Как там с {{person}} — «{{description}}»? {{dueLabel}}.',
     supportive:
       '{{person}} ждёт «{{description}}». Срок {{dueLabel}} — напомнить или закрыть?',
+  },
+  decision_review: {
+    gentle: '{{weeks}} нед назад ты решил «{{title}}»{{expectedSuffix}} — как вышло?',
+    curious: 'Помнишь решение «{{title}}»? {{weeks}} нед прошло — как на самом деле?',
+    supportive:
+      'Пора оглянуться: «{{title}}» ({{weeks}} нед назад). Сработало или нет?',
   },
   mood_shift: {
     supportive:
@@ -339,6 +350,42 @@ async function detectObligationDue(userId: string): Promise<NudgeCandidate[]> {
     return out;
   } catch (err) {
     console.warn('[v2-proactivity] detectObligationDue failed:', err);
+    return [];
+  }
+}
+
+async function detectDecisionReview(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2DecisionsEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2DecisionsEnabled(userId)) return [];
+    const { prisma } = await import('../lib/prisma.js');
+    const now = Date.now();
+    const rows = await prisma.decision.findMany({
+      where: { userId, status: 'open' },
+      orderBy: [{ reviewDate: 'asc' }],
+      take: 20,
+    });
+    const out: NudgeCandidate[] = [];
+    for (const d of rows) {
+      const due = d.reviewDate.getTime();
+      if (due > now) continue;
+      const weeks = Math.max(1, Math.floor((now - d.decidedAt.getTime()) / (7 * DAY_MS)));
+      const cand: NudgeCandidate = {
+        source: 'decision_review',
+        significance: 0,
+        payload: {
+          title: d.title,
+          weeks,
+          expectedSuffix: d.expectedOutcome ? `, ожидал «${d.expectedOutcome}»` : '',
+        },
+        toneHint: 'curious',
+      };
+      cand.significance = scoreSignificance(cand);
+      out.push(cand);
+    }
+    return out;
+  } catch (err) {
+    console.warn('[v2-proactivity] detectDecisionReview failed:', err);
     return [];
   }
 }
@@ -723,6 +770,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectStaleEntity(userId),
       detectCommitmentDue(userId),
       detectObligationDue(userId),
+      detectDecisionReview(userId),
       detectGoalImpact(userId),
       detectRunwayLow(userId),
       detectEnergyLink(userId),
