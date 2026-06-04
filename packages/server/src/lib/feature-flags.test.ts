@@ -6,6 +6,7 @@ import {
   isV2ObligationsEnabled,
   isV2GoalImpactEnabled,
   isV2RunwayEnabled,
+  isV2RunwayBalanceEnabled,
   isV2EnergyEnabled,
   isV2RelationshipsEnabled,
   isV2CronEnabled,
@@ -334,6 +335,32 @@ describe('isV2RunwayEnabled', () => {
     process.env.FEATURE_V2_RUNWAY = 'user-u1';
     expect(isV2RunwayEnabled('u1')).toBe(true);
     expect(isV2RunwayEnabled('u2')).toBe(false);
+  });
+});
+
+describe('isV2RunwayBalanceEnabled', () => {
+  afterEach(() => {
+    delete process.env.FEATURE_V2_RUNWAY_BALANCE;
+  });
+  it('unset → false', () => {
+    expect(isV2RunwayBalanceEnabled('u1')).toBe(false);
+  });
+  it('none/false/empty → false', () => {
+    for (const v of ['none', 'false', '']) {
+      process.env.FEATURE_V2_RUNWAY_BALANCE = v;
+      expect(isV2RunwayBalanceEnabled('u1')).toBe(false);
+    }
+  });
+  it('all/true → true', () => {
+    process.env.FEATURE_V2_RUNWAY_BALANCE = 'all';
+    expect(isV2RunwayBalanceEnabled('anybody')).toBe(true);
+    process.env.FEATURE_V2_RUNWAY_BALANCE = 'true';
+    expect(isV2RunwayBalanceEnabled('anybody')).toBe(true);
+  });
+  it('user-list матчит только своих', () => {
+    process.env.FEATURE_V2_RUNWAY_BALANCE = 'user-u1';
+    expect(isV2RunwayBalanceEnabled('u1')).toBe(true);
+    expect(isV2RunwayBalanceEnabled('u2')).toBe(false);
   });
 });
 
