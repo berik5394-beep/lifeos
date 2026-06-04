@@ -43,6 +43,7 @@ model User {
   expenses               Expense[]
   incomes                Income[]
   cashSnapshots          CashSnapshot[]
+  decisions              Decision[]
   journalEntries         JournalEntry[]
   stepLogs               StepLog[]
   importedFiles          ImportedFile[]
@@ -383,6 +384,23 @@ model CashSnapshot {
   createdAt DateTime @default(now())
 
   @@index([userId, asOf])
+}
+
+model Decision {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  expectedOutcome String?
+  reviewDate      DateTime  @db.Date
+  status          String    @default("open")
+  actualOutcome   String?
+  verdict         String?
+  decidedAt       DateTime  @default(now())
+  reviewedAt      DateTime?
+  source          String    @default("manual")
+
+  @@index([userId, status, reviewDate])
 }
 
 model JournalEntry {
