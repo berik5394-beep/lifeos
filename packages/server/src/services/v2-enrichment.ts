@@ -20,9 +20,11 @@ import {
   isV2AxesEnabled,
   isV2ObligationsEnabled,
   isV2GoalImpactEnabled,
+  isV2RunwayEnabled,
 } from '../lib/feature-flags.js';
 import { openObligationsForContext } from './obligations/index.js';
 import { buildGoalImpact } from './goal-impact/index.js';
+import { buildRunway } from './runway/index.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { formatToneSection } from './bot-traits/tone-section.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
@@ -49,6 +51,8 @@ export type V2EnrichmentData = {
   }>;
   /** Goal-Impact (кросс-домен Срез 1): вычисленный инсайт или null. */
   goalImpact: string | null;
+  /** Runway (кросс-домен #1): вычисленный инсайт или null. */
+  runway: string | null;
 };
 
 export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
@@ -80,6 +84,8 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (obl) lines.push(obl);
   const gi = formatGoalImpactSection(data.goalImpact ?? null);
   if (gi) lines.push(gi);
+  const rw = formatRunwaySection(data.runway ?? null);
+  if (rw) lines.push(rw);
   return lines.join('\n');
 }
 
@@ -90,6 +96,14 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
 export function formatGoalImpactSection(insightText: string | null): string {
   if (!insightText) return '';
   return `Влияние на цель (вычислено): ${insightText}`;
+}
+
+/**
+ * Runway (кросс-домен #1) — pure render. Empty → ''. Exported для юнит-теста.
+ */
+export function formatRunwaySection(insightText: string | null): string {
+  if (!insightText) return '';
+  return `Запас денег (вычислено): ${insightText}`;
 }
 
 /**
@@ -168,7 +182,7 @@ export async function fetchV2EnrichmentData(
   userId: string,
 ): Promise<V2EnrichmentData | null> {
   try {
-    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact] = await Promise.all([
+    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway] = await Promise.all([
       getBotIdentityService()
         .getIdentity(userId)
         .catch(() => null),
@@ -192,6 +206,11 @@ export async function fetchV2EnrichmentData(
       isV2GoalImpactEnabled(userId)
         ? buildGoalImpact(userId)
             .then((gi) => gi?.insightText ?? null)
+            .catch(() => null)
+        : Promise.resolve(null),
+      isV2RunwayEnabled(userId)
+        ? buildRunway(userId)
+            .then((rw) => rw?.insightText ?? null)
             .catch(() => null)
         : Promise.resolve(null),
     ]);
@@ -233,6 +252,7 @@ export async function fetchV2EnrichmentData(
         due: o.dueDate ? o.dueDate.toISOString().slice(0, 10) : null,
       })),
       goalImpact,
+      runway,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);
