@@ -1,6 +1,12 @@
 import { prisma } from '../../lib/prisma.js';
 import { gatherReflectorFacts } from '../reflector-service.js';
-import { computeRunway, describeRunway, type RunwayStatus } from './types.js';
+import {
+  computeRunway,
+  describeRunway,
+  computeAnchoredCash,
+  type RunwayStatus,
+} from './types.js';
+import { isV2RunwayBalanceEnabled } from '../../lib/feature-flags.js';
 
 export interface Runway {
   cashOnHand: number;
@@ -29,21 +35,52 @@ export async function buildRunway(
       prisma.income.aggregate({ _sum: { amount: true }, where: { userId } }),
       prisma.expense.aggregate({ _sum: { amount: true }, where: { userId } }),
     ]);
-    // ВНИМАНИЕ (осознанно): cashOnHand — накопленный net за ВСЁ время, а
-    // monthlyIncome/monthlyBurn из reflector — за окно ~90 дней (свежий темп).
-    // Разные горизонты намеренны: «сколько накоплено» ÷ «текущий темп оттока».
-    // Не «чинить» в один горизонт. describeRunway честно говорит «по записям».
-    const cashOnHand = (incAgg._sum.amount ?? 0) - (expAgg._sum.amount ?? 0);
+    // По умолчанию cashOnHand — накопленный net за ВСЁ время (без якоря).
+    let cashOnHand = (incAgg._sum.amount ?? 0) - (expAgg._sum.amount ?? 0);
+    let hasAnchor = false;
+    // Якорь: если юзер назвал баланс (CashSnapshot) — считаем вперёд от него.
+    if (isV2RunwayBalanceEnabled(userId)) {
+      const snap = await prisma.cashSnapshot.findFirst({
+        where: { userId },
+        orderBy: [{ asOf: 'desc' }, { createdAt: 'desc' }],
+      });
+      if (snap) {
+        const [expSince, incSince] = await Promise.all([
+          prisma.expense.aggregate({
+            _sum: { amount: true },
+            where: { userId, date: { gt: snap.asOf } },
+          }),
+          prisma.income.aggregate({
+            _sum: { amount: true },
+            where: { userId, date: { gt: snap.asOf } },
+          }),
+        ]);
+        cashOnHand = computeAnchoredCash({
+          balance: snap.balance,
+          expensesSince: expSince._sum.amount ?? 0,
+          incomesSince: incSince._sum.amount ?? 0,
+        });
+        hasAnchor = true;
+      }
+    }
     const r = computeRunway({
       cashOnHand,
       monthlyIncome: facts.monthlyIncome,
       monthlyBurn: facts.monthlyBurn,
     });
-    // Гейт: ноем только при коротком/underwater запасе.
-    if (r.status === 'healthy' || r.status === 'cash_positive' || r.status === 'no_data') {
+    // Без якоря — старое поведение: молчим при здоровом/положительном/no_data.
+    if (
+      !hasAnchor &&
+      (r.status === 'healthy' || r.status === 'cash_positive' || r.status === 'no_data')
+    ) {
       return null;
     }
-    const insightText = describeRunway(r, cashOnHand);
+    // С якорём — нечего проецировать только если вообще нет темпа трат.
+    if (hasAnchor && r.status === 'no_data') return null;
+    const insightText = describeRunway(r, cashOnHand, {
+      hasAnchor,
+      monthlyIncome: facts.monthlyIncome,
+    });
     if (!insightText) return null;
 
     return {
