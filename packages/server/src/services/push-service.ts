@@ -29,6 +29,20 @@ function isExpoToken(t: string | null | undefined): t is string {
   return !!t && /^Expo(nent)?PushToken\[.+\]$/.test(t);
 }
 
+/**
+ * Ошибка Expo означает «токен мёртв/невалиден» → его надо обнулить, чтобы не
+ * долбить каждый тик. Раньше чистили ТОЛЬКО на DeviceNotRegistered, а на битый
+ * формат Expo шлёт «... is not a valid Expo push token» — он не матчился и
+ * спамил лог вечно. Покрываем оба случая.
+ */
+export function isDeadTokenError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return (
+    message.includes('DeviceNotRegistered') ||
+    message.includes('is not a valid Expo push token')
+  );
+}
+
 async function sendExpoPush(
   token: string,
   title: string,
@@ -61,8 +75,8 @@ async function sendExpoPush(
     };
     if (json.data?.status === 'error') {
       console.warn(`[push] expo push error: ${json.data.message}`);
-      // DeviceNotRegistered → токен мёртв, чистим чтобы не долбить
-      if (json.data.message?.includes('DeviceNotRegistered')) {
+      // Токен мёртв/невалиден → чистим, чтобы не долбить каждый тик.
+      if (isDeadTokenError(json.data.message)) {
         await prisma.user
           .updateMany({ where: { expoPushToken: token }, data: { expoPushToken: null } })
           .catch((e) =>
