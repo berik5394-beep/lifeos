@@ -51,11 +51,25 @@ export const completeMultipleHabitsTool = defineTool({
       .map((r) => r.habit!.id);
     const allIds = [...new Set([...(input.habitIds ?? []), ...resolvedIds])];
 
+    // SECURITY (IDOR): модель управляет аргументом habitIds. Без проверки
+    // владения чужой/несуществующий habitId создал бы HabitLog под чужой
+    // привычкой. Оставляем только id, реально принадлежащие userId; чужие →
+    // в failedIds (не пишем). resolvedIds уже свои — пройдут фильтр.
+    const ownedRows = allIds.length
+      ? await prisma.habit.findMany({
+          where: { userId, id: { in: allIds } },
+          select: { id: true },
+        })
+      : [];
+    const ownedSet = new Set(ownedRows.map((h) => h.id));
+    const ownedIds = allIds.filter((id) => ownedSet.has(id));
+    const unownedIds = allIds.filter((id) => !ownedSet.has(id));
+
     // R9 honesty #16 fix: upsert параллельно через Promise.allSettled +
     // per-habit status (раньше sequential + silent console.warn skip;
     // юзер видел «Отмечено: N» без понимания которые именно failed).
     const results = await Promise.allSettled(
-      allIds.map(async (habitId) => {
+      ownedIds.map(async (habitId) => {
         const log = await prisma.habitLog.upsert({
           where: { habitId_date: { habitId, date: today } },
           update: { completed: true },
@@ -66,13 +80,14 @@ export const completeMultipleHabitsTool = defineTool({
       }),
     );
     const succeededIds: string[] = [];
-    const failedIds: string[] = [];
+    // Чужие/несуществующие id — сразу провал (ничего не записано).
+    const failedIds: string[] = [...unownedIds];
     results.forEach((r, idx) => {
       if (r.status === 'fulfilled') succeededIds.push(r.value);
       else {
-        failedIds.push(allIds[idx]);
+        failedIds.push(ownedIds[idx]);
         console.warn(
-          `[complete_multiple_habits] upsert failed habitId=${allIds[idx]}:`,
+          `[complete_multiple_habits] upsert failed habitId=${ownedIds[idx]}:`,
           r.reason instanceof Error ? r.reason.message : r.reason,
         );
       }

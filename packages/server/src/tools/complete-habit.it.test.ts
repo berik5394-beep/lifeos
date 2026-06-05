@@ -56,3 +56,19 @@ describe('complete_habit честность + кросс-домен (тест-Б
     expect(await buildGoalHabitHealth(b, new Date())).toEqual([]);
   });
 });
+
+import { completeMultipleHabitsTool } from './complete-multiple-habits.js';
+
+describe('complete_multiple_habits IDOR (тест-БД)', () => {
+  it('чужой habitId НЕ создаёт HabitLog у владельца', async () => {
+    const a = await seedUser(`hb-idor-a-${Date.now()}@a.test`);
+    const b = await seedUser(`hb-idor-b-${Date.now()}@a.test`);
+    const ha = await prisma.habit.create({ data: { userId: a, name: 'Бег', category: 'health', frequency: 'daily' } });
+    // B пытается отметить привычку A по её id → не должно записаться
+    const res = (await completeMultipleHabitsTool.handler({ habitIds: [ha.id] } as never, { userId: b } as never)) as { count: number; failedIds: string[] };
+    expect(res.count).toBe(0);
+    expect(res.failedIds).toContain(ha.id);
+    const logs = await prisma.habitLog.count({ where: { userId: a, habitId: ha.id } });
+    expect(logs).toBe(0);
+  });
+});
