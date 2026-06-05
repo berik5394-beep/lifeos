@@ -30,7 +30,8 @@ export type NudgeSource =
   | 'energy_link'
   | 'relationship_link'
   | 'decision_review'
-  | 'birthday_upcoming';
+  | 'birthday_upcoming'
+  | 'memorial_upcoming';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -127,6 +128,10 @@ export function scoreSignificance(c: NudgeCandidate): number {
       const base = daysUntil <= 0 ? 0.8 : 0.65;
       return Math.min(1, base + (importance - 5) * 0.03);
     }
+    case 'memorial_upcoming': {
+      // День памяти — стабильно значим (≥0.6 floor gate3, чтобы доходил).
+      return 0.7;
+    }
   }
 }
 
@@ -182,6 +187,10 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     supportive:
       '{{whenLabel}} ДР у {{name}}{{ageSuffix}}. Хороший повод написать тёплое слово!',
   },
+  memorial_upcoming: {
+    gentle: '{{whenLabel}} день памяти — {{name}}. Если нужно, я рядом. 🤍',
+    supportive: '{{whenLabel}} день памяти — {{name}}. Береги себя сегодня.',
+  },
   mood_shift: {
     supportive:
       'Замечаю, настроение последние дни ушло в минус. Хочешь — поговорим?',
@@ -232,7 +241,7 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
 // ---- Detectors (A2-A3) -------------------------------------------------------
 
 import { getEntityGraph } from './entity-graph/index.js';
-import { buildUpcomingBirthdays, whenLabel, ageSuffix } from './birthday/index.js';
+import { buildUpcomingBirthdays, buildUpcomingMemorials, whenLabel, ageSuffix } from './birthday/index.js';
 import { getProceduralMemory } from './procedural-memory.singleton.js';
 import { lastEventForEntity } from './episodic-memory.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
@@ -557,6 +566,40 @@ async function detectBirthday(userId: string): Promise<NudgeCandidate[]> {
   }
 }
 
+/**
+ * День памяти (мост #2): человек с death_date сегодня/завтра → бережный нудж.
+ * READ-ONLY. Флаг-гейт ранний (off=identical). Тон ВСЕГДА supportive —
+ * generateNudge берёт фиксированный шаблон (без стиль-rewrite), токсичный
+ * стиль недостижим.
+ */
+async function detectMemorial(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2BirthdayEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2BirthdayEnabled(userId)) return [];
+    const rows = await buildUpcomingMemorials(userId, new Date(), 1); // окно: сегодня + завтра
+    const out: NudgeCandidate[] = [];
+    for (const r of rows) {
+      const cand: NudgeCandidate = {
+        source: 'memorial_upcoming',
+        significance: 0,
+        entityId: r.entityId,
+        payload: {
+          name: r.name,
+          daysUntil: r.daysUntil,
+          whenLabel: whenLabel(r.daysUntil),
+        },
+        toneHint: 'supportive',
+      };
+      cand.significance = scoreSignificance(cand);
+      out.push(cand);
+    }
+    return out;
+  } catch (err) {
+    console.warn('[v2-proactivity] detectMemorial failed:', err);
+    return [];
+  }
+}
+
 async function detectMoodShift(userId: string): Promise<NudgeCandidate[]> {
   try {
     const emotional = getEmotionalMemory();
@@ -828,6 +871,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectEnergyLink(userId),
       detectRelationshipLink(userId),
       detectBirthday(userId),
+      detectMemorial(userId),
       detectMoodShift(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),
