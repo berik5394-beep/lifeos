@@ -3,14 +3,18 @@ import { prisma } from '../lib/prisma.js';
 import { matchOpenTask } from '../services/task-title.js';
 import { defineTool } from './_types.js';
 
-/** SSOT Step 5 — write-tool. 1:1 с legacy complete_task. */
-export const completeTaskTool = defineTool({
-  name: 'complete_task',
+/**
+ * Отменить (убрать) задачу — мягко, ОБРАТИМО (cancelled=true, не hard-delete).
+ * Убирает из активных (get_tasks/брифинг её прячут), но данные сохраняются.
+ * Вызывай на «убери/удали/отмени задачу X». Поиск — через matchOpenTask
+ * (надёжно по «грязному» вводу).
+ */
+export const cancelTaskTool = defineTool({
+  name: 'cancel_task',
   description:
-    'Отметить задачу выполненной. Вызывай на «закрой задачу X», ' +
-    '«сделал X», «выполнил задачу X», «X готово».',
+    'Убрать/отменить задачу из активного списка. Вызывай на «убери задачу X», ' +
+    '«удали задачу X», «отмени X». Обратимо — задача не удаляется насовсем.',
   category: 'task',
-  // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: { taskTitle: 'title', task: 'title', name: 'title', task_title: 'title' },
   schema: z.object({
     title: z.string().max(300).optional(),
@@ -18,16 +22,13 @@ export const completeTaskTool = defineTool({
   }),
   needsConfirm: false,
   sideEffects: 'write',
-  examples: ['закрой задачу отчёт', 'выполнил задачу купить хлеб'],
+  examples: ['убери задачу отчёт', 'отмени задачу тренировка', 'удали задачу созвон'],
   handler: async (input, ctx) => {
     const userId = ctx.userId;
     let task = input.taskId
       ? await prisma.task.findFirst({ where: { id: input.taskId, userId } })
       : null;
     if (!task && input.title) {
-      // Фикс B: голый `contains` промахивался при рассинхроне длины
-      // («…отчёт на сегодня» vs хранимое «…отчёт»). matchOpenTask чистит
-      // обе стороны + двунаправленный матч + самый свежий.
       const candidates = await prisma.task.findMany({
         where: { userId, completed: false, cancelled: false },
         orderBy: { createdAt: 'desc' },
@@ -38,8 +39,8 @@ export const completeTaskTool = defineTool({
     if (!task) return { message: 'Задача не найдена', notFound: true };
     await prisma.task.update({
       where: { id: task.id },
-      data: { completed: true },
+      data: { cancelled: true },
     });
-    return { message: `Задача "${task.title}" выполнена ✅`, taskId: task.id };
+    return { message: `Задача "${task.title}" убрана 🗑️`, taskId: task.id };
   },
 });

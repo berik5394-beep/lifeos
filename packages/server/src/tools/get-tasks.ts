@@ -46,6 +46,7 @@ export const getTasksTool = defineTool({
       where: {
         userId: ctx.userId,
         date,
+        cancelled: false,
         ...(input.includeCompleted ? {} : { completed: false }),
       },
       select: { title: true, time: true, priority: true, completed: true },
