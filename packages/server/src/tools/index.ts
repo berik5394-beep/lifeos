@@ -16,6 +16,8 @@ import { getFreeSlotsTool } from './get-free-slots.js';
 import { createTaskTool } from './create-task.js';
 import { completeTaskTool } from './complete-task.js';
 import { cancelTaskTool } from './cancel-task.js';
+import { clearOverdueTool } from './clear-overdue.js';
+import { deferOverdueTool } from './defer-overdue.js';
 import { completeHabitTool } from './complete-habit.js';
 import { completeMultipleHabitsTool } from './complete-multiple-habits.js';
 import { createEventTool } from './create-event.js';
@@ -66,6 +68,8 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   createTaskTool,
   completeTaskTool,
   cancelTaskTool,
+  clearOverdueTool,
+  deferOverdueTool,
   completeHabitTool,
   completeMultipleHabitsTool,
   createEventTool,

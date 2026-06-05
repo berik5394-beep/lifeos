@@ -23,3 +23,23 @@ export async function countOverduePending(
     return 0;
   }
 }
+
+/**
+ * Сэмпл просроченных задач (для «какие?»). Самые старые первыми. READ-ONLY.
+ */
+export async function listOverduePending(
+  userId: string,
+  todayStart: Date,
+  take = 15,
+): Promise<Array<{ title: string; date: Date }>> {
+  try {
+    return await prisma.task.findMany({
+      where: { userId, date: { lt: todayStart }, completed: false, cancelled: false },
+      orderBy: { date: 'asc' },
+      take,
+      select: { title: true, date: true },
+    });
+  } catch {
+    return [];
+  }
+}
