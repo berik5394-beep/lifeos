@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
+import { matchHabit, buildNotFoundMessage } from './_habit-match.js';
 
 /**
  * SSOT Step 5 — write-tool. Консолидирует прежний loop из
@@ -32,19 +33,16 @@ export const completeMultipleHabitsTool = defineTool({
 
     // R9 honesty #16 fix: name resolution параллельно (раньше N
     // sequential roundtrips к Prisma для каждого имени).
-    const nameResolves = await Promise.all(
-      (input.habitNames ?? []).map(async (name) => {
-        const h = await prisma.habit.findFirst({
-          where: {
-            userId,
-            name: { contains: name, mode: 'insensitive' },
-            active: true,
-          },
+    const active = (input.habitNames ?? []).length
+      ? await prisma.habit.findMany({
+          where: { userId, active: true },
           select: { id: true, name: true },
-        });
-        return { requestedName: name, habit: h };
-      }),
-    );
+        })
+      : [];
+    const nameResolves = (input.habitNames ?? []).map((name) => ({
+      requestedName: name,
+      habit: matchHabit(name, active),
+    }));
     const notFound = nameResolves
       .filter((r) => !r.habit)
       .map((r) => r.requestedName);
@@ -79,6 +77,11 @@ export const completeMultipleHabitsTool = defineTool({
         );
       }
     });
+
+    if (succeededIds.length === 0 && (input.habitIds ?? []).length === 0) {
+      // НИ одной привычки не отмечено → честный провал (модель не врёт «отметил»).
+      throw new Error(buildNotFoundMessage((input.habitNames ?? []).join(', '), active));
+    }
 
     const parts: string[] = [`Отмечено привычек: ${succeededIds.length} ✅`];
     if (failedIds.length > 0) {
