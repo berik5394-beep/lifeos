@@ -154,3 +154,20 @@ export function formatBirthdaySection(rows: UpcomingBirthday[]): string | null {
   const parts = rows.map((r) => `${r.name} — ${whenLabel(r.daysUntil)}`);
   return `Скоро ДР: ${parts.join('; ')}`;
 }
+
+// Память дней памяти: capture-extractor пишет имя ключа свободно — читаем терпимо.
+const DEATH_DATE_KEYS = ['death_date', 'deathDate', 'died', 'date_of_death', 'memorial_date'];
+
+export function pickDeathDate(attrs: Record<string, unknown>): unknown {
+  for (const k of DEATH_DATE_KEYS) {
+    const v = attrs[k];
+    if (v !== undefined && v !== null) return v;
+  }
+  return undefined;
+}
+
+export function formatMemorialSection(rows: UpcomingBirthday[]): string | null {
+  if (!rows || rows.length === 0) return null;
+  const parts = rows.map((r) => `${r.name} — ${whenLabel(r.daysUntil)}`);
+  return `День памяти: ${parts.join('; ')}`;
+}

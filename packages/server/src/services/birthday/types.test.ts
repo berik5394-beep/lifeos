@@ -7,6 +7,8 @@ import {
   ageSuffix,
   upcomingBirthdays,
   formatBirthdaySection,
+  pickDeathDate,
+  formatMemorialSection,
   type PersonBirthdayRow,
 } from './types.js';
 
@@ -124,5 +126,40 @@ describe('formatBirthdaySection', () => {
       { entityId: 'e1', name: 'Серик', importance: 7, daysUntil: 3, age: null },
     ];
     expect(formatBirthdaySection(rows)).toBe('Скоро ДР: Ахмет — завтра; Серик — через 3 дн.');
+  });
+});
+
+describe('pickDeathDate', () => {
+  it('берёт death_date', () => {
+    expect(pickDeathDate({ death_date: '10 августа 2021', role: 'отец' })).toBe('10 августа 2021');
+  });
+  it('альт-ключ deathDate', () => {
+    expect(pickDeathDate({ deathDate: '5.02.2020' })).toBe('5.02.2020');
+  });
+  it('альт-ключ died', () => {
+    expect(pickDeathDate({ died: '2019-03-01' })).toBe('2019-03-01');
+  });
+  it('приоритет death_date над прочими', () => {
+    expect(pickDeathDate({ deathDate: 'x', death_date: 'y' })).toBe('y');
+  });
+  it('нет ключа смерти → undefined', () => {
+    expect(pickDeathDate({ birthday: '21 мая' })).toBeUndefined();
+    expect(pickDeathDate({})).toBeUndefined();
+  });
+  it('null значение игнорируется', () => {
+    expect(pickDeathDate({ death_date: null, died: '1.1.2000' })).toBe('1.1.2000');
+  });
+});
+
+describe('formatMemorialSection', () => {
+  it('пусто → null', () => {
+    expect(formatMemorialSection([])).toBeNull();
+  });
+  it('форматирует строку (без возраста)', () => {
+    const rows = [
+      { entityId: 'e1', name: 'Папа', importance: 9, daysUntil: 1, age: 4 },
+      { entityId: 'e2', name: 'Бабушка', importance: 7, daysUntil: 5, age: null },
+    ];
+    expect(formatMemorialSection(rows)).toBe('День памяти: Папа — завтра; Бабушка — через 5 дн.');
   });
 });
