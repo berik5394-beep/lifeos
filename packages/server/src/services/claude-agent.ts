@@ -8,8 +8,11 @@ import { AiModelError } from '../lib/errors.js';
 import {
   agentToolSchemasForUser,
   agentToolNamesForUser,
+  confirmToolSchemasForUser,
+  confirmToolNamesForUser,
   runRegistryTool,
 } from '../tools/index.js';
+import { partitionToolUses } from './agent-tooluse.js';
 import { convertCurrency } from './external-apis.js';
 
 /**
@@ -107,6 +110,14 @@ export interface AgentOptions {
   userId?: string;
   /** Максимум раундов tool-use (защита от петель/кошелька). */
   maxToolRounds?: number;
+  /**
+   * Confirm-bridge: при tool_use confirm-tool (needsConfirm:true) агент
+   * НЕ исполняет его — зовёт onConfirmTool(tool,args) (orchestrator стейджит
+   * pending + строит текст) и возвращает результат как финальный ответ.
+   * Без callback — confirm-tools скрыты от агента (старое поведение).
+   * MONEY-SAFETY: confirm-tool в цикле НИКОГДА не доходит до runRegistryTool.
+   */
+  onConfirmTool?: (tool: string, args: Record<string, unknown>) => Promise<string>;
 }
 
 /**
@@ -129,6 +140,7 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     // покрывают реальные цепочки (календарь→задачи→событие) и режут
     // worst-case вдвое. Полный учёт раундов в дневной лимит — отдельно.
     maxToolRounds = 3,
+    onConfirmTool,
   } = opts;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,6 +161,11 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     // integration без активной → скрыты от агента (Relayna pattern).
     toolList.push(...(await agentToolSchemasForUser(userId)));
   }
+  // Confirm-bridge: при onConfirmTool показываем И confirm-tools (как
+  // proposable). Без callback — НЕ показываем (поведение байт-идентично).
+  if (localTools && userId && onConfirmTool) {
+    toolList.push(...(await confirmToolSchemasForUser(userId)));
+  }
   const tools =
     toolList.length > 0 ? (toolList as unknown as Anthropic.Tool[]) : undefined;
 
@@ -164,6 +181,11 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
   const localNames = userId
     ? await agentToolNamesForUser(userId)
     : new Set<string>();
+  // Confirm-набор для распознавания proposal — только при onConfirmTool.
+  const confirmNames =
+    localTools && userId && onConfirmTool
+      ? await confirmToolNamesForUser(userId)
+      : new Set<string>();
   for (let round = 0; round <= maxToolRounds; round++) {
     try {
       response = await anthropic.messages.create({
@@ -188,10 +210,23 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
       continue;
     }
 
-    const toolUses = response.content.filter(
-      (b): b is Anthropic.ToolUseBlock =>
-        b.type === 'tool_use' && localNames.has(b.name),
+    const parted = partitionToolUses(
+      response.content as unknown as Array<{
+        type: string;
+        name: string;
+        id: string;
+        input: unknown;
+      }>,
+      localNames,
+      confirmNames,
     );
+    const toolUses = parted.executable as unknown as Anthropic.ToolUseBlock[];
+    // SECURITY-инвариант: confirm-tool в цикле НЕ исполняем. Стейдж + стоп:
+    // отдаём детерминированный confirm-текст как финальный ответ.
+    if (onConfirmTool && parted.confirmProposals.length > 0) {
+      const p = parted.confirmProposals[0];
+      return await onConfirmTool(p.name, (p.input as Record<string, unknown>) ?? {});
+    }
     if (response.stop_reason !== 'tool_use' || toolUses.length === 0 || round === maxToolRounds) {
       break;
     }
