@@ -17,6 +17,7 @@ import {
   isV2WeekLoadEnabled,
   isV2MonthLoadEnabled,
   isV2YearLoadEnabled,
+  isV2BirthdayEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -27,6 +28,31 @@ afterEach(() => {
   else process.env.FEATURE_V2_MEMORY = ORIG_MEM;
   if (ORIG_PROAC === undefined) delete process.env.FEATURE_V2_PROACTIVITY;
   else process.env.FEATURE_V2_PROACTIVITY = ORIG_PROAC;
+});
+
+describe('isV2BirthdayEnabled', () => {
+  const KEY = 'FEATURE_V2_BIRTHDAY';
+  afterEach(() => { delete process.env[KEY]; });
+
+  it('undefined env → false', () => {
+    delete process.env[KEY];
+    expect(isV2BirthdayEnabled('u1')).toBe(false);
+  });
+  it('"all" → true для любого', () => {
+    process.env[KEY] = 'all';
+    expect(isV2BirthdayEnabled('u1')).toBe(true);
+  });
+  it('"none"/"" → false', () => {
+    process.env[KEY] = 'none';
+    expect(isV2BirthdayEnabled('u1')).toBe(false);
+    process.env[KEY] = '';
+    expect(isV2BirthdayEnabled('u1')).toBe(false);
+  });
+  it('user-<id> → только адресно', () => {
+    process.env[KEY] = 'user-u1,user-u2';
+    expect(isV2BirthdayEnabled('u1')).toBe(true);
+    expect(isV2BirthdayEnabled('u3')).toBe(false);
+  });
 });
 
 describe('isV2YearLoadEnabled', () => {

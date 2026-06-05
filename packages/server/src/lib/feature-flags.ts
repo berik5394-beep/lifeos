@@ -48,6 +48,19 @@ export function isV2AxesEnabled(userId: string): boolean {
 }
 
 /**
+ * Память ДР (ключевые даты, мост #2). Same shape as isV2AxesEnabled:
+ * "all"/"true", "none"/"false"/unset, or comma list "user-X,user-Y".
+ */
+export function isV2BirthdayEnabled(userId: string): boolean {
+  const raw = process.env.FEATURE_V2_BIRTHDAY;
+  if (raw === undefined) return false;
+  const flag = raw.trim();
+  if (flag === '' || flag === 'none' || flag === 'false') return false;
+  if (flag === 'all' || flag === 'true') return true;
+  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
+}
+
+/**
  * Obligations (память отношений+обещаний). Same shape as isV2AxesEnabled:
  * "all"/"true", "none"/"false"/unset, or comma list "user-X,user-Y".
  */
