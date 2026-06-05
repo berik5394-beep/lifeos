@@ -42,6 +42,7 @@ import { applyInsightTool } from './apply-insight.js';
 import { createSkillTool } from './create-skill.js';
 import { rememberEntityTool } from './remember-entity.js';
 import { linkRelationshipTool } from './link-relationship.js';
+import { setBirthdayTool } from './set-birthday.js';
 import { suggestGoalTool } from './suggest-goal.js';
 import { updateGoalProgressTool } from './update-goal-progress.js';
 import { createObligationTool } from './create-obligation.js';
@@ -104,6 +105,7 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   // v2.0 Week 5 — memory tools (B1/B2 reversible) + goal (B3 needsConfirm).
   rememberEntityTool,
   linkRelationshipTool,
+  setBirthdayTool,
   suggestGoalTool,
   // Движок пересечения, горизонт ГОД — захват прогресса измеримой цели.
   updateGoalProgressTool,
