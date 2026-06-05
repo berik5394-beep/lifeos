@@ -21,7 +21,7 @@ export const addExpenseTool = defineTool({
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: { sum: 'amount', cost: 'amount', price: 'amount', desc: 'description', note: 'description', item: 'description', title: 'description', name: 'description' },
   schema: z.object({
-    amount: z.number().positive().max(1_000_000_000),
+    amount: z.coerce.number().positive().max(1_000_000_000),
     category: z.string().max(40).optional(),
     description: z.string().max(300).optional(),
   }),

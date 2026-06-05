@@ -19,7 +19,7 @@ export const getFreeSlotsTool = defineTool({
   schema: z.object({
     dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
     dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
-    minDurationMinutes: z.number().int().positive().max(1440).optional(),
+    minDurationMinutes: z.coerce.number().int().positive().max(1440).optional(),
   }),
   needsConfirm: false,
   sideEffects: 'read',

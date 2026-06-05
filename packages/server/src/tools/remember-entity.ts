@@ -21,7 +21,7 @@ export const rememberEntityTool = defineTool({
     type: z.enum(['person', 'place', 'concept', 'goal', 'organization']),
     name: z.string().min(1).max(120),
     attributes: z.record(z.unknown()).optional(),
-    importance: z.number().int().min(1).max(10).optional(),
+    importance: z.coerce.number().int().min(1).max(10).optional(),
   }),
   needsConfirm: false,
   sideEffects: 'write',

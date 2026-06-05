@@ -25,7 +25,7 @@ export const setBalanceTool = defineTool({
     на_счету: 'balance',
   },
   schema: z.object({
-    balance: z.number().positive().max(1_000_000_000),
+    balance: z.coerce.number().positive().max(1_000_000_000),
     asOf: z.string().optional(),
   }),
   needsConfirm: true,

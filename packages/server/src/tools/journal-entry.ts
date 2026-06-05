@@ -16,9 +16,9 @@ export const journalEntryTool = defineTool({
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: { note: 'notes', text: 'notes', comment: 'notes' },
   schema: z.object({
-    sleepHours: z.number().min(0).max(24).optional(),
-    energy: z.number().int().min(1).max(10).optional(),
-    mood: z.number().int().min(1).max(10).optional(),
+    sleepHours: z.coerce.number().min(0).max(24).optional(),
+    energy: z.coerce.number().int().min(1).max(10).optional(),
+    mood: z.coerce.number().int().min(1).max(10).optional(),
     notes: z.string().max(2000).optional(),
   }),
   needsConfirm: false,

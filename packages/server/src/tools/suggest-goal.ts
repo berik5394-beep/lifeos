@@ -52,7 +52,7 @@ export const suggestGoalTool = defineTool({
       .min(3)
       .max(500)
       .describe('почему бот считает что это стоит цели'),
-    target: z
+    target: z.coerce
       .number()
       .positive()
       .max(1_000_000_000)

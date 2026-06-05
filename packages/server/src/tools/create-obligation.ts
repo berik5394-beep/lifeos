@@ -25,7 +25,7 @@ export const createObligationTool = defineTool({
     direction: z.string().max(40),
     kind: z.enum(['action', 'money']).default('action'),
     description: z.string().max(500),
-    amount: z.number().positive().nullable().optional(),
+    amount: z.coerce.number().positive().nullable().optional(),
     dueDate: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')

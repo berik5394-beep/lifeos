@@ -23,7 +23,7 @@ export const updateGoalProgressTool = defineTool({
   aliases: { goal: 'goalQuery', query: 'goalQuery', amount: 'value', count: 'value' },
   schema: z.object({
     goalQuery: z.string().min(2).max(120).describe('часть текста годовой цели: «книг», «английск», «вес»'),
-    value: z.number().min(0).max(1_000_000_000).describe('новый КУМУЛЯТИВНЫЙ итог: 25 (книг)'),
+    value: z.coerce.number().min(0).max(1_000_000_000).describe('новый КУМУЛЯТИВНЫЙ итог: 25 (книг)'),
     valueIsPercent: z.boolean().optional().describe('true если value — это проценты 0..100'),
   }),
   needsConfirm: false,
