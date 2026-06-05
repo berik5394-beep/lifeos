@@ -21,6 +21,7 @@ import { deferOverdueTool } from './defer-overdue.js';
 import { completeHabitTool } from './complete-habit.js';
 import { completeMultipleHabitsTool } from './complete-multiple-habits.js';
 import { createHabitTool } from './create-habit.js';
+import { logGoalProgressTool } from './log-goal-progress.js';
 import { createEventTool } from './create-event.js';
 import { journalEntryTool } from './journal-entry.js';
 import { addExpenseTool } from './add-expense.js';
@@ -113,6 +114,7 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   suggestGoalTool,
   // Движок пересечения, горизонт ГОД — захват прогресса измеримой цели.
   updateGoalProgressTool,
+  logGoalProgressTool,
   // Obligations — память отношений+обещаний (флаг-гейт в хендлерах).
   createObligationTool,
   listObligationsTool,
