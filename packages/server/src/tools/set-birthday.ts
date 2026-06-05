@@ -19,9 +19,11 @@ export const setBirthdayTool = defineTool({
   aliases: { name: 'person', personName: 'person' },
   schema: z.object({
     person: z.string().min(1).max(120).describe('Имя человека, напр. «Ахмет»'),
-    day: z.number().int().min(1).max(31).describe('День, напр. 12'),
-    month: z.number().int().min(1).max(12).describe('Месяц числом 1-12, напр. 5 (май)'),
-    year: z.number().int().min(1900).max(2100).optional().describe('Год рождения, если известен'),
+    // z.coerce: LLM часто шлёт числа строками ({"day":"25"}). Коэрсим до int,
+    // иначе z.number() отвергает строку и инструмент молча падает (прод-баг 2026-06-05).
+    day: z.coerce.number().int().min(1).max(31).describe('День, напр. 12'),
+    month: z.coerce.number().int().min(1).max(12).describe('Месяц числом 1-12, напр. 5 (май)'),
+    year: z.coerce.number().int().min(1900).max(2100).optional().describe('Год рождения, если известен'),
   }),
   needsConfirm: false,
   sideEffects: 'write',

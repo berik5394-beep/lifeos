@@ -58,6 +58,17 @@ describe('birthday: запись + чтение (тест-БД)', () => {
     expect(win7.map((r) => r.name)).toEqual(['Завтрашний']); // Дальний (>90д) вне 7
   });
 
+  it('РЕГРЕССИЯ прод: set_birthday через runRegistryTool со СТРОКОВЫМИ day/month пишет ДР', async () => {
+    const userId = await seedUser(`bd-reg-${Date.now()}@a.test`);
+    const { runRegistryTool } = await import('../../tools/index.js');
+    // Ровно то, что прислал LLM в проде: {"day":"25","month":"6","name":...}
+    await runRegistryTool('set_birthday', { name: 'Алуа', day: '25', month: '6' }, { userId });
+    const rows = await listPersonBirthdays(userId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].name).toBe('Алуа');
+    expect(rows[0].birthday).toEqual({ day: 25, month: 6 });
+  });
+
   it('cross-user изоляция: B не видит ДР из A', async () => {
     const a = await seedUser(`bd-c1-${Date.now()}@a.test`);
     const b = await seedUser(`bd-c2-${Date.now()}@a.test`);
