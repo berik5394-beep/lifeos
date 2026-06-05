@@ -248,6 +248,7 @@ model Task {
   date             DateTime         @db.Date
   time             String?
   completed        Boolean          @default(false)
+  cancelled        Boolean          @default(false)
   notes            String?
   createdAt        DateTime         @default(now())
   parentId         String?
