@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
+import { matchHabit, buildNotFoundMessage } from './_habit-match.js';
 
 /** SSOT Step 5 — write-tool. 1:1 с legacy complete_habit. */
 export const completeHabitTool = defineTool({
@@ -30,18 +31,25 @@ export const completeHabitTool = defineTool({
     let habit = input.habitId
       ? await prisma.habit.findFirst({
           where: { id: input.habitId, userId },
+          select: { id: true, name: true, goalId: true },
         })
       : null;
     if (!habit && input.name) {
-      habit = await prisma.habit.findFirst({
-        where: {
-          userId,
-          name: { contains: input.name, mode: 'insensitive' },
-          active: true,
-        },
+      const active = await prisma.habit.findMany({
+        where: { userId, active: true },
+        select: { id: true, name: true, goalId: true },
       });
+      const matched = matchHabit(input.name, active);
+      if (matched) {
+        habit = active.find((h) => h.id === matched.id) ?? null;
+      } else {
+        // ЧЕСТНОСТЬ: throw → claude-agent ставит is_error:true → модель НЕ врёт «отметил».
+        throw new Error(buildNotFoundMessage(input.name, active));
+      }
     }
-    if (!habit) return { message: 'Привычка не найдена', notFound: true };
+    if (!habit) {
+      throw new Error('Не указано какую привычку отметить (нет имени и id).');
+    }
     await prisma.habitLog.upsert({
       where: { habitId_date: { habitId: habit.id, date: today } },
       update: { completed: true },
