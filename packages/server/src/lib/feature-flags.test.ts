@@ -18,6 +18,7 @@ import {
   isV2MonthLoadEnabled,
   isV2YearLoadEnabled,
   isV2BirthdayEnabled,
+  isV2GoalHabitsEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -52,6 +53,18 @@ describe('isV2BirthdayEnabled', () => {
     process.env[KEY] = 'user-u1,user-u2';
     expect(isV2BirthdayEnabled('u1')).toBe(true);
     expect(isV2BirthdayEnabled('u3')).toBe(false);
+  });
+});
+
+describe('isV2GoalHabitsEnabled', () => {
+  const KEY = 'FEATURE_V2_GOAL_HABITS';
+  afterEach(() => { delete process.env[KEY]; });
+  it('undefined → false', () => { delete process.env[KEY]; expect(isV2GoalHabitsEnabled('u1')).toBe(false); });
+  it('"all" → true', () => { process.env[KEY] = 'all'; expect(isV2GoalHabitsEnabled('u1')).toBe(true); });
+  it('user-<id> адресно', () => {
+    process.env[KEY] = 'user-u1';
+    expect(isV2GoalHabitsEnabled('u1')).toBe(true);
+    expect(isV2GoalHabitsEnabled('u2')).toBe(false);
   });
 });
 
