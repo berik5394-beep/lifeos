@@ -141,6 +141,7 @@ describe('TEMPLATES — table', () => {
         'commitment_due',
         'decision_review',
         'energy_link',
+        'goal_habits_stall',
         'goal_impact',
         'goal_no_progress',
         'identity_growth',

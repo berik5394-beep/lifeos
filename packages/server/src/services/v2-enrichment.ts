@@ -25,9 +25,11 @@ import {
   isV2RelationshipsEnabled,
   isV2DecisionsEnabled,
   isV2BirthdayEnabled,
+  isV2GoalHabitsEnabled,
 } from '../lib/feature-flags.js';
 import { openObligationsForContext } from './obligations/index.js';
 import { buildBirthdaySection, buildMemorialSection } from './birthday/index.js';
+import { buildGoalHabitHealth, computeStall, pickWorstStall } from './goal-habits/index.js';
 import { buildGoalImpact } from './goal-impact/index.js';
 import { buildRunway } from './runway/index.js';
 import { buildEnergyLink } from './energy-link/index.js';
@@ -80,6 +82,8 @@ export type V2EnrichmentData = {
   birthdays: string | null;
   /** Память дней памяти (мост #2): «День памяти: …» или null. */
   memorials: string | null;
+  /** Привычка↔цель (interconnection): «Цель X: привычки буксуют» или null. */
+  goalHabits: string | null;
 };
 
 export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
@@ -121,7 +125,15 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (dec) lines.push(dec);
   if (data.birthdays) lines.push(data.birthdays);
   if (data.memorials) lines.push(data.memorials);
+  const gh = formatGoalHabitSection(data.goalHabits ?? null);
+  if (gh) lines.push(gh);
   return lines.join('\n');
+}
+
+/** Привычка↔цель (interconnection) — pure render. Empty → ''. */
+export function formatGoalHabitSection(text: string | null): string {
+  if (!text) return '';
+  return `Цель под риском (привычки): ${text}`;
 }
 
 /**
@@ -271,7 +283,7 @@ export async function fetchV2EnrichmentData(
       ? gatherReflectorFacts(userId, new Date()).catch(() => null)
       : Promise.resolve(null);
 
-    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials] = await Promise.all([
+    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits] = await Promise.all([
       withTimeout(
         getBotIdentityService()
           .getIdentity(userId)
@@ -353,6 +365,16 @@ export async function fetchV2EnrichmentData(
       isV2BirthdayEnabled(userId)
         ? withTimeout(buildMemorialSection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
         : Promise.resolve(null),
+      isV2GoalHabitsEnabled(userId)
+        ? withTimeout(
+            buildGoalHabitHealth(userId).then((h) => {
+              const w = pickWorstStall(computeStall(h, 3));
+              return w ? `«${w.goalText}» — ${w.daysSinceLastCompletion} дн без отметок` : null;
+            }),
+            CROSS_DOMAIN_BUDGET_MS,
+            null,
+          ).catch(() => null)
+        : Promise.resolve(null),
     ]);
     const now = Date.now();
     return {
@@ -398,6 +420,7 @@ export async function fetchV2EnrichmentData(
       decisions,
       birthdays,
       memorials,
+      goalHabits,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);

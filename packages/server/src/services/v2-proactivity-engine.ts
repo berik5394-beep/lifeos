@@ -31,7 +31,8 @@ export type NudgeSource =
   | 'relationship_link'
   | 'decision_review'
   | 'birthday_upcoming'
-  | 'memorial_upcoming';
+  | 'memorial_upcoming'
+  | 'goal_habits_stall';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -132,6 +133,10 @@ export function scoreSignificance(c: NudgeCandidate): number {
       // День памяти — стабильно значим (≥0.6 floor gate3, чтобы доходил).
       return 0.7;
     }
+    case 'goal_habits_stall': {
+      // Привычки к цели буксуют — стабильно значимо (≥0.6 floor gate3).
+      return 0.65;
+    }
   }
 }
 
@@ -191,6 +196,10 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     gentle: '{{whenLabel}} день памяти — {{name}}. Если нужно, я рядом. 🤍',
     supportive: '{{whenLabel}} день памяти — {{name}}. Береги себя сегодня.',
   },
+  goal_habits_stall: {
+    gentle: 'Цель «{{goalText}}» проседает — привычки к ней не отмечались {{days}} дн. Вернёмся?',
+    supportive: 'Заметил: к цели «{{goalText}}» привычки буксуют ({{days}} дн). Маленький шаг сегодня?',
+  },
   mood_shift: {
     supportive:
       'Замечаю, настроение последние дни ушло в минус. Хочешь — поговорим?',
@@ -242,6 +251,7 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
 
 import { getEntityGraph } from './entity-graph/index.js';
 import { buildUpcomingBirthdays, buildUpcomingMemorials, whenLabel, ageSuffix } from './birthday/index.js';
+import { buildGoalHabitHealth, computeStall, pickWorstStall } from './goal-habits/index.js';
 import { getProceduralMemory } from './procedural-memory.singleton.js';
 import { lastEventForEntity } from './episodic-memory.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
@@ -600,6 +610,36 @@ async function detectMemorial(userId: string): Promise<NudgeCandidate[]> {
   }
 }
 
+/**
+ * Привычка↔цель (interconnection): цель, чьи привязанные привычки буксуют
+ * ≥3 дней → нудж «цель проседает». Чинит захардкоженный goalsBehind:0
+ * реальным числом. READ-ONLY. Флаг-гейт ранний (off=identical).
+ */
+async function detectGoalHabitStall(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2GoalHabitsEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2GoalHabitsEnabled(userId)) return [];
+    const health = await buildGoalHabitHealth(userId, new Date());
+    const worst = pickWorstStall(computeStall(health, 3));
+    if (!worst) return [];
+    const cand: NudgeCandidate = {
+      source: 'goal_habits_stall',
+      significance: 0,
+      payload: {
+        goalText: worst.goalText,
+        days: worst.daysSinceLastCompletion,
+        habitCount: worst.linkedHabitCount,
+      },
+      toneHint: 'gentle',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectGoalHabitStall failed:', err);
+    return [];
+  }
+}
+
 async function detectMoodShift(userId: string): Promise<NudgeCandidate[]> {
   try {
     const emotional = getEmotionalMemory();
@@ -872,6 +912,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectRelationshipLink(userId),
       detectBirthday(userId),
       detectMemorial(userId),
+      detectGoalHabitStall(userId),
       detectMoodShift(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),

@@ -55,6 +55,19 @@ export const completeHabitTool = defineTool({
       update: { completed: true },
       create: { habitId: habit.id, userId, date: today, completed: true },
     });
-    return { message: `Привычка "${habit.name}" отмечена ✅`, habitId: habit.id };
+    let suffix = '';
+    try {
+      const { isV2GoalHabitsEnabled } = await import('../lib/feature-flags.js');
+      if (habit.goalId && isV2GoalHabitsEnabled(userId)) {
+        const [goal, streak] = await Promise.all([
+          prisma.yearlyGoal.findUnique({ where: { id: habit.goalId }, select: { goalText: true } }),
+          import('../services/streak-service.js').then((m) => m.calculateStreak(userId)),
+        ]);
+        if (goal) suffix = ` — это к цели «${goal.goalText}», серия ${streak} дней`;
+      }
+    } catch {
+      /* best-effort: связка не должна ломать отметку */
+    }
+    return { message: `Привычка "${habit.name}" отмечена ✅${suffix}`, habitId: habit.id };
   },
 });
