@@ -27,7 +27,7 @@ import {
   isV2BirthdayEnabled,
 } from '../lib/feature-flags.js';
 import { openObligationsForContext } from './obligations/index.js';
-import { buildBirthdaySection } from './birthday/index.js';
+import { buildBirthdaySection, buildMemorialSection } from './birthday/index.js';
 import { buildGoalImpact } from './goal-impact/index.js';
 import { buildRunway } from './runway/index.js';
 import { buildEnergyLink } from './energy-link/index.js';
@@ -78,6 +78,8 @@ export type V2EnrichmentData = {
   decisions: string | null;
   /** Память ДР (мост #2): «Скоро ДР: …» или null. */
   birthdays: string | null;
+  /** Память дней памяти (мост #2): «День памяти: …» или null. */
+  memorials: string | null;
 };
 
 export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
@@ -118,6 +120,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   const dec = formatDecisionsSection(data.decisions ?? null);
   if (dec) lines.push(dec);
   if (data.birthdays) lines.push(data.birthdays);
+  if (data.memorials) lines.push(data.memorials);
   return lines.join('\n');
 }
 
@@ -268,7 +271,7 @@ export async function fetchV2EnrichmentData(
       ? gatherReflectorFacts(userId, new Date()).catch(() => null)
       : Promise.resolve(null);
 
-    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays] = await Promise.all([
+    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials] = await Promise.all([
       withTimeout(
         getBotIdentityService()
           .getIdentity(userId)
@@ -347,6 +350,9 @@ export async function fetchV2EnrichmentData(
       isV2BirthdayEnabled(userId)
         ? withTimeout(buildBirthdaySection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
         : Promise.resolve(null),
+      isV2BirthdayEnabled(userId)
+        ? withTimeout(buildMemorialSection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
+        : Promise.resolve(null),
     ]);
     const now = Date.now();
     return {
@@ -391,6 +397,7 @@ export async function fetchV2EnrichmentData(
       relationship,
       decisions,
       birthdays,
+      memorials,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);
