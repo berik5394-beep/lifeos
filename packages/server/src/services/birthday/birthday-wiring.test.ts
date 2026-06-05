@@ -39,3 +39,31 @@ describe('birthday wiring (structural)', () => {
     expect(GATHER).not.toMatch(/prisma\.\w+\.(create|update|delete|upsert|updateMany|deleteMany|createMany)/);
   });
 });
+
+describe('memorial wiring (structural)', () => {
+  it('memorial_upcoming в NudgeSource + TEMPLATES + score + detectCandidates', () => {
+    expect(ENGINE).toMatch(/'memorial_upcoming'/);
+    expect(ENGINE).toMatch(/memorial_upcoming:\s*{/);
+    expect(ENGINE).toMatch(/case 'memorial_upcoming':/);
+    expect(ENGINE).toMatch(/detectMemorial\(userId\)/);
+  });
+  it('detectMemorial имеет ранний флаг-гейт (off=identical)', () => {
+    const fn = ENGINE.slice(ENGINE.indexOf('async function detectMemorial'));
+    expect(fn).toMatch(/if\s*\(!isV2BirthdayEnabled\(userId\)\)\s*return\s*\[\]/);
+  });
+  it('тон мемориала тёплый: нет поздравлений/celebratory, есть память/рядом/береги', () => {
+    const i = ENGINE.indexOf('memorial_upcoming:');
+    const block = ENGINE.slice(i, i + 300);
+    expect(block).not.toMatch(/поздравишь|celebratory/i);
+    expect(block).toMatch(/памят/);
+    expect(block).toMatch(/рядом|береги/);
+  });
+  it('enrichment-врезка memorials за флагом', () => {
+    expect(ENRICH).toMatch(/memorials:\s*string\s*\|\s*null/);
+    expect(ENRICH).toMatch(/buildMemorialSection\(userId\)/);
+    expect(ENRICH).toMatch(/if\s*\(data\.memorials\)/);
+  });
+  it('money-safety: birthday.ts (memorial-чтение) без prisma write', () => {
+    expect(GATHER).not.toMatch(/prisma\.\w+\.(create|update|delete|upsert|updateMany|deleteMany|createMany)/);
+  });
+});

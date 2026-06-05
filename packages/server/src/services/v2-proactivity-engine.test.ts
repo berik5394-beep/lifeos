@@ -6,6 +6,7 @@ import {
   gate3_Significance,
   interpolate,
   TEMPLATES,
+  V2ProactivityEngine,
 } from './v2-proactivity-engine.js';
 import type { NudgeCandidate } from './v2-proactivity-engine.js';
 
@@ -323,5 +324,19 @@ describe('v2-proactivity-engine — identity growth detector (B2 D2)', () => {
     const start = SRC.indexOf('async detectCandidates');
     const body = SRC.slice(start, start + 2500);
     expect(body).toContain('detectIdentityGrowth');
+  });
+});
+
+describe('memorial tone-safety (generateNudge детерминирован, без стиля)', () => {
+  it('supportive memorial → дословный тёплый шаблон (haiku/стиль не вызываются)', async () => {
+    const engine = new V2ProactivityEngine();
+    const msg = await engine.generateNudge('u1', {
+      source: 'memorial_upcoming',
+      significance: 0.7,
+      entityId: 'e1',
+      payload: { name: 'Папа', daysUntil: 1, whenLabel: 'завтра' },
+      toneHint: 'supportive',
+    });
+    expect(msg).toBe('завтра день памяти — Папа. Береги себя сегодня.');
   });
 });

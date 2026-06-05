@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll, beforeEach } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { getEntityGraph } from '../entity-graph/index.js';
-import { listPersonBirthdays, buildUpcomingBirthdays } from './index.js';
+import { listPersonBirthdays, buildUpcomingBirthdays, buildUpcomingMemorials } from './index.js';
 
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
@@ -77,5 +77,40 @@ describe('birthday: запись + чтение (тест-БД)', () => {
       attributes: { birthday: { day: 1, month: 1 } } as never, importance: 5,
     });
     expect(await listPersonBirthdays(b)).toHaveLength(0);
+  });
+});
+
+describe('memorial: день памяти (тест-БД)', () => {
+  it('buildUpcomingMemorials читает death_date и ловит за день', async () => {
+    const userId = await seedUser(`mem-a-${Date.now()}@a.test`);
+    await getEntityGraph().upsertEntity(userId, {
+      type: 'person', name: 'Папа',
+      attributes: { death_date: '10 августа 2021', relationship: 'отец' } as never,
+      importance: 9,
+    });
+    const win1 = await buildUpcomingMemorials(userId, new Date('2026-08-09T00:00:00Z'), 1);
+    expect(win1.map((r) => r.name)).toEqual(['Папа']);
+    expect(win1[0].daysUntil).toBe(1);
+  });
+
+  it('альт-ключ deathDate тоже читается', async () => {
+    const userId = await seedUser(`mem-b-${Date.now()}@a.test`);
+    await getEntityGraph().upsertEntity(userId, {
+      type: 'person', name: 'Бабушка',
+      attributes: { deathDate: '10 августа 2018' } as never, importance: 6,
+    });
+    const win1 = await buildUpcomingMemorials(userId, new Date('2026-08-09T00:00:00Z'), 1);
+    expect(win1.map((r) => r.name)).toEqual(['Бабушка']);
+  });
+
+  it('дальняя дата вне окна 7; cross-user изоляция', async () => {
+    const a = await seedUser(`mem-c1-${Date.now()}@a.test`);
+    const b = await seedUser(`mem-c2-${Date.now()}@a.test`);
+    await getEntityGraph().upsertEntity(a, {
+      type: 'person', name: 'Папа',
+      attributes: { death_date: '10 августа 2021' } as never, importance: 9,
+    });
+    expect(await buildUpcomingMemorials(a, new Date('2026-06-05T00:00:00Z'), 7)).toEqual([]);
+    expect(await buildUpcomingMemorials(b, new Date('2026-08-09T00:00:00Z'), 1)).toEqual([]);
   });
 });
