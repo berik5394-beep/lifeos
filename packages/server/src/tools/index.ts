@@ -286,6 +286,47 @@ export async function agentToolNamesForUser(
 }
 
 /**
+ * Confirm-проекция: needsConfirm:true tools для ПОКАЗА агенту как
+ * proposable (агент их видит, но в цикле НЕ исполняет — стейджит pending,
+ * запись только на «да» через runConfirmedAction). Парна executable-проекции,
+ * integration-фильтр тот же. MONEY-SAFETY: исполнения в агент-цикле НЕТ.
+ */
+export async function confirmToolSchemasForUser(
+  userId: string,
+): Promise<AnthropicToolSchema[]> {
+  const integrations = await prisma.integration.findMany({
+    where: { userId, active: true },
+    select: { provider: true, refreshToken: true },
+  });
+  return [...registry.values()]
+    .filter((t) => t.needsConfirm === true)
+    .filter((t) => !t.requires || integrationAvailable(t.requires, integrations))
+    .map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: toAnthropicInputSchema(t.schema),
+    }));
+}
+
+/** Имена confirm-tools (needsConfirm:true) — распознавание proposal в цикле. */
+export async function confirmToolNamesForUser(
+  userId: string,
+): Promise<Set<string>> {
+  const integrations = await prisma.integration.findMany({
+    where: { userId, active: true },
+    select: { provider: true, refreshToken: true },
+  });
+  return new Set(
+    [...registry.values()]
+      .filter((t) => t.needsConfirm === true)
+      .filter(
+        (t) => !t.requires || integrationAvailable(t.requires, integrations),
+      )
+      .map((t) => t.name),
+  );
+}
+
+/**
  * Промпт-блок ДЕЙСТВИЯ — автоген из реестра (бывший рукописный
  * CAPABILITY_TEXT). Не сырой дамп: поведенческое правило выводится
  * из needsConfirm АВТОРИТЕТНО (реестр = истина → промпт не может
