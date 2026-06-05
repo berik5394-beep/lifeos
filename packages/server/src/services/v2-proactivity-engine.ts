@@ -29,7 +29,8 @@ export type NudgeSource =
   | 'runway_low'
   | 'energy_link'
   | 'relationship_link'
-  | 'decision_review';
+  | 'decision_review'
+  | 'birthday_upcoming';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -118,6 +119,14 @@ export function scoreSignificance(c: NudgeCandidate): number {
       const imp = Number(c.payload.importance ?? 5);
       return Math.max(0, Math.min(0.85, (days / 30) * (imp / 10)));
     }
+    case 'birthday_upcoming': {
+      // ДР — стабильно значимо (≥0.6 floor gate3, чтобы доходило).
+      // Сегодня/высокая важность → выше.
+      const daysUntil = Number(c.payload.daysUntil ?? 1);
+      const importance = Number(c.payload.importance ?? 5);
+      const base = daysUntil <= 0 ? 0.8 : 0.65;
+      return Math.min(1, base + (importance - 5) * 0.03);
+    }
   }
 }
 
@@ -166,6 +175,12 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     curious: 'Помнишь решение «{{title}}»? {{weeks}} нед прошло — как на самом деле?',
     supportive:
       'Пора оглянуться: «{{title}}» ({{weeks}} нед назад). Сработало или нет?',
+  },
+  birthday_upcoming: {
+    gentle: '{{whenLabel}} ДР у {{name}}{{ageSuffix}} — поздравишь?',
+    curious: 'У {{name}} {{whenLabel}} день рождения{{ageSuffix}}. Напомнить заранее?',
+    supportive:
+      '{{whenLabel}} ДР у {{name}}{{ageSuffix}}. Хороший повод написать тёплое слово!',
   },
   mood_shift: {
     supportive:
@@ -217,6 +232,7 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
 // ---- Detectors (A2-A3) -------------------------------------------------------
 
 import { getEntityGraph } from './entity-graph/index.js';
+import { buildUpcomingBirthdays, whenLabel, ageSuffix } from './birthday/index.js';
 import { getProceduralMemory } from './procedural-memory.singleton.js';
 import { lastEventForEntity } from './episodic-memory.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
@@ -506,6 +522,41 @@ async function detectRelationshipLink(userId: string): Promise<NudgeCandidate[]>
   }
 }
 
+/**
+ * Память ДР (мост #2): человек с днём рождения сегодня/завтра → нудж
+ * «Завтра ДР у Ахмета — поздравишь?». READ-ONLY. Флаг-гейт ранний (off=identical).
+ */
+async function detectBirthday(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2BirthdayEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2BirthdayEnabled(userId)) return [];
+    const rows = await buildUpcomingBirthdays(userId, new Date(), 1); // окно: сегодня + завтра
+    const out: NudgeCandidate[] = [];
+    for (const r of rows) {
+      const cand: NudgeCandidate = {
+        source: 'birthday_upcoming',
+        significance: 0,
+        entityId: r.entityId,
+        payload: {
+          name: r.name,
+          daysUntil: r.daysUntil,
+          age: r.age,
+          importance: r.importance,
+          whenLabel: whenLabel(r.daysUntil),
+          ageSuffix: ageSuffix(r.age),
+        },
+        toneHint: 'gentle',
+      };
+      cand.significance = scoreSignificance(cand);
+      out.push(cand);
+    }
+    return out;
+  } catch (err) {
+    console.warn('[v2-proactivity] detectBirthday failed:', err);
+    return [];
+  }
+}
+
 async function detectMoodShift(userId: string): Promise<NudgeCandidate[]> {
   try {
     const emotional = getEmotionalMemory();
@@ -776,6 +827,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectRunwayLow(userId),
       detectEnergyLink(userId),
       detectRelationshipLink(userId),
+      detectBirthday(userId),
       detectMoodShift(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),

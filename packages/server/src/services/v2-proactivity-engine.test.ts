@@ -136,6 +136,7 @@ describe('TEMPLATES — table', () => {
   it('covers all known sources', () => {
     expect(Object.keys(TEMPLATES).sort()).toEqual(
       [
+        'birthday_upcoming',
         'commitment_due',
         'decision_review',
         'energy_link',
