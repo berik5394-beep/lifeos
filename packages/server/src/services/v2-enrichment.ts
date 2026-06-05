@@ -26,7 +26,9 @@ import {
   isV2DecisionsEnabled,
   isV2BirthdayEnabled,
   isV2GoalHabitsEnabled,
+  isV2RecentActivityEnabled,
 } from '../lib/feature-flags.js';
+import { recentEvents } from './episodic-memory.js';
 import { openObligationsForContext } from './obligations/index.js';
 import { buildBirthdaySection, buildMemorialSection } from './birthday/index.js';
 import { buildGoalHabitHealth, computeStall, pickWorstStall } from './goal-habits/index.js';
@@ -84,7 +86,21 @@ export type V2EnrichmentData = {
   memorials: string | null;
   /** Привычка↔цель (interconnection): «Цель X: привычки буксуют» или null. */
   goalHabits: string | null;
+  /** Недавняя активность (v2-натив reader, M3): «📌 Недавно: …» или null. */
+  recentActivity: string | null;
 };
+
+/** Недавняя активность — pure render. Empty → ''. */
+export function formatRecentActivitySection(
+  rows: Array<{ content: string }>,
+): string {
+  if (!rows || rows.length === 0) return '';
+  const items = rows
+    .slice(0, 6)
+    .map((r) => `— ${r.content}`)
+    .join('\n');
+  return `📌 Недавно (память):\n${items}`;
+}
 
 export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   const lines: string[] = ['[v2-память]'];
@@ -127,6 +143,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (data.memorials) lines.push(data.memorials);
   const gh = formatGoalHabitSection(data.goalHabits ?? null);
   if (gh) lines.push(gh);
+  if (data.recentActivity) lines.push(data.recentActivity);
   return lines.join('\n');
 }
 
@@ -283,7 +300,7 @@ export async function fetchV2EnrichmentData(
       ? gatherReflectorFacts(userId, new Date()).catch(() => null)
       : Promise.resolve(null);
 
-    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits] = await Promise.all([
+    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity] = await Promise.all([
       withTimeout(
         getBotIdentityService()
           .getIdentity(userId)
@@ -375,6 +392,13 @@ export async function fetchV2EnrichmentData(
             null,
           ).catch(() => null)
         : Promise.resolve(null),
+      isV2RecentActivityEnabled(userId)
+        ? withTimeout(
+            recentEvents(userId, 6).then((rows) => formatRecentActivitySection(rows) || null),
+            CROSS_DOMAIN_BUDGET_MS,
+            null,
+          ).catch(() => null)
+        : Promise.resolve(null),
     ]);
     const now = Date.now();
     return {
@@ -421,6 +445,7 @@ export async function fetchV2EnrichmentData(
       birthdays,
       memorials,
       goalHabits,
+      recentActivity,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);

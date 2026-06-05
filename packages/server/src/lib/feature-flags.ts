@@ -73,6 +73,20 @@ export function isV2BirthdayEnabled(userId: string): boolean {
 }
 
 /**
+ * Недавняя активность в мозг (v2-натив reader, шаг M3). Главный путь
+ * enrichment читает свежие события Memory по createdAt → любой captureActivity
+ * сразу виден. Same shape: "all"/"true", "none"/"false"/unset, "user-X".
+ */
+export function isV2RecentActivityEnabled(userId: string): boolean {
+  const raw = process.env.FEATURE_V2_RECENT_ACTIVITY;
+  if (raw === undefined) return false;
+  const flag = raw.trim();
+  if (flag === '' || flag === 'none' || flag === 'false') return false;
+  if (flag === 'all' || flag === 'true') return true;
+  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
+}
+
+/**
  * Obligations (память отношений+обещаний). Same shape as isV2AxesEnabled:
  * "all"/"true", "none"/"false"/unset, or comma list "user-X,user-Y".
  */

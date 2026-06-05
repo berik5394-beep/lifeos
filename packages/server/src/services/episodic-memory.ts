@@ -355,6 +355,29 @@ export async function invalidateEvent(
 }
 
 /**
+ * v2-натив reader недавней активности (шаг M3, заменяет legacy-чтение в чат-пути).
+ * Свежие НЕ-инвалидированные, НЕ-протухшие (TTL) события по createdAt → главный
+ * enrichment видит любой captureActivity сразу. БЕЗ зависимости от memory-service
+ * (legacy на удаление). Type-агностично: новый тип события виден без проводки.
+ */
+export async function recentEvents(
+  userId: string,
+  limit = 6,
+): Promise<Array<{ type: string; content: string; createdAt: Date }>> {
+  const now = new Date();
+  return prisma.memory.findMany({
+    where: {
+      userId,
+      invalidAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    },
+    orderBy: { createdAt: 'desc' },
+    take: Math.min(Math.max(1, limit), 20),
+    select: { type: true, content: true, createdAt: true },
+  });
+}
+
+/**
  * Get events that reference a specific entity.
  * By default excludes invalidated events (invalidAt != null).
  */
