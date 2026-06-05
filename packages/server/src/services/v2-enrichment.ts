@@ -24,8 +24,10 @@ import {
   isV2EnergyEnabled,
   isV2RelationshipsEnabled,
   isV2DecisionsEnabled,
+  isV2BirthdayEnabled,
 } from '../lib/feature-flags.js';
 import { openObligationsForContext } from './obligations/index.js';
+import { buildBirthdaySection } from './birthday/index.js';
 import { buildGoalImpact } from './goal-impact/index.js';
 import { buildRunway } from './runway/index.js';
 import { buildEnergyLink } from './energy-link/index.js';
@@ -74,6 +76,8 @@ export type V2EnrichmentData = {
   relationship: string | null;
   /** Решения↔исходы (кросс-домен #4): решения на проверку + win-rate или null. */
   decisions: string | null;
+  /** Память ДР (мост #2): «Скоро ДР: …» или null. */
+  birthdays: string | null;
 };
 
 export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
@@ -113,6 +117,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (rel) lines.push(rel);
   const dec = formatDecisionsSection(data.decisions ?? null);
   if (dec) lines.push(dec);
+  if (data.birthdays) lines.push(data.birthdays);
   return lines.join('\n');
 }
 
@@ -263,7 +268,7 @@ export async function fetchV2EnrichmentData(
       ? gatherReflectorFacts(userId, new Date()).catch(() => null)
       : Promise.resolve(null);
 
-    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions] = await Promise.all([
+    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays] = await Promise.all([
       withTimeout(
         getBotIdentityService()
           .getIdentity(userId)
@@ -339,6 +344,9 @@ export async function fetchV2EnrichmentData(
             null,
           ).catch(() => null)
         : Promise.resolve(null),
+      isV2BirthdayEnabled(userId)
+        ? withTimeout(buildBirthdaySection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
+        : Promise.resolve(null),
     ]);
     const now = Date.now();
     return {
@@ -382,6 +390,7 @@ export async function fetchV2EnrichmentData(
       energyLink,
       relationship,
       decisions,
+      birthdays,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);
