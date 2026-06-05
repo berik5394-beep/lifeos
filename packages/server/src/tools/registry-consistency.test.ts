@@ -84,6 +84,21 @@ describe('автоген строго отражает реестр', () => {
   it('registry содержит tools (load-time dup-guard прошёл)', () => {
     expect(registry.size).toBeGreaterThan(0);
   });
+
+  // confirm-bridge fix: все четыре проекции фильтруют needsConfirm через
+  // strict `=== false`/`=== true`. Функциональный needsConfirm выпал бы
+  // из ВСЕХ → tool недостижим (невидим агенту И не стейджится confirm).
+  // Load-time guard в index.ts throw'нул бы на import — этот тест
+  // подтверждает инвариант: каждый зарегистрированный tool имеет
+  // строго boolean needsConfirm (функциональная форма пока не используется).
+  it('у каждого tool needsConfirm — строго boolean (strict-equality-safe)', () => {
+    for (const tool of registry.values()) {
+      expect(
+        typeof tool.needsConfirm,
+        `tool ${tool.name}: needsConfirm должен быть boolean, а не ${typeof tool.needsConfirm}`,
+      ).toBe('boolean');
+    }
+  });
 });
 
 /**

@@ -134,6 +134,33 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   }
 }
 
+// confirm-bridge fix: load-time invariant — needsConfirm ДОЛЖЕН быть
+// строго boolean. Все четыре проекции (agentToolSchemas/Names +
+// confirmToolSchemas/Names + capabilityText + confirmAlwaysNames)
+// фильтруют через strict `=== false` / `=== true`. Если будущий tool
+// объявит needsConfirm как функцию (input-зависимый confirm) — он бы
+// МОЛЧА выпал из ВСЕХ проекций: невидим агенту И не стейджится как
+// confirm → недостижим (тот же класс, что confirm-bridge баг). Тип
+// Tool.needsConfirm допускает функцию (рантайм toolConfirmRequired её
+// поддерживает), но НИ ОДИН tool её сегодня не использует. Этот guard
+// делает strict-equality фильтры безопасными by construction: появится
+// функциональный needsConfirm — server упадёт на import (fail-loud),
+// автор увидит, что сначала надо научить проекции функциональной форме.
+{
+  const bad = ALL_TOOLS.filter(
+    (t) => typeof t.needsConfirm !== 'boolean',
+  ).map((t) => `${t.name} (${typeof t.needsConfirm})`);
+  if (bad.length > 0) {
+    throw new Error(
+      `Registry: needsConfirm ДОЛЖЕН быть boolean (strict-equality ` +
+        `проекции иначе молча теряют tool). Нарушители: ${bad.join(', ')}. ` +
+        `Функциональный needsConfirm требует сначала научить ВСЕ проекции ` +
+        `(agentToolSchemas/Names, confirmToolSchemas/Names, capabilityText, ` +
+        `confirmAlwaysNames) функциональной форме.`,
+    );
+  }
+}
+
 export const registry: ReadonlyMap<string, Tool> = new Map(
   ALL_TOOLS.map((t) => [t.name, t]),
 );
