@@ -15,6 +15,7 @@ import {
   type BookingContext,
 } from './smart-booking.js';
 import { runAgent } from './claude-agent.js';
+import { buildConfirmPrompt } from './confirm-prompt.js';
 import { matchesCrisisPhrase, classifyCrisis } from './safety-classifier.js';
 import { buildSafetyResponse } from './safety-response.js';
 import { classifyEmotional } from './emotional-classifier.js';
@@ -1080,6 +1081,14 @@ export async function handleMessage(
         // правдоподобно требует данных/действия юзера.
         localTools: hermesForceTools || mayNeedLocalTools(text),
         userId,
+        // Confirm-bridge: confirm-tool (set_balance/clear_overdue/решения…)
+        // НЕ исполняется в цикле — стейджим pending + детерминир. текст,
+        // запись только на «да» через peekPendingAction→runConfirmedAction.
+        onConfirmTool: async (tool, args) => {
+          const prompt = buildConfirmPrompt(tool, args);
+          await setPendingAction(userId, tool, args, prompt);
+          return prompt;
+        },
       });
     } catch (agentErr) {
       // Fix B/A: раньше этот catch был немой — отказ агентного цикла
