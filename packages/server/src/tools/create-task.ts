@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
+import { sanitizeTaskTitle } from '../services/task-title.js';
 import {
   estimateTaskMinutesInBackground,
   maybeDayLoadLine,
@@ -42,17 +43,20 @@ export const createTaskTool = defineTool({
     // для любой tz. Symmetric с get-tasks (read tz-aware с v1.3.0).
     const tz = await getUserTimezone(ctx.userId);
     const date = localDayStartUTC(tz, new Date(input.date + 'T12:00:00Z'));
+    // Фикс A: модель оставляет хвостовой предлог/дату в названии
+    // («…отчёт на сегодня» → date выдернута, но «на» прилипло). Чистим.
+    const title = sanitizeTaskTitle(input.title);
     const task = await prisma.task.create({
       data: {
         userId: ctx.userId,
-        title: input.title,
+        title,
         date,
         time: input.time ?? null,
         category: input.category || 'personal',
         priority: input.priority || 'medium',
       },
     });
-    const message = `Задача "${input.title}" создана на ${input.date}${
+    const message = `Задача "${title}" создана на ${input.date}${
       input.time ? ' в ' + input.time : ''
     }`;
     // #engine slice1: фоновая ИИ-оценка времени задачи (для точности дня,
@@ -60,7 +64,7 @@ export const createTaskTool = defineTool({
     // флагом FEATURE_V2_DAY_LOAD внутри (off → message байт-в-байт).
     void estimateTaskMinutesInBackground(
       task.id,
-      input.title,
+      title,
       input.category ?? null,
       ctx.userId,
     );
