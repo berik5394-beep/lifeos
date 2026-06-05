@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localDaySlot, localHour, localDayOfWeek } from '../lib/tz.js';
+import { countOverduePending } from './task-overdue.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -460,8 +461,8 @@ async function buildMorning(
   tz: string,
 ): Promise<ProactiveNotification[]> {
   const today = getToday(tz);
-  const [taskCount, events, habits, habitLogs] = await Promise.all([
-    prisma.task.count({ where: { userId, date: today, completed: false } }),
+  const [taskCount, events, habits, habitLogs, overdue] = await Promise.all([
+    prisma.task.count({ where: { userId, date: today, completed: false, cancelled: false } }),
     prisma.calendarEvent.findMany({
       where: { userId, date: today },
       orderBy: { startTime: 'asc' },
@@ -470,11 +471,16 @@ async function buildMorning(
     }),
     prisma.habit.count({ where: { userId, active: true } }),
     prisma.habitLog.count({ where: { userId, date: today, completed: true } }),
+    countOverduePending(userId, today),
   ]);
 
   const parts: string[] = [];
   parts.push(`${taskCount} ${taskCount === 1 ? 'задача' : 'задач'} на сегодня`);
   if (habits > 0) parts.push(`привычек ${habitLogs}/${habits}`);
+  // Фикс C: невыполненные с прошлых дней не «пропадают» — честно показываем.
+  if (overdue > 0) {
+    parts.push(`⏳ ${overdue} ${overdue === 1 ? 'задача висит' : 'задач висят'} с прошлых дней`);
+  }
   if (events.length > 0) {
     const first = events[0];
     parts.push(

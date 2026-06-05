@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
+import { countOverduePending } from '../services/task-overdue.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -42,17 +43,22 @@ export const getTasksTool = defineTool({
     const date = input.date
       ? localDayStartUTC(tz, new Date(input.date + 'T12:00:00Z'))
       : localDayStartUTC(tz);
-    const tasks = await prisma.task.findMany({
-      where: {
-        userId: ctx.userId,
-        date,
-        cancelled: false,
-        ...(input.includeCompleted ? {} : { completed: false }),
-      },
-      select: { title: true, time: true, priority: true, completed: true },
-      orderBy: { time: 'asc' },
-      take: 50,
-    });
-    return tasks;
+    const [tasks, overduePending] = await Promise.all([
+      prisma.task.findMany({
+        where: {
+          userId: ctx.userId,
+          date,
+          cancelled: false,
+          ...(input.includeCompleted ? {} : { completed: false }),
+        },
+        select: { title: true, time: true, priority: true, completed: true },
+        orderBy: { time: 'asc' },
+        take: 50,
+      }),
+      // Фикс C: невыполненные с прошлых дней — чтобы «задач на сегодня нет»
+      // не звучало как «всё чисто», когда висят просроченные.
+      countOverduePending(ctx.userId, date),
+    ]);
+    return { tasks, overduePending };
   },
 });
