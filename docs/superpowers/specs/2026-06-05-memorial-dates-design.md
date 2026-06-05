@@ -36,9 +36,12 @@
 
 ### 2. Read-only гейтер — `src/services/birthday/birthday.ts` (добавить)
 - `listMemorials(userId): Promise<PersonBirthdayRow[]>` — `prisma.entity.findMany`
-  where type='person'; для каждого `parseBirthday(attrs.death_date)`; валидные →
-  row { entityId, name, importance, birthday: parsed }. (поле `birthday` тут несёт
-  дату памяти — переиспользуем тип, чтобы не плодить структуры.)
+  where type='person'; для каждого — взять ПЕРВЫЙ присутствующий ключ из набора
+  кандидатов (capture-extractor пишет имя ключа свободно, надо терпимо читать):
+  `['death_date','deathDate','died','date_of_death','memorial_date']` → `parseBirthday(value)`;
+  валидные → row { entityId, name, importance, birthday: parsed }. (поле `birthday`
+  тут несёт дату памяти — переиспользуем тип, чтобы не плодить структуры.)
+  Чистый хелпер `pickDeathDate(attrs): unknown` (перебор ключей) — юнит-тестируем.
 - `buildUpcomingMemorials(userId, now, windowDays): Promise<UpcomingBirthday[]>` —
   `listMemorials` → `upcomingBirthdays(rows, now, windowDays)` (реюз сортировки/фильтра).
 - `buildMemorialSection(userId): Promise<string | null>` —
@@ -47,9 +50,10 @@
 
 ### 3. Проактивный детектор — `src/services/v2-proactivity-engine.ts`
 - `NudgeSource`: добавить `'memorial_upcoming'`.
-- `TEMPLATES.memorial_upcoming` — ТОЛЬКО тёплые тона (supportive/gentle), без celebratory:
-  - `gentle`: `'{{whenLabel}} годовщина — память {{name}}. Если нужно, я рядом.'`
-  - `supportive`: `'{{whenLabel}} день памяти {{name}}. Береги себя сегодня.'`
+- `TEMPLATES.memorial_upcoming` — ТОЛЬКО тёплые тона (supportive/gentle), без celebratory.
+  Формулировка номинатив-безопасная ({{name}} после тире — без склонения, «память Папа» избегаем):
+  - `gentle`: `'{{whenLabel}} день памяти — {{name}}. Если нужно, я рядом. 🤍'`
+  - `supportive`: `'{{whenLabel}} день памяти — {{name}}. Береги себя сегодня.'`
 - `scoreSignificance`: case `'memorial_upcoming'` → стабильно `0.7` (≥ floor gate3 0.6,
   чтобы доходило; как obligation_due/decision_review).
 - `async function detectMemorial(userId)`:
@@ -81,18 +85,22 @@ fallback, когда шаблона НЕТ.
 
 ## Тесты
 - **Pure-юнит** (`birthday/types.test.ts`, добавить): `formatMemorialSection` —
-  пусто→null; «День памяти: папа — завтра; …». (parseBirthday «10 августа 2021»
-  уже покрыт.)
+  пусто→null; «День памяти: Папа — завтра; …». `pickDeathDate` — берёт первый
+  присутствующий ключ из набора (death_date / deathDate / died), мусор/пусто→undefined.
+  (parseBirthday «10 августа 2021» уже покрыт.)
 - **Поведенческий** (`birthday.it.test.ts`, добавить): entity person с
-  `attributes.death_date='10 августа 2021'` → `buildUpcomingMemorials(now=за день, 1)`
-  находит; дальний (>7д) вне окна 7; cross-user изоляция; флаг OFF (FEATURE_V2_BIRTHDAY
-  unset) → detectMemorial=[].
-- **Структурный** (`memorial-wiring.test.ts` или в birthday-wiring): `memorial_upcoming`
+  `attributes.death_date='10 августа 2021'` → `buildUpcomingMemorials(now=9 авг, 1)`
+  находит (daysUntil=1); дальний (now=июнь, >7д) вне окна 7; альт-ключ `deathDate`
+  тоже читается; cross-user изоляция; флаг OFF (FEATURE_V2_BIRTHDAY unset) → detectMemorial=[].
+- **Tone-safety поведенческий** (proactivity test): `engine.generateNudge(userId, memorialCandidate{toneHint:'supportive'})`
+  возвращает interpolate(TEMPLATES.memorial_upcoming.supportive) ДОСЛОВНО — доказывает,
+  что haiku/стиль не вызывается (токсичный стиль недостижим). Template-path в generateNudge
+  (стр 942-945) возвращает до любого I/O.
+- **Структурный** (в birthday-wiring или memorial-wiring): `memorial_upcoming`
   в NudgeSource+TEMPLATES+scoreSignificance+detectCandidates; detectMemorial ранний
   флаг-гейт; enrichment-врезка (memorials поле + buildMemorialSection + if(data.memorials));
-  **tone-guard**: TEMPLATES.memorial_upcoming НЕ содержит «поздравишь»/«celebratory»,
-  содержит «память»/«рядом»; generateNudge содержит guard на memorial (skip style-rewrite);
-  money-safety: ноль prisma write в birthday.ts (уже есть гард — расширить охват).
+  **tone-guard**: TEMPLATES.memorial_upcoming.supportive существует, НЕ содержит «поздравишь»/«celebratory»,
+  содержит «память»/«рядом»; money-safety: ноль prisma write в birthday.ts (расширить охват гарда).
 - Baseline вся сюита зелёная (~2477 unit); `tsc` чисто каждый таск; zero vi.mock.
 
 ## Money-safety
@@ -102,8 +110,13 @@ fallback, когда шаблона НЕТ.
 - Коммит на шаг (trailer `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`).
 - push/deploy/флаг — по слову Berik (флаг уже `=all`, отдельной env-правки НЕ нужно).
 - SMOKE: у Берика `death_date` папы «10 августа 2021» уже в БД → на тике проактивности
-  ближе к 9–10 августа придёт «Завтра годовщина — память папы. Если нужно, я рядом».
-  Проверка раньше срока: временно сдвинуть окно/дату в тест-юзере или дождаться 9 авг.
+  ближе к 9–10 августа придёт «Завтра день памяти — Папа. Если нужно, я рядом. 🤍».
+- **РЕАЛЬНАЯ ПРОВЕРКА В ПРОДЕ (обязательно, урок ДР):** после деплоя — read-only
+  диагностика на проде: `buildUpcomingMemorials(berikUserId, new Date('2026-08-09'), 1)`
+  → должен вернуть Папу (daysUntil=1). Это доказывает end-to-end на реальных данных
+  ДО 9 августа (настоящий путь, а не только unit). Скрипт внутри packages/server,
+  `node --env-file=.env`, СРАЗУ удалить, не коммитить.
+- Прим.: dedup движка может схлопнуть «накануне+в день» в одно уведомление — приемлемо.
 
 ## Открытые мелочи (решены явно)
 - Окно детектора = 1 день (день + накануне). Enrichment-окно = 7 дней.
