@@ -20,6 +20,7 @@ import { clearOverdueTool } from './clear-overdue.js';
 import { deferOverdueTool } from './defer-overdue.js';
 import { completeHabitTool } from './complete-habit.js';
 import { completeMultipleHabitsTool } from './complete-multiple-habits.js';
+import { createHabitTool } from './create-habit.js';
 import { createEventTool } from './create-event.js';
 import { journalEntryTool } from './journal-entry.js';
 import { addExpenseTool } from './add-expense.js';
@@ -73,6 +74,7 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   clearOverdueTool,
   deferOverdueTool,
   completeHabitTool,
+  createHabitTool,
   completeMultipleHabitsTool,
   createEventTool,
   journalEntryTool,
