@@ -38,7 +38,7 @@ export async function gatherMonthLoad(
 
   const [tasks, weeklyGoals, events] = await Promise.all([
     prisma.task.findMany({
-      where: { userId, date: { gte: monthStart, lt: monthEndExcl }, completed: false },
+      where: { userId, date: { gte: monthStart, lt: monthEndExcl }, completed: false, cancelled: false },
       select: { title: true, estimatedMinutes: true, importance: true, priority: true },
     }),
     prisma.weeklyGoal.findMany({

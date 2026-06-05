@@ -34,7 +34,7 @@ async function computeLegacy(userId: string, now: Date): Promise<ReflectorV2Fact
       prisma.expense.aggregate({ _sum: { amount: true }, where: { userId, date: { gte: since30 } } }),
       prisma.habitLog.count({ where: { userId, date: { gte: since30 }, completed: true } }),
       prisma.habit.count({ where: { userId, active: true } }),
-      prisma.task.count({ where: { userId, completed: false, date: { lt: new Date(now.getTime() - 2 * DAY) } } }),
+      prisma.task.count({ where: { userId, completed: false, cancelled: false, date: { lt: new Date(now.getTime() - 2 * DAY) } } }),
       prisma.budgetLimit.aggregate({ _sum: { monthlyLimit: true }, where: { userId, month: now.getUTCMonth() + 1, year: now.getUTCFullYear() } }),
     ]);
     const monthlyIncome = income._sum.amount ?? 0;

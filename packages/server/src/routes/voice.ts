@@ -120,6 +120,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
         where: {
           userId,
           date: today,
+          cancelled: false,
         },
         select: {
           title: true,

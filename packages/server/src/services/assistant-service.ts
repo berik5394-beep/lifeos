@@ -95,7 +95,7 @@ export async function gatherAssistantContext(
     weeklyGoals,
   ] = await Promise.all([
     prisma.task.findMany({
-      where: { userId, date: today },
+      where: { userId, date: today, cancelled: false },
       select: { title: true, completed: true },
     }),
     // meta#9: имя нужно, чтобы сказать «не отметил ЙОГУ», а не «1 из 4»

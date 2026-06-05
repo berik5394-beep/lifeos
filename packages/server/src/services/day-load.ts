@@ -44,7 +44,7 @@ export async function gatherDayLoad(
   const today = localDayStartUTC(tz, now);
   const [tasks, events] = await Promise.all([
     prisma.task.findMany({
-      where: { userId, date: today, completed: false },
+      where: { userId, date: today, completed: false, cancelled: false },
       select: { title: true, estimatedMinutes: true, importance: true, priority: true },
     }),
     prisma.calendarEvent.findMany({

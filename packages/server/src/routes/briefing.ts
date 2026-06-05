@@ -55,9 +55,9 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
 
     const [tasks, events, habits, habitLogs, expenses, budgetLimits, pet, stepLog] =
       await Promise.all([
-        // Задачи на сегодня
+        // Задачи на сегодня (отменённые — скрыты)
         prisma.task.findMany({
-          where: { userId, date: today },
+          where: { userId, date: today, cancelled: false },
           orderBy: [{ priority: 'desc' }, { time: 'asc' }],
           select: {
             id: true,
@@ -199,7 +199,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
 
     const [tasks, habits, habitLogs, expenses, pet] = await Promise.all([
       prisma.task.findMany({
-        where: { userId, date: today },
+        where: { userId, date: today, cancelled: false },
         select: { id: true, title: true, completed: true, category: true },
       }),
       prisma.habit.findMany({

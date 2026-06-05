@@ -179,7 +179,7 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
 
     // 2. Tasks today: (completed / total) * 25
     const [totalTasks, completedTasks] = await Promise.all([
-      prisma.task.count({ where: { userId, date: today } }),
+      prisma.task.count({ where: { userId, date: today, cancelled: false } }),
       prisma.task.count({ where: { userId, date: today, completed: true } }),
     ]);
     const tasksScore = totalTasks > 0
@@ -381,7 +381,7 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
     // Verify revive condition
     if (method === 'perfect_day') {
       const [totalTasks, completedTasks, totalHabits, completedHabits] = await Promise.all([
-        prisma.task.count({ where: { userId, date: today } }),
+        prisma.task.count({ where: { userId, date: today, cancelled: false } }),
         prisma.task.count({ where: { userId, date: today, completed: true } }),
         prisma.habit.count({ where: { userId, active: true } }),
         prisma.habitLog.count({ where: { userId, date: today, completed: true } }),
@@ -413,7 +413,7 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
         const dayStart = getStartOfDay(date);
 
         const [totalTasks, completedTasks, totalHabits, completedHabits] = await Promise.all([
-          prisma.task.count({ where: { userId, date: dayStart } }),
+          prisma.task.count({ where: { userId, date: dayStart, cancelled: false } }),
           prisma.task.count({ where: { userId, date: dayStart, completed: true } }),
           prisma.habit.count({ where: { userId, active: true } }),
           prisma.habitLog.count({ where: { userId, date: dayStart, completed: true } }),

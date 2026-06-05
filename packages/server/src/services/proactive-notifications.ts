@@ -523,7 +523,7 @@ async function generateEveningSummary(
 
   const [tasks, habits, habitLogs] = await Promise.all([
     prisma.task.findMany({
-      where: { userId, date: today },
+      where: { userId, date: today, cancelled: false },
       select: { completed: true },
     }),
     prisma.habit.count({ where: { userId, active: true } }),

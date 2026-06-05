@@ -57,7 +57,7 @@ async function dayCompletion(
   day: Date,
 ): Promise<{ pct: number; hadActivity: boolean }> {
   const [tasks, habits, habitLogs] = await Promise.all([
-    prisma.task.findMany({ where: { userId, date: day }, select: { completed: true } }),
+    prisma.task.findMany({ where: { userId, date: day, cancelled: false }, select: { completed: true } }),
     prisma.habit.count({ where: { userId, active: true } }),
     prisma.habitLog.count({ where: { userId, date: day, completed: true } }),
   ]);
