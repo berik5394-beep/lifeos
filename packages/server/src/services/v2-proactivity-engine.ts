@@ -95,8 +95,9 @@ export function scoreSignificance(c: NudgeCandidate): number {
       return 0.6;
     }
     case 'decision_review': {
-      // Решение, которому пора ретро — стабильно значимо.
-      return 0.55;
+      // Решение, которому пора ретро — стабильно значимо. 0.6 = на уровне
+      // obligation_due: ниже порог-гейта (gate3 >= 0.6) нудж бы НЕ доходил.
+      return 0.6;
     }
     case 'goal_impact': {
       // Доля категории от месячной нормы цели (0..N) → значимость.

@@ -87,6 +87,17 @@ describe('scoreSignificance — pure', () => {
       }),
     ).toBe(0.5);
   });
+
+  it('decision_review clears gate3 floor (>= 0.6) — иначе нудж не доходит', () => {
+    expect(
+      scoreSignificance({
+        source: 'decision_review',
+        significance: 0,
+        payload: { title: 'X', weeks: 4, expectedSuffix: '' },
+        toneHint: 'curious',
+      }),
+    ).toBeGreaterThanOrEqual(0.6);
+  });
 });
 
 describe('gate3_Significance — pure', () => {
