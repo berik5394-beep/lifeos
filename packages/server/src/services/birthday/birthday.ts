@@ -3,6 +3,8 @@ import {
   parseBirthday,
   upcomingBirthdays,
   formatBirthdaySection,
+  pickDeathDate,
+  formatMemorialSection,
   type PersonBirthdayRow,
   type UpcomingBirthday,
 } from './types.js';
@@ -40,4 +42,39 @@ export async function buildUpcomingBirthdays(
 export async function buildBirthdaySection(userId: string): Promise<string | null> {
   const rows = await buildUpcomingBirthdays(userId, new Date(), 7);
   return formatBirthdaySection(rows);
+}
+
+/**
+ * Память дней памяти — read-only. Читает person-сущности с любым ключом
+ * даты смерти (capture-extractor пишет имя ключа свободно). Никаких записей.
+ */
+export async function listMemorials(userId: string): Promise<PersonBirthdayRow[]> {
+  const rows = await prisma.entity.findMany({
+    where: { userId, type: 'person' },
+    select: { id: true, name: true, importance: true, attributes: true },
+  });
+  const out: PersonBirthdayRow[] = [];
+  for (const r of rows) {
+    const attrs = (r.attributes ?? {}) as Record<string, unknown>;
+    const bday = parseBirthday(pickDeathDate(attrs));
+    if (!bday) continue;
+    out.push({ entityId: r.id, name: r.name, importance: r.importance, birthday: bday });
+  }
+  return out;
+}
+
+/** Ближайшие дни памяти в окне windowDays (для детектора и enrichment). */
+export async function buildUpcomingMemorials(
+  userId: string,
+  now: Date,
+  windowDays: number,
+): Promise<UpcomingBirthday[]> {
+  const persons = await listMemorials(userId);
+  return upcomingBirthdays(persons, now, windowDays);
+}
+
+/** Enrichment-секция «День памяти: …» (окно 7 дней) или null. */
+export async function buildMemorialSection(userId: string): Promise<string | null> {
+  const rows = await buildUpcomingMemorials(userId, new Date(), 7);
+  return formatMemorialSection(rows);
 }
