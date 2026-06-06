@@ -33,7 +33,7 @@ describe('month-load — проводка (structural)', () => {
     expect(SRC).toContain("'time:month_load'");
   });
   it('gatherMonthLoad: задачи + недельные цели + sumWeekCapacity + границы месяца', () => {
-    expect(SRC).toContain('localMonthStartUTC');
+    expect(SRC).toContain('localMonthOnlyUTC');
     expect(SRC).toContain('sumWeekCapacity');
     expect(SRC).toContain('weeklyGoal.findMany');
     expect(SRC).toContain('DEFAULT_GOAL_MINUTES');

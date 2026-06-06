@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC, localDayOfWeek, localTimeStr } from '../lib/tz.js';
+import { localDayStartUTC, localDateOnlyUTC, localDayOfWeek, localTimeStr } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { isV2WeekLoadEnabled } from '../lib/feature-flags.js';
 import { sumWeekCapacity } from '../tools/_slots.js';
@@ -30,7 +30,7 @@ export async function gatherWeekLoad(
   now: Date,
 ): Promise<{ capacity: number; items: CapacityItem[] }> {
   const tz = await getUserTimezone(userId);
-  const todayStart = localDayStartUTC(tz, now);
+  const todayStart = localDateOnlyUTC(tz, now); // FIX 2026-06-06: @db.Date граница
   const daysFromMon = (localDayOfWeek(tz, now) + 6) % 7; // 0=Sun..6=Sat → Mon-offset
   const weekStart = new Date(todayStart.getTime() - daysFromMon * DAY_MS);
   const weekEndExcl = new Date(weekStart.getTime() + 7 * DAY_MS); // next Monday 00:00
@@ -48,7 +48,7 @@ export async function gatherWeekLoad(
 
   // События по локальному дню (нормализуем к local-day-start instant — устойчиво
   // к тому, как хранится CalendarEvent.date).
-  const dayKey = (d: Date) => localDayStartUTC(tz, d).getTime();
+  const dayKey = (d: Date) => localDateOnlyUTC(tz, d).getTime();
   const evByDay = new Map<number, Array<{ startTime: string | null; endTime: string | null }>>();
   for (const e of events) {
     const k = dayKey(e.date);

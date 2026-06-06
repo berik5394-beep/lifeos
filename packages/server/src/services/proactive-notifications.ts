@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC, localDaySlot, localHour, localDayOfWeek } from '../lib/tz.js';
+import { localDayStartUTC, localDateOnlyUTC, localDaySlot, localHour, localDayOfWeek } from '../lib/tz.js';
 import { countOverduePending } from './task-overdue.js';
 import { isV2TaskReminderEnabled } from '../lib/feature-flags.js';
 
@@ -32,7 +32,8 @@ export interface ProactiveNotification {
  * `date: today` возвращал not юзерский день. Bug-class.
  */
 function getToday(tz: string): Date {
-  return localDayStartUTC(tz);
+  // FIX 2026-06-06: @db.Date task/event queries → UTC-полночь календарной даты.
+  return localDateOnlyUTC(tz);
 }
 
 /**

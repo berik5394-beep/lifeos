@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC, localMonthStartUTC, localTimeStr } from '../lib/tz.js';
+import { localDayStartUTC, localDateOnlyUTC, localMonthOnlyUTC, localTimeStr } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { isV2MonthLoadEnabled } from '../lib/feature-flags.js';
 import { sumWeekCapacity } from '../tools/_slots.js';
@@ -32,9 +32,10 @@ export async function gatherMonthLoad(
   now: Date,
 ): Promise<{ capacity: number; items: CapacityItem[] }> {
   const tz = await getUserTimezone(userId);
-  const monthStart = localMonthStartUTC(tz, now);
-  const monthEndExcl = localMonthStartUTC(tz, new Date(monthStart.getTime() + 32 * DAY_MS));
-  const todayStart = localDayStartUTC(tz, now);
+  // FIX 2026-06-06: @db.Date границы месяца/дня → UTC-полночь календарных дат.
+  const monthStart = localMonthOnlyUTC(tz, now);
+  const monthEndExcl = localMonthOnlyUTC(tz, new Date(monthStart.getTime() + 32 * DAY_MS));
+  const todayStart = localDateOnlyUTC(tz, now);
 
   const [tasks, weeklyGoals, events] = await Promise.all([
     prisma.task.findMany({
@@ -51,7 +52,7 @@ export async function gatherMonthLoad(
     }),
   ]);
 
-  const dayKey = (d: Date) => localDayStartUTC(tz, d).getTime();
+  const dayKey = (d: Date) => localDateOnlyUTC(tz, d).getTime();
   const evByDay = new Map<number, Array<{ startTime: string | null; endTime: string | null }>>();
   for (const e of events) {
     const k = dayKey(e.date);

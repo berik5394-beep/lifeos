@@ -82,6 +82,29 @@ export function localDayStartUTC(tz: string, at: Date = new Date()): Date {
 }
 
 /**
+ * ЗНАЧЕНИЕ для колонки @db.Date = UTC-полночь КАЛЕНДАРНОЙ даты юзера.
+ *
+ * КРИТИЧНО (баг 2026-06-06): localDayStartUTC возвращает реальный UTC-инстант
+ * локальной полуночи (для Almaty = 19:00 предыдущего дня UTC). Postgres @db.Date
+ * берёт UTC-дату этого инстанта → пишет civil−1 (вчера). Для @db.Date нужна
+ * UTC-полночь самой календарной даты (T00:00Z того же числа), что и даёт эта
+ * функция. localDayStartUTC оставляем ТОЛЬКО для сравнения таймстемпов (createdAt).
+ */
+export function localDateOnlyUTC(tz: string, at: Date = new Date()): Date {
+  return new Date(localDateStr(safeTz(tz), at) + 'T00:00:00Z');
+}
+
+/** @db.Date-значение из УЖЕ календарной строки 'YYYY-MM-DD' (без tz-round-trip). */
+export function dateOnlyUTC(civilDate: string): Date {
+  return new Date(civilDate + 'T00:00:00Z');
+}
+
+/** @db.Date-значение = UTC-полночь 1-го числа КАЛЕНДАРНОГО месяца юзера (аналог localDateOnlyUTC). */
+export function localMonthOnlyUTC(tz: string, at: Date = new Date()): Date {
+  return new Date(localDateStr(safeTz(tz), at).slice(0, 8) + '01T00:00:00Z');
+}
+
+/**
  * UTC-инстант 00:00 ЛОКАЛЬНОГО 1-го числа месяца, в который попадает
  * `at`. Копия localDayStartUTC, но день=1. DST-устойчиво (re-нормализация
  * смещения; KZ без DST → точно). Для границ месяца в month-load.

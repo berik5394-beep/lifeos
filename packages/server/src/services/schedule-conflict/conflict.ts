@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
-import { localDayStartUTC } from '../../lib/tz.js';
+import { localDateOnlyUTC } from '../../lib/tz.js';
 import { getUserTimezone } from '../../lib/user-context.js';
 import { detectConflicts, formatScheduleConflict } from './types.js';
 
@@ -9,7 +9,7 @@ import { detectConflicts, formatScheduleConflict } from './types.js';
  */
 export async function buildScheduleConflict(userId: string): Promise<string | null> {
   const tz = await getUserTimezone(userId);
-  const today = localDayStartUTC(tz);
+  const today = localDateOnlyUTC(tz);
   const [tasks, events] = await Promise.all([
     prisma.task.findMany({
       where: { userId, date: today, completed: false, time: { not: null } },

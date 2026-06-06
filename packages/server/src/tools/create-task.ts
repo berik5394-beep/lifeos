@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
-import { getUserTimezone } from '../lib/user-context.js';
+import { dateOnlyUTC } from '../lib/tz.js';
 import { defineTool } from './_types.js';
 import { sanitizeTaskTitle } from '../services/task-title.js';
 import {
@@ -38,11 +37,10 @@ export const createTaskTool = defineTool({
   sideEffects: 'write',
   examples: ['создай задачу купить хлеб завтра', 'добавь задачу отчёт'],
   handler: async (input, ctx) => {
-    // R9 TZ coherence: дата → UTC instant начала локального дня юзера.
-    // Mid-day UTC trick гарантирует попадание в нужный локальный день
-    // для любой tz. Symmetric с get-tasks (read tz-aware с v1.3.0).
-    const tz = await getUserTimezone(ctx.userId);
-    const date = localDayStartUTC(tz, new Date(input.date + 'T12:00:00Z'));
+    // FIX 2026-06-06: @db.Date = UTC-полночь КАЛЕНДАРНОЙ даты (input.date уже
+    // tz-резолвнут resolveDate в локальную дату юзера). Раньше localDayStartUTC
+    // писал civil−1 для Almaty (реальный инстант лок. полуночи = 19:00 вчера UTC).
+    const date = dateOnlyUTC(input.date);
     // Фикс A: модель оставляет хвостовой предлог/дату в названии
     // («…отчёт на сегодня» → date выдернута, но «на» прилипло). Чистим.
     const title = sanitizeTaskTitle(input.title);

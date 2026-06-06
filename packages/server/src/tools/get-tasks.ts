@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
+import { dateOnlyUTC, localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { countOverduePending, listOverduePending } from '../services/task-overdue.js';
 import { defineTool } from './_types.js';
@@ -41,8 +41,8 @@ export const getTasksTool = defineTool({
     // что попадаем в нужный локальный день для любой tz, затем
     // запрашиваем UTC instant начала этого дня в tz юзера.
     const date = input.date
-      ? localDayStartUTC(tz, new Date(input.date + 'T12:00:00Z'))
-      : localDayStartUTC(tz);
+      ? dateOnlyUTC(input.date)
+      : localDateOnlyUTC(tz);
     const [tasks, overduePending, overdue] = await Promise.all([
       prisma.task.findMany({
         where: {

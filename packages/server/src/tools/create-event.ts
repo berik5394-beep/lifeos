@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
-import { getUserTimezone } from '../lib/user-context.js';
+import { dateOnlyUTC } from '../lib/tz.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -48,8 +47,8 @@ export const createEventTool = defineTool({
     // (read tz-aware с v1.3.0) — раньше read и write смотрели на
     // разные UTC instants для одного локального дня → встреча могла
     // «исчезнуть» из view для юзера в Almaty.
-    const tz = await getUserTimezone(userId);
-    const date = localDayStartUTC(tz, new Date(input.date + 'T12:00:00Z'));
+    // FIX 2026-06-06: @db.Date = UTC-полночь календарной даты (input.date уже civil).
+    const date = dateOnlyUTC(input.date);
     const startTime = input.startTime ?? null;
     const endTime = input.endTime ?? null;
 

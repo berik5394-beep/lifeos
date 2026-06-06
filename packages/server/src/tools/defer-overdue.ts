@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 
@@ -22,7 +22,7 @@ export const deferOverdueTool = defineTool({
   examples: ['перенеси все просроченные на сегодня', 'перетащи просрочки на сегодня'],
   handler: async (_input, ctx) => {
     const tz = await getUserTimezone(ctx.userId);
-    const today = localDayStartUTC(tz);
+    const today = localDateOnlyUTC(tz);
     const res = await prisma.task.updateMany({
       where: { userId: ctx.userId, date: { lt: today }, completed: false, cancelled: false },
       data: { date: today },

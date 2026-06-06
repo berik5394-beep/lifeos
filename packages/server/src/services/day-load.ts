@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC, localTimeStr } from '../lib/tz.js';
+import { localDayStartUTC, localDateOnlyUTC, localTimeStr } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { isV2DayLoadEnabled } from '../lib/feature-flags.js';
 import { availableMinutesToday } from '../tools/_slots.js';
@@ -41,7 +41,8 @@ export async function gatherDayLoad(
   now: Date,
 ): Promise<{ capacity: number; items: CapacityItem[] }> {
   const tz = await getUserTimezone(userId);
-  const today = localDayStartUTC(tz, now);
+  // FIX 2026-06-06: @db.Date task/event «сегодня» → UTC-полночь календарной даты.
+  const today = localDateOnlyUTC(tz, now);
   const [tasks, events] = await Promise.all([
     prisma.task.findMany({
       where: { userId, date: today, completed: false, cancelled: false },
