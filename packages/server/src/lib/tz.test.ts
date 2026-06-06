@@ -6,6 +6,8 @@ import {
   localDayStartUTCOffset,
   localTimeStr,
   isInQuietHours,
+  isValidIanaTz,
+  localNowString,
 } from './tz.js';
 
 /**
@@ -23,6 +25,34 @@ describe('localDateStr', () => {
   });
   it('мусорная зона → фолбэк UTC, не бросает', () => {
     expect(localDateStr('Mars/Olympus', lateNightAlmaty)).toBe('2026-05-16');
+  });
+});
+
+describe('isValidIanaTz', () => {
+  it('валидная IANA → true', () => {
+    expect(isValidIanaTz('Asia/Almaty')).toBe(true);
+    expect(isValidIanaTz('Europe/Istanbul')).toBe(true);
+    expect(isValidIanaTz('UTC')).toBe(true);
+  });
+  it('мусор/пусто → false', () => {
+    expect(isValidIanaTz('Mars/Phobos')).toBe(false);
+    expect(isValidIanaTz('banana')).toBe(false);
+    expect(isValidIanaTz('')).toBe(false);
+  });
+});
+
+describe('localNowString', () => {
+  const at = new Date('2026-06-06T14:42:00Z'); // 19:42 Алматы, 17:42 Стамбул
+  it('Алматы — локальные дата+время', () => {
+    const s = localNowString('Asia/Almaty', at);
+    expect(s).toMatch(/2026/);
+    expect(s).toMatch(/19:42/);
+  });
+  it('другой пояс — другое время того же инстанта', () => {
+    expect(localNowString('Europe/Istanbul', at)).toMatch(/17:42/);
+  });
+  it('невалидный tz → не бросает (safeTz→UTC)', () => {
+    expect(() => localNowString('X/Y', at)).not.toThrow();
   });
 });
 

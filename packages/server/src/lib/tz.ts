@@ -30,6 +30,44 @@ function safeTz(tz: string | null | undefined): string {
   }
 }
 
+/**
+ * App-дефолт пояса при «нет инфо о юзере» (KZ-база). Отличается от
+ * FALLBACK_TZ ('UTC', чисто для date-math, чтобы не бросать).
+ */
+export const DEFAULT_TZ = 'Asia/Almaty';
+
+/** true, если строка — валидная зона (Intl не бросает). Для валидации X-Timezone. */
+export function isValidIanaTz(tz: string): boolean {
+  if (!tz || typeof tz !== 'string') return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Локальные дата+время юзера строкой («пятница, 6 июня 2026 г., 19:42»).
+ * Для впрыска блока «СЕЙЧАС» в системный промпт — LLM не имеет часов.
+ */
+export function localNowString(
+  tz: string | null | undefined,
+  at: Date = new Date(),
+): string {
+  const zone = safeTz(tz);
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: zone,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(at);
+}
+
 /** Смещение зоны от UTC в мс на момент `date` (учитывает DST). */
 function tzOffsetMs(tz: string, date: Date): number {
   const dtf = new Intl.DateTimeFormat('en-US', {
