@@ -14,7 +14,7 @@ import { digestProfile } from './profile-core.js';
 import { getWeather } from './external-apis.js';
 import {
   localDayStartUTC,
-  localDayStartUTCOffset,
+  localDateOnlyUTC,
   localDateStr,
 } from '../lib/tz.js';
 
@@ -69,13 +69,14 @@ export async function gatherAssistantContext(
   });
   if (!user) return null;
 
-  // B.5 модуль №1: «сегодня» по таймзоне юзера, не серверный UTC
-  // (раньше после 19:00 в Алматы контекст показывал «завтра»).
-  // @db.Date хранит дату как UTC-полночь → tz-окно дня её содержит,
-  // выборки корректны без правки write-side.
+  // FIX 2026-06-06 (review-catch d67417d): @db.Date «сегодня» — ДВЕ конвенции.
+  // task/event теперь пишутся convA (UTC-полночь календарной даты) → читаем их
+  // через localDateOnlyUTC. habitLog ещё на старой convB (complete-habit не
+  // мигрирован) → его читаем через localDayStartUTC (write↔read совпадают).
   const tz = user.timezone || 'Asia/Almaty';
-  const today = localDayStartUTC(tz);
-  const tomorrow = localDayStartUTCOffset(tz, -1); // следующий лок. день
+  const today = localDayStartUTC(tz); // convB — ТОЛЬКО для habitLog
+  const todayDateOnly = localDateOnlyUTC(tz); // convA — для task/event
+  const tomorrowDateOnly = new Date(todayDateOnly.getTime() + 24 * 60 * 60 * 1000);
   const [ly, lm] = localDateStr(tz).split('-').map(Number);
   const monthStart = new Date(Date.UTC(ly, lm - 1, 1));
   const monthEnd = new Date(Date.UTC(ly, lm, 1));
@@ -95,7 +96,7 @@ export async function gatherAssistantContext(
     weeklyGoals,
   ] = await Promise.all([
     prisma.task.findMany({
-      where: { userId, date: today, cancelled: false },
+      where: { userId, date: todayDateOnly, cancelled: false },
       select: { title: true, completed: true },
     }),
     // meta#9: имя нужно, чтобы сказать «не отметил ЙОГУ», а не «1 из 4»
@@ -108,7 +109,7 @@ export async function gatherAssistantContext(
       select: { habitId: true },
     }),
     prisma.calendarEvent.findMany({
-      where: { userId, date: { gte: today, lt: tomorrow } },
+      where: { userId, date: { gte: todayDateOnly, lt: tomorrowDateOnly } },
       select: { title: true, startTime: true, date: true },
       orderBy: { startTime: 'asc' },
     }),
@@ -121,7 +122,7 @@ export async function gatherAssistantContext(
       _sum: { monthlyLimit: true },
     }),
     calculateStreak(userId),
-    calculateWeekProgress(userId, today),
+    calculateWeekProgress(userId, todayDateOnly),
     prisma.yearlyGoal.findMany({
       where: { userId, year: ly },
       select: {
