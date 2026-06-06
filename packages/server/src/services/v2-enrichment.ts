@@ -27,8 +27,10 @@ import {
   isV2BirthdayEnabled,
   isV2GoalHabitsEnabled,
   isV2RecentActivityEnabled,
+  isV2ScheduleConflictEnabled,
 } from '../lib/feature-flags.js';
 import { recentEvents } from './episodic-memory.js';
+import { buildScheduleConflict } from './schedule-conflict/index.js';
 import { openObligationsForContext } from './obligations/index.js';
 import { buildBirthdaySection, buildMemorialSection } from './birthday/index.js';
 import { buildGoalHabitHealth, computeStall, pickWorstStall } from './goal-habits/index.js';
@@ -88,6 +90,8 @@ export type V2EnrichmentData = {
   goalHabits: string | null;
   /** Недавняя активность (v2-натив reader, M3): «📌 Недавно: …» или null. */
   recentActivity: string | null;
+  /** Конфликт задача↔календарь (слой B): «⚠️ Конфликт расписания: …» или null. */
+  scheduleConflict: string | null;
 };
 
 /** Недавняя активность — pure render. Empty → ''. */
@@ -143,6 +147,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (data.memorials) lines.push(data.memorials);
   const gh = formatGoalHabitSection(data.goalHabits ?? null);
   if (gh) lines.push(gh);
+  if (data.scheduleConflict) lines.push(data.scheduleConflict);
   if (data.recentActivity) lines.push(data.recentActivity);
   return lines.join('\n');
 }
@@ -300,7 +305,7 @@ export async function fetchV2EnrichmentData(
       ? gatherReflectorFacts(userId, new Date()).catch(() => null)
       : Promise.resolve(null);
 
-    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity] = await Promise.all([
+    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity, scheduleConflict] = await Promise.all([
       withTimeout(
         getBotIdentityService()
           .getIdentity(userId)
@@ -399,6 +404,9 @@ export async function fetchV2EnrichmentData(
             null,
           ).catch(() => null)
         : Promise.resolve(null),
+      isV2ScheduleConflictEnabled(userId)
+        ? withTimeout(buildScheduleConflict(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
+        : Promise.resolve(null),
     ]);
     const now = Date.now();
     return {
@@ -446,6 +454,7 @@ export async function fetchV2EnrichmentData(
       memorials,
       goalHabits,
       recentActivity,
+      scheduleConflict,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);

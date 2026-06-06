@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localDaySlot, localHour, localDayOfWeek } from '../lib/tz.js';
 import { countOverduePending } from './task-overdue.js';
+import { isV2TaskReminderEnabled } from '../lib/feature-flags.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -11,6 +12,7 @@ export interface ProactiveNotification {
   type:
     | 'event_reminder_1h'
     | 'event_reminder_30m'
+    | 'task_reminder_30m'
     | 'budget_alert'
     | 'habit_nudge'
     | 'inactivity_ping'
@@ -135,6 +137,47 @@ async function generateEventReminders(
         title: 'Встреча скоро',
         body: `Через 30 минут: ${event.title}`,
         type: 'event_reminder_30m',
+        scheduledFor: thirtyMinBefore,
+      });
+    }
+  }
+
+  return notifications;
+}
+
+// ---------------------------------------------------------------------------
+// 1b. Task reminders — 30 minutes before tasks with a time (P1 HOLLOW fix).
+// task.time писался, но не читался — обещание «за 30 мин до задачи» было мёртвым.
+// Дедуп/доставку наследует от scheduler (SentNotification + deliverNotification).
+// ---------------------------------------------------------------------------
+export async function generateTaskReminders(
+  userId: string,
+  now: Date = new Date(),
+): Promise<ProactiveNotification[]> {
+  const notifications: ProactiveNotification[] = [];
+  if (!isV2TaskReminderEnabled(userId)) return notifications;
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { timezone: true },
+  });
+  const tz = user?.timezone || 'UTC';
+  const today = getToday(tz);
+
+  const tasks = await prisma.task.findMany({
+    where: { userId, date: today, completed: false, time: { not: null } },
+    select: { title: true, time: true },
+  });
+
+  for (const task of tasks) {
+    if (!task.time) continue;
+    const taskTime = timeToDate(task.time, tz);
+    const thirtyMinBefore = new Date(taskTime.getTime() - 30 * 60 * 1000);
+    if (thirtyMinBefore > now) {
+      notifications.push({
+        title: 'Скоро задача',
+        body: `Через 30 минут: ${task.title}`,
+        type: 'task_reminder_30m',
         scheduledFor: thirtyMinBefore,
       });
     }
@@ -589,6 +632,7 @@ export async function generateProactiveNotifications(
 
   const [
     eventReminders,
+    taskReminders,
     budgetAlerts,
     habitNudges,
     weeklySummary,
@@ -596,6 +640,7 @@ export async function generateProactiveNotifications(
     eveningSummary,
   ] = await Promise.all([
     generateEventReminders(userId),
+    generateTaskReminders(userId),
     generateBudgetAlerts(userId, tz, name),
     generateHabitNudges(userId, tz, name),
     // inactivityPing НЕ вызываем (Aydana fix d9b46f9) — функция
@@ -607,6 +652,7 @@ export async function generateProactiveNotifications(
 
   return [
     ...eventReminders,
+    ...taskReminders,
     ...budgetAlerts,
     ...habitNudges,
     ...weeklySummary,
