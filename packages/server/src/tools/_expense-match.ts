@@ -1,4 +1,4 @@
-import { matchHabit } from './_habit-match.js';
+import { matchHabit, normalizeHabit } from './_habit-match.js';
 
 export interface ExpenseRef {
   id: string;
@@ -35,6 +35,20 @@ export function matchExpense(
   // 2. Текст (описание → категория) разводит/находит.
   const text = q.description ?? q.category;
   if (text) {
+    const nt = normalizeHabit(text);
+    // 2a. Точное совпадение по полю: РОВНО одно → берём; >1 (коллизия —
+    //     напр. две траты категории food при «удали расход на еду») → null.
+    //     Money-safety: matchHabit гасит только fuzzy-ничьи (tier≥2), а
+    //     точные ничьи вернули бы произвольную строку → удалили бы не ту.
+    if (nt) {
+      for (const field of ['description', 'category'] as const) {
+        const exact = pool.filter((e) => normalizeHabit(e[field]) === nt);
+        if (exact.length === 1) return exact[0];
+        if (exact.length > 1) return null;
+      }
+    }
+    // 2b. Нет точного — fuzzy по описанию, затем категории. matchHabit сам
+    //     валит fuzzy-ничьи (tier≥2) в null → результат однозначен.
     const byDesc = matchHabit(
       text,
       pool.map((e) => ({ id: e.id, name: e.description })),

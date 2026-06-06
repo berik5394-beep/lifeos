@@ -39,4 +39,35 @@ describe('matchExpense', () => {
   it('пустой список → null', () => {
     expect(matchExpense({ amount: 5000 }, [])).toBeNull();
   });
+
+  // Регресс ревью (conf 88): коллизия точного совпадения категории/описания
+  // НЕ должна возвращать произвольную строку — деньги, не угадываем.
+  it('коллизия категории (2 траты food) → null', () => {
+    const food: ExpenseRef[] = [
+      { id: 'a', description: 'ужин', category: 'food', amount: 12000 },
+      { id: 'b', description: 'кофе', category: 'food', amount: 1200 },
+    ];
+    expect(matchExpense({ category: 'food' }, food)).toBeNull();
+  });
+  it('одна трата категории → берётся (не коллизия)', () => {
+    const mix: ExpenseRef[] = [
+      { id: 'a', description: 'ужин', category: 'food', amount: 12000 },
+      { id: 'b', description: 'такси', category: 'transport', amount: 3000 },
+    ];
+    expect(matchExpense({ category: 'food' }, mix)?.id).toBe('a');
+  });
+  it('сумма + категория, но обе совпали → null', () => {
+    const two: ExpenseRef[] = [
+      { id: 'a', description: 'ужин', category: 'food', amount: 5000 },
+      { id: 'b', description: 'обед', category: 'food', amount: 5000 },
+    ];
+    expect(matchExpense({ amount: 5000, category: 'food' }, two)).toBeNull();
+  });
+  it('идентичные описания → null', () => {
+    const dup: ExpenseRef[] = [
+      { id: 'a', description: 'продукты', category: 'food', amount: 5000 },
+      { id: 'b', description: 'продукты', category: 'food', amount: 2000 },
+    ];
+    expect(matchExpense({ description: 'продукты' }, dup)).toBeNull();
+  });
 });
