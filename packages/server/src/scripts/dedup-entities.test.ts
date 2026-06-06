@@ -2,10 +2,10 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-// Dynamic-import pattern mirrors src/scripts/migrate-to-v2.test.ts —
-// the script under scripts/ lives outside src/ rootDir, so a static
-// `import ... from '../../scripts/...'` fails tsc's rootDir check.
-// URL + dynamic await import() is opaque to tsc, fine at runtime.
+// Dynamic-import pattern: the script under scripts/ lives outside
+// src/ rootDir, so a static `import ... from '../../scripts/...'`
+// fails tsc's rootDir check. URL + dynamic await import() is opaque
+// to tsc, fine at runtime.
 
 let parseCliArgs: (argv: string[]) => any;
 let normalizeKey: (s: string) => string;
