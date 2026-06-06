@@ -19,6 +19,7 @@ import {
   localDayStartUTC,
   localDateOnlyUTC,
   localDateStr,
+  localWeekStartUTC,
 } from '../lib/tz.js';
 
 /**
@@ -141,10 +142,9 @@ export async function gatherAssistantContext(
     knownIntent ? Promise.resolve(knownIntent) : parseIntent(text),
     // meta#9: план на эту неделю (WeeklyGoal, weekStart = понедельник)
     (() => {
-      // Понедельник недели по ЛОКАЛЬНОЙ дате юзера (weekStart @db.Date
-      // = UTC-полночь понедельника). Считаем в UTC от лок. даты.
-      const d = new Date(Date.UTC(ly, lm - 1, Number(localDateStr(tz).slice(8, 10))));
-      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+      // Понедельник недели юзера (weekStart @db.Date). SSOT-хелпер —
+      // та же точка, что и create_weekly_goal (write↔read совпадают).
+      const d = localWeekStartUTC(tz);
       return prisma.weeklyGoal.findMany({
         where: { userId, weekStart: d },
         select: { goalText: true, completed: true },

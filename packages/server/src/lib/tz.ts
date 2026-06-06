@@ -68,6 +68,23 @@ export function localNowString(
   }).format(at);
 }
 
+/**
+ * UTC-полночь ПОНЕДЕЛЬНИКА недели, в которую попадает локальная дата юзера.
+ * Конвенция weekStart (@db.Date) для WeeklyGoal — write↔read через ОДНУ точку
+ * (SSOT: и create_weekly_goal, и weeklyPlan-ридер берут отсюда).
+ */
+export function localWeekStartUTC(
+  tz: string | null | undefined,
+  at: Date = new Date(),
+): Date {
+  const [y, m, day] = localDateStr(safeTz(tz), at)
+    .split('-')
+    .map(Number);
+  const d = new Date(Date.UTC(y, m - 1, day));
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d;
+}
+
 /** Смещение зоны от UTC в мс на момент `date` (учитывает DST). */
 function tzOffsetMs(tz: string, date: Date): number {
   const dtf = new Intl.DateTimeFormat('en-US', {

@@ -8,6 +8,7 @@ import {
   isInQuietHours,
   isValidIanaTz,
   localNowString,
+  localWeekStartUTC,
 } from './tz.js';
 
 /**
@@ -25,6 +26,30 @@ describe('localDateStr', () => {
   });
   it('мусорная зона → фолбэк UTC, не бросает', () => {
     expect(localDateStr('Mars/Olympus', lateNightAlmaty)).toBe('2026-05-16');
+  });
+});
+
+describe('localWeekStartUTC', () => {
+  it('Almaty: суббота → понедельник той недели (UTC-полночь)', () => {
+    const sat = new Date('2026-06-06T10:00:00Z'); // Сб 6 июня
+    expect(localWeekStartUTC('Asia/Almaty', sat).toISOString()).toBe(
+      '2026-06-01T00:00:00.000Z',
+    );
+  });
+  it('воскресенье поздно → всё ещё ТЕКУЩИЙ понедельник (не следующий)', () => {
+    const sun = new Date('2026-06-07T18:00:00Z'); // Вс 7 июня 23:00 Almaty
+    expect(localWeekStartUTC('Asia/Almaty', sun).toISOString()).toBe(
+      '2026-06-01T00:00:00.000Z',
+    );
+  });
+  it('TZ влияет: тот же инстант — Almaty уже понедельник, UTC ещё воскресенье', () => {
+    const at = new Date('2026-06-07T20:00:00Z'); // Almaty Пн 8 июня 01:00; UTC Вс 7
+    expect(localWeekStartUTC('Asia/Almaty', at).toISOString()).toBe(
+      '2026-06-08T00:00:00.000Z',
+    );
+    expect(localWeekStartUTC('UTC', at).toISOString()).toBe(
+      '2026-06-01T00:00:00.000Z',
+    );
   });
 });
 
