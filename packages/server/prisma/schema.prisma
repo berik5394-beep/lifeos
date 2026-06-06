@@ -105,10 +105,6 @@ model User {
   obligations            Obligation[]
 }
 
-// M3 Unit C (2026-06-06): модель UserProfile удалена — еженедельный синтез
-// «характера» заменён v2 (procedural patterns + entity-graph + axes + identity).
-// DROP TABLE — миграция 20260606000000_drop_user_profile.
-
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
 // не должен слать одно и то же повторно. Уникальность по (user, type,
 // scheduledFor) — если запись есть, уведомление уже отправлено.

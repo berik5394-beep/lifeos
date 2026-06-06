@@ -198,9 +198,6 @@ export async function gatherAssistantContext(
           .join('; ')
       : 'Не заданы';
 
-  // M3 Unit C (2026-06-06): UserProfile-дайджест удалён — v2 (procedural
-  // patterns + entity-graph + axes + identity) заменил «характер» в главном пути.
-
   const context: AssistantContext = {
     userName: user.name,
     assistantStyle: user.assistantStyle as AssistantContext['assistantStyle'],

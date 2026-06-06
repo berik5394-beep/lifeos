@@ -184,9 +184,9 @@ async function captureInBackground(
         }
       });
     }
-    // Память — вне task-транзакции: captureMemory дедуплицирует
-    // (Фаза 2.2), а это собственные запросы — в tx неуместно. Память
-    // best-effort, с задачами не атомарна по смыслу.
+    // Память — вне task-транзакции: writeMemory дедуплицирует и делает
+    // собственные запросы — в tx неуместно. Память best-effort, с
+    // задачами не атомарна по смыслу.
     for (const m of extracted.memories) {
       // ОДНА ПАМЯТЬ (M3 Unit A): ЕДИНЫЙ писатель writeMemory (дедуп+embedding+
       // episodic-поля). Legacy captureMemory удалён (FEATURE_V2_WRITE=all в проде).

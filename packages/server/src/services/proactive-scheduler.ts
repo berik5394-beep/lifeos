@@ -235,10 +235,6 @@ async function tick(): Promise<void> {
         }
       }
 
-      // M3 Unit C (2026-06-06): недельный синтез UserProfile удалён —
-      // v2 (procedural patterns + entity-graph + axes + identity) заменил
-      // «характер», уже в enrichment главного пути.
-
       // Phase 6 C4 — therapeutic-детекторы 1×/день/юзер. ≤1
       // therapeutic-инсайт создаётся (top-severity); R10 cooldown +
       // R6 доставка + R11 quiet-hours применяются автоматом.

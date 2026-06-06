@@ -10,8 +10,7 @@ import { join, extname } from 'node:path';
  * по умолчанию ищет `ANTHROPIC_API_KEY` — если использовать его
  * напрямую в коде, в проде ключа НЕТ → silent disable feature.
  *
- * Этот баг уже сработал в трёх местах:
- *  - profile-synthesizer.ts → UserProfile 0 rows в проде
+ * Этот баг уже сработал в двух местах:
  *  - safety-classifier.ts → Tier-2 Haiku crisis отключён (SAFETY)
  *  - emotional-classifier.ts → Tier-2 emo отключён
  *

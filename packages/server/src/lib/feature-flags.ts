@@ -1,8 +1,8 @@
 /**
  * v2.0 Feature flags — controls gradual rollout per-user.
  *
- * Used by jarvis-orchestrator in Week 5 to dual-write v2 memory only
- * for opted-in users. Old captureMemory continues for everyone.
+ * Used to gate per-user rollout of v2 features (single-writer memory,
+ * proactivity, axes, …). Legacy captureMemory was removed in M3.
  *
  * Env value formats (same for both flags):
  *   "all"                          — enabled for everyone
@@ -292,9 +292,9 @@ export function isV2InlineNudgeEnabled(userId: string): boolean {
 }
 
 /**
- * ОДНА ПАМЯТЬ M2 — Per-user gate для единого писателя (single writer).
- * off → сегодняшняя двойная запись (captureMemory + recordEvent), байт-в-байт.
- * on → ОДИН writeMemory; legacy captureMemory НЕ вызывается.
+ * ОДНА ПАМЯТЬ M2 — Per-user gate единого писателя в recordEvent.
+ * on  → writeMemory (дедуп + условный embed). FEATURE_V2_WRITE=all в проде.
+ * off → plain memory.create (без дедупа/embed), байт-в-байт до-M2 fallback.
  * Env FEATURE_V2_WRITE в форме "all" / "none"/"false"/unset / "user-X,user-Y".
  */
 export function isV2WriteEnabled(userId: string): boolean {
