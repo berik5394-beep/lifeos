@@ -46,7 +46,7 @@ describe('create_weekly_goal — цель недели + кросс-домен',
     expect(p.goals.map((g) => g.text)).toContain('3 тренировки');
   });
 
-  it('дедуп: повтор той же цели (регистр/морфо) не плодит', async () => {
+  it('дедуп: повтор той же цели (регистр) не плодит', async () => {
     const u = await mkUser('c@wg.test');
     await create(u.id, 'дочитать книгу');
     const dup = await create(u.id, 'Дочитать книгу');
