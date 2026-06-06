@@ -7,6 +7,7 @@ import {
   interpolate,
   TEMPLATES,
   V2ProactivityEngine,
+  weeklyStallCandidate,
 } from './v2-proactivity-engine.js';
 import type { NudgeCandidate } from './v2-proactivity-engine.js';
 
@@ -153,6 +154,7 @@ describe('TEMPLATES — table', () => {
         'skill_suggestion',
         'stale_entity',
         'streak_break',
+        'weekly_goal_stall',
       ].sort(),
     );
   });
@@ -165,6 +167,33 @@ describe('TEMPLATES — table', () => {
         expect(Object.keys(templates).length).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe('weeklyStallCandidate — проактив «цель недели не закрыта»', () => {
+  const goals = [
+    { completed: false, goalText: 'закрыть отчёт' },
+    { completed: true, goalText: 'дочитать книгу' },
+  ];
+  it('пятница (5) + открытая цель → кандидат', () => {
+    const c = weeklyStallCandidate(5, goals);
+    expect(c?.source).toBe('weekly_goal_stall');
+    expect(c?.payload.open).toBe(1);
+    expect(c?.payload.total).toBe(2);
+    expect(c?.payload.sample).toBe('закрыть отчёт');
+    expect(c?.significance).toBeGreaterThan(0);
+  });
+  it('суббота (6) тоже', () => {
+    expect(weeklyStallCandidate(6, goals)).not.toBeNull();
+  });
+  it('среда (3) → null (не конец недели, не спамим)', () => {
+    expect(weeklyStallCandidate(3, goals)).toBeNull();
+  });
+  it('все цели закрыты → null', () => {
+    expect(weeklyStallCandidate(5, [{ completed: true, goalText: 'x' }])).toBeNull();
+  });
+  it('нет целей недели → null', () => {
+    expect(weeklyStallCandidate(5, [])).toBeNull();
   });
 });
 

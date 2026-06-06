@@ -32,7 +32,8 @@ export type NudgeSource =
   | 'decision_review'
   | 'birthday_upcoming'
   | 'memorial_upcoming'
-  | 'goal_habits_stall';
+  | 'goal_habits_stall'
+  | 'weekly_goal_stall';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -83,6 +84,11 @@ export function scoreSignificance(c: NudgeCandidate): number {
     case 'goal_no_progress': {
       const daysSilent = Number(c.payload.daysSilent ?? 0);
       return Math.min(1, daysSilent / 14);
+    }
+    case 'weekly_goal_stall': {
+      // Чем больше незакрытых целей недели к её концу — тем значимее.
+      const open = Number(c.payload.open ?? 0);
+      return Math.min(1, 0.5 + open * 0.15);
     }
     case 'identity_growth': {
       const depthShift = Number(c.payload.depthShift ?? 0);
@@ -200,6 +206,10 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     gentle: 'Цель «{{goalText}}» проседает — привычки к ней не отмечались {{days}} дн. Вернёмся?',
     supportive: 'Заметил: к цели «{{goalText}}» привычки буксуют ({{days}} дн). Маленький шаг сегодня?',
   },
+  weekly_goal_stall: {
+    gentle: 'Неделя к концу — цель «{{sample}}» ещё не закрыта ({{open}} из {{total}}). Успеем?',
+    supportive: 'Осталось {{open}} из {{total}} целей недели. «{{sample}}» — может, сегодня добьём?',
+  },
   mood_shift: {
     supportive:
       'Замечаю, настроение последние дни ушло в минус. Хочешь — поговорим?',
@@ -256,7 +266,13 @@ import { getProceduralMemory } from './procedural-memory.singleton.js';
 import { lastEventForEntity } from './episodic-memory.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC, localHour } from '../lib/tz.js';
+import {
+  localDayStartUTC,
+  localHour,
+  localDayOfWeek,
+  localWeekStartUTC,
+} from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { runAgent } from './claude-agent.js';
 import { getEngagement, adaptiveThreshold } from './engagement/index.js';
 import { isV2EngagementEnabled } from '../lib/feature-flags.js';
@@ -782,6 +798,43 @@ async function detectGoalNoProgress(userId: string): Promise<NudgeCandidate[]> {
 }
 
 /**
+ * Чистое ядро: нужен ли нудж о незакрытой цели недели. Нудж ТОЛЬКО в конце
+ * недели (пт=5/сб=6, localDayOfWeek) и только если есть открытые цели.
+ * Детерминированно (день недели — параметр) → тестируется без «now».
+ */
+export function weeklyStallCandidate(
+  dow: number,
+  goals: { completed: boolean; goalText: string }[],
+): NudgeCandidate | null {
+  if (dow !== 5 && dow !== 6) return null;
+  const open = goals.filter((g) => !g.completed);
+  if (goals.length === 0 || open.length === 0) return null;
+  const cand: NudgeCandidate = {
+    source: 'weekly_goal_stall',
+    significance: 0,
+    payload: { open: open.length, total: goals.length, sample: open[0].goalText },
+    toneHint: 'gentle',
+  };
+  cand.significance = scoreSignificance(cand);
+  return cand;
+}
+
+async function detectWeeklyGoalStall(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const tz = await getUserTimezone(userId);
+    const goals = await prisma.weeklyGoal.findMany({
+      where: { userId, weekStart: localWeekStartUTC(tz) },
+      select: { goalText: true, completed: true },
+    });
+    const cand = weeklyStallCandidate(localDayOfWeek(tz), goals);
+    return cand ? [cand] : [];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectWeeklyGoalStall failed:', err);
+    return [];
+  }
+}
+
+/**
  * v2 Phase B4 — propose a skill when the user repeatedly invokes the same
  * cluster of tools. Reads ToolCall history: groups same-day tool sets,
  * finds a cluster of >=3 distinct tools that recurs on >=3 distinct days.
@@ -916,6 +969,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectMoodShift(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),
+      detectWeeklyGoalStall(userId),
       detectIdentityGrowth(userId),
       detectSkillOpportunity(userId),
     ]);
