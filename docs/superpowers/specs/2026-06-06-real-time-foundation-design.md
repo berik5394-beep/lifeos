@@ -55,7 +55,7 @@ getDeviceTimezone()  ──X-Timezone──▶ preHandler-хук:           getT
 - `isValidIanaTz(tz: string): boolean` — проба через `Intl.DateTimeFormat(undefined,{timeZone})`
   в try/catch (валидный пояс не бросает).
 - `localNowString(tz, at?): string` — `Intl.DateTimeFormat('ru-RU',{timeZone:tz, weekday,
-  day, month, year, hour, minute})` → «пятница, 6 июня 2026, 19:42». Переиспользует
+  day, month, year, hour, minute})` → «суббота, 6 июня 2026, 19:42». Переиспользует
   существующий `safeTz`.
 
 **S2. `lib/feature-flags.ts`:** `isV2RealtimeEnabled(userId)` (env `FEATURE_V2_REALTIME`,

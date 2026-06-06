@@ -7,6 +7,10 @@ import { isV2RealtimeEnabled } from '../lib/feature-flags.js';
  *
  * userId → последний виденный пояс. Пишем в БД ТОЛЬКО на смену пояса
  * (in-memory cache) → нет write-storm на каждый запрос.
+ *
+ * ВАЖНО: captureTimezone — ЕДИНСТВЕННЫЙ писатель User.timezone. Если появится
+ * ручная смена пояса (экран настроек) — инвалидировать/обходить этот кэш,
+ * иначе stale-запись затенит ручное значение до смены пояса самим устройством.
  */
 const lastTz = new Map<string, string>();
 
