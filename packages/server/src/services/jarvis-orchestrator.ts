@@ -325,6 +325,26 @@ function confirmationText(action: string, input: Record<string, unknown>): strin
       : [amt, d && `(${d})`].filter(Boolean).join(' ') || 'расход';
     return `Удалить ${what}? Подтверди — уберу.`;
   }
+  if (action === 'edit_expense') {
+    const to = input.newAmount != null ? `${Number(input.newAmount)} ₸` : '';
+    const d = String(input.description || input.category || '').trim();
+    const what = input.last
+      ? 'последний расход'
+      : d
+        ? `расход (${d})`
+        : input.amount != null
+          ? `расход ${Number(input.amount)} ₸`
+          : 'расход';
+    return `Изменить ${what} → ${to}? Подтверди — поправлю.`;
+  }
+  if (action === 'delete_income') {
+    const amt = input.amount != null ? `${Number(input.amount)} ₸` : '';
+    const s = String(input.source || '').trim();
+    const what = input.last
+      ? 'последний доход'
+      : [amt, s && `(${s})`].filter(Boolean).join(' ') || 'доход';
+    return `Удалить ${what}? Подтверди — уберу.`;
+  }
   return 'Подтверди действие — выполню.';
 }
 
