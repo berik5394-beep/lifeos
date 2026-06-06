@@ -1,18 +1,15 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { defineTool } from './_types.js';
+import { localWeekStartUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 
 /**
- * SSOT 9A.5 — миграция agent-only read-tool get_weekly_plan в
- * реестр. Логика 1:1 (понедельник текущей недели → WeeklyGoal).
- * claude-agent свич — 9A.8.
+ * SSOT 9A.5 — agent-only read-tool get_weekly_plan в реестре. Понедельник
+ * ТЕКУЩЕЙ недели → WeeklyGoal. weekStart в TZ ЮЗЕРА через localWeekStartUTC —
+ * SSOT с create_weekly_goal + weeklyPlan-ридером (раньше был server-local
+ * new Date()+setHours → для не-UTC юзера промах по понедельнику, цель не находилась).
  */
-
-const startOfDay = (d: Date): Date => {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-};
 
 export const getWeeklyPlanTool = defineTool({
   name: 'get_weekly_plan',
@@ -26,8 +23,7 @@ export const getWeeklyPlanTool = defineTool({
   sideEffects: 'read',
   examples: ['какие планы на неделю', 'что у меня по неделе'],
   handler: async (_input, ctx) => {
-    const m = startOfDay(new Date());
-    m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); // понедельник
+    const m = localWeekStartUTC(await getUserTimezone(ctx.userId));
     const wg = await prisma.weeklyGoal.findMany({
       where: { userId: ctx.userId, weekStart: m },
       select: { goalText: true, completed: true },
