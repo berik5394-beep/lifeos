@@ -1,5 +1,5 @@
 /**
- * READ-ONLY inspection of Memory + UserProfile в проде.
+ * READ-ONLY inspection of Memory в проде.
  *
  * Назначение: понять текущее состояние памяти (volume, distribution,
  * embeddings backfill need, sparse-overwrite risk surface) ПЕРЕД
@@ -124,50 +124,7 @@ async function main(): Promise<void> {
         : { note: 'No duplicate-prefix groups found in STABLE_TYPES' },
   });
 
-  // 5. UserProfile fill state per user (anonymized)
-  const profileRows = await prisma.$queryRaw<
-    Array<{
-      user_idx: number;
-      values_n: number;
-      triggers_n: number;
-      patterns_n: number;
-      relationships_n: number;
-      has_style_notes: boolean;
-      synth_version: number;
-      last_synth_days_ago: number | null;
-    }>
-  >`
-    WITH ranked AS (
-      SELECT "userId",
-             jsonb_array_length(values) AS values_n,
-             jsonb_array_length(triggers) AS triggers_n,
-             jsonb_array_length(patterns) AS patterns_n,
-             (SELECT COUNT(*)::int FROM jsonb_object_keys(relationships)) AS rel_n,
-             ("styleNotes" IS NOT NULL AND LENGTH("styleNotes") > 0) AS has_style,
-             "synthesisVersion" AS sv,
-             "lastSynthesizedAt" AS lsa,
-             ROW_NUMBER() OVER (ORDER BY "userId") AS user_idx
-      FROM "UserProfile"
-    )
-    SELECT user_idx::int AS user_idx,
-           values_n,
-           triggers_n,
-           patterns_n,
-           rel_n AS relationships_n,
-           has_style AS has_style_notes,
-           sv AS synth_version,
-           CASE WHEN lsa IS NULL THEN NULL
-                ELSE EXTRACT(DAY FROM (NOW() - lsa))::int
-           END AS last_synth_days_ago
-    FROM ranked
-    ORDER BY user_idx;
-  `;
-  out.push({
-    title: '5. UserProfile fill state (anonymized per-user)',
-    rows: profileRows.length > 0 ? profileRows : { note: 'No UserProfile rows' },
-  });
-
-  // 6. Source distribution (откуда приходят memories)
+  // 5. Source distribution (откуда приходят memories)
   const bySource = await prisma.$queryRaw<Array<{ source: string; n: bigint }>>`
     SELECT source, COUNT(*) AS n
     FROM "Memory"
@@ -175,11 +132,11 @@ async function main(): Promise<void> {
     ORDER BY n DESC;
   `;
   out.push({
-    title: '6. Memory source distribution',
+    title: '5. Memory source distribution',
     rows: bySource.map((r) => ({ source: r.source, n: Number(r.n) })),
   });
 
-  // 7. Expiry state
+  // 6. Expiry state
   const expiry = await prisma.$queryRaw<
     Array<{ active: bigint; expired: bigint; no_expiry: bigint }>
   >`
@@ -189,7 +146,7 @@ async function main(): Promise<void> {
     FROM "Memory";
   `;
   out.push({
-    title: '7. Expiry state',
+    title: '6. Expiry state',
     rows: expiry.map((r) => ({
       active_ttl: Number(r.active),
       expired_still_in_db: Number(r.expired),
@@ -197,7 +154,7 @@ async function main(): Promise<void> {
     })),
   });
 
-  // 8. Importance distribution
+  // 7. Importance distribution
   const imp = await prisma.$queryRaw<
     Array<{ type: string; min: number; avg: number; max: number; high_n: bigint }>
   >`
@@ -211,7 +168,7 @@ async function main(): Promise<void> {
     ORDER BY type;
   `;
   out.push({
-    title: '8. Importance distribution per type',
+    title: '7. Importance distribution per type',
     rows: imp.map((r) => ({
       type: r.type,
       min: r.min,
