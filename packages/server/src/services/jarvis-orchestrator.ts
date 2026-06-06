@@ -47,6 +47,8 @@ import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js'
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 import { isV2HermesEnabled } from '../lib/feature-flags.js';
+import { isV2RealtimeEnabled } from '../lib/feature-flags.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import {
   isV2InlineNudgeEnabled,
   isV2SavingsCoachEnabled,
@@ -962,6 +964,11 @@ export async function handleMessage(
     }
   }
 
+  // Real-Time Foundation: пояс юзера в промпт ТОЛЬКО при флаге (best-effort,
+  // off → undefined → байт-идентично). getUserTimezone сам падает в 'UTC'.
+  const realtimeTz = isV2RealtimeEnabled(userId)
+    ? await getUserTimezone(userId)
+    : undefined;
   let system = gathered
     ? buildJarvisPrompt(gathered.context, {
         ...ritualOptsFor(intent, gathered.dayCompletionPercent),
@@ -970,6 +977,7 @@ export async function handleMessage(
         inlineNudge: isV2InlineNudgeEnabled(userId),
         goalCapture: isV2SavingsCoachEnabled(userId),
         obligationCapture: isV2ObligationsEnabled(userId),
+        nowTz: realtimeTz,
       })
     : 'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
 

@@ -1,7 +1,11 @@
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
-import { isV2SavingsCoachEnabled } from '../lib/feature-flags.js';
+import {
+  isV2SavingsCoachEnabled,
+  isV2RealtimeEnabled,
+} from '../lib/feature-flags.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import {
   buildJarvisPrompt,
   type AssistantContext,
@@ -290,10 +294,16 @@ export async function getAssistantReply(
   const gathered = await gatherAssistantContext(userId, text);
   if (!gathered) throw new Error('Пользователь не найден');
 
+  // Real-Time Foundation: пояс юзера в промпт ТОЛЬКО при флаге (off→undefined→
+  // байт-идентично). getUserTimezone сам падает в 'UTC' при сбое.
+  const nowTz = isV2RealtimeEnabled(userId)
+    ? await getUserTimezone(userId)
+    : undefined;
   const systemPrompt = buildJarvisPrompt(gathered.context, {
     ...ritualOptsFor(gathered.intent, gathered.dayCompletionPercent),
     therapeuticMode,
     goalCapture: isV2SavingsCoachEnabled(userId),
+    nowTz,
   });
 
   const aiResponse = await anthropic.messages.create({
