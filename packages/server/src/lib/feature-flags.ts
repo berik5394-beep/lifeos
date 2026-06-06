@@ -302,6 +302,16 @@ export function isV2WriteEnabled(userId: string): boolean {
 }
 
 /**
+ * Real-Time Foundation — per-user gate настоящего времени. on → tz-capture хук
+ * пишет User.timezone из X-Timezone, getTimeOfDay в поясе юзера, блок «СЕЙЧАС»
+ * в промпте. off → байт-идентично (хук no-op, getTimeOfDay по серверному
+ * времени, без блока). Env FEATURE_V2_REALTIME: "all"/"none"/unset/"user-X,user-Y".
+ */
+export function isV2RealtimeEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_REALTIME, userId);
+}
+
+/**
  * Коуч по накоплениям (deadline-pacing + reactive-on-expense). Через
  * isEnabledForUser: "all" → все; "none"/"false"/unset → никто;
  * "user-X,user-Y" → перечисленные. ВНИМАНИЕ: "true" НЕ включает — для

@@ -13,6 +13,7 @@ import {
   isV2CronEnabled,
   isV2IdentityEnabled,
   isV2WriteEnabled,
+  isV2RealtimeEnabled,
   isV2DayLoadEnabled,
   isV2WeekLoadEnabled,
   isV2MonthLoadEnabled,
@@ -279,6 +280,28 @@ describe('isV2IdentityEnabled', () => {
   it('tolerates whitespace', () => {
     process.env.FEATURE_V2_IDENTITY = '  user-abc , user-def ';
     expect(isV2IdentityEnabled('abc')).toBe(true);
+  });
+});
+
+describe('isV2RealtimeEnabled', () => {
+  const ORIG = process.env.FEATURE_V2_REALTIME;
+  afterEach(() => {
+    if (ORIG === undefined) delete process.env.FEATURE_V2_REALTIME;
+    else process.env.FEATURE_V2_REALTIME = ORIG;
+  });
+  it('unset → false', () => {
+    delete process.env.FEATURE_V2_REALTIME;
+    expect(isV2RealtimeEnabled('user1')).toBe(false);
+  });
+  it('all → true для всех', () => {
+    process.env.FEATURE_V2_REALTIME = 'all';
+    expect(isV2RealtimeEnabled('user1')).toBe(true);
+    expect(isV2RealtimeEnabled('user-zzz')).toBe(true);
+  });
+  it('user-list → только перечисленные', () => {
+    process.env.FEATURE_V2_REALTIME = 'user-berikId,user-aydanaId';
+    expect(isV2RealtimeEnabled('berikId')).toBe(true);
+    expect(isV2RealtimeEnabled('otherId')).toBe(false);
   });
 });
 
