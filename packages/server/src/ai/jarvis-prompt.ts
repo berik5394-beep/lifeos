@@ -22,6 +22,7 @@
 import { capabilityText } from '../tools/index.js';
 import { CONSTRAINTS_TEXT } from './capabilities.js';
 import { THERAPEUTIC_STYLE_BLOCK } from './therapeutic-mode.js';
+import { localNowString, localHour } from '../lib/tz.js';
 
 // D (spec 2026-06-01): inline-подсказка из длинного рассказа. ОДНО мягкое
 // предложение оформить скрытое намерение в задачу/цель, вопросом, легко
@@ -89,8 +90,12 @@ export interface AssistantContext {
   therapeuticMode?: boolean;
 }
 
-export function getTimeOfDay(d = new Date()): 'утро' | 'день' | 'вечер' | 'ночь' {
-  const h = d.getHours();
+export function getTimeOfDay(
+  tz?: string,
+  d: Date = new Date(),
+): 'утро' | 'день' | 'вечер' | 'ночь' {
+  // tz задан (realtime ON) → час в поясе юзера; иначе старое серверное время.
+  const h = tz ? localHour(tz, d) : d.getHours();
   if (h >= 5 && h < 12) return 'утро';
   if (h >= 12 && h < 17) return 'день';
   if (h >= 17 && h < 22) return 'вечер';
@@ -147,7 +152,11 @@ function core(userName: string, timeOfDay: string): string {
 }
 
 // --- ЧАСТЬ 3. КОНТЕКСТ (данные, пустые секции опускаются) ----------------
-export function renderContext(ctx: AssistantContext): string {
+export function renderContext(
+  ctx: AssistantContext,
+  nowTz?: string,
+  now?: Date,
+): string {
   const done = ctx.todayTasks.filter((t) => t.completed).length;
   const pending = ctx.todayTasks.filter((t) => !t.completed);
   const genderLabel = ctx.assistantGender === 'male' ? 'мужской' : 'женский';
@@ -155,7 +164,7 @@ export function renderContext(ctx: AssistantContext): string {
     'ДАННЫЕ ПОЛЬЗОВАТЕЛЯ',
     `Имя: ${ctx.userName}`,
     `Пол ассистента: ${genderLabel}`,
-    `Время суток: ${getTimeOfDay()}`,
+    `Время суток: ${getTimeOfDay(nowTz, now)}`,
   ];
   if (ctx.todayTasks.length > 0) {
     L.push(`Задачи на сегодня: выполнено ${done} из ${ctx.todayTasks.length}`);
@@ -242,6 +251,12 @@ export interface JarvisPromptOpts {
   /** Obligations: ловить обещания/долги из диалога → предложить
    *  create_obligation (запись на «да»). За isV2ObligationsEnabled. */
   obligationCapture?: boolean;
+  /** Real-Time Foundation: IANA-пояс юзера. Задан ТОЛЬКО когда
+   *  isV2RealtimeEnabled → впрыск блока «СЕЙЧАС» + getTimeOfDay в поясе.
+   *  undefined (off) → байт-идентично (серверное время, без блока). */
+  nowTz?: string;
+  /** Тест-инъекция момента для детерминизма (по умолчанию new Date()). */
+  _now?: Date;
 }
 
 // ISSUE-4: голос — это TTS, длинный ответ = 25с речи (Берик в проде).
@@ -264,12 +279,21 @@ export function buildJarvisPrompt(
   const styleBlock = opts.therapeuticMode
     ? THERAPEUTIC_STYLE_BLOCK
     : STYLE[style];
-  const parts = [core(ctx.userName, getTimeOfDay()), styleBlock];
+  const parts = [
+    core(ctx.userName, getTimeOfDay(opts.nowTz, opts._now)),
+    styleBlock,
+  ];
   if (opts.inlineNudge) parts.push(INLINE_NUDGE_BLOCK);
   if (opts.goalCapture) parts.push(GOAL_CAPTURE_BLOCK);
   if (opts.obligationCapture) parts.push(OBLIGATION_CAPTURE_BLOCK);
   let body = parts.join('\n\n');
   if (opts.ritual) body += ritualBlock(opts.ritual, opts.dayCompletionPercent);
   if (opts.channel === 'voice') body += VOICE_BREVITY;
-  return `${body}\n\n${renderContext(ctx)}`;
+  // Real-Time Foundation: блок «СЕЙЧАС» в самом верху промпта — LLM не имеет
+  // часов, знает время только из впрыснутого. Только когда realtime ON (nowTz).
+  const nowBlock = opts.nowTz
+    ? `СЕЙЧАС: ${localNowString(opts.nowTz, opts._now)} — ${getTimeOfDay(opts.nowTz, opts._now)}. Пояс: ${opts.nowTz}.\n` +
+      `При словах «сегодня/завтра/вчера» сверяйся с этим временем, не выдумывай.\n\n`
+    : '';
+  return `${nowBlock}${body}\n\n${renderContext(ctx, opts.nowTz, opts._now)}`;
 }

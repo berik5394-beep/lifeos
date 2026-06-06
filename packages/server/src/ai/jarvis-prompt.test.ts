@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildJarvisPrompt,
   renderContext,
+  getTimeOfDay,
   type AssistantContext,
 } from './jarvis-prompt.js';
 
@@ -35,6 +36,30 @@ describe('buildJarvisPrompt — ЯДРО и формат', () => {
     expect(p).toContain('Markdown НЕ поддерживается');
     expect(p).toContain('ФОКУС');
     expect(p).toContain('ПОИСК В ИНТЕРНЕТЕ');
+  });
+});
+
+describe('getTimeOfDay(tz) — время суток в поясе юзера', () => {
+  const at = new Date('2026-06-06T14:00:00Z'); // 19:00 Алматы, 14:00 UTC
+  it('БАГ-регресс: Алматы 19:00 → вечер (а не день по UTC сервера)', () => {
+    expect(getTimeOfDay('Asia/Almaty', at)).toBe('вечер');
+  });
+  it('UTC тот же инстант → день (14:00)', () => {
+    expect(getTimeOfDay('UTC', at)).toBe('день');
+  });
+});
+
+describe('buildJarvisPrompt — блок СЕЙЧАС (realtime)', () => {
+  const at = new Date('2026-06-06T14:42:00Z'); // 19:42 Алматы
+  it('nowTz задан → промпт содержит СЕЙЧАС + локальное время + пояс', () => {
+    const p = buildJarvisPrompt(ctx(), { nowTz: 'Asia/Almaty', _now: at });
+    expect(p).toContain('СЕЙЧАС');
+    expect(p).toMatch(/19:42/);
+    expect(p).toContain('Asia/Almaty');
+    expect(p).toContain('вечер');
+  });
+  it('nowTz НЕ задан → нет блока СЕЙЧАС (байт-идентично off)', () => {
+    expect(buildJarvisPrompt(ctx())).not.toContain('СЕЙЧАС');
   });
 });
 
