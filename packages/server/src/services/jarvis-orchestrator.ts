@@ -317,6 +317,14 @@ function confirmationText(action: string, input: Record<string, unknown>): strin
     const preview = t.length > 120 ? t.slice(0, 120) + '…' : t;
     return `Отправить тебе в Telegram: «${preview}»? Подтверди — отправлю.`;
   }
+  if (action === 'delete_expense') {
+    const amt = input.amount != null ? `${Number(input.amount)} ₸` : '';
+    const d = String(input.description || input.category || '').trim();
+    const what = input.last
+      ? 'последний расход'
+      : [amt, d && `(${d})`].filter(Boolean).join(' ') || 'расход';
+    return `Удалить ${what}? Подтверди — уберу.`;
+  }
   return 'Подтверди действие — выполню.';
 }
 
