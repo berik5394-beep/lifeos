@@ -175,7 +175,7 @@ describe('TOOLFIX — намеренные исключения (без алиа
   // Остальные — пустые схемы (нечего алиасить).
   const NO_ALIASES = [
     'get_tasks', 'get_budget', 'get_email_triage', 'get_trip',
-    'get_user_profile', 'get_weekly_plan',
+    'get_weekly_plan',
   ];
   it.each(NO_ALIASES)('%s намеренно без aliases', (name) => {
     const tool = registry.get(name);

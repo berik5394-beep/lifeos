@@ -4,7 +4,6 @@ import { runPetStreakSweep } from './pet-streak-service.js';
 import { deliverNotification } from './push-service.js';
 import { deliverTopInsight } from './insight-store.js';
 import { runReflectorDaily } from './reflector-service.js';
-import { runProfileSynthesisWeekly } from './profile-synthesizer.js';
 import { runTherapeuticDetectorsDaily } from './therapeutic-detector-service.js';
 import { isV2ProactivityEnabled, isV2CronEnabled, isV2ReflectorEnabled } from '../lib/feature-flags.js';
 import { runWeekly, runEventCheck } from './reflector-v2/index.js';
@@ -236,19 +235,9 @@ async function tick(): Promise<void> {
         }
       }
 
-      // Phase 6 C2.5 — недельный синтез UserProfile. Каденс-гард в
-      // runProfileSynthesisWeekly + дешёвый gate в profile-core
-      // (неактивен/<недели/нет новых данных → пропуск ДО Sonnet) →
-      // дёргать каждый тик безопасно/дёшево. НЕ-фатально (сбой/нет
-      // ключа → профиль не трогаем, диалог не страдает).
-      try {
-        await runProfileSynthesisWeekly(userId, new Date());
-      } catch (err) {
-        console.warn(
-          `[scheduler] profile synth failed user=${userId}:`,
-          err instanceof Error ? err.message : err,
-        );
-      }
+      // M3 Unit C (2026-06-06): недельный синтез UserProfile удалён —
+      // v2 (procedural patterns + entity-graph + axes + identity) заменил
+      // «характер», уже в enrichment главного пути.
 
       // Phase 6 C4 — therapeutic-детекторы 1×/день/юзер. ≤1
       // therapeutic-инсайт создаётся (top-severity); R10 cooldown +

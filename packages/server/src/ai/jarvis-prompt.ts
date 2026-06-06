@@ -83,10 +83,6 @@ export interface AssistantContext {
    *  сегодня (проактивно: «одевайся легко / выезжай раньше»). */
   weatherToday?: string;
   memories?: { type: string; content: string; importance: number }[];
-  /** Phase 6 C2.5 — компактный дайджест UserProfile (ценности/стиль/
-   *  триггеры/паттерны/близкие). Ограничен (digestProfile), не
-   *  verbose. Пусто/нет профиля → блок не добавляется. */
-  profileDigest?: string;
   /** Phase 6 C5 — opt-out тёплого режима. false → orchestrator
    *  принудительно therapeuticMode=false в buildJarvisPrompt
    *  (даже если эмо-классификатор сработал). По умолчанию true. */
@@ -211,9 +207,6 @@ export function renderContext(ctx: AssistantContext): string {
       'Что ты помнишь о пользователе:',
       ...ctx.memories.slice(0, 15).map((m) => `- ${m.content}`),
     );
-  }
-  if (ctx.profileDigest) {
-    L.push('', 'Портрет пользователя (синтез, раз/неделю):', ctx.profileDigest);
   }
   return L.join('\n');
 }
