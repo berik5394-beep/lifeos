@@ -71,8 +71,24 @@ export const createTaskTool = defineTool({
     const weekLoad = dayLoad ? null : await maybeWeekLoadLine(ctx.userId, new Date());
     const monthLoad = dayLoad || weekLoad ? null : await maybeMonthLoadLine(ctx.userId, new Date());
     const extra = dayLoad ?? weekLoad ?? monthLoad;
+    // Проактивный конфликт ПРИ СОЗДАНИИ (флаг): timed-задача наложилась на
+    // встречу/задачу того же дня → «не успеешь» прямо в ответе. Best-effort.
+    let conflictWarn = '';
+    try {
+      const { isV2ScheduleConflictEnabled } = await import('../lib/feature-flags.js');
+      if (input.time && isV2ScheduleConflictEnabled(ctx.userId)) {
+        const { findCreationConflict, itemWindow } = await import('../services/schedule-conflict/index.js');
+        const w = itemWindow('task', input.time, null);
+        if (w) {
+          conflictWarn =
+            (await findCreationConflict(ctx.userId, date, { title, kind: 'task', ...w }, { taskId: task.id })) ?? '';
+        }
+      }
+    } catch {
+      /* best-effort: конфликт не должен ронять создание */
+    }
     return {
-      message: extra ? `${message}\n\n${extra}` : message,
+      message: (extra ? `${message}\n\n${extra}` : message) + conflictWarn,
       taskId: task.id,
     };
   },

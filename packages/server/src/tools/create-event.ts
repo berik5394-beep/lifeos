@@ -112,10 +112,25 @@ export const createEventTool = defineTool({
         source: 'voice',
       },
     });
+    // Проактивный конфликт ПРИ СОЗДАНИИ (флаг): встреча наложилась на задачу/
+    // встречу того же дня → «не успеешь» прямо в ответе. Best-effort.
+    let conflictWarn = '';
+    try {
+      const { isV2ScheduleConflictEnabled } = await import('../lib/feature-flags.js');
+      if (startTime && isV2ScheduleConflictEnabled(userId)) {
+        const { findCreationConflict, itemWindow } = await import('../services/schedule-conflict/index.js');
+        const w = itemWindow('event', startTime, endTime);
+        if (w) {
+          conflictWarn =
+            (await findCreationConflict(userId, date, { title, kind: 'event', ...w }, { eventId: event.id })) ?? '';
+        }
+      }
+    } catch {
+      /* best-effort: конфликт не должен ронять создание */
+    }
     return {
-      message: `Встреча "${title}" создана на ${input.date}${
-        startTime ? ' в ' + startTime : ''
-      }`,
+      message:
+        `Встреча "${title}" создана на ${input.date}${startTime ? ' в ' + startTime : ''}` + conflictWarn,
       eventId: event.id,
       updated: false,
     };

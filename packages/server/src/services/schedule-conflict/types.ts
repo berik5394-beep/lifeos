@@ -64,3 +64,54 @@ export function formatScheduleConflict(conflicts: Conflict[]): string {
     .join('\n');
   return `⚠️ Конфликт расписания (предложи перенести):\n${items}`;
 }
+
+// ---------------------------------------------------------------------------
+// Проактивный конфликт ПРИ СОЗДАНИИ (inline-предупреждение «не успеешь»).
+// Обобщает detectConflicts до interval-overlap: задача = точка [t, t+1мин),
+// событие = [start, end||start+60). Два окна пересекаются ⟺ aS < bE && bS < aE.
+// ---------------------------------------------------------------------------
+
+export type SchedItem = { title: string; kind: 'task' | 'event'; startMin: number; endMin: number };
+
+/** минуты → "HH:MM" (для текста предупреждения). */
+export function minToHM(min: number): string {
+  const h = Math.floor(min / 60) % 24;
+  const m = min % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** окно элемента из строк времени; null если время невалидно. */
+export function itemWindow(
+  kind: 'task' | 'event',
+  start: string,
+  end: string | null,
+): { startMin: number; endMin: number } | null {
+  const s = hmToMinutes(start);
+  if (s == null) return null;
+  if (kind === 'task') return { startMin: s, endMin: s + 1 };
+  const e = end ? hmToMinutes(end) : null;
+  return { startMin: s, endMin: e != null && e > s ? e : s + DEFAULT_EVENT_MIN };
+}
+
+export function intervalsOverlap(aS: number, aE: number, bS: number, bE: number): boolean {
+  return aS < bE && bS < aE;
+}
+
+/** какие из `others` пересекаются с новым элементом. */
+export function findOverlaps(newItem: SchedItem, others: SchedItem[]): SchedItem[] {
+  return others.filter((o) => intervalsOverlap(newItem.startMin, newItem.endMin, o.startMin, o.endMin));
+}
+
+/** inline-предупреждение для ответа на создание; '' если пересечений нет. */
+export function formatCreationConflict(overlaps: SchedItem[]): string {
+  if (!overlaps.length) return '';
+  const items = overlaps
+    .slice(0, 3)
+    .map((o) => {
+      const lbl = o.kind === 'event' ? 'встреча' : 'задача';
+      const time = o.kind === 'event' ? `${minToHM(o.startMin)}–${minToHM(o.endMin)}` : minToHM(o.startMin);
+      return `${lbl} «${o.title}» ${time}`;
+    })
+    .join(', ');
+  return ` ⚠️ В это же время уже: ${items} — не успеешь, перенести?`;
+}
