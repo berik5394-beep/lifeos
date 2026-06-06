@@ -63,38 +63,18 @@ describe('Phase 6 C5 — User.therapeuticMode (opt-out)', () => {
   });
 });
 
-describe('Phase 6 C2 — UserProfile (derived view over Memory)', () => {
-  const b = modelBlock('UserProfile');
-  it('обязательные поля присутствуют', () => {
-    expect(b).toMatch(/userId\s+String\s+@unique/);
-    expect(b).toMatch(/values\s+Json\s+@default\("\[\]"\)/);
-    expect(b).toMatch(/triggers\s+Json\s+@default\("\[\]"\)/);
-    expect(b).toMatch(/patterns\s+Json\s+@default\("\[\]"\)/);
-    expect(b).toMatch(/styleNotes\s+String\?/);
-    expect(b).toMatch(/relationships\s+Json\s+@default\("\{\}"\)/);
-    expect(b).toMatch(/lastSynthesizedAt\s+DateTime\?/);
-    expect(b).toMatch(/synthesisVersion\s+Int\s+@default\(0\)/);
+describe('M3 Unit C — UserProfile модель УДАЛЕНА (legacy char-synth → v2)', () => {
+  it('модель UserProfile отсутствует в схеме', () => {
+    expect(schema).not.toMatch(/model\s+UserProfile\s*\{/);
   });
-  it('onDelete:Cascade (кэш уходит с юзером — это не источник)', () => {
-    expect(b).toMatch(/onDelete:\s*Cascade/);
+  it('User.userProfile обратная связь убрана', () => {
+    expect(modelBlock('User')).not.toMatch(/userProfile\s+UserProfile/);
   });
-  it('User.userProfile обратная связь объявлена', () => {
-    expect(modelBlock('User')).toMatch(/userProfile\s+UserProfile\?/);
-  });
-  it('миграция p6_userprofile — CREATE TABLE IF NOT EXISTS, без DROP', () => {
+  it('миграция drop_user_profile — DROP TABLE IF EXISTS', () => {
     const dir = join(root, 'prisma/migrations');
-    const mig = readdirSync(dir).find((d) =>
-      d.includes('p6_userprofile'),
-    );
+    const mig = readdirSync(dir).find((d) => d.includes('drop_user_profile'));
     expect(mig).toBeTruthy();
     const sql = readFileSync(join(dir, mig!, 'migration.sql'), 'utf-8');
-    expect(sql).toMatch(
-      /CREATE TABLE IF NOT EXISTS "UserProfile"/,
-    );
-    expect(sql).toMatch(
-      /CREATE UNIQUE INDEX IF NOT EXISTS "UserProfile_userId_key"/,
-    );
-    expect(sql).toMatch(/ON DELETE CASCADE/);
-    expect(sql).not.toMatch(/DROP\s+(COLUMN|TABLE)/i);
+    expect(sql).toMatch(/DROP TABLE IF EXISTS "UserProfile"/);
   });
 });

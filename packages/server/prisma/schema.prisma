@@ -92,9 +92,6 @@ model User {
   // типы инсайтов реже/замьючены (3× dismiss → реже). Json, чтобы
   // не плодить колонки. Аддитивно (правило ISSUE-X).
   reflectorTuning        Json?
-  // Phase 6 C2 — синтезированный «характер» (ПРОИЗВОДНАЯ вьюха над
-  // Memory, не параллельная память: Memory = SSOT).
-  userProfile            UserProfile?
   // v2.0 Phase B1 — USER NEST axes
   userAxes               UserAxes?
   axisSignals            AxisSignal[]
@@ -108,31 +105,9 @@ model User {
   obligations            Obligation[]
 }
 
-// Phase 6 C2 — синтезированный профиль личности. ВАЖНО (#4 SSOT):
-// это НЕ источник правды и НЕ вторая память — это регенерируемый
-// КЭШ еженедельного синтеза над Memory(+ChatMessage crisis=false+
-// completed tasks/habits + reflector Insights). Удаление строки
-// безопасно (пересинтезируется). Кризис-сообщения НЕ участвуют
-// (C1(d) инвариант: синтезатор фильтрует crisis=false).
-model UserProfile {
-  id                String    @id @default(cuid())
-  userId            String    @unique
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  // ["family-oriented","career-driven",...]
-  values            Json      @default("[]")
-  // ["criticism","money pressure",...]
-  triggers          Json      @default("[]")
-  // ["abandons habits week 3",...]
-  patterns          Json      @default("[]")
-  // "direct, no fluff, ценит конкретику"
-  styleNotes        String?
-  // {"мама":"сложно, но люблю","Серик":"бизнес"}
-  relationships     Json      @default("{}")
-  lastSynthesizedAt DateTime?
-  // для будущих миграций структуры синтеза
-  synthesisVersion  Int       @default(0)
-  updatedAt         DateTime  @updatedAt
-}
+// M3 Unit C (2026-06-06): модель UserProfile удалена — еженедельный синтез
+// «характера» заменён v2 (procedural patterns + entity-graph + axes + identity).
+// DROP TABLE — миграция 20260606000000_drop_user_profile.
 
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
 // не должен слать одно и то же повторно. Уникальность по (user, type,
