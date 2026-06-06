@@ -97,7 +97,8 @@
         {
           "calendarPermission": "LifeOS синхронизирует события с вашим календарём для умных напоминаний"
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "extra": {
       "eas": {

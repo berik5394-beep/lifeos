@@ -1,3 +1,5 @@
+import { getDeviceTimezone } from './device-tz';
+
 // NOTE: EXPO_PUBLIC_API_URL should be set via `app.config.ts` `extra`
 // or a .env file (apps/mobile/.env) for physical devices on LAN/LTE.
 // Localhost fallback only works for simulators/web dev.
@@ -140,6 +142,10 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+
+  // Real-Time Foundation: настоящий пояс устройства на КАЖДЫЙ запрос
+  // (getDeviceTimezone синхронный, всегда свежий → перелёт подхватывается).
+  headers['X-Timezone'] = getDeviceTimezone();
 
   const fetchOptions: RequestInit = {
     method,
