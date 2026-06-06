@@ -25,9 +25,10 @@ describe('jarvis-orchestrator — v2 wiring (D3)', () => {
     expect(head).toMatch(/void\s+captureV2InBackground\(/);
     expect(head).toMatch(/\.catch\(/);
   });
-  it('preserves legacy dual-write — extractFromTranscript + captureMemory still present', () => {
+  it('пишет через единый writeMemory; legacy captureMemory удалён (M3 Unit A)', () => {
     expect(SRC).toMatch(/extractFromTranscript\(/);
-    expect(SRC).toMatch(/captureMemory\(/);
+    expect(SRC).toMatch(/writeMemory\(/);
+    expect(SRC).not.toMatch(/(await|void)\s+captureMemory\(/);
   });
   it('handleMessage appends v2 enrichment block to system prompt under flag', () => {
     const handle = SRC.slice(SRC.indexOf('export async function handleMessage'));

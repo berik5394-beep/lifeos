@@ -114,95 +114,9 @@ export function shouldOverwriteContent(
   return true;
 }
 
-export async function captureMemory(
-  userId: string,
-  m: {
-    type: string;
-    content: string;
-    details?: string | null;
-    source: string;
-    sourceId?: string | null;
-    tags?: string[];
-    importance?: number;
-  },
-): Promise<'created' | 'updated'> {
-  const content = m.content.slice(0, 500);
-  const details = m.details?.slice(0, 2000) ?? null;
-  const tags = (m.tags || []).slice(0, 10).map((t) => t.slice(0, 32));
-  const importance = m.importance ?? 5;
-
-  if (STABLE_TYPES.has(m.type)) {
-    // Ищем похожую запись того же типа: FTS-совпадение по смыслу.
-    const dup = await prisma.$queryRaw<Array<{ id: string; importance: number; tags: string[]; details: string | null }>>`
-      SELECT m.id, m.importance, m.tags, m.details
-      FROM "Memory" m
-      WHERE m."userId" = ${userId}
-        AND m.type = ${m.type}
-        AND to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${content})
-      ORDER BY ts_rank(
-        to_tsvector('russian', coalesce(m.content, '')),
-        plainto_tsquery('russian', ${content})
-      ) DESC
-      LIMIT 1;
-    `;
-
-    if (dup.length > 0) {
-      const existing = dup[0];
-      const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags])).slice(0, 10);
-      const merged = details ?? existing.details;
-      // Sparse-overwrite guard (Risk A 2026-05-28): не давать короткому
-      // sparse mention перетереть richer content. existing.content нет
-      // в SELECT — добираем для решения.
-      const ex = await prisma.memory.findUnique({
-        where: { id: existing.id },
-        select: { content: true },
-      });
-      const oldContent = ex?.content ?? '';
-      const allowContentReplace = shouldOverwriteContent(oldContent, content);
-      const newContent = allowContentReplace ? content : oldContent;
-      // Audit trail: видно в логах что был UPDATE и какое решение
-      // (раньше silent → пост-фактум нельзя было понять что произошло).
-      console.warn(
-        `[memory] UPDATE type=${m.type} id=${existing.id} ` +
-          `oldLen=${oldContent.length} newLen=${content.length} ` +
-          `contentReplaced=${allowContentReplace} (user=${userId})`,
-      );
-      await prisma.memory.update({
-        where: { id: existing.id },
-        data: {
-          content: newContent,
-          details: merged,
-          tags: mergedTags,
-          importance: Math.max(existing.importance, importance),
-          // Освежаем — повтор факта = он снова актуален (recency-ранк).
-          createdAt: new Date(),
-        },
-      });
-      await storeEmbedding(existing.id, newContent, merged);
-      return 'updated';
-    }
-  }
-
-  // TTL default для эпизодических типов (event/emotion) — anti-noise.
-  // Если caller передал свой expiresAt — НЕ перетираем (manual control).
-  const expiresAt = computeExpiresAt(m.type);
-  const created = await prisma.memory.create({
-    data: {
-      userId,
-      type: m.type,
-      content,
-      details,
-      source: m.source,
-      sourceId: m.sourceId ?? null,
-      tags,
-      importance,
-      expiresAt,
-    },
-    select: { id: true },
-  });
-  await storeEmbedding(created.id, content, details);
-  return 'created';
-}
+// M3 Unit A (2026-06-06): legacy writer captureMemory удалён — единый писатель
+// writeMemory (episodic-memory.ts) заменил его (FEATURE_V2_WRITE=all в проде).
+// getRelevantMemories (legacy reader) ещё жив — Unit B.
 
 export async function getRelevantMemories(
   userId: string,

@@ -20,7 +20,6 @@ import { matchesCrisisPhrase, classifyCrisis } from './safety-classifier.js';
 import { buildSafetyResponse } from './safety-response.js';
 import { classifyEmotional } from './emotional-classifier.js';
 import { isPlannerIntent } from './planner-service.js';
-import { captureMemory } from './memory-service.js';
 import { writeMemory } from './episodic-memory.js';
 import { trackInterests } from './interest-service.js';
 import { runRegistryTool, toolConfirmRequired } from '../tools/index.js';
@@ -35,7 +34,7 @@ import {
   readConfirmSignal,
   awaitingSlot,
 } from './pending-actions.js';
-import { isV2MemoryEnabled, isV2WriteEnabled } from '../lib/feature-flags.js';
+import { isV2MemoryEnabled } from '../lib/feature-flags.js';
 import { captureV2InBackground } from './v2-capture.js';
 import {
   buildV2EnrichmentBlock,
@@ -189,27 +188,16 @@ async function captureInBackground(
     // (Фаза 2.2), а это собственные запросы — в tx неуместно. Память
     // best-effort, с задачами не атомарна по смыслу.
     for (const m of extracted.memories) {
-      // ОДНА ПАМЯТЬ M2: под флагом — ЕДИНЫЙ писатель (дедуп+embedding+
-      // episodic-поля). Без флага — legacy captureMemory (байт-в-байт).
-      if (isV2WriteEnabled(userId)) {
-        await writeMemory(userId, {
-          type: m.type,
-          content: m.content,
-          details: m.details ?? null,
-          source: 'chat',
-          tags: m.tags,
-          importance: m.importance,
-        });
-      } else {
-        await captureMemory(userId, {
-          type: m.type,
-          content: m.content,
-          details: m.details ?? null,
-          source: 'chat',
-          tags: m.tags,
-          importance: m.importance,
-        });
-      }
+      // ОДНА ПАМЯТЬ (M3 Unit A): ЕДИНЫЙ писатель writeMemory (дедуп+embedding+
+      // episodic-поля). Legacy captureMemory удалён (FEATURE_V2_WRITE=all в проде).
+      await writeMemory(userId, {
+        type: m.type,
+        content: m.content,
+        details: m.details ?? null,
+        source: 'chat',
+        tags: m.tags,
+        importance: m.importance,
+      });
       memories++;
     }
     // v2.0 Week 5 D3 — dual-write to new memory tiers behind flag.
@@ -729,25 +717,14 @@ export async function handleMessage(
     // #6: пометить, что про ручную покупку объяснили — чтобы в
     // следующий раз не повторять PCI-лекцию. Один раз, best-effort.
     if (!purchaseFlag) {
-      // ОДНА ПАМЯТЬ M2: под флагом — единый writeMemory; иначе legacy.
-      // Оба fire-and-forget (.catch) — горячий путь не блокируем.
-      if (isV2WriteEnabled(userId)) {
-        void writeMemory(userId, {
-          type: 'preference',
-          content: 'Юзеру объяснено: покупка билетов ручная (диплинк, не авто)',
-          source: 'chat',
-          tags: ['purchase_explained'],
-          importance: 4,
-        }).catch(() => {});
-      } else {
-        void captureMemory(userId, {
-          type: 'preference',
-          content: 'Юзеру объяснено: покупка билетов ручная (диплинк, не авто)',
-          source: 'chat',
-          tags: ['purchase_explained'],
-          importance: 4,
-        }).catch(() => {});
-      }
+      // ОДНА ПАМЯТЬ (M3 Unit A): единый writeMemory, fire-and-forget.
+      void writeMemory(userId, {
+        type: 'preference',
+        content: 'Юзеру объяснено: покупка билетов ручная (диплинк, не авто)',
+        source: 'chat',
+        tags: ['purchase_explained'],
+        importance: 4,
+      }).catch(() => {});
     }
 
     void trackInterests(userId, text);

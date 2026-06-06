@@ -112,18 +112,24 @@ const SRC = readFileSync(
   'utf-8',
 );
 
-describe('memory-service.ts structural — guard + audit wired (Risk A+D)', () => {
-  it('captureMemory зовёт shouldOverwriteContent в update-ветке', () => {
-    expect(SRC).toMatch(/shouldOverwriteContent\(.*content\)/s);
+// M3 Unit A: captureMemory удалён; guard+audit перенесены в writeMemory
+// (episodic-memory.ts). Структурную регрессию проверяем там.
+const WRITE_SRC = readFileSync(
+  join(process.cwd(), 'src/services/episodic-memory.ts'),
+  'utf-8',
+);
+
+describe('writeMemory structural — guard + audit wired (Risk A+D, M3 Unit A)', () => {
+  it('writeMemory зовёт shouldOverwriteContent в update-ветке', () => {
+    expect(WRITE_SRC).toMatch(/shouldOverwriteContent\(.*content\)/s);
   });
 
-  it('captureMemory логирует UPDATE через console.warn (audit trail)', () => {
-    // Раньше silent — Risk D (UPDATE без следа). Теперь обязательно.
-    expect(SRC).toMatch(/console\.warn\(\s*['`]\[memory\]\s*UPDATE/);
+  it('writeMemory логирует UPDATE через console.warn (audit trail)', () => {
+    expect(WRITE_SRC).toMatch(/console\.warn\(\s*[\s\S]{0,40}\[memory\]\s*UPDATE/);
   });
 
-  it('audit log включает id + длины content (диагностика sparse)', () => {
-    const warnBlock = SRC.slice(SRC.indexOf('[memory] UPDATE'));
+  it('audit log включает длины content (диагностика sparse)', () => {
+    const warnBlock = WRITE_SRC.slice(WRITE_SRC.indexOf('[memory] UPDATE'));
     expect(warnBlock).toContain('oldLen');
     expect(warnBlock).toContain('newLen');
     expect(warnBlock).toContain('contentReplaced');

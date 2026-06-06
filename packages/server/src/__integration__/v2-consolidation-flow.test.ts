@@ -37,9 +37,10 @@ describe('v2 consolidation flow — orchestrator → captureV2 chain', () => {
     expect(head).toMatch(/captureV2InBackground\(/);
   });
 
-  it('orchestrator preserves legacy dual-write (Memory writes still fire)', () => {
+  it('orchestrator пишет Memory через единый writeMemory (M3 Unit A)', () => {
     expect(ORCH).toMatch(/extractFromTranscript\(/);
-    expect(ORCH).toMatch(/captureMemory\(/);
+    expect(ORCH).toMatch(/writeMemory\(/);
+    expect(ORCH).not.toMatch(/(await|void)\s+captureMemory\(/);
   });
 
   it('captureV2 imports + calls extractEntities', () => {
