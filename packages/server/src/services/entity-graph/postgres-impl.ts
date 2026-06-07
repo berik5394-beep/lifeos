@@ -105,7 +105,11 @@ export class PostgresEntityGraph implements EntityGraphStore {
       where: { userId_type_name: { userId, type, name } },
     });
     if (existing) {
-      const mergedAliases = capAliases([...(existing.aliases as string[]), ...incomingAliases]);
+      // off: алиасы НЕ трогаем (структурно байт-идентично — без capAliases-нормализации
+      // даже если у строки уже есть алиасы); on: union существующих + входящих.
+      const mergedAliases = resolveOn
+        ? capAliases([...(existing.aliases as string[]), ...incomingAliases])
+        : (existing.aliases as string[]);
       const mergedAttributes = { ...(existing.attributes as Record<string, unknown>), ...attributes };
       const updated = await prisma.entity.update({
         where: { id: existing.id },
