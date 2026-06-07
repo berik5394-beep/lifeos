@@ -64,6 +64,9 @@ export async function captureV2InBackground(
         if (ent.attributes) {
           input.attributes = ent.attributes as JsonValue;
         }
+        if (ent.aliases?.length) {
+          input.aliases = ent.aliases;
+        }
         const row = await graph.upsertEntity(userId, input);
         idByName.set(ent.name, row.id);
       } catch (err) {
