@@ -8,6 +8,7 @@ import {
   TEMPLATES,
   V2ProactivityEngine,
   weeklyStallCandidate,
+  monthlyStallCandidate,
 } from './v2-proactivity-engine.js';
 import type { NudgeCandidate } from './v2-proactivity-engine.js';
 
@@ -154,6 +155,7 @@ describe('TEMPLATES — table', () => {
         'skill_suggestion',
         'stale_entity',
         'streak_break',
+        'monthly_goal_stall',
         'weekly_goal_stall',
       ].sort(),
     );
@@ -194,6 +196,34 @@ describe('weeklyStallCandidate — проактив «цель недели не
   });
   it('нет целей недели → null', () => {
     expect(weeklyStallCandidate(5, [])).toBeNull();
+  });
+});
+
+describe('monthlyStallCandidate — проактив «цель месяца не закрыта»', () => {
+  const goals = [
+    { completed: false, goalText: 'закрыть 3 сделки' },
+    { completed: true, goalText: 'нанять дизайнера' },
+  ];
+  const roll = { done: 2, total: 4 };
+  it('≤5 дней до конца + открытая цель → кандидат с роллапом', () => {
+    const c = monthlyStallCandidate(3, goals, roll);
+    expect(c?.source).toBe('monthly_goal_stall');
+    expect(c?.payload.open).toBe(1);
+    expect(c?.payload.total).toBe(2);
+    expect(c?.payload.sample).toBe('закрыть 3 сделки');
+    expect(c?.payload.daysLeft).toBe(3);
+    expect(c?.payload.weeksDone).toBe(2);
+    expect(c?.payload.weeksTotal).toBe(4);
+    expect(c?.significance).toBeGreaterThan(0);
+  });
+  it('>5 дней до конца → null (рано, не спамим)', () => {
+    expect(monthlyStallCandidate(10, goals, roll)).toBeNull();
+  });
+  it('все цели закрыты → null', () => {
+    expect(monthlyStallCandidate(2, [{ completed: true, goalText: 'x' }], roll)).toBeNull();
+  });
+  it('нет целей месяца → null', () => {
+    expect(monthlyStallCandidate(2, [], roll)).toBeNull();
   });
 });
 

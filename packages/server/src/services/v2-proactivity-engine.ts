@@ -33,7 +33,8 @@ export type NudgeSource =
   | 'birthday_upcoming'
   | 'memorial_upcoming'
   | 'goal_habits_stall'
-  | 'weekly_goal_stall';
+  | 'weekly_goal_stall'
+  | 'monthly_goal_stall';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -89,6 +90,11 @@ export function scoreSignificance(c: NudgeCandidate): number {
       // Чем больше незакрытых целей недели к её концу — тем значимее.
       const open = Number(c.payload.open ?? 0);
       return Math.min(1, 0.5 + open * 0.15);
+    }
+    case 'monthly_goal_stall': {
+      // Месячная цель крупнее недельной — стартовый вес выше.
+      const open = Number(c.payload.open ?? 0);
+      return Math.min(1, 0.55 + open * 0.12);
     }
     case 'identity_growth': {
       const depthShift = Number(c.payload.depthShift ?? 0);
@@ -210,6 +216,10 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     gentle: 'Неделя к концу — цель «{{sample}}» ещё не закрыта ({{open}} из {{total}}). Успеем?',
     supportive: 'Осталось {{open}} из {{total}} целей недели. «{{sample}}» — может, сегодня добьём?',
   },
+  monthly_goal_stall: {
+    gentle: 'До конца месяца {{daysLeft}} дн — цель «{{sample}}» ещё не закрыта ({{open}} из {{total}}). За месяц закрыл {{weeksDone}}/{{weeksTotal}} недельных целей — добьём?',
+    supportive: 'Осталось {{daysLeft}} дн в месяце, цель «{{sample}}» открыта. Недельных закрыл {{weeksDone}}/{{weeksTotal}} — поднажмём?',
+  },
   mood_shift: {
     supportive:
       'Замечаю, настроение последние дни ушло в минус. Хочешь — поговорим?',
@@ -271,6 +281,8 @@ import {
   localHour,
   localDayOfWeek,
   localWeekStartUTC,
+  localMonthOnlyUTC,
+  daysUntilMonthEnd,
 } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { runAgent } from './claude-agent.js';
@@ -835,6 +847,68 @@ async function detectWeeklyGoalStall(userId: string): Promise<NudgeCandidate[]> 
 }
 
 /**
+ * Чистое ядро: нужен ли нудж о незакрытой цели месяца. Нудж ТОЛЬКО в последние
+ * ~5 дней месяца (daysLeft ≤ 5) и только если есть открытые цели. Роллап
+ * месяц↔неделя (done/total недельных целей за месяц) — живой кросс-сигнал.
+ * Детерминированно (daysLeft — параметр) → тестируется без «now».
+ */
+export function monthlyStallCandidate(
+  daysLeft: number,
+  goals: { completed: boolean; goalText: string }[],
+  weekRollup: { done: number; total: number },
+): NudgeCandidate | null {
+  if (daysLeft > 5) return null;
+  const open = goals.filter((g) => !g.completed);
+  if (goals.length === 0 || open.length === 0) return null;
+  const cand: NudgeCandidate = {
+    source: 'monthly_goal_stall',
+    significance: 0,
+    payload: {
+      open: open.length,
+      total: goals.length,
+      sample: open[0].goalText,
+      daysLeft,
+      weeksDone: weekRollup.done,
+      weeksTotal: weekRollup.total,
+    },
+    toneHint: 'gentle',
+  };
+  cand.significance = scoreSignificance(cand);
+  return cand;
+}
+
+async function detectMonthlyGoalStall(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const tz = await getUserTimezone(userId);
+    const daysLeft = daysUntilMonthEnd(tz);
+    if (daysLeft > 5) return []; // рано — не читаем БД зря
+    const monthStart = localMonthOnlyUTC(tz);
+    const goals = await prisma.monthlyGoal.findMany({
+      where: { userId, monthStart },
+      select: { goalText: true, completed: true },
+      orderBy: { order: 'asc' },
+    });
+    // Роллап месяц↔неделя: недельные цели, попавшие в этот месяц.
+    const nextMonth = new Date(
+      Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1),
+    );
+    const weeks = await prisma.weeklyGoal.findMany({
+      where: { userId, weekStart: { gte: monthStart, lt: nextMonth } },
+      select: { completed: true },
+    });
+    const weekRollup = {
+      done: weeks.filter((w) => w.completed).length,
+      total: weeks.length,
+    };
+    const cand = monthlyStallCandidate(daysLeft, goals, weekRollup);
+    return cand ? [cand] : [];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectMonthlyGoalStall failed:', err);
+    return [];
+  }
+}
+
+/**
  * v2 Phase B4 — propose a skill when the user repeatedly invokes the same
  * cluster of tools. Reads ToolCall history: groups same-day tool sets,
  * finds a cluster of >=3 distinct tools that recurs on >=3 distinct days.
@@ -970,6 +1044,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),
       detectWeeklyGoalStall(userId),
+      detectMonthlyGoalStall(userId),
       detectIdentityGrowth(userId),
       detectSkillOpportunity(userId),
     ]);
