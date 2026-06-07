@@ -7,3 +7,5 @@ export {
   type TypedPerson,
   type NeglectedKeyPerson,
 } from './types.js';
+export { buildPersonMeetingBriefs } from './meeting-impl.js';
+export { matchPersonInText, minutesUntil, describeMeetingBrief, type PersonMeetingBrief } from './meeting.js';
