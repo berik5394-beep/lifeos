@@ -148,11 +148,13 @@ export function scoreSignificance(c: NudgeCandidate): number {
     }
     case 'birthday_upcoming': {
       // ДР — стабильно значимо (≥0.6 floor gate3, чтобы доходило).
-      // Сегодня/высокая важность → выше.
+      // Сегодня/высокая важность → выше. Тип-вес (План B): аддитивный буст,
+      // off-safe через порог-дефолт 0.7 — без payload.typeWeight boost=0 → как было.
       const daysUntil = Number(c.payload.daysUntil ?? 1);
       const importance = Number(c.payload.importance ?? 5);
       const base = daysUntil <= 0 ? 0.8 : 0.65;
-      return Math.min(1, base + (importance - 5) * 0.03);
+      const typeBoost = Math.max(0, Number(c.payload.typeWeight ?? 0.7) - 0.7) * 0.2;
+      return Math.min(1, base + (importance - 5) * 0.03 + typeBoost);
     }
     case 'memorial_upcoming': {
       // День памяти — стабильно значим (≥0.6 floor gate3, чтобы доходил).
@@ -596,7 +598,7 @@ async function detectRelationshipLink(userId: string): Promise<NudgeCandidate[]>
  */
 async function detectBirthday(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2BirthdayEnabled } = await import('../lib/feature-flags.js');
+    const { isV2BirthdayEnabled, isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
     if (!isV2BirthdayEnabled(userId)) return [];
     const rows = await buildUpcomingBirthdays(userId, new Date(), 1); // окно: сегодня + завтра
     const out: NudgeCandidate[] = [];
@@ -615,6 +617,12 @@ async function detectBirthday(userId: string): Promise<NudgeCandidate[]> {
         },
         toneHint: 'gentle',
       };
+      // Усиление (План B): тип-вес в payload ТОЛЬКО при флаге person-types →
+      // off=байт-идентично (без typeWeight scoreSignificance даёт прежнее).
+      if (isV2PersonTypesEnabled(userId)) {
+        const { personTypeWeight } = await import('./person-types/index.js');
+        (cand.payload as Record<string, unknown>).typeWeight = personTypeWeight(r.personType);
+      }
       cand.significance = scoreSignificance(cand);
       out.push(cand);
     }

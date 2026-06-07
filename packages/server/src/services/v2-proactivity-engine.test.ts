@@ -103,6 +103,28 @@ describe('scoreSignificance — pure', () => {
   });
 });
 
+describe('birthday/relationship typeWeight буст off-safe (План B усиления)', () => {
+  it('birthday БЕЗ payload.typeWeight → значимость как до фичи (байт-идентично)', () => {
+    const c = {
+      source: 'birthday_upcoming',
+      significance: 0,
+      payload: { daysUntil: 1, importance: 5 },
+      toneHint: 'gentle',
+    } as never;
+    // base(daysUntil>0 → 0.65) + (5-5)*0.03 + boost(typeWeight ?? 0.7 → 0) = 0.65
+    expect(scoreSignificance(c)).toBeCloseTo(0.65, 5);
+  });
+  it('birthday client (typeWeight 1.0) → буст выше 0.65', () => {
+    const c = {
+      source: 'birthday_upcoming',
+      significance: 0,
+      payload: { daysUntil: 1, importance: 5, typeWeight: 1.0 },
+      toneHint: 'gentle',
+    } as never;
+    expect(scoreSignificance(c)).toBeGreaterThan(0.65);
+  });
+});
+
 describe('gate3_Significance — pure', () => {
   const base = (s: number): NudgeCandidate => ({
     source: 'stale_entity',

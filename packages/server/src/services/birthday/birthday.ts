@@ -23,7 +23,14 @@ export async function listPersonBirthdays(userId: string): Promise<PersonBirthda
     const attrs = (r.attributes ?? {}) as Record<string, unknown>;
     const bday = parseBirthday(attrs.birthday);
     if (!bday) continue;
-    out.push({ entityId: r.id, name: r.name, importance: r.importance, birthday: bday });
+    const pt = attrs.personType;
+    out.push({
+      entityId: r.id,
+      name: r.name,
+      importance: r.importance,
+      birthday: bday,
+      personType: typeof pt === 'string' ? pt : undefined,
+    });
   }
   return out;
 }

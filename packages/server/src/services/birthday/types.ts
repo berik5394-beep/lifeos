@@ -14,6 +14,8 @@ export interface PersonBirthdayRow {
   name: string;
   importance: number;
   birthday: Birthday;
+  /** CRM-тип человека (План B усиление): пробрасывается в нудж для буста значимости. */
+  personType?: string;
 }
 
 export interface UpcomingBirthday {
@@ -22,6 +24,7 @@ export interface UpcomingBirthday {
   importance: number;
   daysUntil: number;
   age: number | null;
+  personType?: string;
 }
 
 const DAY_MS = 86_400_000;
@@ -143,6 +146,7 @@ export function upcomingBirthdays(
       importance: p.importance,
       daysUntil,
       age: ageOnNextBirthday(p.birthday, now),
+      personType: p.personType,
     });
   }
   out.sort((a, b) => a.daysUntil - b.daysUntil);
