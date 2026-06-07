@@ -201,6 +201,18 @@ export function isV2RelationshipsEnabled(userId: string): boolean {
 }
 
 /**
+ * Person-types / CRM-типы (мост #2). Same shape as isV2RelationshipsEnabled.
+ */
+export function isV2PersonTypesEnabled(userId: string): boolean {
+  const raw = process.env.FEATURE_V2_PERSON_TYPES;
+  if (raw === undefined) return false;
+  const flag = raw.trim();
+  if (flag === '' || flag === 'none' || flag === 'false') return false;
+  if (flag === 'all' || flag === 'true') return true;
+  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
+}
+
+/**
  * v2.0 Week 6 — global cron flag.
  *
  * Crons are global jobs (one sweep affects all users), so no per-user

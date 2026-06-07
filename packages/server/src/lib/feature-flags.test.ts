@@ -20,6 +20,7 @@ import {
   isV2YearLoadEnabled,
   isV2BirthdayEnabled,
   isV2GoalHabitsEnabled,
+  isV2PersonTypesEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -486,5 +487,23 @@ describe('isV2RelationshipsEnabled', () => {
     process.env.FEATURE_V2_RELATIONSHIPS = 'user-u1';
     expect(isV2RelationshipsEnabled('u1')).toBe(true);
     expect(isV2RelationshipsEnabled('u2')).toBe(false);
+  });
+});
+
+describe('isV2PersonTypesEnabled', () => {
+  afterEach(() => {
+    delete process.env.FEATURE_V2_PERSON_TYPES;
+  });
+  it('unset → false', () => {
+    expect(isV2PersonTypesEnabled('u1')).toBe(false);
+  });
+  it('all → true', () => {
+    process.env.FEATURE_V2_PERSON_TYPES = 'all';
+    expect(isV2PersonTypesEnabled('u1')).toBe(true);
+  });
+  it('user-list матчит только своих', () => {
+    process.env.FEATURE_V2_PERSON_TYPES = 'user-u1';
+    expect(isV2PersonTypesEnabled('u1')).toBe(true);
+    expect(isV2PersonTypesEnabled('u2')).toBe(false);
   });
 });
