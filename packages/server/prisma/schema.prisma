@@ -256,7 +256,7 @@ model Task {
 model MonthlyGoal {
   id         String   @id @default(cuid())
   userId     String
-  user       User     @relation(fields: [userId], references: [id])
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   monthStart DateTime @db.Date // UTC-полночь 1-го числа локального месяца (localMonthOnlyUTC)
   goalText   String
   completed  Boolean  @default(false)
