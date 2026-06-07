@@ -172,6 +172,17 @@ export function localMonthStartUTC(tz: string, at: Date = new Date()): Date {
   return new Date(guessUTC - off);
 }
 
+/**
+ * Сколько ЦЕЛЫХ дней осталось до конца КАЛЕНДАРНОГО месяца юзера (0 = сегодня
+ * последний день месяца). В tz юзера, не сервера. Чисто/детерминированно
+ * (день — из `at`). Для детектора «конец месяца, цель не закрыта».
+ */
+export function daysUntilMonthEnd(tz: string, at: Date = new Date()): number {
+  const [y, m, d] = localDateStr(safeTz(tz), at).split('-').map(Number);
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate(); // день 0 след. месяца = последний день текущего
+  return daysInMonth - d;
+}
+
 /** Локальный час юзера 0..23 (R11 тихие часы — не серверный UTC). */
 /**
  * Phase 7 P4 (E) — день недели в локальной tz юзера.

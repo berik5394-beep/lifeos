@@ -9,6 +9,7 @@ import {
   isValidIanaTz,
   localNowString,
   localWeekStartUTC,
+  daysUntilMonthEnd,
 } from './tz.js';
 
 /**
@@ -220,5 +221,22 @@ describe('localMonthStartUTC — начало локального месяца 
   it('невалидная tz → не падает (фолбэк UTC, 1-е 00:00 UTC)', () => {
     const r = localMonthStartUTC('Garbage/Zone', new Date('2026-05-16T10:00:00Z'));
     expect(r.toISOString()).toBe('2026-05-01T00:00:00.000Z');
+  });
+});
+
+describe('daysUntilMonthEnd — дней до конца месяца в tz юзера', () => {
+  it('середина месяца (Almaty, 15 июня) → 15', () => {
+    expect(daysUntilMonthEnd('Asia/Almaty', new Date('2026-06-15T10:00:00Z'))).toBe(15);
+  });
+  it('последний день месяца → 0', () => {
+    expect(daysUntilMonthEnd('Asia/Almaty', new Date('2026-06-30T10:00:00Z'))).toBe(0);
+  });
+  it('первое число → daysInMonth-1 (июнь 30 → 29)', () => {
+    expect(daysUntilMonthEnd('Asia/Almaty', new Date('2026-06-01T10:00:00Z'))).toBe(29);
+  });
+  it('tz-aware на границе месяца: 30 июня 20:00 UTC = 1 июля в Almaty → 30 (июль 31 дн)', () => {
+    expect(daysUntilMonthEnd('Asia/Almaty', new Date('2026-06-30T20:00:00Z'))).toBe(30);
+    // тот же инстант в UTC = ещё 30 июня → 0
+    expect(daysUntilMonthEnd('UTC', new Date('2026-06-30T20:00:00Z'))).toBe(0);
   });
 });
