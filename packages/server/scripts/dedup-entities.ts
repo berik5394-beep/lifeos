@@ -235,6 +235,250 @@ export function mergeAliases(
 }
 
 // ---------------------------------------------------------------------------
+// S3: resolve-based dedup (russian FTS) — declension/variant rows
+// ---------------------------------------------------------------------------
+//
+// Why FTS, not JS name-equality: the dup rows have DIFFERENT surface names
+// ("Серик" vs "Сериком") and EMPTY aliases (accumulated before the live
+// coreference fix shipped). JS name-overlap (S1/S2) finds nothing here. The
+// Postgres russian snowball stemmer reduces "Сериком" → lexeme 'серик' ==
+// "Серик", so FTS matches the pair.
+//
+// Mirrors resolveForMerge in postgres-impl.ts: Tier1 name FTS, Tier2 alias FTS,
+// type-filtered, russian. ADDS `AND e.id <> $excludeId` (exclude self). NO
+// embedding tier — conservative, name+alias only.
+
+/**
+ * Minimal shape of PrismaClient used by S3 — `$queryRawUnsafe` + the three
+ * write paths. Typed structurally so the script stays decoupled from the
+ * generated client surface and avoids `any`.
+ */
+export type S3Prisma = {
+  $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
+  entityRelationship: {
+    updateMany(args: {
+      where: { userId: string; fromId?: string; toId?: string };
+      data: { fromId?: string; toId?: string };
+    }): Promise<{ count: number }>;
+  };
+  obligation: {
+    updateMany(args: {
+      where: { userId: string; personEntityId: string };
+      data: { personEntityId: string };
+    }): Promise<{ count: number }>;
+  };
+  entity: {
+    update(args: {
+      where: { id: string };
+      data: { aliases: string[]; attributes: Prisma.InputJsonValue };
+    }): Promise<unknown>;
+    delete(args: { where: { id: string } }): Promise<unknown>;
+  };
+};
+
+/** Single FTS hit (subset of Entity columns, no embedding). */
+type FtsHit = { id: string };
+
+/**
+ * For each entity, run a russian-FTS query (Tier1 name + Tier2 alias,
+ * type-filtered, exclude self) to find ONE candidate match among the user's
+ * other entities. Returns deduped, directed pairs (canonical via pickCanonical).
+ *
+ * Skips a side if it is already absorbed by an earlier pair (an entity can be a
+ * canonical OR an absorbed, never both — keeps the merge graph a simple forest).
+ */
+export async function findResolveDupPairs(
+  prisma: S3Prisma,
+  userId: string,
+  entities: EntityLite[],
+): Promise<Array<{ canonical: EntityLite; absorbed: EntityLite }>> {
+  const byId = new Map<string, EntityLite>(entities.map((e) => [e.id, e]));
+  const pairs: Array<{ canonical: EntityLite; absorbed: EntityLite }> = [];
+  const seenPair = new Set<string>();
+  const claimed = new Set<string>(); // ids already on either side of a pair
+
+  for (const self of entities) {
+    if (claimed.has(self.id)) continue;
+    const hit = await resolveDupCandidate(prisma, userId, self);
+    if (!hit) continue;
+    const other = byId.get(hit.id);
+    if (!other || other.id === self.id) continue;
+    if (claimed.has(other.id)) continue;
+
+    const pairKey = [self.id, other.id].sort().join('|');
+    if (seenPair.has(pairKey)) continue;
+    seenPair.add(pairKey);
+
+    const canonical = pickCanonical([self, other]);
+    const absorbed = canonical.id === self.id ? other : self;
+    pairs.push({ canonical, absorbed });
+    claimed.add(canonical.id);
+    claimed.add(absorbed.id);
+  }
+  return pairs;
+}
+
+/**
+ * Tier1 (name FTS) then Tier2 (alias FTS) candidate lookup for one entity.
+ * type-filtered + `e.id <> self`. Russian stemmer. Best-effort → null on error.
+ * Mirrors resolveForMerge's tiers minus the embedding tier.
+ */
+async function resolveDupCandidate(
+  prisma: S3Prisma,
+  userId: string,
+  self: EntityLite,
+): Promise<FtsHit | null> {
+  const mention = (self.name ?? '').trim().slice(0, 255);
+  if (!mention) return null;
+  const tf = `AND e.type = '${self.type.replace(/'/g, "''")}'`;
+  const nv = `to_tsvector('russian', e.name)`;
+  const nq = `plainto_tsquery('russian', $2)`;
+  try {
+    const t1 = await prisma.$queryRawUnsafe<FtsHit[]>(
+      `SELECT e.id FROM "Entity" e
+       WHERE e."userId" = $1 AND e.id <> $3 AND ${nv} @@ ${nq} ${tf}
+       ORDER BY ts_rank(${nv}, ${nq}) DESC LIMIT 1`,
+      userId,
+      mention,
+      self.id,
+    );
+    if (t1.length > 0) return t1[0];
+    const t2 = await prisma.$queryRawUnsafe<FtsHit[]>(
+      `SELECT DISTINCT e.id FROM "Entity" e, unnest(e.aliases) av
+       WHERE e."userId" = $1 AND e.id <> $3 AND to_tsvector('russian', av) @@ ${nq} ${tf}
+       ORDER BY e.id LIMIT 1`,
+      userId,
+      mention,
+      self.id,
+    );
+    if (t2.length > 0) return t2[0];
+    return null;
+  } catch (err) {
+    console.warn(
+      '[dedup-entities] S3 resolveDupCandidate failed:',
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+/**
+ * Apply (or, in dry-run, just plan) one S3 merge: move BOTH foreign keys off the
+ * absorbed row, fold its aliases+attributes into canonical, delete it.
+ *
+ * CRITICAL vs S1/S2: those only repoint EntityRelationship. Obligation has
+ * `personEntityId onDelete: SetNull`, so deleting an absorbed entity would NULL
+ * its obligations' person link = DATA LOSS. S3 repoints obligations too.
+ *
+ * dry-run: writes nothing, returns zero counts (caller logs the intended merge).
+ */
+export async function mergeEntityPair(
+  prisma: S3Prisma,
+  userId: string,
+  canonical: EntityLite,
+  absorbed: EntityLite,
+  mode: 'dry-run' | 'apply',
+): Promise<{ relsRepointed: number; oblsRepointed: number; deleted: number }> {
+  if (mode !== 'apply') {
+    return { relsRepointed: 0, oblsRepointed: 0, deleted: 0 };
+  }
+  // 1. Repoint EntityRelationship (both directions) absorbed → canonical.
+  const r1 = await prisma.entityRelationship.updateMany({
+    where: { userId, fromId: absorbed.id },
+    data: { fromId: canonical.id },
+  });
+  const r2 = await prisma.entityRelationship.updateMany({
+    where: { userId, toId: absorbed.id },
+    data: { toId: canonical.id },
+  });
+  // 2. Repoint Obligation.personEntityId absorbed → canonical (avoid SetNull loss).
+  const ro = await prisma.obligation.updateMany({
+    where: { userId, personEntityId: absorbed.id },
+    data: { personEntityId: canonical.id },
+  });
+  // 3. Fold aliases + attributes into canonical.
+  const mergedAliases = mergeAliases(canonical.aliases ?? [], [absorbed]);
+  const mergedAttrs = mergeAttributes(canonical.attributes, [absorbed.attributes]);
+  await prisma.entity.update({
+    where: { id: canonical.id },
+    data: { aliases: mergedAliases, attributes: mergedAttrs as Prisma.InputJsonValue },
+  });
+  // 4. Delete absorbed.
+  await prisma.entity.delete({ where: { id: absorbed.id } });
+
+  return {
+    relsRepointed: r1.count + r2.count,
+    oblsRepointed: ro.count,
+    deleted: 1,
+  };
+}
+
+/**
+ * S3 entrypoint — find resolve-based dup pairs, log each, merge them.
+ * Exported so tests (and main()) can drive it directly without argv. `graph` is
+ * accepted for parity with the live coreference path but S3 uses raw FTS via
+ * `prisma` (kept in the signature so callers needn't construct one conditionally).
+ */
+export async function runS3ResolveBackfill(
+  prisma: S3Prisma,
+  _graph: unknown,
+  userId: string,
+  mode: 'dry-run' | 'apply',
+  entities?: EntityLite[],
+): Promise<{
+  pairs: number;
+  merges: number;
+  relsRepointed: number;
+  oblsRepointed: number;
+  deleted: number;
+}> {
+  const tag = mode === 'dry-run' ? '[dry-run]' : '[apply]';
+  const rows =
+    entities ??
+    ((await (prisma as unknown as { entity: { findMany: (a: unknown) => Promise<unknown> } }).entity.findMany(
+      {
+        where: { userId },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          importance: true,
+          aliases: true,
+          attributes: true,
+          createdAt: true,
+        },
+      },
+    )) as unknown as EntityLite[]);
+
+  const pairs = await findResolveDupPairs(prisma, userId, rows);
+  console.log(`${tag} S3 (resolve-based FTS dedup): ${pairs.length} pair(s)`);
+
+  let merges = 0;
+  let relsRepointed = 0;
+  let oblsRepointed = 0;
+  let deleted = 0;
+  for (const { canonical, absorbed } of pairs) {
+    try {
+      console.log(
+        `${tag} S3: canonical="${canonical.name}" imp=${canonical.importance} ` +
+          `absorbs "${absorbed.name}" (id=${absorbed.id.slice(0, 8)})`,
+      );
+      const c = await mergeEntityPair(prisma, userId, canonical, absorbed, mode);
+      relsRepointed += c.relsRepointed;
+      oblsRepointed += c.oblsRepointed;
+      deleted += c.deleted;
+      merges++;
+    } catch (err) {
+      console.warn(
+        `${tag} S3: merge ${canonical.name} ← ${absorbed.name} failed:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  return { pairs: pairs.length, merges, relsRepointed, oblsRepointed, deleted };
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -257,9 +501,11 @@ async function main(): Promise<void> {
 
   let s1Merges = 0;
   let s2Merges = 0;
+  let s3Merges = 0;
   let s1Skipped = 0;
   let s2Skipped = 0;
   let relsRepointed = 0;
+  let oblsRepointed = 0;
   let entitiesDeleted = 0;
 
   try {
@@ -393,6 +639,32 @@ async function main(): Promise<void> {
         console.warn(`${tag} S2: merge ${canonical.name} ← ${absorbed.name} failed:`, err);
       }
     }
+
+    // ---------- Strategy 3: resolve-based dedup (russian FTS) ---------------
+    // Catches declension/variant dups (different surface name, EMPTY aliases)
+    // that S1/S2's JS name-equality misses. Re-fetch post-S2 state in apply
+    // (mirrors the post-S1 re-fetch above); dry-run reuses the loaded rows.
+    const postS2 =
+      mode === 'apply'
+        ? ((await prisma.entity.findMany({
+            where: { userId },
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              importance: true,
+              aliases: true,
+              attributes: true,
+              createdAt: true,
+            },
+          })) as unknown as EntityLite[])
+        : rows;
+
+    const s3 = await runS3ResolveBackfill(prisma, null, userId, mode, postS2);
+    s3Merges += s3.merges;
+    relsRepointed += s3.relsRepointed;
+    oblsRepointed += s3.oblsRepointed;
+    entitiesDeleted += s3.deleted;
   } catch (err) {
     console.warn(`${tag} top-level failure:`, err);
   }
@@ -405,7 +677,9 @@ async function main(): Promise<void> {
   console.log(`s1_skipped:        ${s1Skipped}`);
   console.log(`s2_merges:         ${s2Merges}`);
   console.log(`s2_skipped:        ${s2Skipped}`);
+  console.log(`s3_merges:         ${s3Merges}`);
   console.log(`rels_repointed:    ${relsRepointed}`);
+  console.log(`obls_repointed:    ${oblsRepointed}`);
   console.log(`entities_deleted:  ${entitiesDeleted}`);
 
   await prisma.$disconnect();

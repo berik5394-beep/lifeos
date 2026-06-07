@@ -257,8 +257,45 @@ describe('dedup-entities script structural', () => {
       's1_skipped:',
       's2_merges:',
       's2_skipped:',
+      's3_merges:',
       'rels_repointed:',
+      'obls_repointed:',
       'entities_deleted:',
     ].forEach((label) => expect(SCRIPT).toContain(label));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Structural — S3 resolve-based dedup wiring
+// (behavioral coverage lives in dedup-entities.it.test.ts — real Prisma + FTS)
+// ---------------------------------------------------------------------------
+
+describe('dedup-entities S3 structural', () => {
+  it('exports the S3 entrypoints + helpers', async () => {
+    const modulePath = new URL('../../scripts/dedup-entities.js', import.meta.url).href;
+    const mod = await import(modulePath);
+    expect(typeof mod.runS3ResolveBackfill).toBe('function');
+    expect(typeof mod.findResolveDupPairs).toBe('function');
+    expect(typeof mod.mergeEntityPair).toBe('function');
+  });
+  it('matches via russian FTS (to_tsvector/plainto_tsquery), not JS name-equality', () => {
+    expect(SCRIPT).toMatch(/to_tsvector\('russian', e\.name\)/);
+    expect(SCRIPT).toMatch(/plainto_tsquery\('russian'/);
+    // Tier2: alias FTS on unnest(aliases).
+    expect(SCRIPT).toMatch(/unnest\(e\.aliases\)/);
+  });
+  it('excludes the entity itself (e.id <> $self)', () => {
+    expect(SCRIPT).toMatch(/e\.id <> \$3/);
+  });
+  it('moves BOTH FKs: entityRelationship AND obligation (data-loss fix)', () => {
+    // The S1/S2 gap: Obligation.personEntityId is onDelete:SetNull, so S3 must
+    // repoint obligations before deleting the absorbed row.
+    expect(SCRIPT).toMatch(/prisma\.obligation\.updateMany/);
+    expect(SCRIPT).toMatch(/personEntityId: canonical\.id/);
+  });
+  it('dry-run merge writes nothing', () => {
+    // mergeEntityPair returns zero counts and short-circuits before any write
+    // when mode !== 'apply'.
+    expect(SCRIPT).toMatch(/if \(mode !== 'apply'\)/);
   });
 });
