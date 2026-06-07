@@ -224,3 +224,26 @@ describe('entity-extractor.ts structural — Q1 filtering wired', () => {
     expect(SRC).toMatch(/НЕ извлекай самого пользователя/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 5 (entity-coreference): extractor emits aliases (non-morphological)
+// ---------------------------------------------------------------------------
+
+describe('parseExtractorResponse — aliases', () => {
+  it('пробрасывает массив aliases', () => {
+    const r = parseExtractorResponse('{"entities":[{"name":"Сергей","type":"person","aliases":["Серёга"]}],"relationships":[]}');
+    expect(r.entities[0].aliases).toEqual(['Серёга']);
+  });
+  it('без aliases — поле undefined, не падает', () => {
+    const r = parseExtractorResponse('{"entities":[{"name":"Роза","type":"person"}],"relationships":[]}');
+    expect(r.entities[0].aliases).toBeUndefined();
+  });
+});
+
+describe('SYSTEM_PROMPT — aliases присутствует', () => {
+  it('промпт просит aliases (НЕ-морфологические)', () => {
+    const src = readFileSync(join(process.cwd(), 'src/services/entity-extractor.ts'), 'utf8');
+    expect(src).toContain('"aliases"');
+    expect(src).toMatch(/aliases.*НЕ-морфологические/);
+  });
+});

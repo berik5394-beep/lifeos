@@ -30,6 +30,8 @@ export interface ExtractedEntityInput {
   attributes?: Record<string, unknown>;
   /** 1-10 importance signal from extraction context. Default 5. */
   importance?: number;
+  /** Известные НЕ-морфологические варианты имени (Серёга↔Сергей, Kaspi↔Каспи). Стеммер морфологию ловит сам. */
+  aliases?: string[];
 }
 
 export interface ExtractedRelationshipInput {
@@ -148,8 +150,9 @@ const SYSTEM_PROMPT = `Ты — аналитик знаний LifeOS. Из со�
 {
   "entities": [
     {
-      "name": "каноническое имя сущности",
+      "name": "каноническое имя (именительный падеж, полное имя если известно)",
       "type": "person|place|concept|goal|organization",
+      "aliases": ["известный вариант: кличка, краткое/полное, латиница"],
       "attributes": { "ключ": "значение" },
       "importance": 5
     }
@@ -169,6 +172,7 @@ const SYSTEM_PROMPT = `Ты — аналитик знаний LifeOS. Из со�
 1. entities — только явно упомянутые. Не выдумывай. Мин. одно слово.
 2. type выбери из фиксированного списка: ${ENTITY_TYPES.join('|')}.
 3. attributes — только явно сказанное (день рождения, город, профессия и т.д.).
+3a. aliases — ТОЛЬКО НЕ-морфологические варианты (кличка «Серёга» для «Сергей», латиница «Kaspi» для «Каспи», краткое↔полное). Склонения/падежи НЕ добавляй — система их сводит сама. Нет вариантов → не добавляй поле.
 4. importance: 1-3 мелочь, 4-6 средне, 7-10 важно (семья, здоровье, цели).
 5. relationships — только если из текста явно следует связь между двумя entities.
 6. relationship.type из: ${RELATIONSHIP_TYPES.join('|')}.
@@ -210,7 +214,15 @@ export async function extractEntities(
 
     // Normalize entity names.
     const normalizedEntities: ExtractedEntityInput[] = parsed.entities
-      .map((e) => ({ ...e, name: normalizeEntityName(e.name) }))
+      .map((e) => {
+        const out: ExtractedEntityInput = { ...e, name: normalizeEntityName(e.name) };
+        if (Array.isArray(e.aliases)) {
+          out.aliases = e.aliases
+            .map((a) => normalizeEntityName(String(a)))
+            .filter((a) => a && !isSelfReference(a, userName));
+        }
+        return out;
+      })
       // Drop self-references — the user is not an entity in their own graph.
       .filter((e) => !isSelfReference(e.name, userName));
 
