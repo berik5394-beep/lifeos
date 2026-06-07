@@ -34,7 +34,8 @@ export type NudgeSource =
   | 'memorial_upcoming'
   | 'goal_habits_stall'
   | 'weekly_goal_stall'
-  | 'monthly_goal_stall';
+  | 'monthly_goal_stall'
+  | 'neglected_key_person';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -95,6 +96,12 @@ export function scoreSignificance(c: NudgeCandidate): number {
       // Месячная цель крупнее недельной — стартовый вес выше.
       const open = Number(c.payload.open ?? 0);
       return Math.min(1, 0.55 + open * 0.12);
+    }
+    case 'neglected_key_person': {
+      // Запущенный важный человек; долг тебе деньгами поднимает приоритет.
+      const ws = Number(c.payload.weightedScore ?? 0);
+      const owed = Number(c.payload.owed ?? 0);
+      return Math.min(0.9, Math.min(0.85, ws) + (owed > 0 ? 0.1 : 0));
     }
     case 'identity_growth': {
       const depthShift = Number(c.payload.depthShift ?? 0);
@@ -219,6 +226,10 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
   monthly_goal_stall: {
     gentle: 'До конца месяца {{daysLeft}} дн — цель «{{sample}}» ещё не закрыта ({{open}} из {{total}}). За месяц закрыл {{weeksDone}}/{{weeksTotal}} недельных целей — добьём?',
     supportive: 'Осталось {{daysLeft}} дн в месяце, цель «{{sample}}» открыта. Недельных закрыл {{weeksDone}}/{{weeksTotal}} — поднажмём?',
+  },
+  neglected_key_person: {
+    curious: 'Кстати, {{insightText}}',
+    gentle: '{{insightText}}',
   },
   mood_shift: {
     supportive:
@@ -908,6 +919,34 @@ async function detectMonthlyGoalStall(userId: string): Promise<NudgeCandidate[]>
   }
 }
 
+// Person-types: важный ЗАПУЩЕННЫЙ человек × тип × owed-money (READ-ONLY).
+async function detectNeglectedKeyPerson(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2PersonTypesEnabled(userId)) return [];
+    const { buildNeglectedKeyPerson } = await import('./person-types/index.js');
+    const n = await buildNeglectedKeyPerson(userId);
+    if (!n) return [];
+    const business = n.type === 'client' || n.type === 'partner' || n.type === 'investor';
+    const cand: NudgeCandidate = {
+      source: 'neglected_key_person',
+      significance: 0,
+      payload: {
+        insightText: n.insightText,
+        weightedScore: n.weightedScore,
+        owed: n.owed ?? 0,
+        name: n.name,
+      },
+      toneHint: business ? 'curious' : 'gentle',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectNeglectedKeyPerson failed:', err);
+    return [];
+  }
+}
+
 /**
  * v2 Phase B4 — propose a skill when the user repeatedly invokes the same
  * cluster of tools. Reads ToolCall history: groups same-day tool sets,
@@ -1045,6 +1084,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectGoalNoProgress(userId),
       detectWeeklyGoalStall(userId),
       detectMonthlyGoalStall(userId),
+      detectNeglectedKeyPerson(userId),
       detectIdentityGrowth(userId),
       detectSkillOpportunity(userId),
     ]);

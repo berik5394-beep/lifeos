@@ -156,6 +156,7 @@ describe('TEMPLATES — table', () => {
         'stale_entity',
         'streak_break',
         'monthly_goal_stall',
+        'neglected_key_person',
         'weekly_goal_stall',
       ].sort(),
     );
