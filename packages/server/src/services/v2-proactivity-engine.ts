@@ -144,7 +144,11 @@ export function scoreSignificance(c: NudgeCandidate): number {
     case 'relationship_link': {
       const days = Number(c.payload.daysSince ?? 0);
       const imp = Number(c.payload.importance ?? 5);
-      return Math.max(0, Math.min(0.85, (days / 30) * (imp / 10)));
+      const baseSig = Math.max(0, Math.min(0.85, (days / 30) * (imp / 10)));
+      // Тип-вес (План B): аддитивный буст, off-safe порог-дефолт 0.6 →
+      // без payload.typeWeight boost=0 → прежняя значимость. Общий потолок 0.95.
+      const typeBoost = Math.max(0, Number(c.payload.typeWeight ?? 0.6) - 0.6) * 0.3;
+      return Math.min(0.95, baseSig + typeBoost);
     }
     case 'birthday_upcoming': {
       // ДР — стабильно значимо (≥0.6 floor gate3, чтобы доходило).
@@ -567,7 +571,7 @@ async function detectEnergyLink(userId: string): Promise<NudgeCandidate[]> {
 // Relationships: застоявшийся человек × открытое обязательство по нему (FK).
 async function detectRelationshipLink(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2RelationshipsEnabled } = await import('../lib/feature-flags.js');
+    const { isV2RelationshipsEnabled, isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
     if (!isV2RelationshipsEnabled(userId)) return [];
     const { buildRelationshipNudge } = await import('./relationship-link/index.js');
     const rn = await buildRelationshipNudge(userId);
@@ -584,6 +588,11 @@ async function detectRelationshipLink(userId: string): Promise<NudgeCandidate[]>
       },
       toneHint: 'gentle',
     };
+    // Усиление (План B): тип-вес в payload ТОЛЬКО при флаге person-types →
+    // off=байт-идентично (без typeWeight scoreSignificance даёт прежнее).
+    if (isV2PersonTypesEnabled(userId) && rn.typeWeight !== undefined) {
+      (cand.payload as Record<string, unknown>).typeWeight = rn.typeWeight;
+    }
     cand.significance = scoreSignificance(cand);
     return [cand];
   } catch (err) {

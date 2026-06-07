@@ -123,6 +123,25 @@ describe('birthday/relationship typeWeight буст off-safe (План B уси�
     } as never;
     expect(scoreSignificance(c)).toBeGreaterThan(0.65);
   });
+  it('relationship БЕЗ payload.typeWeight → как до фичи (days30,imp10 → 0.85)', () => {
+    const c = {
+      source: 'relationship_link',
+      significance: 0,
+      payload: { daysSince: 30, importance: 10 },
+      toneHint: 'gentle',
+    } as never;
+    // min(0.95, min(0.85, (30/30)*(10/10)=1.0 → 0.85) + boost(typeWeight ?? 0.6 → 0)) = 0.85
+    expect(scoreSignificance(c)).toBeCloseTo(0.85, 5);
+  });
+  it('relationship client (typeWeight 1.0) → буст выше 0.85', () => {
+    const c = {
+      source: 'relationship_link',
+      significance: 0,
+      payload: { daysSince: 30, importance: 10, typeWeight: 1.0 },
+      toneHint: 'gentle',
+    } as never;
+    expect(scoreSignificance(c)).toBeGreaterThan(0.85);
+  });
 });
 
 describe('gate3_Significance — pure', () => {

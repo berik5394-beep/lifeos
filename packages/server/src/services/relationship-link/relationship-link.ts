@@ -19,6 +19,8 @@ export interface RelationshipNudge {
   description: string;
   importance: number;
   insightText: string;
+  /** CRM-тип-вес выбранного человека (План B усиление); детектор бустит при флаге. */
+  typeWeight?: number;
 }
 
 /**
@@ -64,8 +66,21 @@ export async function buildRelationshipNudge(
     const link = pickRelationshipLink(persons, obligationsByEntity);
     if (!link) return null;
     const insightText = describeRelationshipLink(link);
-    const importance =
-      persons.find((p) => p.name === link.personName)?.importance ?? MIN_IMPORTANCE;
+    const chosen = persons.find((p) => p.name === link.personName);
+    const importance = chosen?.importance ?? MIN_IMPORTANCE;
+
+    // Тип-вес выбранного человека (План B усиление): READ attributes.personType.
+    // Кладём всегда; буст применяет детектор ТОЛЬКО при флаге person-types (off-safe).
+    let typeWeight: number | undefined;
+    if (chosen) {
+      const { personTypeWeight } = await import('../person-types/index.js');
+      const ent = await prisma.entity.findUnique({
+        where: { id: chosen.id },
+        select: { attributes: true },
+      });
+      const pt = ((ent?.attributes ?? {}) as Record<string, unknown>).personType;
+      typeWeight = personTypeWeight(typeof pt === 'string' ? pt : undefined);
+    }
 
     return {
       personName: link.personName,
@@ -74,6 +89,7 @@ export async function buildRelationshipNudge(
       description: link.description,
       importance,
       insightText,
+      typeWeight,
     };
   } catch (err) {
     console.warn(
