@@ -69,3 +69,30 @@ describe('upsertEntity resolve-then-merge', () => {
     expect(rows.every((r) => r.aliases.length === 0)).toBe(true);
   });
 });
+
+describe('resolveForMerge — precision (stem-set equality, no over-merge)', () => {
+  it('склонение со СОВПАДАЮЩИМ стем-множеством → мёржит', async () => {
+    const u = await mkUser(`ec-prec-decl-${Date.now()}@a.test`);
+    await prisma.entity.create({ data: { userId: u, type: 'person', name: 'Серик' } });
+    const hit = await graph.resolveForMerge(u, 'Сериком', 'person');
+    expect(hit?.name).toBe('Серик');
+  });
+  it('родовое ⊂ специфичного (РАЗНЫЕ стем-множества) → НЕ мёржит', async () => {
+    const u = await mkUser(`ec-prec-gen-${Date.now()}@a.test`);
+    await prisma.entity.create({ data: { userId: u, type: 'concept', name: 'Бюджет' } });
+    expect(await graph.resolveForMerge(u, 'Остаток бюджета', 'concept')).toBeNull();
+  });
+  it('специфичное vs родовое в обе стороны → НЕ мёржит', async () => {
+    const u = await mkUser(`ec-prec-mt-${Date.now()}@a.test`);
+    await prisma.entity.create({ data: { userId: u, type: 'concept', name: 'Встреча завтра в 15:00' } });
+    expect(await graph.resolveForMerge(u, 'Встреча', 'concept')).toBeNull();
+  });
+  it('upsertEntity ON: Бюджет + Остаток бюджета → ДВЕ строки', async () => {
+    process.env[KEY] = 'all';
+    const u = await mkUser(`ec-prec-up-${Date.now()}@a.test`);
+    await graph.upsertEntity(u, { type: 'concept', name: 'Бюджет' });
+    await graph.upsertEntity(u, { type: 'concept', name: 'Остаток бюджета' });
+    const rows = await prisma.entity.findMany({ where: { userId: u, type: 'concept' } });
+    expect(rows.length).toBe(2);
+  });
+});

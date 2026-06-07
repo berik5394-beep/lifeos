@@ -25,18 +25,50 @@ afterAll(() => prisma.$disconnect());
 // .js URL (opaque to tsc, resolved to .ts at runtime by vitest).
 type Mode = 'dry-run' | 'apply';
 type MergeCounts = { relsRepointed: number; oblsRepointed: number; deleted: number };
+type EntityLite = {
+  id: string;
+  name: string;
+  type: string;
+  importance: number;
+  aliases: string[];
+  attributes: Record<string, unknown>;
+  createdAt: Date;
+};
+type DupPair = { canonical: EntityLite; absorbed: EntityLite };
 let runS3ResolveBackfill: (
   p: PrismaClient,
   g: PostgresEntityGraph,
   userId: string,
   mode: Mode,
 ) => Promise<{ pairs: number; merges: number } & MergeCounts>;
+let findResolveDupPairs: (
+  p: PrismaClient,
+  userId: string,
+  entities: EntityLite[],
+) => Promise<DupPair[]>;
 
 beforeAll(async () => {
   const modulePath = new URL('../../scripts/dedup-entities.js', import.meta.url).href;
   const mod = await import(modulePath);
   runS3ResolveBackfill = mod.runS3ResolveBackfill;
+  findResolveDupPairs = mod.findResolveDupPairs;
 });
+
+/** Load a user's entities in the EntityLite shape findResolveDupPairs expects. */
+async function loadEntities(userId: string): Promise<EntityLite[]> {
+  return (await prisma.entity.findMany({
+    where: { userId },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      importance: true,
+      aliases: true,
+      attributes: true,
+      createdAt: true,
+    },
+  })) as unknown as EntityLite[];
+}
 
 async function mkUser(email: string): Promise<string> {
   const u = await prisma.user.create({
@@ -167,5 +199,41 @@ describe('S3 resolve-backfill — Tier2 alias match + type isolation', () => {
     const orgAfter = await prisma.entity.findUnique({ where: { id: org.id } });
     expect(orgAfter).not.toBeNull();
     expect(orgAfter?.type).toBe('organization');
+  });
+});
+
+describe('findResolveDupPairs — precision (stem-set equality, no over-merge)', () => {
+  it('склонение мёржится, родовое⊂специфичного НЕ образует пару', async () => {
+    const userId = await mkUser(`s3-prec-${Date.now()}@a.test`);
+    // Declension dup → MUST form a pair (стем-множества равны: {серик}={серик}).
+    const serik = await prisma.entity.create({
+      data: { userId, type: 'person', name: 'Серик', importance: 6 },
+    });
+    const serikom = await prisma.entity.create({
+      data: { userId, type: 'person', name: 'Сериком', importance: 5 },
+    });
+    // Generic ⊂ specific → MUST NOT form a pair ({бюджет} ≠ {бюджет,остаток}).
+    await prisma.entity.create({
+      data: { userId, type: 'concept', name: 'Бюджет', importance: 6 },
+    });
+    await prisma.entity.create({
+      data: { userId, type: 'concept', name: 'Остаток бюджета', importance: 5 },
+    });
+
+    const pairs = await findResolveDupPairs(prisma, userId, await loadEntities(userId));
+
+    // Exactly the Серик/Сериком pair, nothing else.
+    expect(pairs).toHaveLength(1);
+    const ids = [pairs[0].canonical.id, pairs[0].absorbed.id].sort();
+    expect(ids).toEqual([serik.id, serikom.id].sort());
+    // Canonical = higher importance (Серик, imp 6).
+    expect(pairs[0].canonical.id).toBe(serik.id);
+    expect(pairs[0].absorbed.id).toBe(serikom.id);
+
+    // No Бюджет/Остаток pair anywhere.
+    const hasBudgetPair = pairs.some((p) =>
+      [p.canonical.name, p.absorbed.name].some((n) => n.includes('бюджет') || n.includes('Бюджет')),
+    );
+    expect(hasBudgetPair).toBe(false);
   });
 });

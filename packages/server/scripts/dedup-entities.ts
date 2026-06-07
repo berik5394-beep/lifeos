@@ -331,13 +331,20 @@ async function resolveDupCandidate(
   const mention = (self.name ?? '').trim().slice(0, 255);
   if (!mention) return null;
   const tf = `AND e.type = '${self.type.replace(/'/g, "''")}'`;
+  // Точность (зеркало resolveForMerge): матч ТОЛЬКО при РАВЕНСТВЕ множеств
+  // стем-лексем, а не подмножестве — loose `@@` поглощал длинное специфичное имя
+  // коротким родовым (Бюджет ↔ Остаток бюджета). Склонения проходят
+  // (Серик={серик}=Сериком). cardinality(...)>0 — не матчим имена из одних
+  // стоп-слов/пунктуации (пустое=пустому). Сохраняем self-exclusion (e.id <> $3).
   const nv = `to_tsvector('russian', e.name)`;
-  const nq = `plainto_tsquery('russian', $2)`;
+  const mv = `to_tsvector('russian', $2)`;
+  const cardGuard = `cardinality(tsvector_to_array(${mv})) > 0`;
   try {
     const t1 = await prisma.$queryRawUnsafe<FtsHit[]>(
       `SELECT e.id FROM "Entity" e
-       WHERE e."userId" = $1 AND e.id <> $3 AND ${nv} @@ ${nq} ${tf}
-       ORDER BY ts_rank(${nv}, ${nq}) DESC LIMIT 1`,
+       WHERE e."userId" = $1 AND e.id <> $3 AND ${cardGuard}
+         AND tsvector_to_array(${nv}) = tsvector_to_array(${mv}) ${tf}
+       ORDER BY e.importance DESC, e."createdAt" ASC LIMIT 1`,
       userId,
       mention,
       self.id,
@@ -345,7 +352,8 @@ async function resolveDupCandidate(
     if (t1.length > 0) return t1[0];
     const t2 = await prisma.$queryRawUnsafe<FtsHit[]>(
       `SELECT DISTINCT e.id FROM "Entity" e, unnest(e.aliases) av
-       WHERE e."userId" = $1 AND e.id <> $3 AND to_tsvector('russian', av) @@ ${nq} ${tf}
+       WHERE e."userId" = $1 AND e.id <> $3 AND ${cardGuard}
+         AND tsvector_to_array(to_tsvector('russian', av)) = tsvector_to_array(${mv}) ${tf}
        ORDER BY e.id LIMIT 1`,
       userId,
       mention,

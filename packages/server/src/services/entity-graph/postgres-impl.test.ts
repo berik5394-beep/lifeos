@@ -115,9 +115,20 @@ describe('postgres-impl.ts structural — resolveForMerge (T1)', () => {
   });
   it('Tier3 эмбеддинг за порогом shouldMergeByEmbedding + SELECT dist', () => {
     const start = SRC.indexOf('async resolveForMerge');
-    const body = SRC.slice(start, start + 1600);
+    const body = SRC.slice(start, start + 2800);
     expect(body).toContain('shouldMergeByEmbedding');
     expect(body).toContain('AS dist');
+  });
+  it('Tier1/2 точность: равенство стем-множеств (tsvector_to_array) + cardinality guard, без loose @@', () => {
+    const start = SRC.indexOf('async resolveForMerge');
+    const body = SRC.slice(start, start + 2800);
+    // Set-equality of stemmed lexemes (not subset) — kills over-merge.
+    expect(body).toContain('tsvector_to_array');
+    // Empty-lexeme guard (all-stopword/punctuation names must not match each other).
+    expect(body).toMatch(/cardinality\(tsvector_to_array/);
+    // The Tier1/2 predicate no longer uses the loose `@@` FTS-contains operator.
+    const tier12 = body.slice(0, body.indexOf('Tier 3') > -1 ? body.indexOf('Tier 3') : body.length);
+    expect(tier12).not.toContain(' @@ ');
   });
 });
 

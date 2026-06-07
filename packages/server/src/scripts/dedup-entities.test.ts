@@ -278,9 +278,13 @@ describe('dedup-entities S3 structural', () => {
     expect(typeof mod.findResolveDupPairs).toBe('function');
     expect(typeof mod.mergeEntityPair).toBe('function');
   });
-  it('matches via russian FTS (to_tsvector/plainto_tsquery), not JS name-equality', () => {
+  it('matches via russian FTS stem-set equality (tsvector_to_array), not loose @@ / JS name-equality', () => {
     expect(SCRIPT).toMatch(/to_tsvector\('russian', e\.name\)/);
-    expect(SCRIPT).toMatch(/plainto_tsquery\('russian'/);
+    // Precision: equality of stemmed lexeme SETS (not loose `@@` subset-contains)
+    // — stops a short generic name absorbing a longer specific one.
+    expect(SCRIPT).toMatch(/tsvector_to_array/);
+    expect(SCRIPT).toMatch(/cardinality\(tsvector_to_array/);
+    expect(SCRIPT).not.toMatch(/ @@ /);
     // Tier2: alias FTS on unnest(aliases).
     expect(SCRIPT).toMatch(/unnest\(e\.aliases\)/);
   });

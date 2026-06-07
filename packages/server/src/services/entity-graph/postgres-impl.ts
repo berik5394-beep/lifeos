@@ -244,12 +244,20 @@ export class PostgresEntityGraph implements EntityGraphStore {
     if (!mentionClean) return null;
     const tf = `AND e.type = '${type.replace(/'/g, "''")}'`; // type обязателен
     const q = (s: string) => prisma.$queryRawUnsafe<Entity[]>(s, userId, mentionClean);
-    const nv = `to_tsvector('russian', e.name)`, nq = `plainto_tsquery('russian', $2)`;
+    // Точность: матч ТОЛЬКО при РАВЕНСТВЕ множеств стем-лексем (не подмножество).
+    // tsvector_to_array(...) → отсортированный distinct список лексем; сравнение
+    // массивов на равенство порядко-независимо. Loose `@@` мёржил любое общее
+    // слово (Бюджет ↔ Остаток бюджета), set-равенство — нет. Склонения проходят
+    // (Серик={серик}=Сериком). cardinality(...)>0 — не матчим имена из одних
+    // стоп-слов/пунктуации (пустое множество = пустому → ложный мёрж).
+    const nv = `to_tsvector('russian', e.name)`;
+    const mv = `to_tsvector('russian', $2)`;
+    const eqSet = `cardinality(tsvector_to_array(${mv})) > 0 AND tsvector_to_array(${nv}) = tsvector_to_array(${mv})`;
     try {
       // Tier 1/2: FTS имя/алиасы (COLS — без embedding, см. note выше).
-      const t1 = await q(`SELECT ${COLS} FROM "Entity" e WHERE e."userId"=$1 AND ${nv} @@ ${nq} ${tf} ORDER BY ts_rank(${nv}, ${nq}) DESC LIMIT 1`);
+      const t1 = await q(`SELECT ${COLS} FROM "Entity" e WHERE e."userId"=$1 AND ${eqSet} ${tf} ORDER BY e.importance DESC, e."createdAt" ASC LIMIT 1`);
       if (t1.length > 0) return t1[0];
-      const t2 = await q(`SELECT DISTINCT ${COLS} FROM "Entity" e, unnest(e.aliases) av WHERE e."userId"=$1 AND to_tsvector('russian', av) @@ ${nq} ${tf} ORDER BY e.importance DESC LIMIT 1`);
+      const t2 = await q(`SELECT DISTINCT ${COLS} FROM "Entity" e, unnest(e.aliases) av WHERE e."userId"=$1 AND cardinality(tsvector_to_array(${mv})) > 0 AND tsvector_to_array(to_tsvector('russian', av)) = tsvector_to_array(${mv}) ${tf} ORDER BY e.importance DESC LIMIT 1`);
       if (t2.length > 0) return t2[0];
 
       // Tier 3: эмбеддинг — принять ТОЛЬКО при dist ≤ порога.
