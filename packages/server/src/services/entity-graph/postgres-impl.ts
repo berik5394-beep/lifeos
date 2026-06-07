@@ -19,7 +19,8 @@ import {
   toVectorLiteral,
 } from '../embeddings.js';
 import { Prisma, type Entity, type EntityRelationship } from '@prisma/client';
-import { shouldMergeByEmbedding } from './merge-helpers.js';
+import { capAliases, shouldMergeByEmbedding } from './merge-helpers.js';
+import { isV2EntityResolveEnabled } from '../../lib/feature-flags.js';
 import type { EntityGraphStore } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -86,28 +87,26 @@ export class PostgresEntityGraph implements EntityGraphStore {
     userId: string,
     entity: Partial<Entity> & { name: string; type: string },
   ): Promise<Entity> {
+    // Стратегия записи: точный матч → update; иначе (флаг) resolve→merge update;
+    // иначе prisma.entity.create. Никогда не prisma.entity.upsert (разветвление выше).
     const name = entity.name.trim().slice(0, 255);
     const type = entity.type.trim().slice(0, 64);
-    const incomingAliases: string[] = (entity.aliases as string[] | undefined) ?? [];
+    const resolveOn = isV2EntityResolveEnabled(userId);
+    // off=байт-идентично: при выключенном флаге игнорим входящие алиасы
+    // (исторически их не было) → alias-мёрж no-op, эмбеддинги те же.
+    const incomingAliases: string[] = resolveOn
+      ? ((entity.aliases as string[] | undefined) ?? [])
+      : [];
     const attributes = (entity.attributes as Record<string, unknown> | undefined) ?? {};
     const importance = entity.importance ?? 5;
 
-    // Try to find existing by unique index (userId, type, name).
+    // Точный матч по (userId, type, name) — приоритет, как сейчас.
     const existing = await prisma.entity.findUnique({
       where: { userId_type_name: { userId, type, name } },
     });
-
     if (existing) {
-      // Merge aliases: union, deduplicate, preserve order (existing first).
-      const mergedAliases = Array.from(
-        new Set([...(existing.aliases as string[]), ...incomingAliases]),
-      );
-      // Merge attributes: spread existing, override with incoming.
-      const mergedAttributes = {
-        ...(existing.attributes as Record<string, unknown>),
-        ...attributes,
-      };
-
+      const mergedAliases = capAliases([...(existing.aliases as string[]), ...incomingAliases]);
+      const mergedAttributes = { ...(existing.attributes as Record<string, unknown>), ...attributes };
       const updated = await prisma.entity.update({
         where: { id: existing.id },
         data: {
@@ -117,13 +116,35 @@ export class PostgresEntityGraph implements EntityGraphStore {
           lastSeenAt: new Date(),
         },
       });
-
-      // Best-effort: update embedding with merged alias set.
       await storeEntityEmbedding(updated.id, updated.name, updated.aliases as string[]);
       return updated;
     }
 
-    // Create new entity.
+    // Нет точного матча. Resolve-then-merge ТОЛЬКО при флаге.
+    if (resolveOn) {
+      const resolved = await this.resolveForMerge(userId, name, type);
+      if (resolved) {
+        const mergedAliases = capAliases([
+          ...(resolved.aliases as string[]),
+          name, // новая форма имени → в алиасы
+          ...incomingAliases,
+        ]);
+        const mergedAttributes = { ...(resolved.attributes as Record<string, unknown>), ...attributes };
+        const updated = await prisma.entity.update({
+          where: { id: resolved.id },
+          data: {
+            aliases: mergedAliases,
+            attributes: mergedAttributes as Prisma.InputJsonValue,
+            importance: Math.max(resolved.importance, importance),
+            lastSeenAt: new Date(),
+          },
+        });
+        await storeEntityEmbedding(updated.id, updated.name, updated.aliases as string[]);
+        return updated;
+      }
+    }
+
+    // Создать новую (OFF: incomingAliases=[] → как сейчас).
     const created = await prisma.entity.create({
       data: {
         userId,
@@ -135,7 +156,6 @@ export class PostgresEntityGraph implements EntityGraphStore {
         lastSeenAt: new Date(),
       },
     });
-
     await storeEntityEmbedding(created.id, created.name, created.aliases as string[]);
     return created;
   }

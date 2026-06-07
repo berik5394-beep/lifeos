@@ -39,3 +39,33 @@ describe('resolveForMerge — real prisma', () => {
     expect(await graph.resolveForMerge(u, 'Kaspi', 'person')).toBeNull();
   });
 });
+
+describe('upsertEntity resolve-then-merge', () => {
+  it('ФЛАГ ON: вариант мёржится в существующую (одна строка + alias)', async () => {
+    process.env[KEY] = 'all';
+    const u = await mkUser(`ec-on-${Date.now()}@a.test`);
+    await graph.upsertEntity(u, { type: 'person', name: 'Серик', aliases: ['Серый'] });
+    await graph.upsertEntity(u, { type: 'person', name: 'Серый' }); // нет точного матча → Tier2 → merge
+    const rows = await prisma.entity.findMany({ where: { userId: u, type: 'person' } });
+    expect(rows.length).toBe(1);
+    expect(rows[0].name).toBe('Серик');
+    expect(rows[0].aliases).toContain('Серый');
+  });
+  it('ФЛАГ ON: разные люди НЕ мёржатся', async () => {
+    process.env[KEY] = 'all';
+    const u = await mkUser(`ec-diff-${Date.now()}@a.test`);
+    await graph.upsertEntity(u, { type: 'person', name: 'Серик' });
+    await graph.upsertEntity(u, { type: 'person', name: 'Айбек' });
+    const rows = await prisma.entity.findMany({ where: { userId: u, type: 'person' } });
+    expect(rows.length).toBe(2);
+  });
+  it('ФЛАГ OFF: байт-идентично — вариант создаёт ДУБЛЬ, aliases пусты', async () => {
+    delete process.env[KEY];
+    const u = await mkUser(`ec-off-${Date.now()}@a.test`);
+    await graph.upsertEntity(u, { type: 'person', name: 'Серик', aliases: ['Серый'] });
+    await graph.upsertEntity(u, { type: 'person', name: 'Серый' });
+    const rows = await prisma.entity.findMany({ where: { userId: u, type: 'person' }, orderBy: { name: 'asc' } });
+    expect(rows.length).toBe(2);
+    expect(rows.every((r) => r.aliases.length === 0)).toBe(true);
+  });
+});
