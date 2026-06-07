@@ -39,7 +39,7 @@ import { buildGoalImpact } from './goal-impact/index.js';
 import { buildRunway } from './runway/index.js';
 import { buildEnergyLink } from './energy-link/index.js';
 import { buildRelationshipNudge } from './relationship-link/index.js';
-import { buildNeglectedKeyPerson } from './person-types/index.js';
+import { buildNeglectedKeyPerson, buildPersonMeetingBriefs } from './person-types/index.js';
 import { buildDecisionsContext } from './decisions/index.js';
 import { gatherReflectorFacts } from './reflector-service.js';
 import { withTimeout } from '../lib/with-timeout.js';
@@ -83,6 +83,8 @@ export type V2EnrichmentData = {
   /** Relationships (кросс-домен #3): вычисленный инсайт или null. */
   relationship: string | null;
   personTypes: string | null;
+  /** Встречи сегодня × CRM (мост #2, План B): бриф или null. */
+  personMeetings: string | null;
   /** Решения↔исходы (кросс-домен #4): решения на проверку + win-rate или null. */
   decisions: string | null;
   /** Память ДР (мост #2): «Скоро ДР: …» или null. */
@@ -146,6 +148,8 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (rel) lines.push(rel);
   const pt = formatPersonTypesSection(data.personTypes ?? null);
   if (pt) lines.push(pt);
+  const pm = formatPersonMeetingsSection(data.personMeetings ?? null);
+  if (pm) lines.push(pm);
   const dec = formatDecisionsSection(data.decisions ?? null);
   if (dec) lines.push(dec);
   if (data.birthdays) lines.push(data.birthdays);
@@ -200,6 +204,12 @@ export function formatRelationshipSection(insightText: string | null): string {
 export function formatPersonTypesSection(insightText: string | null): string {
   if (!insightText) return '';
   return `Ключевые люди (CRM): ${insightText}`;
+}
+
+/** Person-meetings (CRM мост #2, План B) — pure render. Empty → ''. Exported для теста. */
+export function formatPersonMeetingsSection(insightText: string | null): string {
+  if (!insightText) return '';
+  return `Встречи сегодня (CRM): ${insightText}`;
 }
 
 /**
@@ -316,7 +326,7 @@ export async function fetchV2EnrichmentData(
       ? gatherReflectorFacts(userId, new Date()).catch(() => null)
       : Promise.resolve(null);
 
-    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity, scheduleConflict, personTypes] = await Promise.all([
+    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity, scheduleConflict, personTypes, personMeetings] = await Promise.all([
       withTimeout(
         getBotIdentityService()
           .getIdentity(userId)
@@ -423,6 +433,13 @@ export async function fetchV2EnrichmentData(
             .then((n) => n?.insightText ?? null)
             .catch(() => null)
         : Promise.resolve(null),
+      isV2PersonTypesEnabled(userId)
+        ? withTimeout(buildPersonMeetingBriefs(userId), CROSS_DOMAIN_BUDGET_MS, [])
+            .then((bs) =>
+              bs.length ? bs.slice(0, 2).map((b) => b.insightText).filter(Boolean).join(' · ') : null,
+            )
+            .catch(() => null)
+        : Promise.resolve(null),
     ]);
     const now = Date.now();
     return {
@@ -472,6 +489,7 @@ export async function fetchV2EnrichmentData(
       recentActivity,
       scheduleConflict,
       personTypes,
+      personMeetings,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);
