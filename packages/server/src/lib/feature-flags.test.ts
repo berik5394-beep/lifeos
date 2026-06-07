@@ -21,6 +21,7 @@ import {
   isV2BirthdayEnabled,
   isV2GoalHabitsEnabled,
   isV2PersonTypesEnabled,
+  isV2EntityResolveEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -55,6 +56,22 @@ describe('isV2BirthdayEnabled', () => {
     process.env[KEY] = 'user-u1,user-u2';
     expect(isV2BirthdayEnabled('u1')).toBe(true);
     expect(isV2BirthdayEnabled('u3')).toBe(false);
+  });
+});
+
+describe('isV2EntityResolveEnabled', () => {
+  const KEY = 'FEATURE_V2_ENTITY_RESOLVE';
+  const orig = process.env[KEY];
+  afterEach(() => { if (orig === undefined) delete process.env[KEY]; else process.env[KEY] = orig; });
+  it('unset → false', () => { delete process.env[KEY]; expect(isV2EntityResolveEnabled('u1')).toBe(false); });
+  it('all → true', () => { process.env[KEY] = 'all'; expect(isV2EntityResolveEnabled('u1')).toBe(true); });
+  it('none/false/empty → false', () => {
+    for (const v of ['none', 'false', '']) { process.env[KEY] = v; expect(isV2EntityResolveEnabled('u1')).toBe(false); }
+  });
+  it('csv matches only listed user', () => {
+    process.env[KEY] = 'user-u1,user-u2';
+    expect(isV2EntityResolveEnabled('u1')).toBe(true);
+    expect(isV2EntityResolveEnabled('u3')).toBe(false);
   });
 });
 

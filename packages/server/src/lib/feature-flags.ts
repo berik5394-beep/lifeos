@@ -73,6 +73,19 @@ export function isV2BirthdayEnabled(userId: string): boolean {
 }
 
 /**
+ * Entity coreference resolve-then-merge (T1, память-качество №1).
+ * Same shape as isV2BirthdayEnabled.
+ */
+export function isV2EntityResolveEnabled(userId: string): boolean {
+  const raw = process.env.FEATURE_V2_ENTITY_RESOLVE;
+  if (raw === undefined) return false;
+  const flag = raw.trim();
+  if (flag === '' || flag === 'none' || flag === 'false') return false;
+  if (flag === 'all' || flag === 'true') return true;
+  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
+}
+
+/**
  * Напоминание «за 30 мин до задачи» (P1 HOLLOW fix). Новый push-выход в
  * scheduler → off=байт-идентично. Same shape: "all"/"true", "none"/"false"/unset, "user-X".
  */
