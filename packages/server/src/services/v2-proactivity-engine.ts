@@ -35,7 +35,8 @@ export type NudgeSource =
   | 'goal_habits_stall'
   | 'weekly_goal_stall'
   | 'monthly_goal_stall'
-  | 'neglected_key_person';
+  | 'neglected_key_person'
+  | 'person_meeting';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -102,6 +103,11 @@ export function scoreSignificance(c: NudgeCandidate): number {
       const ws = Number(c.payload.weightedScore ?? 0);
       const owed = Number(c.payload.owed ?? 0);
       return Math.min(0.9, Math.min(0.85, ws) + (owed > 0 ? 0.1 : 0));
+    }
+    case 'person_meeting': {
+      // Время-критично: ≥0.8 → severity≥8 → critical → обходит receptive-hour defer.
+      const mins = Number(c.payload.minutesUntil ?? 120);
+      return Math.min(0.95, 0.8 + (mins <= 60 ? 0.1 : 0));
     }
     case 'identity_growth': {
       const depthShift = Number(c.payload.depthShift ?? 0);
@@ -229,6 +235,10 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
   },
   neglected_key_person: {
     curious: 'Кстати, {{insightText}}',
+    gentle: '{{insightText}}',
+  },
+  person_meeting: {
+    curious: '{{insightText}}',
     gentle: '{{insightText}}',
   },
   mood_shift: {
@@ -947,6 +957,30 @@ async function detectNeglectedKeyPerson(userId: string): Promise<NudgeCandidate[
   }
 }
 
+// Person-meeting: бриф перед встречей на ВНУТРЕННЕМ календаре (тип↔дело↔деньги).
+async function detectPersonMeeting(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2PersonTypesEnabled(userId)) return [];
+    const { buildPersonMeetingBriefs } = await import('./person-types/index.js');
+    const briefs = await buildPersonMeetingBriefs(userId);
+    const soon = briefs.find((b) => b.minutesUntil <= 120); // ближайшая в окне (briefs сорт по времени)
+    if (!soon) return [];
+    const cand: NudgeCandidate = {
+      source: 'person_meeting',
+      significance: 0,
+      entityId: soon.entityId, // per-meeting cooldown scope
+      payload: { insightText: soon.insightText, minutesUntil: soon.minutesUntil, name: soon.name },
+      toneHint: 'curious',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectPersonMeeting failed:', err);
+    return [];
+  }
+}
+
 /**
  * v2 Phase B4 — propose a skill when the user repeatedly invokes the same
  * cluster of tools. Reads ToolCall history: groups same-day tool sets,
@@ -1085,6 +1119,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectWeeklyGoalStall(userId),
       detectMonthlyGoalStall(userId),
       detectNeglectedKeyPerson(userId),
+      detectPersonMeeting(userId),
       detectIdentityGrowth(userId),
       detectSkillOpportunity(userId),
     ]);
