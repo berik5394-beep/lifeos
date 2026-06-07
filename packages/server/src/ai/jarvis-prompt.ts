@@ -80,6 +80,8 @@ export interface AssistantContext {
   pendingHabits?: string[];
   /** meta#9: план на эту неделю (WeeklyGoal): «N/M — тексты». */
   weeklyPlan?: string;
+  /** meta#9: план на этот месяц (MonthlyGoal): «N/M — тексты». */
+  monthlyPlan?: string;
   /** Погода на сегодня — подмешивается только если есть событие
    *  сегодня (проактивно: «одевайся легко / выезжай раньше»). */
   weatherToday?: string;
@@ -184,6 +186,7 @@ export function renderContext(
   }
   if (ctx.currentStreak > 0) L.push(`Серия: ${ctx.currentStreak} дней`);
   if (ctx.weeklyPlan) L.push(`План на неделю: ${ctx.weeklyPlan}`);
+  if (ctx.monthlyPlan) L.push(`План на месяц: ${ctx.monthlyPlan}`);
   if (ctx.upcomingEvents.length > 0) {
     L.push(
       `Ближайшие события: ${ctx.upcomingEvents

@@ -20,6 +20,7 @@ import {
   localDateOnlyUTC,
   localDateStr,
   localWeekStartUTC,
+  localMonthOnlyUTC,
 } from '../lib/tz.js';
 
 /**
@@ -98,6 +99,7 @@ export async function gatherAssistantContext(
     memories,
     intent,
     weeklyGoals,
+    monthlyGoals,
   ] = await Promise.all([
     prisma.task.findMany({
       where: { userId, date: todayDateOnly, cancelled: false },
@@ -152,6 +154,16 @@ export async function gatherAssistantContext(
         take: 10,
       });
     })(),
+    // meta#9: план на этот месяц (MonthlyGoal, monthStart = 1-е число).
+    (() => {
+      const md = localMonthOnlyUTC(tz);
+      return prisma.monthlyGoal.findMany({
+        where: { userId, monthStart: md },
+        select: { goalText: true, completed: true },
+        orderBy: { order: 'asc' },
+        take: 10,
+      });
+    })(),
   ]);
 
   const habitsProgress = {
@@ -170,6 +182,14 @@ export async function gatherAssistantContext(
     weeklyGoals.length > 0
       ? `${weeklyGoals.filter((g) => g.completed).length}/${weeklyGoals.length} — ` +
         weeklyGoals
+          .map((g) => `${g.completed ? '✓' : '○'} ${g.goalText}`)
+          .slice(0, 6)
+          .join('; ')
+      : undefined;
+  const monthlyPlan =
+    monthlyGoals.length > 0
+      ? `${monthlyGoals.filter((g) => g.completed).length}/${monthlyGoals.length} — ` +
+        monthlyGoals
           .map((g) => `${g.completed ? '✓' : '○'} ${g.goalText}`)
           .slice(0, 6)
           .join('; ')
@@ -220,6 +240,7 @@ export async function gatherAssistantContext(
     yearlyGoalsSummary,
     pendingHabits,
     weeklyPlan,
+    monthlyPlan,
     memories,
     therapeuticMode: user.therapeuticMode,
   };
