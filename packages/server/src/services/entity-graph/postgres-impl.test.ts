@@ -109,6 +109,18 @@ describe('postgres-impl.ts structural — resolveEntity', () => {
   });
 });
 
+describe('postgres-impl.ts structural — resolveForMerge (T1)', () => {
+  it('resolveForMerge экспортирован как async метод', () => {
+    expect(SRC).toMatch(/async resolveForMerge\s*\(/);
+  });
+  it('Tier3 эмбеддинг за порогом shouldMergeByEmbedding + SELECT dist', () => {
+    const start = SRC.indexOf('async resolveForMerge');
+    const body = SRC.slice(start, start + 1600);
+    expect(body).toContain('shouldMergeByEmbedding');
+    expect(body).toContain('AS dist');
+  });
+});
+
 describe('postgres-impl.ts structural — linkEntities', () => {
   it('linkEntities exported as async method', () => {
     expect(SRC).toMatch(/async linkEntities\s*\(/);

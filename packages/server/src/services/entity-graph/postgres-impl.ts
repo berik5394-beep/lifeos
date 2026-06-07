@@ -19,6 +19,7 @@ import {
   toVectorLiteral,
 } from '../embeddings.js';
 import { Prisma, type Entity, type EntityRelationship } from '@prisma/client';
+import { shouldMergeByEmbedding } from './merge-helpers.js';
 import type { EntityGraphStore } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -44,6 +45,16 @@ async function storeEntityEmbedding(id: string, name: string, aliases: string[])
     console.warn('[entity-graph] embed store failed:', err instanceof Error ? err.message : err);
   }
 }
+
+/**
+ * Явный список колонок Entity (алиас e), БЕЗ embedding. Колонка embedding —
+ * Unsupported("vector(512)") — Prisma не умеет десериализовать её в $queryRaw,
+ * поэтому `SELECT e.*` падает. Поля совпадают с типом Entity (embedding в нём
+ * отсутствует), так что результат корректно типизируется как Entity.
+ */
+const COLS =
+  'e.id, e."userId", e.type, e.name, e.aliases, e.attributes, e."lastSeenAt", ' +
+  'e."baselineFreq", e."moodAvg", e.importance, e."createdAt", e."updatedAt"';
 
 /**
  * Clamp graph traversal depth to [1, 5].
@@ -197,6 +208,48 @@ export class PostgresEntityGraph implements EntityGraphStore {
     }
 
     return null;
+  }
+
+  // -------------------------------------------------------------------------
+  // resolveForMerge — как resolveEntity, но эмбеддинг-тир за ПОРОГОМ (для записи).
+  // Tier1/2 (FTS имя/алиасы) высокоточные — принять; Tier3 — только dist ≤ порог.
+  // type обязателен (склеиваем только однотипные). Best-effort → null.
+  // -------------------------------------------------------------------------
+  async resolveForMerge(userId: string, mention: string, type: string): Promise<Entity | null> {
+    const mentionClean = mention.trim().slice(0, 255);
+    if (!mentionClean) return null;
+    const tf = `AND e.type = '${type.replace(/'/g, "''")}'`; // type обязателен
+    const q = (s: string) => prisma.$queryRawUnsafe<Entity[]>(s, userId, mentionClean);
+    const nv = `to_tsvector('russian', e.name)`, nq = `plainto_tsquery('russian', $2)`;
+    try {
+      // Tier 1/2: FTS имя/алиасы (COLS — без embedding, см. note выше).
+      const t1 = await q(`SELECT ${COLS} FROM "Entity" e WHERE e."userId"=$1 AND ${nv} @@ ${nq} ${tf} ORDER BY ts_rank(${nv}, ${nq}) DESC LIMIT 1`);
+      if (t1.length > 0) return t1[0];
+      const t2 = await q(`SELECT DISTINCT ${COLS} FROM "Entity" e, unnest(e.aliases) av WHERE e."userId"=$1 AND to_tsvector('russian', av) @@ ${nq} ${tf} ORDER BY e.importance DESC LIMIT 1`);
+      if (t2.length > 0) return t2[0];
+
+      // Tier 3: эмбеддинг — принять ТОЛЬКО при dist ≤ порога.
+      if (embeddingsEnabled()) {
+        const { embedQuery } = await import('../embeddings.js');
+        const qvec = await embedQuery(mentionClean);
+        if (qvec) {
+          const v = toVectorLiteral(qvec);
+          const rows = await prisma.$queryRawUnsafe<Array<Entity & { dist: number }>>(
+            `SELECT ${COLS}, (e.embedding <=> $2::vector) AS dist FROM "Entity" e WHERE e."userId"=$1 AND e.embedding IS NOT NULL ${tf} ORDER BY e.embedding <=> $2::vector LIMIT 1`,
+            userId,
+            v,
+          );
+          if (rows.length > 0 && shouldMergeByEmbedding(Number(rows[0].dist))) {
+            const { dist: _dist, ...ent } = rows[0];
+            return ent as Entity;
+          }
+        }
+      }
+      return null;
+    } catch (err) {
+      console.warn('[entity-graph] resolveForMerge failed:', err instanceof Error ? err.message : err);
+      return null;
+    }
   }
 
   // -------------------------------------------------------------------------

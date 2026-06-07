@@ -30,6 +30,16 @@ export interface EntityGraphStore {
   resolveEntity(userId: string, mention: string, type?: string): Promise<Entity | null>;
 
   /**
+   * Как resolveEntity, но эмбеддинг-тир (Tier 3) принимается ТОЛЬКО при
+   * cosine-distance ≤ порога (shouldMergeByEmbedding). Для записи/склейки,
+   * где ложная склейка дороже, чем промах. type обязателен (склеиваем только
+   * однотипные сущности). Tier 1/2 (FTS имя/алиасы) — высокоточные, без порога.
+   *
+   * Returns null если ничего не совпало (или эмбеддинг за порогом).
+   */
+  resolveForMerge(userId: string, mention: string, type: string): Promise<Entity | null>;
+
+  /**
    * Create or upsert entity. Uses @@unique([userId, type, name]) to
    * detect existing. If exists: merges aliases (union), updates
    * lastSeenAt, merges attributes. Stores embedding best-effort.
