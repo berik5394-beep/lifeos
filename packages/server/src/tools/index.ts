@@ -22,6 +22,8 @@ import { completeHabitTool } from './complete-habit.js';
 import { completeMultipleHabitsTool } from './complete-multiple-habits.js';
 import { createHabitTool } from './create-habit.js';
 import { createWeeklyGoalTool } from './create-weekly-goal.js';
+import { createMonthlyGoalTool } from './create-monthly-goal.js';
+import { getMonthlyPlanTool } from './get-monthly-plan.js';
 import { logGoalProgressTool } from './log-goal-progress.js';
 import { createEventTool } from './create-event.js';
 import { journalEntryTool } from './journal-entry.js';
@@ -80,6 +82,8 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   completeHabitTool,
   createHabitTool,
   createWeeklyGoalTool,
+  createMonthlyGoalTool,
+  getMonthlyPlanTool,
   completeMultipleHabitsTool,
   createEventTool,
   journalEntryTool,
