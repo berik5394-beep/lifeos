@@ -47,8 +47,9 @@ async function storeEmbedding(
  * Postgres русский text-search config умеет стемминг ("Серика" → "серик"),
  * так что запрос "что про серика" найдёт записи про "Серика", "Сериком" и т.д.
  *
- * Безопасность: используем параметризованный $queryRaw, никаких string concat
- * с пользовательским вводом.
+ * Безопасность: параметризованные запросы ($queryRaw/$queryRawUnsafe);
+ * строковые фрагменты (напр. forgetSql) — серверные КОНСТАНТЫ, никакого
+ * string concat с пользовательским вводом (userId/query/limit — параметры).
  */
 
 type MemoryRow = { type: string; content: string; importance: number };
