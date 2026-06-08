@@ -189,10 +189,11 @@ export function interpolate(
 }
 
 /**
- * Слой честности A — рендер шаблона с гардом КАЖДОГО слота. Если любой
- * обязательный {{key}} резолвится в пусто/null/пробел → возвращает null
- * (нудж не шлём как «», а не молча пустим, как interpolate). Число 0 —
- * валидное значение (не пусто). Шаблон без плейсхолдеров → как есть.
+ * Слой честности A — рендер шаблона с гардом ОТСУТСТВУЮЩЕГО слота. Если
+ * обязательный {{key}} ОТСУТСТВУЕТ в payload (undefined/null) → возвращает null
+ * (нудж не шлём с дырой, а не молча пустим, как interpolate). ВАЖНО: явная
+ * пустая строка — это НАМЕРЕННЫЙ пропуск опц. суффикса ({{ageSuffix}},
+ * {{expectedSuffix}}), рендерим как ''. Число 0 — валидно. Без плейсхолдеров → как есть.
  */
 export function renderTemplate(
   template: string,
@@ -201,11 +202,11 @@ export function renderTemplate(
   let missing = false;
   const out = template.replace(/\{\{(\w+)\}\}/g, (_m, key: string) => {
     const v = payload[key];
-    if (v === undefined || v === null || String(v).trim() === '') {
+    if (v === undefined || v === null) {
       missing = true;
       return '';
     }
-    return String(v);
+    return String(v); // явная '' (опц. суффикс) — намеренна, рендерим
   });
   return missing ? null : out;
 }

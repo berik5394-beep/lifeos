@@ -25,14 +25,21 @@ describe('renderTemplate — Слой честности A (гард пусто�
     expect(renderTemplate('Привет {{name}}, {{n}} дн', { name: 'Серик', n: 5 }))
       .toBe('Привет Серик, 5 дн');
   });
-  it('пустой/пробельный/нет/null слот → null (не «»)', () => {
-    expect(renderTemplate('Как там «{{c}}»?', { c: '' })).toBeNull();
-    expect(renderTemplate('Как там «{{c}}»?', { c: '   ' })).toBeNull();
+  it('ОТСУТСТВУЮЩИЙ ключ (нет/null) → null (нудж дропаем)', () => {
     expect(renderTemplate('Как там «{{c}}»?', {})).toBeNull();
     expect(renderTemplate('Как там «{{c}}»?', { c: null })).toBeNull();
   });
   it('число 0 — валидный слот (не пусто)', () => {
     expect(renderTemplate('{{n}} дней', { n: 0 })).toBe('0 дней');
+  });
+  it('явная пустая строка (опц. суффикс) РЕНДЕРИТСЯ — не дропаем легитимный нудж', () => {
+    // регресс ревью: birthday_upcoming/gentle с ageSuffix='' (нет года рождения) —
+    // частый кейс; должен дать настоящее поздравление, а не generic.
+    expect(
+      renderTemplate('{{whenLabel}} ДР у {{name}}{{ageSuffix}} — поздравишь?', {
+        whenLabel: 'завтра', name: 'Серик', ageSuffix: '',
+      }),
+    ).toBe('завтра ДР у Серик — поздравишь?');
   });
   it('без плейсхолдеров → как есть', () => {
     expect(renderTemplate('Просто текст', {})).toBe('Просто текст');
