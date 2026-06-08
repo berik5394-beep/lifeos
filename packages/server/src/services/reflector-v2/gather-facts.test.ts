@@ -25,4 +25,11 @@ describe('gather-facts structure', () => {
   it('is best-effort — each tier wrapped, never throws', () => {
     expect(SRC).toMatch(/catch/);
   });
+  it('#2 честность: goalsBehind считается через countGoalsBehind (не хардкод 0)', () => {
+    expect(SRC).toMatch(/countGoalsBehind\(/);
+    expect(SRC).toMatch(/goalsBehind,\s*tasksStale: staleTasks/);
+  });
+  it('#6 честность: catch-fallback не выдумывает habitConsistency: 1 (лестная ложь)', () => {
+    expect(SRC).not.toMatch(/habitConsistency:\s*1\b/);
+  });
 });

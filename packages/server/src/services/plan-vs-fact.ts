@@ -108,3 +108,15 @@ export function planVsFact(
     }),
   };
 }
+
+/**
+ * #2 честность (reflector) — число целей со статусом «отстаёт» по ЭТОЙ ЖЕ
+ * единой границе (никакого третьего определения). tooEarly (январь,
+ * elapsed<15%) → 0: честное «рано судить», а НЕ фабрикованный «0 отстающих».
+ * Заменяет хардкод `goalsBehind: 0` в reflector-v2.
+ */
+export function countGoalsBehind(goals: GoalFact[], now: Date): number {
+  const v = planVsFact(goals, now);
+  if (v.tooEarly) return 0;
+  return v.goals.filter((g) => g.status === 'отстаёт').length;
+}

@@ -12,6 +12,7 @@ import { getEmotionalMemory } from '../emotional-memory.singleton.js';
 import { getHermesStore } from '../hermes/index.js';
 import { getEntityGraph } from '../entity-graph/index.js';
 import { getProceduralMemory } from '../procedural-memory.singleton.js';
+import { countGoalsBehind } from '../plan-vs-fact.js';
 import type { ReflectorV2Facts } from './types.js';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -29,13 +30,14 @@ async function safe<T>(label: string, fn: () => Promise<T>): Promise<T | undefin
 async function computeLegacy(userId: string, now: Date): Promise<ReflectorV2Facts['legacy']> {
   const since30 = new Date(now.getTime() - 30 * DAY);
   try {
-    const [income, expense, habitLogs, habits, staleTasks, budgets] = await Promise.all([
+    const [income, expense, habitLogs, habits, staleTasks, budgets, goalRows] = await Promise.all([
       prisma.income.aggregate({ _sum: { amount: true }, where: { userId, date: { gte: since30 } } }),
       prisma.expense.aggregate({ _sum: { amount: true }, where: { userId, date: { gte: since30 } } }),
       prisma.habitLog.count({ where: { userId, date: { gte: since30 }, completed: true } }),
       prisma.habit.count({ where: { userId, active: true } }),
       prisma.task.count({ where: { userId, completed: false, cancelled: false, date: { lt: new Date(now.getTime() - 2 * DAY) } } }),
       prisma.budgetLimit.aggregate({ _sum: { monthlyLimit: true }, where: { userId, month: now.getUTCMonth() + 1, year: now.getUTCFullYear() } }),
+      prisma.yearlyGoal.findMany({ where: { userId, year: now.getUTCFullYear() }, select: { area: true, goalText: true, progress: true } }),
     ]);
     const monthlyIncome = income._sum.amount ?? 0;
     const monthlyBurn = expense._sum.amount ?? 0;
@@ -43,13 +45,24 @@ async function computeLegacy(userId: string, now: Date): Promise<ReflectorV2Fact
     const habitConsistency = Math.max(0, Math.min(1, habitLogs / denom));
     const limit = budgets._sum.monthlyLimit ?? 0;
     const budgetPct = limit > 0 ? monthlyBurn / limit : 0;
+    // #2 честность: реальный счёт «отстающих» целей по единой границе plan↔fact
+    // (был хардкод goalsBehind:0 → Sonnet всегда говорил «целей-позади=0»).
+    const goalsBehind = countGoalsBehind(
+      goalRows.map((g) => ({
+        area: g.area, goalText: g.goalText, progress: g.progress,
+        updatedAt: now, planBuiltAt: null, planWeeks: 0,
+      })),
+      now,
+    );
     return {
       monthlyBurn, monthlyIncome, habitConsistency,
-      goalsBehind: 0, tasksStale: staleTasks, budgetPct,
+      goalsBehind, tasksStale: staleTasks, budgetPct,
     };
   } catch (err) {
     console.warn('[reflector-v2:gather:legacy] failed:', err);
-    return { monthlyBurn: 0, monthlyIncome: 0, habitConsistency: 1, goalsBehind: 0, tasksStale: 0, budgetPct: 0 };
+    // #6 честность: при сбое НЕ выдумываем лестные 100% привычек — отдаём 0
+    // (как happy-path при отсутствии данных), а не фабрикованную единицу.
+    return { monthlyBurn: 0, monthlyIncome: 0, habitConsistency: 0, goalsBehind: 0, tasksStale: 0, budgetPct: 0 };
   }
 }
 

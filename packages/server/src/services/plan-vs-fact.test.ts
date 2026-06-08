@@ -3,6 +3,7 @@ import {
   planVsFact,
   yearElapsedPct,
   yearElapsedFraction,
+  countGoalsBehind,
   type GoalFact,
 } from './plan-vs-fact.js';
 
@@ -25,6 +26,24 @@ function goal(p: Partial<GoalFact> = {}): GoalFact {
     ...p,
   };
 }
+
+describe('countGoalsBehind — #2 честность (заменяет хардкод goalsBehind:0)', () => {
+  const mid = new Date(2026, 6, 2); // ~50% года → темп 50%
+
+  it('считает только цели «отстаёт» (gap ≥ 25)', () => {
+    // 20% → gap 30 (отстаёт); 45% → gap 5 (в графике)
+    expect(countGoalsBehind([goal({ progress: 0.2 }), goal({ progress: 0.45 })], mid)).toBe(1);
+  });
+  it('опережение и «в графике» не считаются', () => {
+    expect(countGoalsBehind([goal({ progress: 0.65 }), goal({ progress: 0.5 })], mid)).toBe(0);
+  });
+  it('пустой список целей → 0', () => {
+    expect(countGoalsBehind([], mid)).toBe(0);
+  });
+  it('tooEarly (январь) → 0 даже при отставании (честный «рано судить», не «всё ок»)', () => {
+    expect(countGoalsBehind([goal({ progress: 0 })], new Date(2026, 0, 5))).toBe(0);
+  });
+});
 
 describe('yearElapsed* — темп года', () => {
   it('середина года ≈ 50%', () => {
