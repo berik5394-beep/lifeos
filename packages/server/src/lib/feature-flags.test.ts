@@ -22,6 +22,7 @@ import {
   isV2GoalHabitsEnabled,
   isV2PersonTypesEnabled,
   isV2EntityResolveEnabled,
+  isV2ForgetEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -73,6 +74,15 @@ describe('isV2EntityResolveEnabled', () => {
     expect(isV2EntityResolveEnabled('u1')).toBe(true);
     expect(isV2EntityResolveEnabled('u3')).toBe(false);
   });
+});
+
+describe('isV2ForgetEnabled', () => {
+  const KEY = 'FEATURE_V2_FORGET'; const orig = process.env[KEY];
+  afterEach(() => { if (orig === undefined) delete process.env[KEY]; else process.env[KEY] = orig; });
+  it('unset → false', () => { delete process.env[KEY]; expect(isV2ForgetEnabled('u1')).toBe(false); });
+  it('all → true', () => { process.env[KEY] = 'all'; expect(isV2ForgetEnabled('u1')).toBe(true); });
+  it('none/false/empty → false', () => { for (const v of ['none','false','']) { process.env[KEY]=v; expect(isV2ForgetEnabled('u1')).toBe(false); } });
+  it('csv', () => { process.env[KEY]='user-u1'; expect(isV2ForgetEnabled('u1')).toBe(true); expect(isV2ForgetEnabled('u2')).toBe(false); });
 });
 
 describe('isV2GoalHabitsEnabled', () => {

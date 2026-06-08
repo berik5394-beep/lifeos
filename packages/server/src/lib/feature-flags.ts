@@ -72,6 +72,16 @@ export function isV2BirthdayEnabled(userId: string): boolean {
   return flag.split(',').some((s) => s.trim() === `user-${userId}`);
 }
 
+/** Забывание-троица (F1/F3/F5): message вне recall, ридер чтит invalidAt, дедуп не сбрасывает createdAt. */
+export function isV2ForgetEnabled(userId: string): boolean {
+  const raw = process.env.FEATURE_V2_FORGET;
+  if (raw === undefined) return false;
+  const flag = raw.trim();
+  if (flag === '' || flag === 'none' || flag === 'false') return false;
+  if (flag === 'all' || flag === 'true') return true;
+  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
+}
+
 /**
  * Entity coreference resolve-then-merge (T1, память-качество №1).
  * Same shape as isV2BirthdayEnabled.
