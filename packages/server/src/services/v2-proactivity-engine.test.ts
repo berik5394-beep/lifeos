@@ -48,6 +48,10 @@ describe('commitmentNudgePayload — pure (T3 честность)', () => {
     expect(commitmentNudgePayload({ what: 'x', dueAt: daysAgo(MAX_COMMITMENT_OVERDUE_DAYS) }, NOW))
       .toEqual({ commitment: 'x', daysOverdue: MAX_COMMITMENT_OVERDUE_DAYS });
   });
+  it('срок сегодня (0 дней) → валидно, не дропаем легитимное обещание', () => {
+    expect(commitmentNudgePayload({ what: 'x', dueAt: daysAgo(0) }, NOW))
+      .toEqual({ commitment: 'x', daysOverdue: 0 });
+  });
 });
 
 describe('T3 — гард пустого обязательства у источника (структурный)', () => {
