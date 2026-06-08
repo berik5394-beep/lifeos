@@ -5,6 +5,7 @@ import {
   scoreSignificance,
   gate3_Significance,
   interpolate,
+  renderTemplate,
   TEMPLATES,
   V2ProactivityEngine,
   weeklyStallCandidate,
@@ -18,6 +19,29 @@ const SRC = readFileSync(
   join(__dirname, 'v2-proactivity-engine.ts'),
   'utf8',
 );
+
+describe('renderTemplate — Слой честности A (гард пустого слота)', () => {
+  it('все слоты заполнены → строка', () => {
+    expect(renderTemplate('Привет {{name}}, {{n}} дн', { name: 'Серик', n: 5 }))
+      .toBe('Привет Серик, 5 дн');
+  });
+  it('пустой/пробельный/нет/null слот → null (не «»)', () => {
+    expect(renderTemplate('Как там «{{c}}»?', { c: '' })).toBeNull();
+    expect(renderTemplate('Как там «{{c}}»?', { c: '   ' })).toBeNull();
+    expect(renderTemplate('Как там «{{c}}»?', {})).toBeNull();
+    expect(renderTemplate('Как там «{{c}}»?', { c: null })).toBeNull();
+  });
+  it('число 0 — валидный слот (не пусто)', () => {
+    expect(renderTemplate('{{n}} дней', { n: 0 })).toBe('0 дней');
+  });
+  it('без плейсхолдеров → как есть', () => {
+    expect(renderTemplate('Просто текст', {})).toBe('Просто текст');
+  });
+  it('generateNudge использует renderTemplate, а не сырой interpolate (структурно)', () => {
+    const body = SRC.slice(SRC.indexOf('async generateNudge'));
+    expect(body).toMatch(/renderTemplate\(template, candidate\.payload\)/);
+  });
+});
 
 describe('commitmentNudgePayload — pure (T3 честность)', () => {
   const NOW = new Date('2026-06-08T00:00:00Z').getTime();

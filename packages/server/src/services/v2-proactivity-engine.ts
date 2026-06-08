@@ -188,6 +188,28 @@ export function interpolate(
   });
 }
 
+/**
+ * Слой честности A — рендер шаблона с гардом КАЖДОГО слота. Если любой
+ * обязательный {{key}} резолвится в пусто/null/пробел → возвращает null
+ * (нудж не шлём как «», а не молча пустим, как interpolate). Число 0 —
+ * валидное значение (не пусто). Шаблон без плейсхолдеров → как есть.
+ */
+export function renderTemplate(
+  template: string,
+  payload: Record<string, unknown>,
+): string | null {
+  let missing = false;
+  const out = template.replace(/\{\{(\w+)\}\}/g, (_m, key: string) => {
+    const v = payload[key];
+    if (v === undefined || v === null || String(v).trim() === '') {
+      missing = true;
+      return '';
+    }
+    return String(v);
+  });
+  return missing ? null : out;
+}
+
 // ---- Templates ------------------------------------------------------------
 // Keep small/safe — Claude fallback handles long-tail tone/personalisation.
 
@@ -1270,10 +1292,14 @@ export class V2ProactivityEngine implements ProactivityEngine {
     // 1) Template lookup — fast, deterministic, free.
     const template = TEMPLATES[candidate.source]?.[candidate.toneHint];
     if (template) {
-      const rendered = interpolate(template, candidate.payload);
-      if (rendered.trim().length > 0) return rendered;
+      // Слой честности A: рендер с гардом КАЖДОГО слота. Пустой обязательный
+      // слот → null → НЕ шлём «» и НЕ фабрикуем через haiku из битого payload,
+      // а отдаём benign-generic. (Детекторы и так гардят данные — это сеть.)
+      const rendered = renderTemplate(template, candidate.payload);
+      if (rendered) return rendered;
+      return 'Подумал о тебе — как ты?';
     }
-    // 2) Claude haiku fallback.
+    // 2) Claude haiku fallback (source без шаблона: mood_shift+, identity_growth).
     try {
       const identity = await getBotIdentityService()
         .getIdentity(userId)
