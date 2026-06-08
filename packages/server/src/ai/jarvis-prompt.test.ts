@@ -39,6 +39,25 @@ describe('buildJarvisPrompt — ЯДРО и формат', () => {
   });
 });
 
+describe('Слой честности B — анти-фабрикация (antiFab) + #5 overdue', () => {
+  it('antiFab → пункт «ФАКТЫ — ТОЛЬКО ИЗ КОНТЕКСТА» в промпте', () => {
+    expect(buildJarvisPrompt(ctx(), { antiFab: true })).toContain('ФАКТЫ — ТОЛЬКО ИЗ КОНТЕКСТА');
+    expect(buildJarvisPrompt(ctx(), { antiFab: true })).toContain('НИКОГДА не выдумывай');
+  });
+  it('off (по умолчанию) → пункта нет (байт-идентично)', () => {
+    expect(buildJarvisPrompt(ctx())).not.toContain('ФАКТЫ — ТОЛЬКО ИЗ КОНТЕКСТА');
+  });
+  it('#5: overduePending>0 → строка «Просрочено с прошлых дней: N»', () => {
+    expect(renderContext(ctx({ overduePending: 7 }))).toContain('Просрочено с прошлых дней: 7');
+  });
+  it('#5: overduePending не задан → строки нет (off=байт-идентично)', () => {
+    expect(renderContext(ctx())).not.toContain('Просрочено с прошлых');
+  });
+  it('#5: overduePending=0 → строки нет (честно, не «всё чисто» лишний раз)', () => {
+    expect(renderContext(ctx({ overduePending: 0 }))).not.toContain('Просрочено с прошлых');
+  });
+});
+
 describe('getTimeOfDay(tz) — время суток в поясе юзера', () => {
   const at = new Date('2026-06-06T14:00:00Z'); // 19:00 Алматы, 14:00 UTC
   it('БАГ-регресс: Алматы 19:00 → вечер (а не день по UTC сервера)', () => {

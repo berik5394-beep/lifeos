@@ -3,8 +3,10 @@ import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 import {
   isV2SavingsCoachEnabled,
+  isV2AntiFabEnabled,
   isV2RealtimeEnabled,
 } from '../lib/feature-flags.js';
+import { countOverduePending } from './task-overdue.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import {
   buildJarvisPrompt,
@@ -222,11 +224,19 @@ export async function gatherAssistantContext(
           .join('; ')
       : 'Не заданы';
 
+  // #5 честность: реальный счётчик просрочки в контекст — ТОЛЬКО за флагом
+  // (off → undefined → строка не рендерится, байт-идентично). Раньше модель
+  // выдумывала «128 задач висят», т.к. в контексте были только задачи на сегодня.
+  const overduePending = isV2AntiFabEnabled(userId)
+    ? await countOverduePending(userId, todayDateOnly)
+    : undefined;
+
   const context: AssistantContext = {
     userName: user.name,
     assistantStyle: user.assistantStyle as AssistantContext['assistantStyle'],
     assistantGender: user.assistantGender,
     todayTasks: todayTasks.map((t) => ({ title: t.title, completed: t.completed })),
+    overduePending,
     habitsProgress,
     upcomingEvents: upcomingEvents.map((e) => ({
       title: e.title,
@@ -324,6 +334,7 @@ export async function getAssistantReply(
     ...ritualOptsFor(gathered.intent, gathered.dayCompletionPercent),
     therapeuticMode,
     goalCapture: isV2SavingsCoachEnabled(userId),
+    antiFab: isV2AntiFabEnabled(userId),
     nowTz,
   });
 

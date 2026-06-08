@@ -15,6 +15,7 @@ import {
   isV2WriteEnabled,
   isV2RealtimeEnabled,
   isV2DayLoadEnabled,
+  isV2AntiFabEnabled,
   isV2WeekLoadEnabled,
   isV2MonthLoadEnabled,
   isV2YearLoadEnabled,
@@ -169,6 +170,15 @@ describe('isV2DayLoadEnabled', () => {
     process.env.FEATURE_V2_DAY_LOAD = 'all';
     expect(isV2DayLoadEnabled('u1')).toBe(true);
   });
+});
+
+describe('isV2AntiFabEnabled (Слой честности B)', () => {
+  const KEY = 'FEATURE_V2_ANTIFAB'; const ORIG = process.env[KEY];
+  afterEach(() => { if (ORIG === undefined) delete process.env[KEY]; else process.env[KEY] = ORIG; });
+  it('off по умолчанию', () => { delete process.env[KEY]; expect(isV2AntiFabEnabled('u1')).toBe(false); });
+  it('all → включено', () => { process.env[KEY] = 'all'; expect(isV2AntiFabEnabled('u1')).toBe(true); });
+  it('none/false → off', () => { for (const v of ['none','false','']) { process.env[KEY]=v; expect(isV2AntiFabEnabled('u1')).toBe(false); } });
+  it('csv адресно', () => { process.env[KEY]='user-u1'; expect(isV2AntiFabEnabled('u1')).toBe(true); expect(isV2AntiFabEnabled('u2')).toBe(false); });
 });
 
 describe('isV2MemoryEnabled', () => {

@@ -68,6 +68,10 @@ export interface AssistantContext {
   assistantStyle: AssistantStyle;
   assistantGender: string;
   todayTasks: { title: string; completed: boolean }[];
+  /** #5 честность: РЕАЛЬНОЕ число просроченных с прошлых дней (countOverduePending).
+   *  Заполняется ТОЛЬКО за флагом isV2AntiFabEnabled → off=поле отсутствует =
+   *  строка не рендерится (байт-идентично). Иначе модель выдумывала «128 висят». */
+  overduePending?: number;
   habitsProgress: { total: number; completed: number };
   upcomingEvents: { title: string; startTime: string | null; date: string }[];
   spentThisMonth: number;
@@ -174,6 +178,13 @@ export function renderContext(
       L.push(`Невыполненные: ${pending.map((t) => t.title).join(', ')}`);
     }
   }
+  // #5 честность: реальный счётчик просрочки (за флагом → поле задано). > 0 →
+  // строка; иначе опускаем (нет лжи «всё чисто» и нет выдуманных «128»).
+  if (ctx.overduePending && ctx.overduePending > 0) {
+    L.push(
+      `Просрочено с прошлых дней: ${ctx.overduePending} задач (не выполнены, не на сегодня — если к месту, предложи перенести).`,
+    );
+  }
   if (ctx.habitsProgress.total > 0) {
     L.push(
       `Привычки: ${ctx.habitsProgress.completed} из ${ctx.habitsProgress.total}`,
@@ -235,6 +246,16 @@ function ritualBlock(
   return `\n\nРИТУАЛ НОЧИ: пользователь ложится спать.${pct} Подведи краткий итог дня по реальным данным в своём стиле и пожелай спокойной ночи. 2-4 предложения, мягко.`;
 }
 
+// Слой честности B — анти-фабрикация фактов. За флагом isV2AntiFabEnabled
+// (opts.antiFab). Off → блок не добавляется, промпт байт-в-байт.
+export const ANTI_FABRICATION_BLOCK =
+  '\n\nФАКТЫ — ТОЛЬКО ИЗ КОНТЕКСТА: любые числа, даты, имена, суммы и счётчики ' +
+  'о делах пользователя (задачи, привычки, деньги, цели, встречи, серии) бери ' +
+  'СТРОГО из блока ДАННЫЕ ПОЛЬЗОВАТЕЛЯ / КОНТЕКСТ ниже или из результата ' +
+  'инструмента. Нет конкретной цифры/даты/имени в контексте — НЕ называй её: ' +
+  'скажи общими словами или уточни вопросом. НИКОГДА не выдумывай и не ' +
+  'прикидывай «на глаз» (никаких «около 100 задач», выдуманных дат/сумм/серий).';
+
 export interface JarvisPromptOpts {
   ritual?: 'morning' | 'night';
   dayCompletionPercent?: number;
@@ -254,6 +275,8 @@ export interface JarvisPromptOpts {
   /** Obligations: ловить обещания/долги из диалога → предложить
    *  create_obligation (запись на «да»). За isV2ObligationsEnabled. */
   obligationCapture?: boolean;
+  /** Слой честности B — добавить пункт анти-фабрикации (isV2AntiFabEnabled). */
+  antiFab?: boolean;
   /** Real-Time Foundation: IANA-пояс юзера. Задан ТОЛЬКО когда
    *  isV2RealtimeEnabled → впрыск блока «СЕЙЧАС» + getTimeOfDay в поясе.
    *  undefined (off) → байт-идентично (серверное время, без блока). */
@@ -289,6 +312,7 @@ export function buildJarvisPrompt(
   if (opts.inlineNudge) parts.push(INLINE_NUDGE_BLOCK);
   if (opts.goalCapture) parts.push(GOAL_CAPTURE_BLOCK);
   if (opts.obligationCapture) parts.push(OBLIGATION_CAPTURE_BLOCK);
+  if (opts.antiFab) parts.push(ANTI_FABRICATION_BLOCK);
   let body = parts.join('\n\n');
   if (opts.ritual) body += ritualBlock(opts.ritual, opts.dayCompletionPercent);
   if (opts.channel === 'voice') body += VOICE_BREVITY;

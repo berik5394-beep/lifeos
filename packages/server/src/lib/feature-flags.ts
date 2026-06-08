@@ -381,6 +381,17 @@ export function isV2DayLoadEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_DAY_LOAD, userId);
 }
 
+/**
+ * Слой честности B — анти-фабрикация фактов в чате. on → (1) пункт в базовый
+ * промпт «числа/даты/имена о делах юзера ТОЛЬКО из КОНТЕКСТА, не выдумывай» +
+ * (2) реальный overdue-счётчик в контекст (#5, чтобы модель не сочиняла «128»).
+ * off → байт-идентично (ни пункта, ни строки overdue). Env FEATURE_V2_ANTIFAB
+ * ("all"/"none"/unset/"user-X"; "true" НЕ включает — ставь "all").
+ */
+export function isV2AntiFabEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_ANTIFAB, userId);
+}
+
 /** Движок пересечения, срез 2 (неделя перегружена). Off → байт-в-байт. */
 export function isV2WeekLoadEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_WEEK_LOAD, userId);

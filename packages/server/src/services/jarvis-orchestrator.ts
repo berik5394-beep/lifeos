@@ -53,6 +53,7 @@ import {
   isV2InlineNudgeEnabled,
   isV2SavingsCoachEnabled,
   isV2ObligationsEnabled,
+  isV2AntiFabEnabled,
 } from '../lib/feature-flags.js';
 import {
   routeToSkill,
@@ -1005,6 +1006,7 @@ export async function handleMessage(
         inlineNudge: isV2InlineNudgeEnabled(userId),
         goalCapture: isV2SavingsCoachEnabled(userId),
         obligationCapture: isV2ObligationsEnabled(userId),
+        antiFab: isV2AntiFabEnabled(userId),
         nowTz: realtimeTz,
       })
     : 'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
