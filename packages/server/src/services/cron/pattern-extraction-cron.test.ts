@@ -75,5 +75,13 @@ describe('structural — runPatternExtraction', () => {
   });
 });
 
+describe('F4b — maybeRetireStale wiring (гард)', () => {
+  it('runPatternExtraction зовёт maybeRetireStale за флагом', () => {
+    expect(SRC).toContain('maybeRetireStale(procedural');
+    expect(SRC).toContain('isV2ForgetEnabled');
+    expect(SRC).toMatch(/invalidateStale\(userId, STALE_PATTERN_DAYS\)/);
+  });
+});
+
 // Runtime integration test — deferred to v2-integration suite (C2).
 // Structural tests above verify the function shape + pure logic.
