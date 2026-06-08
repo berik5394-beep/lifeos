@@ -1,4 +1,6 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
+import { isV2ForgetEnabled } from '../lib/feature-flags.js';
 import {
   embedDocument,
   embedQuery,
@@ -125,13 +127,27 @@ export async function getRelevantMemories(
 ): Promise<MemoryRow[]> {
   const now = new Date();
 
+  // F1+F3 (за флагом FEATURE_V2_FORGET): из recall убираем сырые
+  // type='message' строки (30% шума в проде) и чтим invalidAt
+  // (инвалидированные записи скрыты — supersession). OFF → пусто →
+  // SQL/where байт-идентичны сегодняшним во всех трёх путях.
+  const forget = isV2ForgetEnabled(userId);
+  const forgetSql = forget
+    ? `AND m.type <> 'message' AND (m."invalidAt" IS NULL OR m."invalidAt" > NOW())`
+    : '';
+
   // Без query — простой top-K
   if (!query || query.trim().length < 2) {
+    const where: Prisma.MemoryWhereInput = {
+      userId,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+    };
+    if (forget) {
+      where.type = { not: 'message' };
+      where.AND = [{ OR: [{ invalidAt: null }, { invalidAt: { gt: now } }] }];
+    }
     const rows = await prisma.memory.findMany({
-      where: {
-        userId,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      },
+      where,
       orderBy: [{ importance: 'desc' }, { createdAt: 'desc' }],
       take: limit,
       select: { type: true, content: true, importance: true },
@@ -152,6 +168,7 @@ export async function getRelevantMemories(
         FROM "Memory" m
         WHERE m."userId" = $1
           AND (m."expiresAt" IS NULL OR m."expiresAt" > NOW())
+          ${forgetSql}
         ORDER BY (
           ts_rank(
             to_tsvector('russian',
@@ -181,39 +198,39 @@ export async function getRelevantMemories(
   }
 
   // Fallback: FTS + importance + recency (без семантики).
-  // Параметры: $1 userId, $2 query, $3 limit
-  const result = await prisma.$queryRaw<MemoryRow[]>`
-    SELECT
-      m.type,
-      m.content,
-      m.importance
-    FROM "Memory" m
-    WHERE m."userId" = ${userId}
-      AND (m."expiresAt" IS NULL OR m."expiresAt" > NOW())
-    ORDER BY
-      (
-        ts_rank(
-          to_tsvector('russian',
-            coalesce(m.content, '') || ' ' ||
-            coalesce(m.details, '') || ' ' ||
-            coalesce(array_to_string(m.tags, ' '), '')
-          ),
-          plainto_tsquery('russian', ${query})
-        ) * 5.0
-        + (m.importance::float / 10.0)
-        -- Фаза 2.2: временнóе затухание. Свежий факт при прочих равных
-        -- весит выше старого (exp(-возраст_дней/30): ~1.0 сегодня,
-        -- 0.72 через 10д, 0.37 через 30д). Не доминирует над явным
-        -- FTS-совпадением, но решает ничьи в пользу актуального.
-        + exp(
-            - extract(epoch from (NOW() - m."createdAt"))
-            / (86400.0 * 30.0)
-          )
-      ) DESC,
-      m.importance DESC,
-      m."createdAt" DESC
-    LIMIT ${limit};
-  `;
+  // $queryRawUnsafe с позиционными параметрами ($1 userId, $2 query,
+  // $3 limit) — чтобы врезать ${forgetSql} за флагом. Сами параметры
+  // по-прежнему биндятся (никакого concat пользовательского ввода);
+  // forgetSql — серверная константа без user-input.
+  const result = await prisma.$queryRawUnsafe<MemoryRow[]>(
+    `SELECT m.type, m.content, m.importance
+     FROM "Memory" m
+     WHERE m."userId" = $1
+       AND (m."expiresAt" IS NULL OR m."expiresAt" > NOW())
+       ${forgetSql}
+     ORDER BY (
+       ts_rank(
+         to_tsvector('russian',
+           coalesce(m.content, '') || ' ' ||
+           coalesce(m.details, '') || ' ' ||
+           coalesce(array_to_string(m.tags, ' '), '')
+         ),
+         plainto_tsquery('russian', $2)
+       ) * 5.0
+       + (m.importance::float / 10.0)
+       -- Фаза 2.2: временнóе затухание. Свежий факт при прочих равных
+       -- весит выше старого (exp(-возраст_дней/30): ~1.0 сегодня,
+       -- 0.72 через 10д, 0.37 через 30д). Не доминирует над явным
+       -- FTS-совпадением, но решает ничьи в пользу актуального.
+       + exp(- extract(epoch from (NOW() - m."createdAt")) / (86400.0 * 30.0))
+     ) DESC,
+       m.importance DESC,
+       m."createdAt" DESC
+     LIMIT $3;`,
+    userId,
+    query,
+    limit,
+  );
 
   return result;
 }
