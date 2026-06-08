@@ -23,6 +23,7 @@ import {
   isV2PersonTypesEnabled,
   isV2EntityResolveEnabled,
   isV2ForgetEnabled,
+  isV2PatternDedupEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -83,6 +84,15 @@ describe('isV2ForgetEnabled', () => {
   it('all → true', () => { process.env[KEY] = 'all'; expect(isV2ForgetEnabled('u1')).toBe(true); });
   it('none/false/empty → false', () => { for (const v of ['none','false','']) { process.env[KEY]=v; expect(isV2ForgetEnabled('u1')).toBe(false); } });
   it('csv', () => { process.env[KEY]='user-u1'; expect(isV2ForgetEnabled('u1')).toBe(true); expect(isV2ForgetEnabled('u2')).toBe(false); });
+});
+
+describe('isV2PatternDedupEnabled', () => {
+  const KEY = 'FEATURE_V2_PATTERN_DEDUP'; const orig = process.env[KEY];
+  afterEach(() => { if (orig === undefined) delete process.env[KEY]; else process.env[KEY] = orig; });
+  it('unset → false', () => { delete process.env[KEY]; expect(isV2PatternDedupEnabled('u1')).toBe(false); });
+  it('all → true', () => { process.env[KEY] = 'all'; expect(isV2PatternDedupEnabled('u1')).toBe(true); });
+  it('none/false/empty → false', () => { for (const v of ['none','false','']) { process.env[KEY]=v; expect(isV2PatternDedupEnabled('u1')).toBe(false); } });
+  it('csv', () => { process.env[KEY]='user-u1'; expect(isV2PatternDedupEnabled('u1')).toBe(true); expect(isV2PatternDedupEnabled('u2')).toBe(false); });
 });
 
 describe('isV2GoalHabitsEnabled', () => {

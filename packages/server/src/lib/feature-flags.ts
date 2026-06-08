@@ -83,6 +83,22 @@ export function isV2ForgetEnabled(userId: string): boolean {
 }
 
 /**
+ * T2 дедуп паттернов: экстракторы находят СВОЙ паттерн по identity-ключу в
+ * payload (entityId / habitId / sourceMsgId / clusterIndex / weekNumber), а не
+ * первый попавшийся по kind. Без этого недельный крон плодит дубликат на
+ * каждом прогоне. off=байт-идентично (findFirst остаётся прежним).
+ * Same shape as isV2ForgetEnabled: "all"/"true", "none"/"false"/unset, "user-X".
+ */
+export function isV2PatternDedupEnabled(userId: string): boolean {
+  const raw = process.env.FEATURE_V2_PATTERN_DEDUP;
+  if (raw === undefined) return false;
+  const flag = raw.trim();
+  if (flag === '' || flag === 'none' || flag === 'false') return false;
+  if (flag === 'all' || flag === 'true') return true;
+  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
+}
+
+/**
  * Entity coreference resolve-then-merge (T1, память-качество №1).
  * Same shape as isV2BirthdayEnabled.
  */
