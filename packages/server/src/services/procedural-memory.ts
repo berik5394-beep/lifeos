@@ -753,6 +753,9 @@ export async function extractCommitmentPatterns(userId: string): Promise<Pattern
 
       const parsed = parseCommitmentResponse(block.text);
       if (!parsed) continue;
+      // T3 честность: haiku по инструкции возвращает what:'' когда обещания нет —
+      // пустой паттерн НЕ персистим, иначе commitment-нудж рисует «» и шлёт абсурд.
+      if (!parsed.what || !parsed.what.trim()) continue;
 
       const payload = {
         what: parsed.what,

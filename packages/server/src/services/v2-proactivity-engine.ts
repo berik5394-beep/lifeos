@@ -368,6 +368,29 @@ async function detectStaleEntity(userId: string): Promise<NudgeCandidate[]> {
   }
 }
 
+/** T3 честность: не нудим о просрочке старше этого порога — вероятен
+ *  мисспарс даты haiku или обещание давно неактуально. */
+export const MAX_COMMITMENT_OVERDUE_DAYS = 60;
+
+/**
+ * T3 честность — собрать payload commitment-нуджа из паттерна ЧЕСТНО:
+ * читает поле `what` (НЕ `text` — старый баг рендерил «»), дропает пустой
+ * текст, отсутствующий/будущий срок и абсурдную просрочку. null → не нудить.
+ */
+export function commitmentNudgePayload(
+  payload: Record<string, unknown>,
+  now: number,
+): { commitment: string; daysOverdue: number } | null {
+  const commitment = String(payload.what ?? '').trim();
+  if (!commitment) return null;
+  const dueRaw = payload.dueAt;
+  const dueAt = dueRaw ? new Date(String(dueRaw)).getTime() : NaN;
+  if (!Number.isFinite(dueAt) || dueAt > now) return null;
+  const daysOverdue = Math.floor((now - dueAt) / DAY_MS);
+  if (daysOverdue < 0 || daysOverdue > MAX_COMMITMENT_OVERDUE_DAYS) return null;
+  return { commitment, daysOverdue };
+}
+
 async function detectCommitmentDue(userId: string): Promise<NudgeCandidate[]> {
   try {
     const procedural = getProceduralMemory();
@@ -378,18 +401,14 @@ async function detectCommitmentDue(userId: string): Promise<NudgeCandidate[]> {
     const out: NudgeCandidate[] = [];
     for (const p of patterns) {
       const payload = (p.payload ?? {}) as Record<string, unknown>;
-      const dueAt = payload.dueAt ? new Date(String(payload.dueAt)).getTime() : NaN;
-      if (!Number.isFinite(dueAt) || dueAt > now) continue;
-      const daysOverdue = Math.max(0, Math.floor((now - dueAt) / DAY_MS));
+      const np = commitmentNudgePayload(payload, now);
+      if (!np) continue; // пустой текст / нет-будущий срок / абсурдная просрочка → не нудим
       const cand: NudgeCandidate = {
         source: 'commitment_due',
         significance: 0,
         patternId: p.id,
         entityId: (payload.entityId as string) ?? undefined,
-        payload: {
-          commitment: String(payload.text ?? ''),
-          daysOverdue,
-        },
+        payload: { commitment: np.commitment, daysOverdue: np.daysOverdue },
         toneHint: 'curious',
       };
       cand.significance = scoreSignificance(cand);

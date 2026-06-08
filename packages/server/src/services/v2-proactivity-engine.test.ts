@@ -9,6 +9,8 @@ import {
   V2ProactivityEngine,
   weeklyStallCandidate,
   monthlyStallCandidate,
+  commitmentNudgePayload,
+  MAX_COMMITMENT_OVERDUE_DAYS,
 } from './v2-proactivity-engine.js';
 import type { NudgeCandidate } from './v2-proactivity-engine.js';
 
@@ -16,6 +18,44 @@ const SRC = readFileSync(
   join(__dirname, 'v2-proactivity-engine.ts'),
   'utf8',
 );
+
+describe('commitmentNudgePayload — pure (T3 честность)', () => {
+  const NOW = new Date('2026-06-08T00:00:00Z').getTime();
+  const daysAgo = (n: number) => new Date(NOW - n * 86_400_000).toISOString();
+
+  it('читает поле `what` (не `text`) → реальный текст обещания', () => {
+    expect(commitmentNudgePayload({ what: 'купить подарок', dueAt: daysAgo(5) }, NOW))
+      .toEqual({ commitment: 'купить подарок', daysOverdue: 5 });
+  });
+  it('пустой/пробельный what → null (нет «»-нуджа)', () => {
+    expect(commitmentNudgePayload({ what: '', dueAt: daysAgo(5) }, NOW)).toBeNull();
+    expect(commitmentNudgePayload({ what: '   ', dueAt: daysAgo(5) }, NOW)).toBeNull();
+    expect(commitmentNudgePayload({ dueAt: daysAgo(5) }, NOW)).toBeNull();
+  });
+  it('старое поле `text` игнорируется (доказывает фикс имени поля)', () => {
+    expect(commitmentNudgePayload({ text: 'призрак', dueAt: daysAgo(5) }, NOW)).toBeNull();
+  });
+  it('нет/будущий dueAt → null', () => {
+    expect(commitmentNudgePayload({ what: 'x', dueAt: null }, NOW)).toBeNull();
+    expect(commitmentNudgePayload({ what: 'x' }, NOW)).toBeNull();
+    expect(commitmentNudgePayload({ what: 'x', dueAt: new Date(NOW + 86_400_000).toISOString() }, NOW)).toBeNull();
+  });
+  it(`абсурдная просрочка (>${MAX_COMMITMENT_OVERDUE_DAYS}д) → null (убивает «522 дней»)`, () => {
+    expect(commitmentNudgePayload({ what: 'x', dueAt: daysAgo(522) }, NOW)).toBeNull();
+    expect(commitmentNudgePayload({ what: 'x', dueAt: daysAgo(MAX_COMMITMENT_OVERDUE_DAYS + 1) }, NOW)).toBeNull();
+  });
+  it(`граница: ровно ${MAX_COMMITMENT_OVERDUE_DAYS}д → валидно`, () => {
+    expect(commitmentNudgePayload({ what: 'x', dueAt: daysAgo(MAX_COMMITMENT_OVERDUE_DAYS) }, NOW))
+      .toEqual({ commitment: 'x', daysOverdue: MAX_COMMITMENT_OVERDUE_DAYS });
+  });
+});
+
+describe('T3 — гард пустого обязательства у источника (структурный)', () => {
+  it('extractCommitmentPatterns пропускает пустой what перед созданием паттерна', () => {
+    const PROC = readFileSync(join(__dirname, 'procedural-memory.ts'), 'utf8');
+    expect(PROC).toMatch(/parseCommitmentResponse\(block\.text\)[\s\S]{0,260}!parsed\.what/);
+  });
+});
 
 describe('scoreSignificance — pure', () => {
   it('stale_entity scales by gapRatio and importance', () => {
