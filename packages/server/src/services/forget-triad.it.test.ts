@@ -1,6 +1,7 @@
 import { describe, it, expect, afterAll, afterEach } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { getRelevantMemories } from './memory-service.js';
+import { writeMemory } from './episodic-memory.js';
 
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
@@ -38,5 +39,35 @@ describe('getRelevantMemories — F1+F3 forget-gate', () => {
     const rows = await getRelevantMemories(u, 'спорт', 20);
     expect(rows.some((r) => r.type === 'message')).toBe(true);
     expect(rows.some((r) => r.content.includes('инвалид факт'))).toBe(true);
+  });
+});
+
+describe('writeMemory — F5 createdAt forget-gate', () => {
+  it('flag ON: дедуп-update НЕ сбрасывает createdAt', async () => {
+    process.env[KEY] = 'all';
+    const u = await mkUser(`fg-f5on-${Date.now()}@a.test`);
+    const r1 = await writeMemory(u, { type: 'fact', content: 'люблю бегать по утрам', importance: 5 });
+    const before = await prisma.memory.findUnique({ where: { id: r1.id }, select: { createdAt: true } });
+    await new Promise((res) => setTimeout(res, 20));
+    // субсет-лексемы (любл & бега & утр) → русский FTS дедуп попадает в r1
+    const r2 = await writeMemory(u, { type: 'fact', content: 'люблю бегать утром', importance: 5 });
+    expect(r2.action).toBe('updated'); // дедуп реально сработал (строка переиспользована)
+    expect(r2.id).toBe(r1.id);
+    const cnt = await prisma.memory.count({ where: { userId: u, type: 'fact' } });
+    expect(cnt).toBe(1); // ни одной новой строки — апдейт, не вставка
+    const after = await prisma.memory.findUnique({ where: { id: r1.id }, select: { createdAt: true } });
+    expect(after?.createdAt.getTime()).toBe(before?.createdAt.getTime());
+  });
+  it('flag OFF: дедуп-update сбрасывает createdAt (как сейчас)', async () => {
+    delete process.env[KEY];
+    const u = await mkUser(`fg-f5off-${Date.now()}@a.test`);
+    const r1 = await writeMemory(u, { type: 'fact', content: 'пью кофе по утрам', importance: 5 });
+    const before = await prisma.memory.findUnique({ where: { id: r1.id }, select: { createdAt: true } });
+    await new Promise((res) => setTimeout(res, 20));
+    const r2 = await writeMemory(u, { type: 'fact', content: 'пью кофе по утрам всегда', importance: 5 });
+    expect(r2.action).toBe('updated'); // дедуп реально сработал
+    expect(r2.id).toBe(r1.id);
+    const after = await prisma.memory.findUnique({ where: { id: r1.id }, select: { createdAt: true } });
+    expect(after!.createdAt.getTime()).toBeGreaterThan(before!.createdAt.getTime());
   });
 });
