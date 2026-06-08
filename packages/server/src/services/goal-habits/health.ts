@@ -30,14 +30,16 @@ export async function buildGoalHabitHealth(
       orderBy: { date: 'desc' },
       select: { date: true },
     });
+    // #4 честность: null = ни разу не отмечали (раньше сентинел 9999 →
+    // рендерилось «9999 дн без отметок»).
     const daysSince = last
-      ? Math.floor((today - last.date.getTime()) / DAY_MS)
-      : 9999;
+      ? Math.max(0, Math.floor((today - last.date.getTime()) / DAY_MS))
+      : null;
     out.push({
       goalId: g.id,
       goalText: g.goalText,
       linkedHabitCount: habitIds.length,
-      daysSinceLastCompletion: Math.max(0, daysSince),
+      daysSinceLastCompletion: daysSince,
     });
   }
   return out;

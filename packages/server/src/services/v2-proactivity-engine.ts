@@ -228,8 +228,8 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     supportive: '{{whenLabel}} день памяти — {{name}}. Береги себя сегодня.',
   },
   goal_habits_stall: {
-    gentle: 'Цель «{{goalText}}» проседает — привычки к ней не отмечались {{days}} дн. Вернёмся?',
-    supportive: 'Заметил: к цели «{{goalText}}» привычки буксуют ({{days}} дн). Маленький шаг сегодня?',
+    gentle: 'Цель «{{goalText}}» проседает — привычки к ней не отмечались {{daysLabel}}. Вернёмся?',
+    supportive: 'Заметил: к цели «{{goalText}}» привычки буксуют ({{daysLabel}}). Маленький шаг сегодня?',
   },
   weekly_goal_stall: {
     gentle: 'Неделя к концу — цель «{{sample}}» ещё не закрыта ({{open}} из {{total}}). Успеем?',
@@ -712,7 +712,11 @@ async function detectGoalHabitStall(userId: string): Promise<NudgeCandidate[]> {
       significance: 0,
       payload: {
         goalText: worst.goalText,
-        days: worst.daysSinceLastCompletion,
+        // #4 честность: null (ни разу) → «ещё ни разу», без пустого «{{days}}»/9999.
+        daysLabel:
+          worst.daysSinceLastCompletion === null
+            ? 'ещё ни разу'
+            : `${worst.daysSinceLastCompletion} дн`,
         habitCount: worst.linkedHabitCount,
       },
       toneHint: 'gentle',

@@ -34,7 +34,7 @@ import { recentEvents } from './episodic-memory.js';
 import { buildScheduleConflict } from './schedule-conflict/index.js';
 import { openObligationsForContext } from './obligations/index.js';
 import { buildBirthdaySection, buildMemorialSection } from './birthday/index.js';
-import { buildGoalHabitHealth, computeStall, pickWorstStall } from './goal-habits/index.js';
+import { buildGoalHabitHealth, computeStall, pickWorstStall, formatStallText } from './goal-habits/index.js';
 import { buildGoalImpact } from './goal-impact/index.js';
 import { buildRunway } from './runway/index.js';
 import { buildEnergyLink } from './energy-link/index.js';
@@ -412,7 +412,7 @@ export async function fetchV2EnrichmentData(
         ? withTimeout(
             buildGoalHabitHealth(userId).then((h) => {
               const w = pickWorstStall(computeStall(h, 3));
-              return w ? `«${w.goalText}» — ${w.daysSinceLastCompletion} дн без отметок` : null;
+              return w ? formatStallText(w) : null;
             }),
             CROSS_DOMAIN_BUDGET_MS,
             null,
