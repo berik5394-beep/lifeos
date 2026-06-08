@@ -44,6 +44,17 @@ describe('Prisma JSON payload path-filter (T2 допущение)', () => {
       },
     });
     expect(hit?.description).toBe('c1');
+    // equals: 0 (falsy) обязан матчить JSON-число 0 — первый кластер всегда ci=0.
+    const hit0 = await prisma.pattern.findFirst({
+      where: {
+        userId: u, kind: 'recurring_topic', invalidAt: null,
+        AND: [
+          { payload: { path: ['entityId'], equals: 'e1' } },
+          { payload: { path: ['clusterIndex'], equals: 0 } },
+        ],
+      },
+    });
+    expect(hit0?.description).toBe('c0');
   });
 });
 
