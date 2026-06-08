@@ -13,10 +13,18 @@ import { prisma } from '../lib/prisma.js';
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * #1 честность — норма накоплений в текст. null (нет данных о доходе) →
+ * «нет данных о доходе», а НЕ фабрикованный сентинел «-100%».
+ */
+export function formatSavingsRate(rate: number | null): string {
+  return rate === null ? 'нет данных о доходе' : `${rate}%`;
+}
+
 export interface FinancialTruth {
   monthlyBurn: number;
   monthlyIncome: number;
-  savingsRate: number;
+  savingsRate: number | null;
   topMoneyDrains: Array<{ category: string; amount: number; percentOfIncome: number }>;
   daysUntilBroke: number | null;
   canAffordApartment: {
@@ -245,9 +253,10 @@ function analyzeFinances(data: RawUserData): FinancialTruth {
 
   const monthlyBurn = Math.round(totalExpenses / monthCount);
   const monthlyIncome = Math.round(totalIncomes / Math.max(incomeMonths.length, 1));
+  // #1 честность: нет дохода → норма накоплений неизвестна (null), НЕ «-100%».
   const savingsRate = monthlyIncome > 0
     ? Math.round(((monthlyIncome - monthlyBurn) / monthlyIncome) * 100)
-    : -100;
+    : null;
 
   // Top money drains
   const topMoneyDrains = [...categoryTotals.entries()]
@@ -263,7 +272,8 @@ function analyzeFinances(data: RawUserData): FinancialTruth {
 
   // Days until broke
   const monthlySavings = monthlyIncome - monthlyBurn;
-  const daysUntilBroke = monthlySavings < 0
+  // #1 честность: без дохода «хватит на 0 дней» — фейк; считаем только при доходе.
+  const daysUntilBroke = monthlyIncome > 0 && monthlySavings < 0
     ? Math.round(Math.abs(30 * monthlyIncome / monthlyBurn))
     : null;
 
@@ -273,7 +283,7 @@ function analyzeFinances(data: RawUserData): FinancialTruth {
         years: monthlySavings > 0
           ? Math.round((APARTMENT_PRICE_ALMATY_AVG / (monthlySavings * 12)) * 10) / 10
           : Infinity,
-        currentSavingsRate: savingsRate,
+        currentSavingsRate: savingsRate ?? 0, // эта ветка только при доходе>0 → не null
         neededSavingsRate: Math.round(
           (APARTMENT_PRICE_ALMATY_AVG / (10 * 12 * monthlyIncome)) * 100,
         ),
@@ -287,11 +297,11 @@ function analyzeFinances(data: RawUserData): FinancialTruth {
   // Financial bad patterns
   const financialDecisionsToPoverty: string[] = [];
 
-  if (savingsRate < 0) {
+  if (savingsRate !== null && savingsRate < 0) {
     financialDecisionsToPoverty.push(
       `Тратишь больше, чем зарабатываешь: дефицит ${Math.abs(monthlySavings).toLocaleString()}₸/мес.`,
     );
-  } else if (savingsRate < 10) {
+  } else if (savingsRate !== null && savingsRate < 10) {
     financialDecisionsToPoverty.push(
       `Откладываешь менее 10% дохода — это путь к нулевой подушке.`,
     );
@@ -581,7 +591,7 @@ function generateLifeTruthPrompt(
   lines.push('ФИНАНСОВАЯ ПРАВДА:');
   lines.push(`- Средний расход/мес: ${financial.monthlyBurn.toLocaleString()}₸`);
   lines.push(`- Средний доход/мес: ${financial.monthlyIncome.toLocaleString()}₸`);
-  lines.push(`- Норма накоплений: ${financial.savingsRate}%`);
+  lines.push(`- Норма накоплений: ${formatSavingsRate(financial.savingsRate)}`);
   lines.push(`- Стоимость жизни: ${financial.costOfLife.daily.toLocaleString()}₸/день, ${financial.costOfLife.yearly.toLocaleString()}₸/год`);
 
   if (financial.daysUntilBroke != null) {
@@ -689,7 +699,7 @@ function generateQuickTruthPrompt(
 ): string {
   const lines: string[] = [];
   lines.push(`Ты — краткий AI-аналитик жизни ${data.userName}. Дай ОЧЕНЬ короткий (3-5 предложений) жёсткий вердикт на основе данных.`);
-  lines.push(`Расход: ${financial.monthlyBurn.toLocaleString()}₸/мес, Доход: ${financial.monthlyIncome.toLocaleString()}₸/мес, Накопления: ${financial.savingsRate}%.`);
+  lines.push(`Расход: ${financial.monthlyBurn.toLocaleString()}₸/мес, Доход: ${financial.monthlyIncome.toLocaleString()}₸/мес, Накопления: ${formatSavingsRate(financial.savingsRate)}.`);
   lines.push(`Привычки: ${life.habitConsistency}%, Серия: ${life.streakStatus.current} дней.`);
   if (health.burnoutRisk !== 'low') lines.push(`Риск выгорания: ${health.burnoutRisk}.`);
   if (life.goalsBehind > 0) lines.push(`${life.goalsBehind} целей отстают от графика.`);
