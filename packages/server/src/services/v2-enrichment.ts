@@ -29,8 +29,9 @@ import {
   isV2RecentActivityEnabled,
   isV2ScheduleConflictEnabled,
   isV2PersonTypesEnabled,
+  isV2MemQualityEnabled,
 } from '../lib/feature-flags.js';
-import { recentEvents } from './episodic-memory.js';
+import { recentEvents, significantMemories } from './episodic-memory.js';
 import { buildScheduleConflict } from './schedule-conflict/index.js';
 import { openObligationsForContext } from './obligations/index.js';
 import { buildBirthdaySection, buildMemorialSection } from './birthday/index.js';
@@ -420,7 +421,10 @@ export async function fetchV2EnrichmentData(
         : Promise.resolve(null),
       isV2RecentActivityEnabled(userId)
         ? withTimeout(
-            recentEvents(userId, 6).then((rows) => formatRecentActivitySection(rows) || null),
+            (isV2MemQualityEnabled(userId)
+              ? significantMemories(userId, 6)
+              : recentEvents(userId, 6)
+            ).then((rows) => formatRecentActivitySection(rows) || null),
             CROSS_DOMAIN_BUDGET_MS,
             null,
           ).catch(() => null)

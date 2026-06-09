@@ -379,6 +379,44 @@ export function rankBySignificance<T extends RankableMemory>(
 }
 
 /**
+ * E2: кандидаты = свежие ∪ высоко-важные (оба с invalidAt/expiry-фильтрами,
+ * как recentEvents), дедуп по id, ранжирование по значимости → топ-limit.
+ */
+export async function significantMemories(
+  userId: string,
+  limit = 6,
+): Promise<Array<{ type: string; content: string; createdAt: Date }>> {
+  const now = new Date();
+  const [recent, important] = await Promise.all([
+    prisma.memory.findMany({
+      where: {
+        userId,
+        invalidAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 15,
+      select: { id: true, type: true, content: true, createdAt: true, importance: true },
+    }),
+    prisma.memory.findMany({
+      where: {
+        userId,
+        invalidAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      orderBy: [{ importance: 'desc' }, { createdAt: 'desc' }],
+      take: 10,
+      select: { id: true, type: true, content: true, createdAt: true, importance: true },
+    }),
+  ]);
+  const byId = new Map<string, RankableMemory>();
+  for (const r of [...recent, ...important]) byId.set(r.id, r);
+  return rankBySignificance([...byId.values()], limit, now).map(
+    ({ type, content, createdAt }) => ({ type, content, createdAt }),
+  );
+}
+
+/**
  * v2-натив reader недавней активности (шаг M3, заменяет legacy-чтение в чат-пути).
  * Свежие НЕ-инвалидированные, НЕ-протухшие (TTL) события по createdAt → главный
  * enrichment видит любой captureActivity сразу. БЕЗ зависимости от memory-service

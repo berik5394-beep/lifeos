@@ -55,3 +55,16 @@ describe('T3 врезка — диктовка память через writeMemo
     expect(dictSrc).toMatch(/tx\.memory\.create\(/);
   });
 });
+
+describe('E2 врезка — значимость при чтении по флагу', () => {
+  const epiSrc = readFileSync(join(process.cwd(), 'src/services/episodic-memory.ts'), 'utf8');
+  const enrSrc = readFileSync(join(process.cwd(), 'src/services/v2-enrichment.ts'), 'utf8');
+  it('episodic-memory экспортирует significantMemories', () => {
+    expect(epiSrc).toMatch(/export async function significantMemories\(/);
+  });
+  it('v2-enrichment выбирает significantMemories / recentEvents по флагу', () => {
+    expect(enrSrc).toMatch(/isV2MemQualityEnabled\(userId\)/);
+    expect(enrSrc).toMatch(/significantMemories\(userId, 6\)/);
+    expect(enrSrc).toMatch(/recentEvents\(userId, 6\)/);
+  });
+});
