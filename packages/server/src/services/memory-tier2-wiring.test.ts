@@ -44,3 +44,14 @@ describe('T5 врезка — details merge по флагу', () => {
     expect(epiSrc).toMatch(/mergeDetails/);
   });
 });
+
+describe('T3 врезка — диктовка память через writeMemory по флагу', () => {
+  const dictSrc = readFileSync(join(process.cwd(), 'src/services/dictation-service.ts'), 'utf8');
+  it('ON-ветка зовёт writeMemory с source dictation', () => {
+    expect(dictSrc).toMatch(/isV2MemQualityEnabled\(userId\)/);
+    expect(dictSrc).toMatch(/writeMemory\(userId, \{[\s\S]*?source: 'dictation'/);
+  });
+  it('OFF-ветка сохраняет tx.memory.create', () => {
+    expect(dictSrc).toMatch(/tx\.memory\.create\(/);
+  });
+});
