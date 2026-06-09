@@ -6,7 +6,7 @@ import {
   ritualOptsFor,
 } from './assistant-service.js';
 import { buildJarvisPrompt } from '../ai/jarvis-prompt.js';
-import { extractFromTranscript } from './dictation-service.js';
+import { extractFromTranscript, extractFromChat } from './dictation-service.js';
 import {
   parseBookingIntent,
   buildBookingUrl,
@@ -54,6 +54,7 @@ import {
   isV2SavingsCoachEnabled,
   isV2ObligationsEnabled,
   isV2AntiFabEnabled,
+  isV2MemQualityEnabled,
 } from '../lib/feature-flags.js';
 import {
   routeToSkill,
@@ -164,7 +165,9 @@ async function captureInBackground(
       where: { id: userId },
       select: { name: true },
     });
-    const extracted = await extractFromTranscript(text, user?.name || 'друг');
+    const extracted = isV2MemQualityEnabled(userId)
+      ? await extractFromChat(text, user?.name || 'друг')
+      : await extractFromTranscript(text, user?.name || 'друг');
     let tasks = 0;
     let memories = 0;
     if (extracted.tasks.length > 0) {

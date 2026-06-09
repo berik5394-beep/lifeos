@@ -19,3 +19,16 @@ describe('T4 extractFromChat — консервативный промпт', () 
     expect(f).toMatch(/Pick<DictationExtraction, 'tasks' \| 'memories'>/);
   });
 });
+
+describe('T4 врезка — captureInBackground выбирает экстрактор по флагу', () => {
+  const orchSrc = readFileSync(join(process.cwd(), 'src/services/jarvis-orchestrator.ts'), 'utf8');
+  it('флаг-тернар extractFromChat / extractFromTranscript', () => {
+    expect(orchSrc).toMatch(/isV2MemQualityEnabled\(userId\)/);
+    expect(orchSrc).toMatch(/\?\s*await extractFromChat\(/);
+    expect(orchSrc).toMatch(/:\s*await extractFromTranscript\(/);
+  });
+  it('импортирует extractFromChat и isV2MemQualityEnabled', () => {
+    expect(orchSrc).toMatch(/extractFromChat/);
+    expect(orchSrc).toMatch(/isV2MemQualityEnabled/);
+  });
+});
