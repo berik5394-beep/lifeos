@@ -23,3 +23,13 @@ describe('T5 graph — инструменты передают deliberate:true',
   });
   it('set-person-type', () => { expect(tool('set-person-type.ts')).toMatch(/deliberate:\s*true/); });
 });
+
+describe('T5 graph — FTS rank-порог в дедупе writeMemory', () => {
+  const epi = readFileSync(join(process.cwd(), 'src/services/episodic-memory.ts'), 'utf8');
+  it('константа MEM_DEDUP_MIN_RANK', () => { expect(epi).toMatch(/MEM_DEDUP_MIN_RANK\s*=\s*0\.05/); });
+  it('rank в SELECT дедупа', () => { expect(epi).toMatch(/ts_rank\([\s\S]*?\)\s+AS rank/); });
+  it('rankOk гейт за флагом', () => {
+    expect(epi).toMatch(/isV2MemGraphEnabled\(userId\)/);
+    expect(epi).toMatch(/rankOk/);
+  });
+});

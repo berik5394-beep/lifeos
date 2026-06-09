@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import type { Memory } from '@prisma/client';
 import { shouldOverwriteContent, computeExpiresAt, mergeDetails } from './memory-service.js';
 import { embedDocument, embeddingsEnabled, toVectorLiteral } from './embeddings.js';
-import { isV2WriteEnabled, isV2ForgetEnabled, isV2MemQualityEnabled } from '../lib/feature-flags.js';
+import { isV2WriteEnabled, isV2ForgetEnabled, isV2MemQualityEnabled, isV2MemGraphEnabled } from '../lib/feature-flags.js';
 
 /**
  * v2.0 Tier 2 — Episodic Memory.
@@ -113,6 +113,11 @@ export type WriteMemoryInput = {
  */
 const STABLE_TYPES = new Set(['fact', 'preference', 'person', 'decision']);
 
+/** Минимальный ts_rank для засчёта FTS-дедупа (за флагом isV2MemGraphEnabled).
+ *  Слабый матч (один общий токен, rank ≤ порог) — не обновляет чужую строку,
+ *  проваливается в create. OFF → rankOk всегда true (байт-идентично). */
+const MEM_DEDUP_MIN_RANK = 0.05;
+
 /**
  * recall-ценные типы, которые эмбедим по умолчанию (semantic retrieval
  * окупается). Высокочастотные дешёвые action-события (`task_created`,
@@ -174,9 +179,13 @@ export async function writeMemory(
     // --- 1. Дедуп (порт из captureMemory) для стабильных типов ---
     if (STABLE_TYPES.has(input.type)) {
       const dup = await prisma.$queryRaw<
-        Array<{ id: string; importance: number; tags: string[]; details: string | null }>
+        Array<{ id: string; importance: number; tags: string[]; details: string | null; rank: number }>
       >`
-        SELECT m.id, m.importance, m.tags, m.details
+        SELECT m.id, m.importance, m.tags, m.details,
+          ts_rank(
+            to_tsvector('russian', coalesce(m.content, '')),
+            plainto_tsquery('russian', ${content})
+          ) AS rank
         FROM "Memory" m
         WHERE m."userId" = ${userId}
           AND m.type = ${input.type}
@@ -190,27 +199,31 @@ export async function writeMemory(
 
       if (dup.length > 0) {
         const existing = dup[0];
-        const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags])).slice(0, 10);
-        const merged = isV2MemQualityEnabled(userId)
-          ? mergeDetails(existing.details, details)
-          : (details ?? existing.details);
-        const ex = await prisma.memory.findUnique({
-          where: { id: existing.id },
-          select: { content: true },
-        });
-        const oldContent = ex?.content ?? '';
-        const allowContentReplace = shouldOverwriteContent(oldContent, content);
-        const newContent = allowContentReplace ? content : oldContent;
-        console.warn(
-          `[memory] UPDATE type=${input.type} id=${existing.id} ` +
-            `oldLen=${oldContent.length} newLen=${content.length} ` +
-            `contentReplaced=${allowContentReplace} (user=${userId})`,
-        );
-        const updateData: Prisma.MemoryUpdateInput = { content: newContent, details: merged, tags: mergedTags, importance: Math.max(existing.importance, importance) };
-        if (!isV2ForgetEnabled(userId)) updateData.createdAt = new Date();
-        await prisma.memory.update({ where: { id: existing.id }, data: updateData });
-        await storeMemoryEmbedding(existing.id, newContent, merged, input);
-        return { id: existing.id, action: 'updated' };
+        const rankOk = !isV2MemGraphEnabled(userId) || (existing.rank ?? 1) > MEM_DEDUP_MIN_RANK;
+        if (rankOk) {
+          const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags])).slice(0, 10);
+          const merged = isV2MemQualityEnabled(userId)
+            ? mergeDetails(existing.details, details)
+            : (details ?? existing.details);
+          const ex = await prisma.memory.findUnique({
+            where: { id: existing.id },
+            select: { content: true },
+          });
+          const oldContent = ex?.content ?? '';
+          const allowContentReplace = shouldOverwriteContent(oldContent, content);
+          const newContent = allowContentReplace ? content : oldContent;
+          console.warn(
+            `[memory] UPDATE type=${input.type} id=${existing.id} ` +
+              `oldLen=${oldContent.length} newLen=${content.length} ` +
+              `contentReplaced=${allowContentReplace} (user=${userId})`,
+          );
+          const updateData: Prisma.MemoryUpdateInput = { content: newContent, details: merged, tags: mergedTags, importance: Math.max(existing.importance, importance) };
+          if (!isV2ForgetEnabled(userId)) updateData.createdAt = new Date();
+          await prisma.memory.update({ where: { id: existing.id }, data: updateData });
+          await storeMemoryEmbedding(existing.id, newContent, merged, input);
+          return { id: existing.id, action: 'updated' };
+        }
+        // on + слабый матч (rank ≤ MEM_DEDUP_MIN_RANK) → проваливаемся в create ниже
       }
     }
 
