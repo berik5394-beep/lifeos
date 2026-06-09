@@ -4,7 +4,15 @@ import { writeMemory, significantMemories } from './episodic-memory.js';
 
 // Pattern from forget-triad.it.test.ts: own PrismaClient, disconnect in afterAll.
 const prisma = new PrismaClient();
-afterAll(() => prisma.$disconnect());
+// T5-тест ставит FEATURE_V2_MEM_QUALITY='all'; сохраняем прежнее значение и
+// восстанавливаем в afterAll, чтобы флаг не протекал в другие it-файлы
+// (singleFork + алфавитный порядок прогона).
+const PREV_MEMQ = process.env.FEATURE_V2_MEM_QUALITY;
+afterAll(async () => {
+  if (PREV_MEMQ === undefined) delete process.env.FEATURE_V2_MEM_QUALITY;
+  else process.env.FEATURE_V2_MEM_QUALITY = PREV_MEMQ;
+  await prisma.$disconnect();
+});
 
 // Each it-block starts with a clean DB (setup.ts → beforeEach → resetDb truncates all).
 // Therefore every test creates its own user with a unique e-mail via mkUser().
