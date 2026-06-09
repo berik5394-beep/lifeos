@@ -243,8 +243,11 @@ describe('episodic-memory.ts structural — writeMemory (единый писат
   });
 
   it('условный embedding: shouldEmbed + embeddingsEnabled + UPDATE embedding', () => {
-    const start = SRC.indexOf('export async function writeMemory');
-    const body = SRC.slice(start, start + 4000);
+    // storeMemoryEmbedding — отдельная функция ПОСЛЕ writeMemory; якоримся прямо
+    // на неё. Раньше окно бралось от writeMemory (start+4000) — бриттл: рост
+    // writeMemory выталкивал SQL за границу окна (см. Tier-2 T5 +2 строки).
+    const start = SRC.indexOf('async function storeMemoryEmbedding');
+    const body = SRC.slice(start, start + 1200);
     expect(body).toContain('shouldEmbed(');
     expect(body).toContain('embeddingsEnabled()');
     expect(body).toMatch(/UPDATE "Memory" SET embedding/);
