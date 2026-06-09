@@ -23,16 +23,19 @@ describe('postgres-impl.ts structural — skeleton + upsertEntity', () => {
   it('upsertEntity uses prisma.entity.create (real call, not comment)', () => {
     const start = SRC.indexOf('async upsertEntity');
     expect(start).toBeGreaterThan(-1);
-    // window 3000 покрывает create() за resolve-merge веткой; ассерт на вызов
-    // С СКОБКОЙ, чтобы упоминание в doc-комментарии не удовлетворяло проверку.
-    const body = SRC.slice(start, start + 3000);
+    // Якорь на ВСЮ функцию upsertEntity (до след. метода getEntity), не фикс-окно:
+    // добавление строк внутри функции (напр. T5 guard) больше не выталкивает
+    // create() за границу. Ассерт со СКОБКОЙ — не doc-коммент.
+    const end = SRC.indexOf('async getEntity', start);
+    const body = SRC.slice(start, end > start ? end : start + 5000);
     expect(body).toContain('prisma.entity.create(');
   });
 
   it('upsertEntity stores embedding best-effort (calls storeEntityEmbedding or embedDocument)', () => {
     const start = SRC.indexOf('async upsertEntity');
     expect(start).toBeGreaterThan(-1);
-    const body = SRC.slice(start, start + 2000);
+    const end = SRC.indexOf('async getEntity', start);
+    const body = SRC.slice(start, end > start ? end : start + 5000);
     const hasEmbed = body.includes('storeEntityEmbedding') || body.includes('embedDocument');
     expect(hasEmbed).toBe(true);
   });
