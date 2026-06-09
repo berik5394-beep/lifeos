@@ -32,3 +32,15 @@ describe('T4 врезка — captureInBackground выбирает экстра�
     expect(orchSrc).toMatch(/isV2MemQualityEnabled/);
   });
 });
+
+describe('T5 врезка — details merge по флагу', () => {
+  const epiSrc = readFileSync(join(process.cwd(), 'src/services/episodic-memory.ts'), 'utf8');
+  it('ON-ветка через mergeDetails, OFF-ветка details ?? existing.details', () => {
+    expect(epiSrc).toMatch(/isV2MemQualityEnabled\(userId\)/);
+    expect(epiSrc).toMatch(/\?\s*mergeDetails\(existing\.details, details\)/);
+    expect(epiSrc).toMatch(/:\s*\(details \?\? existing\.details\)/);
+  });
+  it('импортирует mergeDetails', () => {
+    expect(epiSrc).toMatch(/mergeDetails/);
+  });
+});

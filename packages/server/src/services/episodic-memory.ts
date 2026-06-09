@@ -1,9 +1,9 @@
 import { prisma } from '../lib/prisma.js';
 import { Prisma } from '@prisma/client';
 import type { Memory } from '@prisma/client';
-import { shouldOverwriteContent, computeExpiresAt } from './memory-service.js';
+import { shouldOverwriteContent, computeExpiresAt, mergeDetails } from './memory-service.js';
 import { embedDocument, embeddingsEnabled, toVectorLiteral } from './embeddings.js';
-import { isV2WriteEnabled, isV2ForgetEnabled } from '../lib/feature-flags.js';
+import { isV2WriteEnabled, isV2ForgetEnabled, isV2MemQualityEnabled } from '../lib/feature-flags.js';
 
 /**
  * v2.0 Tier 2 — Episodic Memory.
@@ -191,7 +191,9 @@ export async function writeMemory(
       if (dup.length > 0) {
         const existing = dup[0];
         const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags])).slice(0, 10);
-        const merged = details ?? existing.details;
+        const merged = isV2MemQualityEnabled(userId)
+          ? mergeDetails(existing.details, details)
+          : (details ?? existing.details);
         const ex = await prisma.memory.findUnique({
           where: { id: existing.id },
           select: { content: true },
