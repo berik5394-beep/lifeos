@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { shouldOverwriteContent, computeExpiresAt } from './memory-service.js';
+import { shouldOverwriteContent, computeExpiresAt, mergeDetails } from './memory-service.js';
 
 /**
  * memory-service hardening (Risk A — sparse-overwrite, 2026-05-28).
@@ -133,5 +133,24 @@ describe('writeMemory structural — guard + audit wired (Risk A+D, M3 Unit A)',
     expect(warnBlock).toContain('oldLen');
     expect(warnBlock).toContain('newLen');
     expect(warnBlock).toContain('contentReplaced');
+  });
+});
+
+describe('mergeDetails (T5 sparse-guard на details)', () => {
+  it('оба null → null', () => { expect(mergeDetails(null, null)).toBeNull(); });
+  it('new null → старый сохраняется', () => {
+    expect(mergeDetails('Серик — брат, познакомились в школе', null)).toBe('Серик — брат, познакомились в школе');
+  });
+  it('old null → берём новый', () => {
+    expect(mergeDetails(null, 'новые детали')).toBe('новые детали');
+  });
+  it('оба есть, новый беднее (<70% длины) → оставляем старый', () => {
+    const rich = 'Серик Жумабаев — брат, познакомились в школе в 2005';
+    expect(mergeDetails(rich, 'Серик')).toBe(rich);
+  });
+  it('оба есть, новый богаче → берём новый', () => {
+    const poor = 'Серик';
+    const rich = 'Серик Жумабаев — брат, познакомились в школе';
+    expect(mergeDetails(poor, rich)).toBe(rich);
   });
 });

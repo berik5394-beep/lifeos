@@ -117,6 +117,22 @@ export function shouldOverwriteContent(
   return true;
 }
 
+/**
+ * Guard против sparse-overwrite для details (T5): бедный новый details не
+ * затирает богатый старый. Зеркалит shouldOverwriteContent.
+ *  - оба пусты → null
+ *  - один пуст → другой
+ *  - оба есть → более богатый (shouldOverwriteContent); сомнение → старый
+ */
+export function mergeDetails(
+  oldDetails: string | null,
+  newDetails: string | null,
+): string | null {
+  if (!newDetails) return oldDetails;
+  if (!oldDetails) return newDetails;
+  return shouldOverwriteContent(oldDetails, newDetails) ? newDetails : oldDetails;
+}
+
 // M3 Unit A (2026-06-06): legacy writer captureMemory удалён — единый писатель
 // writeMemory (episodic-memory.ts) заменил его (FEATURE_V2_WRITE=all в проде).
 // getRelevantMemories (legacy reader) ещё жив — Unit B.
