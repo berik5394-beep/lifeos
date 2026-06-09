@@ -39,7 +39,7 @@ export const setBirthdayTool = defineTool({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma JsonValue (как в remember-entity)
       attributes: { birthday: bday } as any,
       importance: 5,
-    });
+    }, { deliberate: true });
     const yearPart = bday.year ? `.${bday.year}` : '';
     return {
       message: `Запомнил: ДР ${input.person} — ${bday.day}.${bday.month}${yearPart}`,

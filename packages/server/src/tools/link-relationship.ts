@@ -31,8 +31,8 @@ export const linkRelationshipTool = defineTool({
       graph.upsertEntity(ctx.userId, {
         type: 'person',
         name: input.fromName,
-      }),
-      graph.upsertEntity(ctx.userId, { type: 'person', name: input.toName }),
+      }, { deliberate: true }),
+      graph.upsertEntity(ctx.userId, { type: 'person', name: input.toName }, { deliberate: true }),
     ]);
     const edge = await getEntityGraph().linkEntities(
       ctx.userId,

@@ -32,7 +32,7 @@ export const rememberEntityTool = defineTool({
       name: input.name,
       attributes: (input.attributes ?? {}) as any,
       importance: input.importance ?? 5,
-    });
+    }, { deliberate: true });
     return {
       message: `Запомнил: ${entity.name}`,
       entityId: entity.id,

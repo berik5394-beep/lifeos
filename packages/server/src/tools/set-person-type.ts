@@ -30,7 +30,7 @@ export const setPersonTypeTool = defineTool({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma JsonValue (как set_birthday)
       attributes: { personType: input.type } as any,
       importance: 5,
-    });
+    }, { deliberate: true });
     const labels: Record<string, string> = {
       client: 'клиент', partner: 'партнёр', investor: 'инвестор', family: 'семья', friend: 'друг',
     };
