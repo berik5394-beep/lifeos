@@ -140,6 +140,68 @@ export async function extractFromTranscript(
   }
 }
 
+/** T4: консервативный чат-экстрактор. Чат ≠ диктофон — «не уверен → молчим». */
+export async function extractFromChat(
+  text: string,
+  userName: string,
+): Promise<Pick<DictationExtraction, 'tasks' | 'memories'>> {
+  const today = new Date().toISOString().split('T')[0];
+  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().split('T')[0];
+
+  const systemPrompt = `Ты — фоновый экстрактор памяти ассистента ${userName}. Пользователь написал тебе сообщение в ЧАТЕ (обычная переписка, не диктофон, не монолог). Извлеки ТОЛЬКО то, что действительно стоит запомнить надолго, и верни строгий JSON.
+
+Текущая дата: ${today}. "завтра" = ${tomorrow}.
+
+ГЛАВНОЕ ПРАВИЛО: точность важнее полноты. Сомневаешься — НЕ извлекай. Лучше пустой массив, чем выдуманный факт. Не достраивай, не предполагай, не «читай между строк».
+
+Верни ТОЛЬКО валидный JSON без markdown:
+{
+  "tasks": [ { "title": "...", "date": "YYYY-MM-DD", "time": "HH:MM|null", "category": "work|personal|health|finance|education|home", "priority": "low|medium|high|critical", "notes": "опц." } ],
+  "memories": [ { "type": "fact|decision|event|person|place|preference", "content": "короткая суть", "details": "опц.", "tags": ["..."], "importance": 4-10 } ]
+}
+
+МОЖНО в memories (только явное, прямо сказанное пользователем):
+- fact — конкретный факт, прямо названный («У мамы день рождения 15 марта»)
+- decision — принятое решение («Решил уволиться», «Договорились в субботу»)
+- event — конкретное прошедшее событие («Был на встрече с инвестором»)
+- person — человек, явно названный по имени с контекстом («Познакомился с Айгерим, она дизайнер»)
+- place — конкретное место с контекстом («Хорошее кафе на Розыбакиева»)
+- preference — устойчивое предпочтение, прямо высказанное («Не люблю острое»)
+
+НЕЛЬЗЯ (верни пусто):
+- эмоции/настроение («устал», «тревожно», «отлично») — НЕ извлекаем вообще
+- мимолётные реплики, вопросы, болтовню («ок», «спасибо», «не знаю»)
+- неуверенное/гипотетическое («наверное», «может быть», «если получится»)
+- то, что ты сам додумал из контекста
+
+importance: 4-6 обычный факт, 7-10 важное (семья, здоровье, крупные решения). Мелочь (<4) НЕ пиши вообще.
+
+tasks: только ЯВНОЕ дело, прямо озвученное («купить продукты», «позвонить врачу»). Вопрос «как мне начать бегать?» — НЕ задача. Сомнение → не создавай. Дата по умолчанию — сегодня.
+
+Запоминать нечего → верни {"tasks": [], "memories": []}.`;
+
+  const response = await anthropic.messages.create({
+    model: MODELS.sonnet,
+    max_tokens: 1500,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: text }],
+  });
+  const content = response.content[0];
+  if (!content || content.type !== 'text') {
+    throw new AiModelError(new Error('Empty Claude response'));
+  }
+  let raw = content.text.trim();
+  if (raw.startsWith('```')) {
+    raw = raw.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '');
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<Pick<DictationExtraction, 'tasks' | 'memories'>>;
+    return { tasks: parsed.tasks ?? [], memories: parsed.memories ?? [] };
+  } catch (err) {
+    throw new AiModelError(err instanceof Error ? err : new Error(String(err)));
+  }
+}
+
 /**
  * Полный пайплайн: audio (base64) → транскрипт → extraction → запись в БД.
  * Возвращает результат с созданными задачами/memories.
