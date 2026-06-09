@@ -407,3 +407,12 @@ export function isV2MonthLoadEnabled(userId: string): boolean {
 export function isV2YearLoadEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_YEAR_LOAD, userId);
 }
+
+/**
+ * Tier-2 «качество факт-памяти» (T4+T3+T5+E2): консервативный чат-экстрактор,
+ * диктовка через writeMemory, sparse-guard на details, ранжирование чтения по
+ * значимости. OFF → всё байт-идентично прежнему поведению.
+ */
+export function isV2MemQualityEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_MEM_QUALITY, userId);
+}

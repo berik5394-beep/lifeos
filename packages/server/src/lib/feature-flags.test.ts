@@ -25,6 +25,7 @@ import {
   isV2EntityResolveEnabled,
   isV2ForgetEnabled,
   isV2PatternDedupEnabled,
+  isV2MemQualityEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -552,5 +553,29 @@ describe('isV2PersonTypesEnabled', () => {
     process.env.FEATURE_V2_PERSON_TYPES = 'user-u1';
     expect(isV2PersonTypesEnabled('u1')).toBe(true);
     expect(isV2PersonTypesEnabled('u2')).toBe(false);
+  });
+});
+
+describe('isV2MemQualityEnabled', () => {
+  const KEY = 'FEATURE_V2_MEM_QUALITY';
+  const prev = process.env[KEY];
+  afterEach(() => { if (prev === undefined) delete process.env[KEY]; else process.env[KEY] = prev; });
+
+  it('all → true для любого юзера', () => {
+    process.env[KEY] = 'all';
+    expect(isV2MemQualityEnabled('user-x')).toBe(true);
+  });
+  it('unset/none/empty → false', () => {
+    delete process.env[KEY];
+    expect(isV2MemQualityEnabled('user-x')).toBe(false);
+    process.env[KEY] = 'none';
+    expect(isV2MemQualityEnabled('user-x')).toBe(false);
+    process.env[KEY] = '';
+    expect(isV2MemQualityEnabled('user-x')).toBe(false);
+  });
+  it('csv user-<id> → true только для совпадения', () => {
+    process.env[KEY] = 'user-abc,user-def';
+    expect(isV2MemQualityEnabled('abc')).toBe(true);
+    expect(isV2MemQualityEnabled('zzz')).toBe(false);
   });
 });
