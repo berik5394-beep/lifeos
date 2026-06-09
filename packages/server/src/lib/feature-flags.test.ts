@@ -26,6 +26,7 @@ import {
   isV2ForgetEnabled,
   isV2PatternDedupEnabled,
   isV2MemQualityEnabled,
+  isV2MemGraphEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -578,4 +579,17 @@ describe('isV2MemQualityEnabled', () => {
     expect(isV2MemQualityEnabled('abc')).toBe(true);
     expect(isV2MemQualityEnabled('zzz')).toBe(false);
   });
+});
+
+describe('isV2MemGraphEnabled', () => {
+  const KEY = 'FEATURE_V2_MEM_GRAPH';
+  const prev = process.env[KEY];
+  afterEach(() => { if (prev === undefined) delete process.env[KEY]; else process.env[KEY] = prev; });
+  it('all → true', () => { process.env[KEY] = 'all'; expect(isV2MemGraphEnabled('u')).toBe(true); });
+  it('unset/none/empty → false', () => {
+    delete process.env[KEY]; expect(isV2MemGraphEnabled('u')).toBe(false);
+    process.env[KEY] = 'none'; expect(isV2MemGraphEnabled('u')).toBe(false);
+    process.env[KEY] = ''; expect(isV2MemGraphEnabled('u')).toBe(false);
+  });
+  it('csv user-<id>', () => { process.env[KEY] = 'user-abc'; expect(isV2MemGraphEnabled('abc')).toBe(true); expect(isV2MemGraphEnabled('z')).toBe(false); });
 });

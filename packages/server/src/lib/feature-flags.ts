@@ -416,3 +416,12 @@ export function isV2YearLoadEnabled(userId: string): boolean {
 export function isV2MemQualityEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_MEM_QUALITY, userId);
 }
+
+/**
+ * Целостность графа (T5-остаток): guard на Entity.attributes (preserve при
+ * фоновой / incoming-wins при намеренной) + порог ранга в FTS-дедупе.
+ * OFF → байт-идентично прежнему incoming-wins / без-порога.
+ */
+export function isV2MemGraphEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_MEM_GRAPH, userId);
+}
