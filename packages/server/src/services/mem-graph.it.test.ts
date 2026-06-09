@@ -74,34 +74,34 @@ describe('T5 attributes — фоновое preserve, намеренное overwr
 });
 
 // ---------------------------------------------------------------------------
-// T5 FTS-порог — слабый матч не клобберит чужую память
+// T5 FTS-порог — слабый одно-токенный матч.
 //
-// "Серик переехал в Астану" vs "Купил машину" — полностью разные токены
-// (нет ни одного общего русского стем). FTS @@ вернёт пустой result →
-// writeMemory проваливается прямо в CREATE (не доходя до rank-порога).
-// Результат: 2 отдельных Memory-строки. Тест валиден — поведение одинаково
-// при флаге ON и при OFF (оба раза создаёт), демонстрирует изоляцию записей.
+// Измерено на russian-tsvector: ts_rank(rich-doc, plainto('Серик')) ≈ 0.06,
+// что НИЖЕ порога 0.08. Сильный/пере-формулированный матч ≈ 0.26+.
+// A/B доказывает, что порог реально МЕНЯЕТ поведение (а не «нет матча»):
+//   OFF (без порога) — слабый матч обновляет существующую строку → 1 строка;
+//   ON (порог 0.08) — слабый матч отклонён, создаётся новая строка → 2 строки.
+// Само-валидируется: если бы @@ не матчил, OFF тоже дал бы 2 → ассерт OFF=1 упал.
 // ---------------------------------------------------------------------------
 
-describe('T5 FTS-порог — слабый матч не клобберит', () => {
-  it('непересекающийся контент → две отдельные строки (дедуп не срабатывает)', async () => {
+describe('T5 FTS-порог — слабый одно-токенный матч (A/B)', () => {
+  const RICH = 'Серик Жумабаев брат познакомились в школе в 2005 году';
+
+  it('OFF: слабый матч дедупит → 1 строка', async () => {
+    process.env.FEATURE_V2_MEM_GRAPH = 'none';
+    const uid = await mkUser(`fts-off-${Date.now()}`);
+    await writeMemory(uid, { type: 'fact', content: RICH, importance: 6 });
+    await writeMemory(uid, { type: 'fact', content: 'Серик', importance: 6 });
+    const rows = await prisma.memory.findMany({ where: { userId: uid, type: 'fact' } });
+    expect(rows.length).toBe(1); // без порога слабый матч обновляет существующую
+  });
+
+  it('ON: порог отклоняет слабый матч → 2 строки', async () => {
     process.env.FEATURE_V2_MEM_GRAPH = 'all';
-    const uid = await mkUser(`fts-${Date.now()}`);
-
-    await writeMemory(uid, {
-      type: 'fact',
-      content: 'Серик переехал в Астану',
-      importance: 6,
-    });
-    await writeMemory(uid, {
-      type: 'fact',
-      content: 'Купил машину',
-      importance: 6,
-    });
-
-    const rows = await prisma.memory.findMany({
-      where: { userId: uid, type: 'fact' },
-    });
-    expect(rows.length).toBe(2);
+    const uid = await mkUser(`fts-on-${Date.now()}`);
+    await writeMemory(uid, { type: 'fact', content: RICH, importance: 6 });
+    await writeMemory(uid, { type: 'fact', content: 'Серик', importance: 6 });
+    const rows = await prisma.memory.findMany({ where: { userId: uid, type: 'fact' } });
+    expect(rows.length).toBe(2); // порог 0.08 > rank≈0.06 → новая запись
   });
 });

@@ -115,8 +115,11 @@ const STABLE_TYPES = new Set(['fact', 'preference', 'person', 'decision']);
 
 /** Минимальный ts_rank для засчёта FTS-дедупа (за флагом isV2MemGraphEnabled).
  *  Слабый матч (один общий токен, rank ≤ порог) — не обновляет чужую строку,
- *  проваливается в create. OFF → rankOk всегда true (байт-идентично). */
-const MEM_DEDUP_MIN_RANK = 0.05;
+ *  проваливается в create. OFF → rankOk всегда true (байт-идентично).
+ *  Калибровка (измерено на russian-tsvector): one-token-weak≈0.06, two-token≈0.10,
+ *  genuine-reworded≈0.26, exact≈0.46. Порог 0.08 режет одно-токенный коинциденс,
+ *  хранит реальные пере-формулировки. */
+const MEM_DEDUP_MIN_RANK = 0.08;
 
 /**
  * recall-ценные типы, которые эмбедим по умолчанию (semantic retrieval
