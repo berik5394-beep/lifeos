@@ -19,8 +19,8 @@ import {
   toVectorLiteral,
 } from '../embeddings.js';
 import { Prisma, type Entity, type EntityRelationship } from '@prisma/client';
-import { capAliases, shouldMergeByEmbedding } from './merge-helpers.js';
-import { isV2EntityResolveEnabled } from '../../lib/feature-flags.js';
+import { capAliases, mergeAttributes, shouldMergeByEmbedding } from './merge-helpers.js';
+import { isV2EntityResolveEnabled, isV2MemGraphEnabled } from '../../lib/feature-flags.js';
 import type { EntityGraphStore } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -86,6 +86,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
   async upsertEntity(
     userId: string,
     entity: Partial<Entity> & { name: string; type: string },
+    opts?: { deliberate?: boolean },
   ): Promise<Entity> {
     // Стратегия записи: точный матч → update; иначе (флаг) resolve→merge update;
     // иначе prisma.entity.create. Никогда не prisma.entity.upsert (разветвление выше).
@@ -99,6 +100,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
       : [];
     const attributes = (entity.attributes as Record<string, unknown> | undefined) ?? {};
     const importance = entity.importance ?? 5;
+    const deliberate = opts?.deliberate ?? false;
 
     // Точный матч по (userId, type, name) — приоритет, как сейчас.
     const existing = await prisma.entity.findUnique({
@@ -110,7 +112,9 @@ export class PostgresEntityGraph implements EntityGraphStore {
       const mergedAliases = resolveOn
         ? capAliases([...(existing.aliases as string[]), ...incomingAliases])
         : (existing.aliases as string[]);
-      const mergedAttributes = { ...(existing.attributes as Record<string, unknown>), ...attributes };
+      const mergedAttributes = isV2MemGraphEnabled(userId)
+        ? mergeAttributes(existing.attributes as Record<string, unknown>, attributes, deliberate)
+        : { ...(existing.attributes as Record<string, unknown>), ...attributes };
       const updated = await prisma.entity.update({
         where: { id: existing.id },
         data: {
@@ -133,7 +137,9 @@ export class PostgresEntityGraph implements EntityGraphStore {
           name, // новая форма имени → в алиасы
           ...incomingAliases,
         ]);
-        const mergedAttributes = { ...(resolved.attributes as Record<string, unknown>), ...attributes };
+        const mergedAttributes = isV2MemGraphEnabled(userId)
+          ? mergeAttributes(resolved.attributes as Record<string, unknown>, attributes, deliberate)
+          : { ...(resolved.attributes as Record<string, unknown>), ...attributes };
         const updated = await prisma.entity.update({
           where: { id: resolved.id },
           data: {

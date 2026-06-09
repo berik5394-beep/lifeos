@@ -49,6 +49,7 @@ export interface EntityGraphStore {
   upsertEntity(
     userId: string,
     entity: Partial<Entity> & { name: string; type: string },
+    opts?: { deliberate?: boolean },
   ): Promise<Entity>;
 
   /**
