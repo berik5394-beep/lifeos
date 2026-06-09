@@ -348,6 +348,34 @@ export async function invalidateEvent(
   });
 }
 
+// ---------------------------------------------------------------------------
+// rankBySignificance — pure significance-ranking helper (E2)
+// ---------------------------------------------------------------------------
+
+export type RankableMemory = {
+  id: string;
+  type: string;
+  content: string;
+  createdAt: Date;
+  importance: number;
+};
+
+/** Pure: скор = importance + recency-бонус (≤2дн +2, ≤7дн +1); desc, тай-брейк по свежести. */
+export function rankBySignificance<T extends RankableMemory>(
+  rows: T[],
+  limit: number,
+  now: Date,
+): T[] {
+  const score = (r: T): number => {
+    const ageDays = (now.getTime() - r.createdAt.getTime()) / 86_400_000;
+    const recencyBonus = ageDays <= 2 ? 2 : ageDays <= 7 ? 1 : 0;
+    return r.importance + recencyBonus;
+  };
+  return [...rows]
+    .sort((a, b) => score(b) - score(a) || b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, Math.max(1, limit));
+}
+
 /**
  * v2-натив reader недавней активности (шаг M3, заменяет legacy-чтение в чат-пути).
  * Свежие НЕ-инвалидированные, НЕ-протухшие (TTL) события по createdAt → главный

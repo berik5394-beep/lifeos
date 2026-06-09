@@ -4,6 +4,7 @@ import {
   clampMood,
   shouldEmbed,
   writeMemory,
+  rankBySignificance,
 } from './episodic-memory.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -256,6 +257,34 @@ describe('episodic-memory.ts structural — writeMemory (единый писат
     expect(body).toContain('try {');
     expect(body).toMatch(/catch\s*\(/);
     expect(body).toMatch(/console\.warn\(\s*['`]\[memory\]/);
+  });
+});
+
+describe('rankBySignificance (E2)', () => {
+  const now = new Date('2026-06-09T12:00:00Z');
+  const row = (id: string, importance: number, ageDays: number) => ({
+    id, type: 'fact', content: id,
+    createdAt: new Date(now.getTime() - ageDays * 86_400_000), importance,
+  });
+
+  it('важное старое обходит свежий пустяк', () => {
+    const fresh = row('fresh', 3, 0);   // 3 + 2 = 5
+    const oldImp = row('oldImp', 9, 30); // 9 + 0 = 9
+    const out = rankBySignificance([fresh, oldImp], 6, now);
+    expect(out[0].id).toBe('oldImp');
+  });
+  it('тай-брейк по свежести при равном скоре', () => {
+    const a = row('a', 5, 1);  // 5 + 2 = 7
+    const b = row('b', 7, 30); // 7 + 0 = 7
+    const out = rankBySignificance([b, a], 6, now);
+    expect(out[0].id).toBe('a');
+  });
+  it('limit усечение', () => {
+    const rows = [row('a', 5, 0), row('b', 5, 1), row('c', 5, 2)];
+    expect(rankBySignificance(rows, 2, now)).toHaveLength(2);
+  });
+  it('пустой вход → пусто', () => {
+    expect(rankBySignificance([], 6, now)).toHaveLength(0);
   });
 });
 
