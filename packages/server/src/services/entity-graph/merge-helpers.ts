@@ -17,6 +17,26 @@ export function shouldMergeByEmbedding(dist: number, maxDist: number = MERGE_MAX
   return Number.isFinite(dist) && dist <= maxDist;
 }
 
+/**
+ * Merge атрибутов сущности (T5).
+ *  - deliberate=true (инструмент): incoming-wins (как сейчас).
+ *  - deliberate=false (фоновая экстракция): не затирать непустое существующее;
+ *    заполнять пустые; добавлять новые. → «брат» не сменится «знакомым».
+ */
+export function mergeAttributes(
+  existing: Record<string, unknown>,
+  incoming: Record<string, unknown>,
+  deliberate: boolean,
+): Record<string, unknown> {
+  if (deliberate) return { ...existing, ...incoming };
+  const out: Record<string, unknown> = { ...existing };
+  for (const [k, v] of Object.entries(incoming)) {
+    const cur = out[k];
+    if (cur === undefined || cur === null || cur === '') out[k] = v;
+  }
+  return out;
+}
+
 /** Нормализовать список алиасов: трим, дроп пустых, case-insensitive дедуп (первая форма), кап кол-ва и длины. */
 export function capAliases(aliases: string[], max = 20, maxLen = 255): string[] {
   const seen = new Set<string>();
