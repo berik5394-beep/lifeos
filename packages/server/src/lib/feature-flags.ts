@@ -425,3 +425,11 @@ export function isV2MemQualityEnabled(userId: string): boolean {
 export function isV2MemGraphEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_MEM_GRAPH, userId);
 }
+
+/**
+ * F2 явная коррекция: при ЯВНОЙ отмене факта инвалидируем старую противоречащую
+ * память (обратимо). OFF → детект выключен + шаг инвалидации выключен → identical.
+ */
+export function isV2SupersedeEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_SUPERSEDE, userId);
+}
