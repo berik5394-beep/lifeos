@@ -187,8 +187,10 @@ export class PostgresEntityGraph implements EntityGraphStore {
     const typeFilter = type ? `AND e.type = '${type.replace(/'/g, "''")}'` : '';
 
     // Step 1: FTS match on canonical name (russian stemming).
+    // NOTE: SELECT ${COLS} — NOT e.* — to avoid deserializing the Unsupported
+    // vector(512) embedding column (mirrors resolveForMerge fix).
     const nameFts = await prisma.$queryRawUnsafe<Entity[]>(
-      `SELECT e.*
+      `SELECT ${COLS}
        FROM "Entity" e
        WHERE e."userId" = $1
          AND to_tsvector('russian', e.name) @@ plainto_tsquery('russian', $2)
@@ -202,7 +204,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
 
     // Step 2: FTS match on aliases (unnested).
     const aliasFts = await prisma.$queryRawUnsafe<Entity[]>(
-      `SELECT DISTINCT e.*
+      `SELECT DISTINCT ${COLS}
        FROM "Entity" e,
             unnest(e.aliases) AS alias_val
        WHERE e."userId" = $1
@@ -223,7 +225,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
         const vecLit = toVectorLiteral(qvec);
         const typeFilterEmbed = type ? `AND e.type = '${type.replace(/'/g, "''")}'` : '';
         const embResult = await prisma.$queryRawUnsafe<Entity[]>(
-          `SELECT e.*
+          `SELECT ${COLS}
            FROM "Entity" e
            WHERE e."userId" = $1
              AND e.embedding IS NOT NULL
