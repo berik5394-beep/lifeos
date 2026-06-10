@@ -28,6 +28,7 @@ import {
   isV2MemQualityEnabled,
   isV2MemGraphEnabled,
   isV2SupersedeEnabled,
+  isV2UnlinkEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -601,4 +602,12 @@ describe('isV2SupersedeEnabled', () => {
   it('all→true', () => { process.env[KEY] = 'all'; expect(isV2SupersedeEnabled('u')).toBe(true); });
   it('unset/none/empty→false', () => { delete process.env[KEY]; expect(isV2SupersedeEnabled('u')).toBe(false); process.env[KEY]='none'; expect(isV2SupersedeEnabled('u')).toBe(false); process.env[KEY]=''; expect(isV2SupersedeEnabled('u')).toBe(false); });
   it('csv', () => { process.env[KEY]='user-abc'; expect(isV2SupersedeEnabled('abc')).toBe(true); expect(isV2SupersedeEnabled('z')).toBe(false); });
+});
+
+describe('isV2UnlinkEnabled', () => {
+  const KEY = 'FEATURE_V2_UNLINK'; const prev = process.env[KEY];
+  afterEach(() => { if (prev === undefined) delete process.env[KEY]; else process.env[KEY] = prev; });
+  it('all→true', () => { process.env[KEY]='all'; expect(isV2UnlinkEnabled('u')).toBe(true); });
+  it('unset/none/empty→false', () => { delete process.env[KEY]; expect(isV2UnlinkEnabled('u')).toBe(false); process.env[KEY]='none'; expect(isV2UnlinkEnabled('u')).toBe(false); process.env[KEY]=''; expect(isV2UnlinkEnabled('u')).toBe(false); });
+  it('csv', () => { process.env[KEY]='user-abc'; expect(isV2UnlinkEnabled('abc')).toBe(true); expect(isV2UnlinkEnabled('z')).toBe(false); });
 });

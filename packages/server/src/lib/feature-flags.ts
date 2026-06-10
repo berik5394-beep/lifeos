@@ -433,3 +433,11 @@ export function isV2MemGraphEnabled(userId: string): boolean {
 export function isV2SupersedeEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_SUPERSEDE, userId);
 }
+
+/**
+ * F2-связи: явный ретайр отношения (end_relationship). OFF → handler {error},
+ * связь не трогается (DB identical). Тул в capabilityText всегда (как cancel_obligation).
+ */
+export function isV2UnlinkEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_UNLINK, userId);
+}
