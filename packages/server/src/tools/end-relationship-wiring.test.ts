@@ -18,3 +18,18 @@ describe('F2-links — graph primitives', () => {
     expect(impl).toMatch(/OR:\s*\[\{\s*fromId:[\s\S]*?toId:/);
   });
 });
+
+describe('F2-links — end_relationship tool', () => {
+  const tool = readFileSync(join(process.cwd(), 'src/tools/end-relationship.ts'), 'utf8');
+  const idx = readFileSync(join(process.cwd(), 'src/tools/index.ts'), 'utf8');
+  it('handler флаг-гейт isV2UnlinkEnabled', () => { expect(tool).toMatch(/isV2UnlinkEnabled\(ctx\.userId\)/); });
+  it('single-match-или-скип (>1 и ===0 → не invalidate)', () => {
+    expect(tool).toMatch(/links\.length > 1/);
+    expect(tool).toMatch(/links\.length === 0/);
+    expect(tool).toMatch(/invalidateLink\(/);
+  });
+  it('зарегистрирован в ALL_TOOLS', () => {
+    expect(idx).toMatch(/endRelationshipTool/);
+    expect(idx).toMatch(/from '\.\/end-relationship\.js'/);
+  });
+});
