@@ -23,3 +23,13 @@ describe('F2 — supersedeByTopic', () => {
   it('зовёт invalidateEvent + лог SUPERSEDE', () => { expect(epi).toMatch(/invalidateEvent\(/); expect(epi).toContain('SUPERSEDE'); });
   it('константа SUPERSEDE_MIN_RANK', () => { expect(epi).toMatch(/SUPERSEDE_MIN_RANK\s*=/); });
 });
+
+describe('F2 — captureInBackground wiring', () => {
+  const orch = readFileSync(join(process.cwd(), 'src/services/jarvis-orchestrator.ts'), 'utf8');
+  it('передаёт detectSupersede в extractFromChat', () => { expect(orch).toMatch(/extractFromChat\([^)]*detectSupersede/s); });
+  it('supersede-шаг за флагом + supersedesTopic', () => {
+    expect(orch).toMatch(/isV2SupersedeEnabled\(userId\)/);
+    expect(orch).toMatch(/supersedeByTopic\(/);
+    expect(orch).toMatch(/m\.supersedesTopic/);
+  });
+});

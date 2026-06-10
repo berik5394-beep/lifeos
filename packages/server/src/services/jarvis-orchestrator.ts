@@ -20,7 +20,7 @@ import { matchesCrisisPhrase, classifyCrisis } from './safety-classifier.js';
 import { buildSafetyResponse } from './safety-response.js';
 import { classifyEmotional } from './emotional-classifier.js';
 import { isPlannerIntent } from './planner-service.js';
-import { writeMemory } from './episodic-memory.js';
+import { writeMemory, supersedeByTopic } from './episodic-memory.js';
 import { trackInterests } from './interest-service.js';
 import { runRegistryTool, toolConfirmRequired } from '../tools/index.js';
 import { maybeSavingsCoachLine } from './savings-coach.js';
@@ -55,6 +55,7 @@ import {
   isV2ObligationsEnabled,
   isV2AntiFabEnabled,
   isV2MemQualityEnabled,
+  isV2SupersedeEnabled,
 } from '../lib/feature-flags.js';
 import {
   routeToSkill,
@@ -166,7 +167,7 @@ async function captureInBackground(
       select: { name: true },
     });
     const extracted = isV2MemQualityEnabled(userId)
-      ? await extractFromChat(text, user?.name || 'друг')
+      ? await extractFromChat(text, user?.name || 'друг', { detectSupersede: isV2SupersedeEnabled(userId) })
       : await extractFromTranscript(text, user?.name || 'друг');
     let tasks = 0;
     let memories = 0;
@@ -196,7 +197,7 @@ async function captureInBackground(
     for (const m of extracted.memories) {
       // ОДНА ПАМЯТЬ (M3 Unit A): ЕДИНЫЙ писатель writeMemory (дедуп+embedding+
       // episodic-поля). Legacy captureMemory удалён (FEATURE_V2_WRITE=all в проде).
-      await writeMemory(userId, {
+      const r = await writeMemory(userId, {
         type: m.type,
         content: m.content,
         details: m.details ?? null,
@@ -205,6 +206,9 @@ async function captureInBackground(
         importance: m.importance,
       });
       memories++;
+      if (isV2SupersedeEnabled(userId) && m.supersedesTopic && r.action !== 'skipped') {
+        await supersedeByTopic(userId, m.type, m.supersedesTopic, r.id).catch(() => null);
+      }
     }
     // v2.0 Week 5 D3 — dual-write to new memory tiers behind flag.
     // Fire-and-forget so legacy capture's return time is unchanged;
