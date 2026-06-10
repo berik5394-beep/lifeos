@@ -342,6 +342,25 @@ export class PostgresEntityGraph implements EntityGraphStore {
   }
 
   // -------------------------------------------------------------------------
+  // activeLinksForEntity — active relationships referencing an entity
+  // -------------------------------------------------------------------------
+  async activeLinksForEntity(userId: string, entityId: string): Promise<EntityRelationship[]> {
+    return prisma.entityRelationship.findMany({
+      where: { userId, invalidAt: null, OR: [{ fromId: entityId }, { toId: entityId }] },
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // invalidateLink — soft-retire a relationship (reversible, cross-user-safe)
+  // -------------------------------------------------------------------------
+  async invalidateLink(userId: string, relationshipId: string): Promise<void> {
+    await prisma.entityRelationship.updateMany({
+      where: { id: relationshipId, userId, invalidAt: null },
+      data: { invalidAt: new Date() },
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // getNeighbors — recursive CTE with depth cap
   // -------------------------------------------------------------------------
   async getNeighbors(

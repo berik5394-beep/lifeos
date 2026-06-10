@@ -92,4 +92,9 @@ export interface EntityGraphStore {
    * Returns ordered by importance DESC.
    */
   staleEntities(userId: string, sinceDays: number, minImportance?: number): Promise<Entity[]>;
+
+  /** Активные (invalidAt IS NULL) связи, ссылающиеся на сущность (как from ИЛИ to). */
+  activeLinksForEntity(userId: string, entityId: string): Promise<EntityRelationship[]>;
+  /** Ретайр связи (обратимо): UPDATE invalidAt=now WHERE id+userId+active. Cross-user-safe. */
+  invalidateLink(userId: string, relationshipId: string): Promise<void>;
 }
