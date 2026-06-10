@@ -366,6 +366,36 @@ export async function invalidateEvent(
   });
 }
 
+/** F2 floor: топик-матч обычно одно-токенный (≈0.06). Главная защита —
+ *  единственный-сильный-матч; порог лишь отсекает near-zero шум. КАЛИБРУЕТСЯ (Task 5). */
+const SUPERSEDE_MIN_RANK = 0.03;
+
+/**
+ * F2 явная коррекция: найти ЕДИНСТВЕННУЮ сильную same-type не-инвалидированную
+ * память по топику и инвалидировать (обратимо). 0 / >1 / слабый → null (НЕ прячем).
+ */
+export async function supersedeByTopic(
+  userId: string,
+  type: string,
+  topic: string,
+  excludeId: string,
+): Promise<string | null> {
+  const rows = await prisma.$queryRaw<Array<{ id: string; rank: number }>>`
+    SELECT m.id,
+      ts_rank(to_tsvector('russian', coalesce(m.content, '')), plainto_tsquery('russian', ${topic})) AS rank
+    FROM "Memory" m
+    WHERE m."userId" = ${userId} AND m.type = ${type} AND m.id <> ${excludeId}
+      AND m."invalidAt" IS NULL
+      AND to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${topic})
+    ORDER BY rank DESC
+    LIMIT 3;`;
+  const strong = rows.filter((r) => r.rank >= SUPERSEDE_MIN_RANK);
+  if (strong.length !== 1) return null;
+  await invalidateEvent(strong[0].id);
+  console.warn(`[memory] SUPERSEDE type=${type} topic="${topic}" invalidated=${strong[0].id} (user=${userId})`);
+  return strong[0].id;
+}
+
 // ---------------------------------------------------------------------------
 // rankBySignificance — pure significance-ranking helper (E2)
 // ---------------------------------------------------------------------------

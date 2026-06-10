@@ -15,3 +15,11 @@ describe('F2 — extractFromChat supersede detection', () => {
     expect(dict).toMatch(/Сомнение.*НЕ добавляй|ЯВНОМ сигнале/);
   });
 });
+
+describe('F2 — supersedeByTopic', () => {
+  const epi = readFileSync(join(process.cwd(), 'src/services/episodic-memory.ts'), 'utf8');
+  it('экспортирует supersedeByTopic', () => { expect(epi).toMatch(/export async function supersedeByTopic\(/); });
+  it('single-match-или-скип (strong.length !== 1 → null)', () => { expect(epi).toMatch(/strong\.length !== 1/); });
+  it('зовёт invalidateEvent + лог SUPERSEDE', () => { expect(epi).toMatch(/invalidateEvent\(/); expect(epi).toContain('SUPERSEDE'); });
+  it('константа SUPERSEDE_MIN_RANK', () => { expect(epi).toMatch(/SUPERSEDE_MIN_RANK\s*=/); });
+});
