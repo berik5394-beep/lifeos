@@ -441,3 +441,11 @@ export function isV2SupersedeEnabled(userId: string): boolean {
 export function isV2UnlinkEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_UNLINK, userId);
 }
+
+/**
+ * Read-side decay (Камила): старое низко-ценное тонет в ранжировании enrichment+recall.
+ * READ-ONLY — ничего не пишется/удаляется. OFF → ранжирование прежнее (байт-идентично).
+ */
+export function isV2DecayEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_DECAY, userId);
+}
