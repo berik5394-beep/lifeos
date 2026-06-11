@@ -103,10 +103,9 @@ describe('read-side decay — Part 2 recall порядок', () => {
 
     expect(idxNew).toBeGreaterThanOrEqual(0); // свежая найдена
 
-    if (idxOld >= 0) {
-      // свежий не ниже старого (меньший индекс = выше в списке)
-      expect(idxNew).toBeLessThanOrEqual(idxOld);
-    }
+    // Детерминированный ассерт (не молчаливый skip): decay сработал, если старая
+    // либо вытеснена из выдачи (idxOld < 0), либо строго ниже свежей.
+    expect(idxOld < 0 || idxNew < idxOld).toBe(true);
 
     delete process.env.FEATURE_V2_DECAY;
   });
