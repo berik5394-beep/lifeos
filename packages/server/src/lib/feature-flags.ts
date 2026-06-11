@@ -458,3 +458,12 @@ export function isV2DecayEnabled(userId: string): boolean {
 export function isV2OpenLoopsEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_OPEN_LOOPS, userId);
 }
+
+/**
+ * Цель↔слот: goal_behind-нудж получает слот-якорь («в чт 18:00 свободно — поставить?»)
+ * + доставленный нудж пишется в ChatMessage (ответ «да» работает). OFF → сообщение
+ * прежнее + ничего не пишется → байт-идентично.
+ */
+export function isV2GoalSlotEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_GOAL_SLOT, userId);
+}
