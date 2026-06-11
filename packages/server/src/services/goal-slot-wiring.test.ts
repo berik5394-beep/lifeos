@@ -13,3 +13,12 @@ describe('goal-slot — Part 1 proactive-insights', () => {
     expect(src).toMatch(/Отстаём — давай наверстаем\?/);
   });
 });
+
+describe('goal-slot — Part 2 reply-context', () => {
+  const store = readFileSync(join(process.cwd(), 'src/services/insight-store.ts'), 'utf8');
+  it('за флагом пишет доставленный нудж в ChatMessage как assistant', () => {
+    expect(store).toMatch(/isV2GoalSlotEnabled\(/);
+    expect(store).toMatch(/chatMessage[\s\S]{0,40}\.create\(/);
+    expect(store).toMatch(/role:\s*'assistant'/);
+  });
+});

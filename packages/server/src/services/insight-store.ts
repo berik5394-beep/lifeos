@@ -11,7 +11,7 @@ import {
 import { localHour, localDayStartUTC } from '../lib/tz.js';
 import { deliverNotification } from './push-service.js';
 import { getEngagement, isReceptiveHour } from './engagement/index.js';
-import { isV2EngagementEnabled } from '../lib/feature-flags.js';
+import { isV2EngagementEnabled, isV2GoalSlotEnabled } from '../lib/feature-flags.js';
 
 /**
  * Phase 5 R5 P4-fold — DB-glue ЕДИНОГО Insight-стора. Вся ЛОГИКА
@@ -260,5 +260,15 @@ export async function deliverTopInsight(
   await prisma.insight
     .update({ where: { id: row.id }, data: { deliveredAt: now } })
     .catch(() => {});
+
+  // Reply-context (goal-slot Part 2): доставленный нудж — в историю чата,
+  // чтобы ответ «да» пришёл агенту С контекстом предложения (иначе «да» —
+  // в пустоту: getRecentHistory нудж не видел). crisis дефолт false →
+  // попадает в последние-6. Best-effort — сбой НЕ роняет доставку.
+  if (isV2GoalSlotEnabled(userId)) {
+    await prisma.chatMessage
+      .create({ data: { userId, role: 'assistant', content: row.message } })
+      .catch(() => {});
+  }
   return { deliveredId: row.id };
 }
