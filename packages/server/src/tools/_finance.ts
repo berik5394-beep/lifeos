@@ -1,14 +1,22 @@
 import { prisma } from '../lib/prisma.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { localDayStartUTC, localDateStr } from '../lib/tz.js';
 
 /**
  * SSOT Step 6 — чистый бюджет-анализ после расхода. Вынесен из
  * legacy action-executor (его сносят на Шаге 9), логика 1:1.
- * Границы месяца — TZ сервера, НАМЕРЕННО консистентно с тем, как
- * Expense.date пишется (см. get-budget Step 3b; общий TZ — отдельно).
+ *
+ * R9 TZ-fix (2026-06-11): границы месяца и ключ лимита — МЕСЯЦ ЮЗЕРА
+ * (зеркало get-budget). Старый комментарий «TZ сервера, намеренно»
+ * устарел: add-expense пишет date=localDayStartUTC(tz), set_budget
+ * ключует месяц юзера → серверный месяц здесь давал на границе месяца
+ * (первые часы 1-го числа в +tz) лимит ЧУЖОГО месяца (не находился,
+ * предупреждение молчало) и суммы чужих граничных дней.
  */
 export async function analyzeBudgetAfterExpense(
   userId: string,
   category: string,
+  now: Date = new Date(),
 ): Promise<{
   spent: number;
   budgetLimit: number;
@@ -17,9 +25,25 @@ export async function analyzeBudgetAfterExpense(
   warning: string;
   dailyRemaining: number;
 }> {
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const tz = await getUserTimezone(userId);
+  const todayLocal = localDateStr(tz, now); // "YYYY-MM-DD" юзера
+  const [yearStr, monthStr, dayStr] = todayLocal.split('-');
+  const year = Number(yearStr);
+  const monthNum = Number(monthStr); // 1-12, месяц ЮЗЕРА
+  const currentDay = Number(dayStr);
+  // Последний день месяца (календарь): нулевой день следующего месяца.
+  const lastDayOfMonth = new Date(year, monthNum, 0).getDate();
+  // UTC-инстанты начала первого/последнего ЛОКАЛЬНОГО дня месяца
+  // (mid-day trick — как в get-budget — для надёжного попадания в день).
+  const monthStart = localDayStartUTC(
+    tz,
+    new Date(`${yearStr}-${monthStr}-01T12:00:00Z`),
+  );
+  const lastDayStr = String(lastDayOfMonth).padStart(2, '0');
+  const monthEnd = localDayStartUTC(
+    tz,
+    new Date(`${yearStr}-${monthStr}-${lastDayStr}T12:00:00Z`),
+  );
 
   const [expenses, limit] = await Promise.all([
     prisma.expense.aggregate({
@@ -31,8 +55,8 @@ export async function analyzeBudgetAfterExpense(
         userId_category_month_year: {
           userId,
           category,
-          month: now.getMonth() + 1,
-          year: now.getFullYear(),
+          month: monthNum,
+          year,
         },
       },
     }),
@@ -41,7 +65,7 @@ export async function analyzeBudgetAfterExpense(
   const spent = expenses._sum.amount ?? 0;
   const budgetLimit = limit?.monthlyLimit ?? 0;
   const percentage = budgetLimit > 0 ? (spent / budgetLimit) * 100 : 0;
-  const daysLeft = monthEnd.getDate() - now.getDate();
+  const daysLeft = lastDayOfMonth - currentDay;
 
   let warning = '';
   if (budgetLimit > 0) {
