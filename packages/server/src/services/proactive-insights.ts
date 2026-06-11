@@ -1,6 +1,8 @@
 import { prisma } from '../lib/prisma.js';
+import { isV2GoalSlotEnabled } from '../lib/feature-flags.js';
 import { persistFlatInsights } from './insight-store.js';
 import { planVsFact } from './plan-vs-fact.js';
+import { findUpcomingSlot, formatGoalSlotTail } from './goal-slot.js';
 
 /**
  * Proactive Insights — JARVIS сам смотрит на данные юзера и формирует
@@ -195,6 +197,22 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
     },
     now,
   );
+
+  // Срез goal-slot (Part 1, за флагом): первому goal_behind-нуджу в финальном
+  // фиде дописываем якорь-слот из календаря («в чт 18:00 свободно ~60 мин —
+  // поставить занятие?»). Врезка ЗДЕСЬ, а не в петле buildInsights: ядро
+  // правил — чистое/без БД (см. коммент к buildInsights), а findUpcomingSlot
+  // читает календарь юзера. ДО persistFlatInsights — чтобы хвост попал и в
+  // доставляемый нудж (reply-context, Part 2). findUpcomingSlot best-effort
+  // (null при любой ошибке) — фид не ломается. OFF → result не трогаем →
+  // байт-идентично.
+  if (isV2GoalSlotEnabled(userId)) {
+    const anchor = result.find((i) => i.id.startsWith('goal_behind_'));
+    if (anchor) {
+      const slot = await findUpcomingSlot(userId, now);
+      if (slot) anchor.message += formatGoalSlotTail(slot);
+    }
+  }
 
   // R5 P4-fold: оживляем ЕДИНУЮ Insight-таблицу писателем (с source).
   // АДДИТИВНО и НЕ-фатально: фид возвращается как раньше; сбой
