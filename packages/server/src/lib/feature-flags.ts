@@ -467,3 +467,12 @@ export function isV2OpenLoopsEnabled(userId: string): boolean {
 export function isV2GoalSlotEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_GOAL_SLOT, userId);
 }
+
+/**
+ * Тон-по-настроению: mood-сдвиг вниз → (1) инструкция «мягче» в промпт (перекрывает
+ * стиль), (2) «давящие» нуджи глушатся (PRESSURE_SOURCES). OFF → только факт-строка
+ * настроения + все нуджи как раньше → байт-идентично.
+ */
+export function isV2MoodToneEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_MOOD_TONE, userId);
+}

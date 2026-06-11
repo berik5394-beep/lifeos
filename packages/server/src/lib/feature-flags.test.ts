@@ -32,6 +32,7 @@ import {
   isV2DecayEnabled,
   isV2OpenLoopsEnabled,
   isV2GoalSlotEnabled,
+  isV2MoodToneEnabled,
 } from './feature-flags.js';
 
 const ORIG_MEM = process.env.FEATURE_V2_MEMORY;
@@ -637,4 +638,13 @@ describe('isV2GoalSlotEnabled', () => {
   it('all→true', () => { process.env[KEY]='all'; expect(isV2GoalSlotEnabled('u')).toBe(true); });
   it('unset/none/empty→false', () => { delete process.env[KEY]; expect(isV2GoalSlotEnabled('u')).toBe(false); process.env[KEY]='none'; expect(isV2GoalSlotEnabled('u')).toBe(false); process.env[KEY]=''; expect(isV2GoalSlotEnabled('u')).toBe(false); });
   it('csv', () => { process.env[KEY]='user-abc'; expect(isV2GoalSlotEnabled('abc')).toBe(true); expect(isV2GoalSlotEnabled('z')).toBe(false); });
+});
+
+import { isV2MoodToneEnabled } from './feature-flags.js';
+describe('isV2MoodToneEnabled', () => {
+  const KEY = 'FEATURE_V2_MOOD_TONE'; const prev = process.env[KEY];
+  afterEach(() => { if (prev === undefined) delete process.env[KEY]; else process.env[KEY] = prev; });
+  it('all→true', () => { process.env[KEY]='all'; expect(isV2MoodToneEnabled('u')).toBe(true); });
+  it('unset/none/empty→false', () => { delete process.env[KEY]; expect(isV2MoodToneEnabled('u')).toBe(false); process.env[KEY]='none'; expect(isV2MoodToneEnabled('u')).toBe(false); process.env[KEY]=''; expect(isV2MoodToneEnabled('u')).toBe(false); });
+  it('csv', () => { process.env[KEY]='user-abc'; expect(isV2MoodToneEnabled('abc')).toBe(true); expect(isV2MoodToneEnabled('z')).toBe(false); });
 });
