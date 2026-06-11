@@ -32,6 +32,7 @@ import {
   isV2MemQualityEnabled,
   isV2DecayEnabled,
   isV2OpenLoopsEnabled,
+  isV2MoodToneEnabled,
 } from '../lib/feature-flags.js';
 import { entityDecayScore } from './memory-decay.js';
 import { recentEvents, significantMemories } from './episodic-memory.js';
@@ -68,6 +69,8 @@ export type V2EnrichmentData = {
     magnitude?: number;
     sinceDays?: number;
   } | null;
+  /** mood-tone Part 1: инструкция «мягче» при спаде настроения или null. */
+  moodToneDirective: string | null;
   entities: Array<{
     name: string;
     importance: number;
@@ -133,6 +136,8 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
       `настроение: ${dir} сдвиг ${Number(m.magnitude).toFixed(1)} (${m.sinceDays ?? 0}д)`,
     );
   }
+  // mood-tone Part 1: off → null → не пушится (off=байт-идентично).
+  if (data.moodToneDirective) lines.push(data.moodToneDirective);
   if (data.entities.length > 0) {
     const top = data.entities
       .slice(0, 5)
@@ -480,6 +485,14 @@ export async function fetchV2EnrichmentData(
           ).catch(() => null)
         : Promise.resolve(null),
     ]);
+    // mood-tone Part 1: спад → инструкция «мягче» (расширяет «эмпатия>стиль»
+    // с одного сообщения на траекторию). off → null → строки нет.
+    const moodToneDirective =
+      isV2MoodToneEnabled(userId) && moodShift?.shifted && moodShift.direction === 'down'
+        ? 'юзер в эмоциональном спаде последние дни — будь мягче: больше поддержки, ' +
+          'меньше требований и критики, не наваливай задачи и цели. ' +
+          'Это перекрывает выбранный стиль (даже strict/toxic).'
+        : null;
     const now = Date.now();
     return {
       identity: identity
@@ -503,6 +516,7 @@ export async function fetchV2EnrichmentData(
             sinceDays: moodShift.sinceDays,
           }
         : null,
+      moodToneDirective,
       entities: entityRows.map((e) => ({
         name: e.name,
         importance: e.importance,
