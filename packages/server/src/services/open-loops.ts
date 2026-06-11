@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { countOverduePending, listOverduePending } from './task-overdue.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { localDateOnlyUTC, localDayStartUTC } from '../lib/tz.js';
 
 export interface OpenLoops {
   overdueCount: number;
@@ -10,15 +12,23 @@ export interface OpenLoops {
   pendingText: string | null;
 }
 
-/** READ-ONLY снимок открытых петель. todayStart — UTC-instant начала локального дня. */
-export async function gatherOpenLoops(userId: string, todayStart: Date): Promise<OpenLoops> {
-  const tomorrow = new Date(todayStart.getTime() + 86_400_000);
+/**
+ * READ-ONLY снимок открытых петель. Сам резолвит таймзону юзера и применяет
+ * ПРАВИЛЬНУЮ дату-конвенцию к каждому домену (TZ-баг 2026-06-06):
+ *  - задачи (Task.date @db.Date) → localDateOnlyUTC (как 3 прод-вызова countOverduePending);
+ *  - привычки (HabitLog.date) → localDayStartUTC — ТОЧНО как пишет complete-habit,
+ *    иначе в зонах со смещением «привычка не отмечена» врёт.
+ */
+export async function gatherOpenLoops(userId: string, now: Date = new Date()): Promise<OpenLoops> {
+  const tz = await getUserTimezone(userId);
+  const taskToday = localDateOnlyUTC(tz, now); // @db.Date convA — задачи
+  const habitToday = localDayStartUTC(tz, now); // зеркало complete-habit — привычки
   const [overdueCount, overdueSample, habits, todayLogs, pending] = await Promise.all([
-    countOverduePending(userId, todayStart),
-    listOverduePending(userId, todayStart, 3),
+    countOverduePending(userId, taskToday),
+    listOverduePending(userId, taskToday, 3),
     prisma.habit.findMany({ where: { userId, active: true }, select: { id: true, name: true } }),
     prisma.habitLog.findMany({
-      where: { userId, completed: true, date: { gte: todayStart, lt: tomorrow } },
+      where: { userId, completed: true, date: habitToday },
       select: { habitId: true },
     }),
     prisma.pendingAction.findUnique({ where: { userId }, select: { confirmationText: true } }).catch(() => null),

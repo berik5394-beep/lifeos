@@ -37,8 +37,6 @@ import { entityDecayScore } from './memory-decay.js';
 import { recentEvents, significantMemories } from './episodic-memory.js';
 import { buildScheduleConflict } from './schedule-conflict/index.js';
 import { gatherOpenLoops, formatOpenLoopsSection } from './open-loops.js';
-import { getUserTimezone } from '../lib/user-context.js';
-import { localDateOnlyUTC } from '../lib/tz.js';
 import { openObligationsForContext } from './obligations/index.js';
 import { buildBirthdaySection, buildMemorialSection } from './birthday/index.js';
 import { buildGoalHabitHealth, computeStall, pickWorstStall, formatStallText } from './goal-habits/index.js';
@@ -337,12 +335,6 @@ export async function fetchV2EnrichmentData(
       : Promise.resolve(null);
 
     const nowDate = new Date();
-    // TZ-источник open-loops: ровно как buildScheduleConflict — localDateOnlyUTC(tz)
-    // (@db.Date-конвенция для task/habitLog, которые читает gatherOpenLoops).
-    // Гейтим за флагом, чтобы OFF не делал лишний DB round-trip (getUserTimezone).
-    const todayStart = isV2OpenLoopsEnabled(userId)
-      ? localDateOnlyUTC(await getUserTimezone(userId))
-      : null;
     const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity, scheduleConflict, personTypes, personMeetings, openLoops] = await Promise.all([
       withTimeout(
         getBotIdentityService()
@@ -480,9 +472,9 @@ export async function fetchV2EnrichmentData(
             )
             .catch(() => null)
         : Promise.resolve(null),
-      isV2OpenLoopsEnabled(userId) && todayStart
+      isV2OpenLoopsEnabled(userId)
         ? withTimeout(
-            gatherOpenLoops(userId, todayStart).then((l) => formatOpenLoopsSection(l)),
+            gatherOpenLoops(userId, nowDate).then((l) => formatOpenLoopsSection(l)),
             CROSS_DOMAIN_BUDGET_MS,
             null,
           ).catch(() => null)
