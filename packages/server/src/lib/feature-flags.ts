@@ -449,3 +449,12 @@ export function isV2UnlinkEnabled(userId: string): boolean {
 export function isV2DecayEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_DECAY, userId);
 }
+
+/**
+ * Open-loops: снимок незакрытого СЕЙЧАС (просрочки/привычки/pending) в промпт +
+ * проактивный нудж при завале. READ-ONLY. OFF → блок не добавляется + детектор []
+ * → байт-идентично.
+ */
+export function isV2OpenLoopsEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_OPEN_LOOPS, userId);
+}
