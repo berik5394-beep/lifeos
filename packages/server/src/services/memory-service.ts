@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { isV2ForgetEnabled } from '../lib/feature-flags.js';
+import { isV2ForgetEnabled, isV2DecayEnabled } from '../lib/feature-flags.js';
 import {
   embedDocument,
   embedQuery,
@@ -153,6 +153,15 @@ export async function getRelevantMemories(
     ? `AND m.type <> 'message' AND (m."invalidAt" IS NULL OR m."invalidAt" > NOW())`
     : '';
 
+  // Task 4 read-side decay Part 2: importance в FTS-скоринге умножается на
+  // свежесть когда флаг FEATURE_V2_DECAY включён. Старая низко-важная память
+  // тонет (halflife 90 дней: 100% сегодня → 50% через 90д → 25% через 180д).
+  // OFF → impTerm РОВНО прежний литерал → итоговый SQL байт-идентичен.
+  const MEM_HALFLIFE_DAYS = 90;
+  const impTerm = isV2DecayEnabled(userId)
+    ? `(m.importance::float / 10.0) * power(2, - extract(epoch from (NOW() - m."createdAt")) / (86400.0 * ${MEM_HALFLIFE_DAYS}))`
+    : `(m.importance::float / 10.0)`;
+
   // Без query — простой top-K
   if (!query || query.trim().length < 2) {
     const where: Prisma.MemoryWhereInput = {
@@ -195,7 +204,7 @@ export async function getRelevantMemories(
             ),
             plainto_tsquery('russian', $2)
           ) * 5.0
-          + (m.importance::float / 10.0)
+          + ${impTerm}
           + exp(- extract(epoch from (NOW() - m."createdAt")) / (86400.0 * 30.0))
           -- семантическая близость: 1 - cosine_distance, NULL→0 (старые
           -- досемантические записи не штрафуем — их несёт FTS).
@@ -234,7 +243,7 @@ export async function getRelevantMemories(
          ),
          plainto_tsquery('russian', $2)
        ) * 5.0
-       + (m.importance::float / 10.0)
+       + ${impTerm}
        -- Фаза 2.2: временнóе затухание. Свежий факт при прочих равных
        -- весит выше старого (exp(-возраст_дней/30): ~1.0 сегодня,
        -- 0.72 через 10д, 0.37 через 30д). Не доминирует над явным
