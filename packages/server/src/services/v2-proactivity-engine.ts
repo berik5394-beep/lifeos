@@ -345,7 +345,7 @@ import {
 import { getUserTimezone } from '../lib/user-context.js';
 import { runAgent } from './claude-agent.js';
 import { getEngagement, adaptiveThreshold } from './engagement/index.js';
-import { isV2EngagementEnabled, isV2OpenLoopsEnabled } from '../lib/feature-flags.js';
+import { isV2EngagementEnabled, isV2MoodToneEnabled, isV2OpenLoopsEnabled } from '../lib/feature-flags.js';
 import { gatherOpenLoops, shouldNudgeOpenLoops } from './open-loops.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { persistCandidates } from './insight-store.js';
@@ -1198,6 +1198,32 @@ async function gate4_Dedup(
   }
 }
 
+/** Нуджи-«давление» — глушатся в эмоциональном спаде (mood-tone, Berik-approved).
+ *  Остаются: поддержка (mood_shift), время-критичное (person_meeting, commitment_due,
+ *  obligation_due, birthday/memorial), деньги-защита (runway_low), decision_review,
+ *  stale_entity/neglected_key_person (связь с людьми — не давление), identity_growth. */
+export const PRESSURE_SOURCES: ReadonlySet<NudgeSource> = new Set<NudgeSource>([
+  'goal_no_progress',
+  'streak_break',
+  'goal_habits_stall',
+  'weekly_goal_stall',
+  'monthly_goal_stall',
+  'open_loop_pileup',
+  'goal_impact',
+  'skill_suggestion',
+  'energy_link',
+  'relationship_link',
+]);
+
+/** Чистый фильтр (mood-tone Part 2): при сдвиге-вниз убирает PRESSURE-кандидатов. */
+export function suppressPressureNudges(
+  candidates: NudgeCandidate[],
+  shift: { shifted: boolean; direction?: 'up' | 'down' } | null,
+): NudgeCandidate[] {
+  if (!shift?.shifted || shift.direction !== 'down') return candidates;
+  return candidates.filter((c) => !PRESSURE_SOURCES.has(c.source));
+}
+
 // ---- Engine class — placeholders (filled in A2-A6) -----------------------
 
 export class V2ProactivityEngine implements ProactivityEngine {
@@ -1290,6 +1316,16 @@ export class V2ProactivityEngine implements ProactivityEngine {
     // Gate 1 + 2 are user-scoped, shortcircuit early.
     if (!(await gate1_DND(userId, now))) return [];
     if (!(await gate2_RateLimit(userId, now))) return [];
+    // mood-tone Part 2: в эмоциональном спаде не наваливаем — «давящие»
+    // нуджи глушатся (поддержка/время-критичное/деньги-защита остаются).
+    // Best-effort: сбой mood-чтения → не глушим. off → ветка не выполняется.
+    if (isV2MoodToneEnabled(userId)) {
+      const shift = await getEmotionalMemory()
+        .detectMoodShift(userId)
+        .catch(() => null);
+      candidates = suppressPressureNudges(candidates, shift);
+      if (candidates.length === 0) return [];
+    }
     let sigThreshold = 0.6;
     if (isV2EngagementEnabled(userId)) {
       try {
