@@ -30,7 +30,9 @@ import {
   isV2ScheduleConflictEnabled,
   isV2PersonTypesEnabled,
   isV2MemQualityEnabled,
+  isV2DecayEnabled,
 } from '../lib/feature-flags.js';
+import { entityDecayScore } from './memory-decay.js';
 import { recentEvents, significantMemories } from './episodic-memory.js';
 import { buildScheduleConflict } from './schedule-conflict/index.js';
 import { openObligationsForContext } from './obligations/index.js';
@@ -327,6 +329,7 @@ export async function fetchV2EnrichmentData(
       ? gatherReflectorFacts(userId, new Date()).catch(() => null)
       : Promise.resolve(null);
 
+    const nowDate = new Date();
     const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity, scheduleConflict, personTypes, personMeetings] = await Promise.all([
       withTimeout(
         getBotIdentityService()
@@ -349,18 +352,38 @@ export async function fetchV2EnrichmentData(
         BASE_MEMBER_BUDGET_MS,
         null,
       ),
-      withTimeout(
-        prisma.entity
-          .findMany({
-            where: { userId },
-            orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
-            take: 5,
-            select: { name: true, importance: true, lastSeenAt: true },
-          })
-          .catch(() => []),
-        BASE_MEMBER_BUDGET_MS,
-        [],
-      ),
+      isV2DecayEnabled(userId)
+        ? withTimeout(
+            prisma.entity
+              .findMany({
+                where: { userId },
+                orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
+                take: 25,
+                select: { name: true, importance: true, lastSeenAt: true },
+              })
+              .then((wide) =>
+                wide
+                  .map((e) => ({ e, s: entityDecayScore(e.importance, e.lastSeenAt, nowDate) }))
+                  .sort((a, b) => b.s - a.s)
+                  .slice(0, 5)
+                  .map((x) => x.e),
+              )
+              .catch(() => []),
+            BASE_MEMBER_BUDGET_MS,
+            [],
+          )
+        : withTimeout(
+            prisma.entity
+              .findMany({
+                where: { userId },
+                orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
+                take: 5,
+                select: { name: true, importance: true, lastSeenAt: true },
+              })
+              .catch(() => []),
+            BASE_MEMBER_BUDGET_MS,
+            [],
+          ),
       isV2ObligationsEnabled(userId)
         ? withTimeout(
             openObligationsForContext(userId, 5).catch(() => []),
