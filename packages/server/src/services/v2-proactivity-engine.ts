@@ -36,7 +36,8 @@ export type NudgeSource =
   | 'weekly_goal_stall'
   | 'monthly_goal_stall'
   | 'neglected_key_person'
-  | 'person_meeting';
+  | 'person_meeting'
+  | 'open_loop_pileup';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -168,6 +169,10 @@ export function scoreSignificance(c: NudgeCandidate): number {
       // Привычки к цели буксуют — стабильно значимо (≥0.6 floor gate3).
       return 0.65;
     }
+    case 'open_loop_pileup': {
+      // Завал открытых петель — стабильно значимо (≥0.6 floor gate3).
+      return 0.6;
+    }
   }
 }
 
@@ -254,6 +259,9 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     gentle: 'Цель «{{goalText}}» проседает — привычки к ней не отмечались {{daysLabel}}. Вернёмся?',
     supportive: 'Заметил: к цели «{{goalText}}» привычки буксуют ({{daysLabel}}). Маленький шаг сегодня?',
   },
+  open_loop_pileup: {
+    gentle: 'Накопилось: {{overdue}} просрочек, {{habits}} привычек не отмечено. Разгрести вместе?',
+  },
   weekly_goal_stall: {
     gentle: 'Неделя к концу — цель «{{sample}}» ещё не закрыта ({{open}} из {{total}}). Успеем?',
     supportive: 'Осталось {{open}} из {{total}} целей недели. «{{sample}}» — может, сегодня добьём?',
@@ -337,7 +345,8 @@ import {
 import { getUserTimezone } from '../lib/user-context.js';
 import { runAgent } from './claude-agent.js';
 import { getEngagement, adaptiveThreshold } from './engagement/index.js';
-import { isV2EngagementEnabled } from '../lib/feature-flags.js';
+import { isV2EngagementEnabled, isV2OpenLoopsEnabled } from '../lib/feature-flags.js';
+import { gatherOpenLoops, shouldNudgeOpenLoops } from './open-loops.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { persistCandidates } from './insight-store.js';
 import type { InsightCandidate } from './insight-core.js';
@@ -748,6 +757,35 @@ async function detectGoalHabitStall(userId: string): Promise<NudgeCandidate[]> {
     return [cand];
   } catch (err) {
     console.warn('[v2-proactivity] detectGoalHabitStall failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Завал открытых петель (interconnection): много просрочек + неотмеченных
+ * привычек одновременно → нудж «N просрочек, разгрести?». READ-ONLY.
+ * Флаг-гейт ранний (off=identical: detector → []). Дедуп — как у соседей
+ * без entityId: scope `open_loop_pileup:global` (gate4 пропускает, частоту
+ * держит rate-limit gate).
+ */
+async function detectOpenLoopPileup(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    if (!isV2OpenLoopsEnabled(userId)) return [];
+    const l = await gatherOpenLoops(userId).catch(() => null);
+    if (!l || !shouldNudgeOpenLoops(l)) return [];
+    const cand: NudgeCandidate = {
+      source: 'open_loop_pileup',
+      significance: 0,
+      payload: {
+        overdue: l.overdueCount,
+        habits: l.habitsUnchecked,
+      },
+      toneHint: 'gentle',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectOpenLoopPileup failed:', err);
     return [];
   }
 }
@@ -1176,6 +1214,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectBirthday(userId),
       detectMemorial(userId),
       detectGoalHabitStall(userId),
+      detectOpenLoopPileup(userId),
       detectMoodShift(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),

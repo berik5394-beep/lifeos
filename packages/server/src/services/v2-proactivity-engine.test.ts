@@ -275,6 +275,7 @@ describe('TEMPLATES — table', () => {
         'neglected_key_person',
         'person_meeting',
         'weekly_goal_stall',
+        'open_loop_pileup',
       ].sort(),
     );
   });
