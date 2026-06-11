@@ -31,10 +31,14 @@ import {
   isV2PersonTypesEnabled,
   isV2MemQualityEnabled,
   isV2DecayEnabled,
+  isV2OpenLoopsEnabled,
 } from '../lib/feature-flags.js';
 import { entityDecayScore } from './memory-decay.js';
 import { recentEvents, significantMemories } from './episodic-memory.js';
 import { buildScheduleConflict } from './schedule-conflict/index.js';
+import { gatherOpenLoops, formatOpenLoopsSection } from './open-loops.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 import { openObligationsForContext } from './obligations/index.js';
 import { buildBirthdaySection, buildMemorialSection } from './birthday/index.js';
 import { buildGoalHabitHealth, computeStall, pickWorstStall, formatStallText } from './goal-habits/index.js';
@@ -100,6 +104,8 @@ export type V2EnrichmentData = {
   recentActivity: string | null;
   /** Конфликт задача↔календарь (слой B): «⚠️ Конфликт расписания: …» или null. */
   scheduleConflict: string | null;
+  /** Открытые петли (open-loops): «Открыто сейчас: …» или null. */
+  openLoops: string | null;
 };
 
 /** Недавняя активность — pure render. Empty → ''. */
@@ -161,6 +167,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (gh) lines.push(gh);
   if (data.scheduleConflict) lines.push(data.scheduleConflict);
   if (data.recentActivity) lines.push(data.recentActivity);
+  if (data.openLoops) lines.push(data.openLoops);
   return lines.join('\n');
 }
 
@@ -330,7 +337,13 @@ export async function fetchV2EnrichmentData(
       : Promise.resolve(null);
 
     const nowDate = new Date();
-    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity, scheduleConflict, personTypes, personMeetings] = await Promise.all([
+    // TZ-источник open-loops: ровно как buildScheduleConflict — localDateOnlyUTC(tz)
+    // (@db.Date-конвенция для task/habitLog, которые читает gatherOpenLoops).
+    // Гейтим за флагом, чтобы OFF не делал лишний DB round-trip (getUserTimezone).
+    const todayStart = isV2OpenLoopsEnabled(userId)
+      ? localDateOnlyUTC(await getUserTimezone(userId))
+      : null;
+    const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity, scheduleConflict, personTypes, personMeetings, openLoops] = await Promise.all([
       withTimeout(
         getBotIdentityService()
           .getIdentity(userId)
@@ -467,6 +480,13 @@ export async function fetchV2EnrichmentData(
             )
             .catch(() => null)
         : Promise.resolve(null),
+      isV2OpenLoopsEnabled(userId) && todayStart
+        ? withTimeout(
+            gatherOpenLoops(userId, todayStart).then((l) => formatOpenLoopsSection(l)),
+            CROSS_DOMAIN_BUDGET_MS,
+            null,
+          ).catch(() => null)
+        : Promise.resolve(null),
     ]);
     const now = Date.now();
     return {
@@ -517,6 +537,7 @@ export async function fetchV2EnrichmentData(
       scheduleConflict,
       personTypes,
       personMeetings,
+      openLoops,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);
