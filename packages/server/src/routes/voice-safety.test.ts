@@ -33,4 +33,10 @@ describe('voice-safety — /voice/process через единый мозг', () 
     expect(block).toMatch(/pendingAction:/);
     expect(block).toMatch(/confirmationText:/);
   });
+  it('handleMessage отдаёт pending, поставленный агентом в этом ходе (кнопки в мобилке)', () => {
+    const orch = readFileSync(join(process.cwd(), 'src/services/jarvis-orchestrator.ts'), 'utf-8');
+    const tail = orch.slice(orch.lastIndexOf('const acted = (await getToolCounts(userId, turnStart))'));
+    expect(tail).toMatch(/pendingStagedSince\(userId, turnStart\)/);
+    expect(tail).toMatch(/pendingAction:/);
+  });
 });

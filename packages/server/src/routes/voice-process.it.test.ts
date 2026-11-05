@@ -54,7 +54,9 @@ describe('/voice/process → единый мозг', () => {
 
   it('отмена: расход не пишется', async () => {
     const { userId, headers } = await authed('cancel');
-    await say(headers, 'Потратил 500 на такси');
+    const asked = await say(headers, 'Потратил 500 на такси');
+    // Иначе тест пустой: «0 расходов» было бы и без всякого предложения.
+    expect((asked.json() as { pendingAction: { action: string } | null }).pendingAction?.action).toBe('add_expense');
     const no = await app.inject({ method: 'POST', url: '/voice/confirm-action', headers, payload: { confirm: false } });
     expect(no.statusCode).toBe(200);
     expect(await prisma.expense.count({ where: { userId } })).toBe(0);
@@ -77,5 +79,7 @@ describe('/voice/process → единый мозг', () => {
     expect(res.statusCode).toBe(200);
     expect((res.json() as { intent: { action: string } }).intent.action).toBe('safety_crisis');
     expect(await prisma.task.count({ where: { userId } })).toBe(0);
+    // Кризисный ход помечен crisis=true (изоляция от LLM-контекста, retention).
+    expect(await prisma.chatMessage.count({ where: { userId, crisis: true } })).toBeGreaterThan(0);
   });
 });

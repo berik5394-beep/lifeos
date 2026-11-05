@@ -28,6 +28,7 @@ import { commitGoal, type CommitGoalInput } from './goal-commit.js';
 import { getToolCounts } from './tool-audit.js';
 import {
   peekPendingAction,
+  pendingStagedSince,
   takePendingAction,
   setPendingAction,
   clearPendingAction,
@@ -1222,9 +1223,22 @@ export async function handleMessage(
     0,
   );
 
+  // voice-one-brain (ревью S2): агент мог поставить pending ВНУТРИ цикла
+  // (delete/edit_expense, set_balance, suggest_goal…). Раньше ход его не
+  // возвращал → мобилка не показывала «Подтвердить / Отмена», юзер слышал
+  // «Подтверди…» и должен был догадаться сказать «да». Отдаём только pending
+  // ЭТОГО хода (не протухшее старое предложение).
+  const staged = await pendingStagedSince(userId, turnStart);
+
   return {
     reply,
     auditedActions: acted,
     intent: intent.action,
+    ...(staged
+      ? {
+          pendingAction: { action: staged.action, input: staged.input },
+          confirmationText: staged.confirmationText,
+        }
+      : {}),
   };
 }

@@ -126,6 +126,21 @@ export async function peekPendingAction(
 }
 
 /**
+ * Pending, поставленный НЕ раньше `since` (т.е. этим ходом — обычно агентом
+ * внутри цикла: delete/edit_expense, set_balance…). Нужен, чтобы ответ хода
+ * отдал его мобилке → кнопки «Подтвердить / Отмена». Старое предложение
+ * прошлых ходов (≠ этот ход) не отдаём.
+ */
+export async function pendingStagedSince(
+  userId: string,
+  since: Date,
+  store: PendingStore = prismaPendingStore,
+): Promise<PendingAction | null> {
+  const p = await peekPendingAction(userId, store);
+  return p && p.createdAt >= since.getTime() ? p : null;
+}
+
+/**
  * Забирает и удаляет pending АТОМАРНО (consume-once). Гонку решает
  * store.take (Postgres DELETE…RETURNING), не load+remove. TTL проверяем
  * после: протухшее уже удалено, возвращаем null (не исполняем).

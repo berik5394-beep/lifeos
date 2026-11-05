@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { setPendingAction, takePendingAction } from './pending-actions.js';
+import { setPendingAction, takePendingAction, pendingStagedSince } from './pending-actions.js';
 
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
@@ -34,5 +34,32 @@ describe('pending-actions атомарность по РЕАЛЬНОЙ БД (Fix
     await setPendingAction(userId, 'add_income', { amount: 1000 }, 'доход');
     expect(await takePendingAction(userId)).not.toBeNull();
     expect(await takePendingAction(userId)).toBeNull();
+  });
+});
+
+/**
+ * voice-one-brain ревью S2: агент ставит pending ВНУТРИ своего цикла
+ * (delete/edit_expense, set_balance…), а handleMessage его не возвращал →
+ * мобилка не показывала кнопки «Подтвердить». pendingStagedSince отдаёт pending
+ * только если он поставлен в ЭТОМ ходе (не протухшее старое предложение).
+ */
+describe('pendingStagedSince — pending, поставленный этим ходом', () => {
+  it('поставлен после начала хода → возвращается', async () => {
+    const userId = await makeUser('staged-now@a.test');
+    const turnStart = new Date();
+    await setPendingAction(userId, 'delete_expense', { id: 'e1' }, 'Удалить расход 3000₸?');
+    const p = await pendingStagedSince(userId, turnStart);
+    expect(p?.action).toBe('delete_expense');
+    expect(p?.confirmationText).toBe('Удалить расход 3000₸?');
+  });
+  it('поставлен ДО хода (старое предложение) → null', async () => {
+    const userId = await makeUser('staged-before@a.test');
+    await setPendingAction(userId, 'add_expense', { amount: 1 }, 'старое');
+    await new Promise((r) => setTimeout(r, 15));
+    expect(await pendingStagedSince(userId, new Date())).toBeNull();
+  });
+  it('нет pending → null', async () => {
+    const userId = await makeUser('staged-none@a.test');
+    expect(await pendingStagedSince(userId, new Date(0))).toBeNull();
   });
 });
