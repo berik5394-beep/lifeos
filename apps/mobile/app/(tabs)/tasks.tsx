@@ -31,6 +31,7 @@ import { useVoice } from '@/hooks/use-voice';
 import { useOpenPanel } from '@/hooks/use-open-panel';
 import { spacing, borderRadius, fontSize, taskCategories, priorities } from '@/constants';
 import { useTaskStore } from '@/stores/task-store';
+import { useScheduleStore } from '@/stores/schedule-store';
 import { useHabitStore } from '@/stores/habit-store';
 import { useUIStore } from '@/stores/ui-store';
 import { getWeekDays, isToday } from '@/utils/dates';
@@ -625,6 +626,9 @@ export default function TasksScreen() {
   const [weekImprove, setWeekImprove] = useState('');
   const [weekGratitude, setWeekGratitude] = useState('');
 
+  // Перегруз дня: «Подтвердить» сдвинул график → перечитать месяц.
+  const scheduleRevision = useScheduleStore((s) => s.revision);
+
   // ─── Effects ─────────────────────────────────────────────────────────────
   useEffect(() => {
     fetchTasks();
@@ -636,7 +640,7 @@ export default function TasksScreen() {
     const y = currentMonth.getFullYear();
     const m = String(currentMonth.getMonth() + 1).padStart(2, '0');
     fetchTasks(undefined, undefined, `${y}-${m}`);
-  }, [currentMonth, fetchTasks]);
+  }, [currentMonth, fetchTasks, scheduleRevision]);
 
   // ─── Computed Values ─────────────────────────────────────────────────────
   const monthTasks = useMemo(() => {

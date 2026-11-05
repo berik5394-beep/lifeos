@@ -151,8 +151,10 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
         content: `Встреча «${event.title}» ${data.date}${data.startTime ? ' в ' + data.startTime : ''}`,
       });
       // Перегруз дня (флаг): встреча съела время дня → робот предлагает сдвинуть задачи.
+      // Импорт календаря телефона шлёт пачку встреч (source 'imported') — не
+      // спамим чат предложениями на каждую; только ручное добавление.
       const proposal =
-        event.startTime && event.endTime
+        event.startTime && event.endTime && event.source === 'manual'
           ? await proposeReschedule(request.userId, data.date, null, new Date(), { fromCard: true })
           : null;
       return reply.status(201).send({
@@ -221,7 +223,7 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
         updated.startTime !== existing.startTime ||
         updated.endTime !== existing.endTime;
       const proposal =
-        timeChanged && updated.startTime && updated.endTime
+        timeChanged && updated.startTime && updated.endTime && updated.source !== 'imported'
           ? await proposeReschedule(request.userId, updated.date.toISOString().slice(0, 10), null, new Date(), { fromCard: true })
           : null;
       return reply.send({

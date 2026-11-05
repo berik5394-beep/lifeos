@@ -23,6 +23,7 @@ import { useVoice } from '@/hooks/use-voice';
 import { useOpenPanel } from '@/hooks/use-open-panel';
 import { useMorningGreeting } from '@/hooks/use-morning-greeting';
 import { useTaskStore } from '@/stores/task-store';
+import { useScheduleStore } from '@/stores/schedule-store';
 import { useGoalStore } from '@/stores/goal-store';
 import { useHabitStore } from '@/stores/habit-store';
 import { useAuthStore } from '@/stores/auth-store';
@@ -271,13 +272,15 @@ export default function PlannerScreen() {
     [currentMonday, sundayDate],
   );
 
+  // Перегруз дня: «Подтвердить» сдвинул график → перечитать неделю.
+  const scheduleRevision = useScheduleStore((s) => s.revision);
   useEffect(() => {
     fetchTasks(undefined, weekStartStr);
     fetchWeeklyGoals(weekStartStr);
     fetchHabits();
     // habit-day: отметки недели с сервера (голос/чат/другое устройство).
     fetchLogs(weekStartStr, formatDate(sundayDate));
-  }, [weekStartStr, sundayDate, fetchTasks, fetchWeeklyGoals, fetchHabits, fetchLogs]);
+  }, [weekStartStr, sundayDate, fetchTasks, fetchWeeklyGoals, fetchHabits, fetchLogs, scheduleRevision]);
 
   useEffect(() => {
     fetchJournalEntry(todayStr);

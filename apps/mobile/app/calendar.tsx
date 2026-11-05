@@ -9,6 +9,7 @@ import { useColors } from '@/hooks/use-colors';
 import { getMonthKey, RU_MONTHS } from '@/utils/dates';
 import { useTaskStore } from '@/stores/task-store';
 import { useEventStore } from '@/stores/event-store';
+import { useScheduleStore } from '@/stores/schedule-store';
 import { MonthGrid } from '@/components/calendar/month-grid';
 import { DayDetailSheet } from '@/components/calendar/day-detail-sheet';
 import { computeDayStats } from '@/components/calendar/calendar-logic';
@@ -24,6 +25,8 @@ export default function CalendarScreen() {
   const isLoadingTasks = useTaskStore((s) => s.isLoading);
   const events = useEventStore((s) => s.events);
   const fetchEvents = useEventStore((s) => s.fetchEvents);
+  // Перегруз дня: «Подтвердить» сдвинул график → перечитать месяц.
+  const scheduleRevision = useScheduleStore((s) => s.revision);
 
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -32,7 +35,7 @@ export default function CalendarScreen() {
   useEffect(() => {
     fetchTasks(undefined, undefined, monthKey).catch(() => {});
     fetchEvents({ month: monthKey }).catch(() => {});
-  }, [monthKey, fetchTasks, fetchEvents]);
+  }, [monthKey, fetchTasks, fetchEvents, scheduleRevision]);
 
   const dayStats = useMemo(() => computeDayStats(tasks), [tasks]);
   const eventDays = useMemo(() => new Set(events.map((e) => e.date)), [events]);

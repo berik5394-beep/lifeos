@@ -416,6 +416,12 @@ export async function proposeReschedule(
       }
     }
     if (staged) await setPendingAction(userId, RESCHEDULE_ACTION, { moves: plan.moves }, text);
+    // Из карточки (не из хода чата): кладём предложение в историю чата —
+    // робот показывает его облачком, а «да» в чате идёт к тому, что юзер видел
+    // (как нудж goal-slot). Из чата ход сам сохранит ответ с этим текстом.
+    if (opts.fromCard) {
+      await prisma.chatMessage.create({ data: { userId, role: 'assistant', content: text } }).catch(() => {});
+    }
     return { text, moves: staged ? plan.moves : [], staged };
   } catch (err) {
     console.warn('[reschedule] non-fatal:', err instanceof Error ? err.message : err);

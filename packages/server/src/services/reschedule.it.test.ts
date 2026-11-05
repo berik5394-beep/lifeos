@@ -76,7 +76,7 @@ describe('перегруз дня → предложение сдвинуть г
   });
 
   it('POST /tasks → proposal в ответе; «Подтвердить» двигает; повторный confirm → 409', async () => {
-    const { mail, bank, headers } = await overloadedTomorrow('rest');
+    const { userId, mail, bank, headers } = await overloadedTomorrow('rest');
     const res = await app.inject({
       method: 'POST',
       url: '/tasks',
@@ -87,6 +87,9 @@ describe('перегруз дня → предложение сдвинуть г
     const body = res.json() as { id: string; proposal?: { text: string; staged: boolean } };
     expect(body.proposal?.staged).toBe(true);
     expect(body.proposal?.text).toContain('Подтвердить перенос?');
+    // предложение из карточки — в истории чата (облачко робота, контекст для «да»)
+    const last = await prisma.chatMessage.findFirst({ where: { userId }, orderBy: { createdAt: 'desc' } });
+    expect(last).toMatchObject({ role: 'assistant', content: body.proposal?.text });
 
     const ok = await confirm(headers);
     expect(ok.statusCode).toBe(200);
@@ -243,6 +246,17 @@ describe('этап 2: встречи съедают время дня', () => {
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().proposal).toMatchObject({ staged: true });
+
+    // импорт календаря телефона — без предложений (не спамим чат пачкой)
+    const imp = await freeTomorrow('ev-import');
+    const imported = await app.inject({
+      method: 'POST',
+      url: '/events',
+      headers: imp.headers,
+      payload: { title: 'Из телефона', date: tomorrow, startTime: '09:00', endTime: '19:30', source: 'imported' },
+    });
+    expect(imported.json().proposal).toBeUndefined();
+    expect(await prisma.chatMessage.count({ where: { userId: imp.userId } })).toBe(0);
 
     const b = await freeTomorrow('ev-put');
     const ev = await app.inject({

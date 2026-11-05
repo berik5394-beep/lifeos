@@ -3,6 +3,7 @@ import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { confirmPendingVoiceAction, isConfirmable, type PendingActionInfo } from '@/services/voice-followup';
 import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
+import { useScheduleStore, RESCHEDULE_ACTION, type RescheduleProposal } from '@/stores/schedule-store';
 
 export interface ChatAction {
   type: string;
@@ -20,6 +21,8 @@ export interface ChatMessage {
   emotion?: RobotEmotion;
   /** «Открой задачи» → ключ панели, которую экран откроет (Часть 3). */
   openPanel?: string | null;
+  /** 'proposal' — предложение сдвинуть график после сохранения в карточке. */
+  kind?: 'proposal';
   createdAt: string;
 }
 
@@ -41,6 +44,8 @@ interface ChatState {
   clearHistory: () => Promise<void>;
   executeAction: (action: ChatAction) => Promise<void>;
   confirmPendingAction: (messageId: string, confirm: boolean) => Promise<void>;
+  /** Перегруз дня: предложение сервера из карточки → реплика робота (+ кнопки, если ждёт подтверждения). */
+  showProposal: (proposal: RescheduleProposal) => void;
 }
 
 let _msgSeq = 0;
@@ -135,7 +140,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         : messages.length >= 20;
 
       set((state) => {
-        const reversed = messages.reverse();
+        // Стор хранит НОВЫЕ первыми ([0] — последний ответ: облачко робота).
+        // Сервер отдаёт новые первыми, а прежний .reverse() переворачивал в
+        // старые-первыми. Сортируем по времени — верно при любом порядке сервера.
+        const reversed = [...messages].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         if (offset === 0) {
           // Шторка «История» открывается много раз (Часть 5) и каждый раз
           // перечитывает сервер. Серверные строки без кнопок подтверждения/эмоции
@@ -182,12 +190,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: state.messages.map((m) => (m.id === messageId ? { ...m, pendingAction: null } : m)),
     }));
     try {
-      const res = await confirmPendingVoiceAction(confirm);
+      const res = await confirmPendingVoiceAction(confirm, pending.action);
+      // График сдвинут → открытые экраны задач/календаря перечитают данные.
+      if (confirm && pending.action === RESCHEDULE_ACTION && res.intent === RESCHEDULE_ACTION) {
+        useScheduleStore.getState().bump();
+      }
       const reply: ChatMessage = {
         id: uniqueId('assistant'),
         role: 'assistant',
         content: res.message,
         emotion: res.emotion,
+        // Ответ на предложение перегруза — тоже виден поверх открытой карточки.
+        ...(target?.kind ? { kind: target.kind } : {}),
         createdAt: new Date().toISOString(),
       };
       set((state) => ({ messages: [reply, ...state.messages] }));
@@ -205,6 +219,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
         ],
       }));
     }
+  },
+
+  showProposal: (proposal: RescheduleProposal) => {
+    const message: ChatMessage = {
+      id: uniqueId('proposal'),
+      role: 'assistant',
+      content: proposal.text,
+      kind: 'proposal',
+      emotion: 'worried',
+      pendingAction: proposal.staged ? { action: RESCHEDULE_ACTION, input: {} } : null,
+      createdAt: new Date().toISOString(),
+    };
+    set((state) => ({
+      // Старые кнопки снимаем: на сервере ожидает только одно (последнее) предложение.
+      messages: [message, ...state.messages.map((m) => (m.pendingAction && proposal.staged ? { ...m, pendingAction: null } : m))],
+    }));
   },
 
   executeAction: async (action: ChatAction) => {

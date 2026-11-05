@@ -53,12 +53,14 @@ export function planVoiceFollowUp(res: ProcessResponse): VoiceFollowUp {
 /** «Записать» / «Отмена» → сервер исполняет (или отменяет) отложенное действие. */
 export async function confirmPendingVoiceAction(
   confirm: boolean,
+  /** Какое действие подтверждает кнопка — сервер вернёт 409, если ожидает другое. */
+  action?: string,
 ): Promise<{ message: string; intent: string | null; emotion: RobotEmotion }> {
   const token = useAuthStore.getState().token;
   try {
     const res = await api.post<{ message: string; intent?: string; emotion?: string }>(
       '/voice/confirm-action',
-      { confirm },
+      action ? { confirm, action } : { confirm },
       token || undefined,
     );
     return { message: res.message, intent: res.intent ?? null, emotion: normalizeEmotion(res.emotion) };

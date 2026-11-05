@@ -92,6 +92,8 @@ export const RoomPage = memo(function RoomPage() {
   const [plan, setPlan] = useState<SpeechLayout | null>(null);
   const [newItemId, setNewItemId] = useState<string | null>(null);
   const [scene, setScene] = useState<ToolScene | null>(null);
+  /** Когда открыли инструмент: ответы робота ПОСЛЕ этого видны поверх карточки. */
+  const sceneOpenedAt = useRef(0);
   const [explain, setExplain] = useState<string | null>(null);
   const [mirror, setMirror] = useState(false);
   const [typing, setTyping] = useState(false);
@@ -259,6 +261,7 @@ export const RoomPage = memo(function RoomPage() {
       const stand = robotStandPoint(source, size.w, size.h);
       const { dx, dy } = robotShift(stand, size.w, size.h);
       setScene({ tool, from, sourceId: source?.id ?? null, phase: 'walking', closing: false });
+      sceneOpenedAt.current = Date.now();
       setMirror(!!source && source.x * size.w < stand.x);
       moveRobot(dx, dy, source ? 0.8 : 1, source ? WALK_MS : 120);
       hapticLight();
@@ -445,6 +448,16 @@ export const RoomPage = memo(function RoomPage() {
   const pointing = zoomed || scene?.phase === 'fetching' || scene?.phase === 'open';
   const showReply =
     introStep == null && !scene && !zoomed && (chatLoading || (reply && dismissedReply !== reply.id));
+  // Пока открыта карточка: ответ робота, пришедший уже при ней (в т.ч.
+  // предложение сдвинуть график после сохранения задачи), — над маленьким
+  // роботом, с кнопками. Раньше ответ на «Скажи роботу…» был не виден до закрытия.
+  const sceneReply =
+    reply &&
+    dismissedReply !== reply.id &&
+    ((reply.kind === 'proposal' && !!reply.pendingAction) || new Date(reply.createdAt).getTime() >= sceneOpenedAt.current)
+      ? reply
+      : undefined;
+  const showProposal = !!scene && scene.phase === 'open' && !scene.closing && (chatLoading || !!sceneReply);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -521,7 +534,19 @@ export const RoomPage = memo(function RoomPage() {
               <RobotSpeechBubble text={thanks} tail={plan.tail} />
             </View>
           )}
-          {scene?.phase === 'open' && !scene.closing && (
+          {showProposal && (
+            <View style={styles.bubbleProposal}>
+              <ChatReplyBubble
+                text={sceneReply?.content ?? ''}
+                thinking={chatLoading}
+                tail="bottom"
+                confirm={!chatLoading && !!sceneReply?.pendingAction}
+                onConfirm={onConfirm}
+                onDismiss={sceneReply ? () => setDismissedReply(sceneReply.id) : undefined}
+              />
+            </View>
+          )}
+          {scene?.phase === 'open' && !scene.closing && !showProposal && (
             <View style={styles.bubbleExplain} pointerEvents="none">
               {explain ? <RobotSpeechBubble text={explain} tail="left" /> : <ChatReplyBubble text="" thinking tail="left" />}
             </View>
@@ -634,6 +659,8 @@ function createStyles(c: ReturnType<typeof useColors>) {
     bubbleExplain: { position: 'absolute', left: 64, right: -6, bottom: 2, maxHeight: ROBOT_STRIP_H },
     // Ответ робота в разговоре — над ним, хвостик вниз.
     bubbleReply: { position: 'absolute', left: 0, right: 0 },
+    // Предложение перегруза поверх низа карточки, хвостик к маленькому роботу.
+    bubbleProposal: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: ROBOT_STRIP_H - 8 },
     mirror: { transform: [{ scaleX: -1 }] },
     topLeft: { position: 'absolute', top: spacing.sm, left: spacing.sm, flexDirection: 'row', gap: spacing.sm },
     topRight: { position: 'absolute', top: spacing.sm, right: spacing.sm },

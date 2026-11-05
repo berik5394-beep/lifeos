@@ -34,7 +34,7 @@ describe('chat-store: подтверждение денежных действи
     const msgs = useChatStore.getState().messages;
     expect(msgs[0].content).toBe('Записал расход 3000₸');
     expect(msgs.find((m) => m.id === askId)?.pendingAction).toBeNull();
-    expect(mockApi.post).toHaveBeenLastCalledWith('/voice/confirm-action', { confirm: true }, 'test-token-123');
+    expect(mockApi.post).toHaveBeenLastCalledWith('/voice/confirm-action', { confirm: true, action: 'add_expense' }, 'test-token-123');
   });
 
   it('слот-вопрос («На что потратил?») — без кнопок (pendingAction не сохраняется)', async () => {

@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
+import { proposeReschedule } from '../services/reschedule.js';
 
 const quickAddSchema = z.object({
   // Quick-add — короткие фразы для парсинга в задачу. 500 chars с запасом.
@@ -90,10 +91,13 @@ export async function quickAddRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
+      // Перегруз дня (флаг): быстрое добавление — тот же движок, что POST /tasks.
+      const proposal = await proposeReschedule(request.userId, parsed.date, task.id, new Date(), { fromCard: true });
       return reply.status(201).send({
         task,
         parsed,
         confidence: parsed.confidence,
+        ...(proposal ? { proposal: { text: proposal.text, staged: proposal.staged } } : {}),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка парсинга';

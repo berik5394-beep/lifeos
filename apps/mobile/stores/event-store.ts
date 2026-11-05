@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { useChatStore } from '@/stores/chat-store';
+import type { RescheduleProposal } from '@/stores/schedule-store';
 
 export interface CalendarEvent {
   id: string;
@@ -83,19 +85,28 @@ export const useEventStore = create<EventState>((set) => ({
     const token = useAuthStore.getState().token;
     if (!token) throw new Error('Не авторизован');
 
-    const response = await api.post<CreateEventResponse>('/events', data, token);
-    set((state) => ({ events: [response.event, ...state.events] }));
-    return response;
+    // Сервер отдаёт саму встречу (+ conflicts/proposal), а не { event } —
+    // раньше в список попадал undefined.
+    const { conflicts = [], proposal, ...event } = await api.post<
+      CalendarEvent & { conflicts?: CalendarEvent[]; proposal?: RescheduleProposal }
+    >('/events', data, token);
+    set((state) => ({ events: [event, ...state.events] }));
+    // Перегруз дня: встреча съела время → робот предлагает сдвинуть задачи.
+    if (proposal) useChatStore.getState().showProposal(proposal);
+    return { event, conflicts };
   },
 
   updateEvent: async (id, data) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    const updated = await api.put<CalendarEvent>(`/events/${id}`, data, token);
+    const { proposal, conflicts: _conflicts, ...updated } = await api.put<
+      CalendarEvent & { conflicts?: CalendarEvent[]; proposal?: RescheduleProposal }
+    >(`/events/${id}`, data, token);
     set((state) => ({
       events: state.events.map((e) => (e.id === id ? updated : e)),
     }));
+    if (proposal) useChatStore.getState().showProposal(proposal);
   },
 
   deleteEvent: async (id) => {

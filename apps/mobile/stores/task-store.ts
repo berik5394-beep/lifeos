@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { useChatStore } from '@/stores/chat-store';
+import type { RescheduleProposal } from '@/stores/schedule-store';
 import { persistStoreData, restoreStoreData } from '@/services/store-persist';
 
 interface TaskTag {
@@ -95,8 +97,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!token) return;
 
     try {
-      const task = await api.post<Task>('/tasks', data, token);
+      const { proposal, ...task } = await api.post<Task & { proposal?: RescheduleProposal }>('/tasks', data, token);
       set((state) => ({ tasks: [...state.tasks, task] }));
+      // Перегруз дня: робот предлагает сдвинуть график (облачко + «Подтвердить»).
+      if (proposal) useChatStore.getState().showProposal(proposal);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Ошибка при создании задачи';
       throw new Error(msg);
@@ -108,10 +112,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!token) return;
 
     try {
-      const updated = await api.put<Task>(`/tasks/${id}`, data, token);
+      const { proposal, ...updated } = await api.put<Task & { proposal?: RescheduleProposal }>(`/tasks/${id}`, data, token);
       set((state) => ({
         tasks: state.tasks.map((t) => (t.id === id ? updated : t)),
       }));
+      if (proposal) useChatStore.getState().showProposal(proposal);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Ошибка при обновлении задачи';
       throw new Error(msg);
@@ -167,8 +172,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!token) return;
 
     try {
-      const task = await api.post<Task>('/tasks/quick-add', { text }, token);
-      set((state) => ({ tasks: [...state.tasks, task] }));
+      // Сервер отдаёт { task, parsed, confidence, proposal? } — раньше в список
+      // попадала вся обёртка вместо задачи.
+      const res = await api.post<{ task: Task; proposal?: RescheduleProposal }>('/tasks/quick-add', { text }, token);
+      // Офлайн/очередь: api отдаёт {} — задачи ещё нет, в список не кладём.
+      if (res.task) set((state) => ({ tasks: [...state.tasks, res.task] }));
+      if (res.proposal) useChatStore.getState().showProposal(res.proposal);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Ошибка при быстром добавлении';
       throw new Error(msg);
