@@ -16,6 +16,7 @@ import HomeScreen from '@/screens/home';
 import ChatScreen from '@/screens/chat';
 import DashboardScreen from '@/screens/dashboard';
 import TasksScreen from '@/screens/tasks';
+import DealsScreen from '@/screens/deals';
 import HabitsScreen from '@/screens/habits';
 import GoalsScreen from '@/screens/goals';
 import FinanceScreen from '@/screens/finance';
@@ -230,6 +231,7 @@ export default function Navigation() {
             {/* Панели-инструменты: нативная шторка поверх дома (робот за ней). */}
             <RootStack.Screen name="Dashboard" component={DashboardScreen} options={{ ...panelOptions, title: 'Сегодня', headerShown: false }} />
             <RootStack.Screen name="Tasks" component={TasksScreen} options={{ ...panelOptions, title: 'Задачи' }} />
+            <RootStack.Screen name="Deals" component={DealsScreen} options={{ ...panelOptions, title: 'Сделки' }} />
             <RootStack.Screen name="Habits" component={HabitsScreen} options={{ ...panelOptions, title: 'Привычки' }} />
             {showGoals && <RootStack.Screen name="Goals" component={GoalsScreen} options={{ ...panelOptions, title: 'Цели' }} />}
             {showFinance && <RootStack.Screen name="Finance" component={FinanceScreen} options={{ ...panelOptions, title: 'Финансы' }} />}

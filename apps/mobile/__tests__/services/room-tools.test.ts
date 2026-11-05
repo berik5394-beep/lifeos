@@ -4,9 +4,9 @@ import { ROOM_CATALOG, type RoomItem } from '@/services/room-catalog';
 const item = (id: string, itemKey: RoomItem['itemKey'], x: number, y: number): RoomItem => ({ id, itemKey, x, y });
 
 describe('room-tools — инструменты живут в мебели', () => {
-  it('раскладка Berik: шкаф — календарь и цели, стол — задачи, тумбочка — дневник и привычки, комод — финансы', () => {
+  it('раскладка Berik: шкаф — календарь и цели, стол — задачи и сделки, тумбочка — дневник и привычки, комод — финансы', () => {
     expect(toolsInItem('wardrobe')).toEqual(['goals', 'calendar']);
-    expect(toolsInItem('desk')).toEqual(['tasks']);
+    expect(toolsInItem('desk')).toEqual(['tasks', 'deals']);
     expect(toolsInItem('nightstand')).toEqual(['habits', 'journal']);
     expect(toolsInItem('dresser')).toEqual(['finance']);
     expect(toolsInItem('clock')).toEqual(['today']);
@@ -25,6 +25,7 @@ describe('room-tools — инструменты живут в мебели', () 
   });
   it('isToolKey', () => {
     expect(isToolKey('tasks')).toBe(true);
+    expect(isToolKey('deals')).toBe(true);
     expect(isToolKey('rocket')).toBe(false);
     expect(isToolKey(null)).toBe(false);
   });

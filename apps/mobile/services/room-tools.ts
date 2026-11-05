@@ -5,7 +5,7 @@ import type { RoomItem, RoomItemKey } from '@/services/room-catalog';
  * предмету и достаёт инструмент; нет такого предмета — достаёт «из воздуха».
  * Чистые функции (jest).
  */
-export const TOOL_KEYS = ['today', 'tasks', 'habits', 'goals', 'finance', 'calendar', 'journal'] as const;
+export const TOOL_KEYS = ['today', 'tasks', 'deals', 'habits', 'goals', 'finance', 'calendar', 'journal'] as const;
 export type ToolKey = (typeof TOOL_KEYS)[number];
 
 /** Где лежит инструмент (раскладка Berik). */
@@ -13,6 +13,7 @@ export const TOOL_HOME: Record<ToolKey, RoomItemKey> = {
   calendar: 'wardrobe',
   goals: 'wardrobe',
   tasks: 'desk',
+  deals: 'desk',
   journal: 'nightstand',
   habits: 'nightstand',
   finance: 'dresser',

@@ -11,11 +11,19 @@ export interface PanelDef {
   icon: string;
   /** Фича ui-store, без которой панель скрыта (уровень сложности интерфейса). */
   feature?: string;
+  /** Панель есть, только если сервер её отдаёт (флаг выключен → 404 → панели нет). */
+  serverGated?: boolean;
+}
+
+/** Что сказал сервер о функциях за флагами (deal-store: GET /deals ответил 404 → false). */
+export interface ServerAvailability {
+  dealsAvailable?: boolean;
 }
 
 export const PANELS: readonly PanelDef[] = [
   { key: 'today', route: 'Dashboard', label: 'Сегодня', icon: 'sun' },
   { key: 'tasks', route: 'Tasks', label: 'Задачи', icon: 'check-square' },
+  { key: 'deals', route: 'Deals', label: 'Сделки', icon: 'briefcase', serverGated: true },
   { key: 'habits', route: 'Habits', label: 'Привычки', icon: 'repeat' },
   { key: 'goals', route: 'Goals', label: 'Цели', icon: 'target', feature: 'goals_tab' },
   { key: 'finance', route: 'Finance', label: 'Финансы', icon: 'dollar-sign', feature: 'finance_tab' },
@@ -30,12 +38,18 @@ export const PANELS: readonly PanelDef[] = [
 export function panelRoute(
   key: string | null | undefined,
   isFeatureVisible: (feature: string) => boolean = () => true,
+  server: ServerAvailability = {},
 ): string | null {
   const panel = PANELS.find((p) => p.key === key);
-  if (!panel || (panel.feature && !isFeatureVisible(panel.feature))) return null;
+  if (!panel || !isPanelVisible(panel, isFeatureVisible, server)) return null;
   return panel.route;
 }
 
-export function visiblePanels(isFeatureVisible: (feature: string) => boolean): PanelDef[] {
-  return PANELS.filter((p) => !p.feature || isFeatureVisible(p.feature));
+function isPanelVisible(p: PanelDef, isFeatureVisible: (feature: string) => boolean, server: ServerAvailability): boolean {
+  if (p.feature && !isFeatureVisible(p.feature)) return false;
+  return !p.serverGated || server.dealsAvailable !== false;
+}
+
+export function visiblePanels(isFeatureVisible: (feature: string) => boolean, server: ServerAvailability = {}): PanelDef[] {
+  return PANELS.filter((p) => isPanelVisible(p, isFeatureVisible, server));
 }

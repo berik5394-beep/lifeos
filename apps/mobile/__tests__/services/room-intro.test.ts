@@ -15,7 +15,9 @@ describe('room-intro — знакомство и значки на мебели'
   });
   it('значок на мебели: что лежит внутри; скрытые инструменты не показываем', () => {
     expect(furnitureBadge('wardrobe')).toBe('🎯📅');
-    expect(furnitureBadge('desk')).toBe('✅');
+    expect(furnitureBadge('desk')).toBe('✅💼');
+    // сделки выключены на сервере → на столе только задачи
+    expect(furnitureBadge('desk', ['tasks'])).toBe('✅');
     expect(furnitureBadge('sofa')).toBe('');
     expect(furnitureBadge('wardrobe', ['calendar'])).toBe('📅');
   });

@@ -32,6 +32,7 @@ import { useRoomToolStore } from '@/stores/room-tool-store';
 import { useChatStore } from '@/stores/chat-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { useUIStore } from '@/stores/ui-store';
+import { useDealStore } from '@/stores/deal-store';
 import { api } from '@/services/api';
 import { storage } from '@/services/storage';
 import { thanksFor } from '@/services/robot-thanks';
@@ -151,7 +152,13 @@ export const RoomPage = memo(function RoomPage() {
   const sendMessage = useChatStore((s) => s.sendMessage);
   const confirmPendingAction = useChatStore((s) => s.confirmPendingAction);
   const isFeatureVisible = useUIStore((s) => s.isFeatureVisible);
-  const tools = useMemo(() => visiblePanels(isFeatureVisible), [isFeatureVisible]);
+  // Сделки: сервер ответил 404 (флаг выключен) → инструмента на столе нет.
+  const dealsAvailable = useDealStore((s) => s.available);
+  const fetchDeals = useDealStore((s) => s.fetch);
+  useEffect(() => {
+    void fetchDeals();
+  }, [fetchDeals]);
+  const tools = useMemo(() => visiblePanels(isFeatureVisible, { dealsAvailable }), [isFeatureVisible, dealsAvailable]);
   const visibleToolKeys = useMemo(() => tools.map((t) => t.key), [tools]);
   const toolSeq = useRoomToolStore((s) => s.seq);
   const {

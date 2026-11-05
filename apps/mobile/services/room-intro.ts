@@ -45,6 +45,7 @@ export function markIntroDone(): void {
 export const TOOL_ICON: Record<ToolKey, string> = {
   today: '☀️',
   tasks: '✅',
+  deals: '💼',
   habits: '🔁',
   goals: '🎯',
   finance: '💰',

@@ -9,6 +9,7 @@ export type RootStackParamList = {
   Finance: undefined;
   Activity: undefined;
   Journal: undefined;
+  Deals: undefined;
   Settings: undefined;
   Integrations: undefined;
   Import: undefined;

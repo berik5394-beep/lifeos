@@ -27,6 +27,7 @@ import { ComicText } from '@/components/robot/comic-text';
 import { COMIC } from '@/constants/comic';
 import { useRoomToolStore } from '@/stores/room-tool-store';
 import { useUIStore } from '@/stores/ui-store';
+import { useDealStore } from '@/stores/deal-store';
 import { useColors } from '@/hooks/use-colors';
 import { hapticLight } from '@/services/haptics';
 import { spacing, fontSize, borderRadius } from '@/constants';
@@ -265,7 +266,8 @@ export default function ChatScreen() {
   // Инструменты спрятаны: кнопка раскрывает чипы панелей (шторок).
   const [toolsOpen, setToolsOpen] = useState(false);
   const isFeatureVisible = useUIStore((st) => st.isFeatureVisible);
-  const panels = useMemo(() => visiblePanels(isFeatureVisible), [isFeatureVisible]);
+  const dealsAvailable = useDealStore((st) => st.available);
+  const panels = useMemo(() => visiblePanels(isFeatureVisible, { dealsAvailable }), [isFeatureVisible, dealsAvailable]);
   // Часть 5: инструменты живут в комнате — закрываем историю, робот достаёт нужный.
   const openPanel = useCallback(
     (key: string) => {
@@ -281,11 +283,11 @@ export default function ChatScreen() {
   // Стартуем с текущего ответа: при пересоздании экрана старая панель не открывается заново.
   const openedFor = useRef<string | null>(latestAssistant?.id ?? null);
   useEffect(() => {
-    const route = panelRoute(latestAssistant?.openPanel, isFeatureVisible);
+    const route = panelRoute(latestAssistant?.openPanel, isFeatureVisible, { dealsAvailable });
     if (!latestAssistant || !route || openedFor.current === latestAssistant.id) return;
     openedFor.current = latestAssistant.id;
     openPanel(latestAssistant.openPanel as string);
-  }, [latestAssistant, openPanel, isFeatureVisible]);
+  }, [latestAssistant, openPanel, isFeatureVisible, dealsAvailable]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
