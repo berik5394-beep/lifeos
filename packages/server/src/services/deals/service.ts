@@ -9,6 +9,7 @@ import { formatDealsSection, describePlan, describeUpdated, describeWhichDeal, f
 import { computePortfolioPace } from '../savings-pace.js';
 import { withTimeout } from '../../lib/with-timeout.js';
 import { isV2DealsEnabled } from '../../lib/feature-flags.js';
+import { onDealWon } from '../coins.js';
 import type { CapacityItem } from '../capacity-fit.js';
 
 export const DEAL_INCOME_ACTION = 'record_deal_income';
@@ -86,6 +87,8 @@ export async function createDeal(
       },
     },
   });
+  // Монеты за выигрыш — в сервисе, чтобы любой путь (чат/REST/доход) их давал.
+  if (stage === 'won') await onDealWon(userId, deal.id, `${deal.personName} — ${deal.title}`, now);
   return { deal, taggedClient: tagged, step, incomeOffer: stage === 'won' && deal.amount != null };
 }
 
@@ -195,6 +198,8 @@ export async function updateDeal(
   if (deal.personEntityId) {
     await prisma.entity.update({ where: { id: deal.personEntityId }, data: { lastSeenAt: now } }).catch(() => {});
   }
+  // Монеты за выигрыш: идемпотентно по сделке (вернули в работу и снова выиграли — без новых).
+  if (stageChanged && deal.stage === 'won') await onDealWon(userId, deal.id, `${deal.personName} — ${deal.title}`, now);
   // Ревью I3: «выиграна» без суммы → назвали сумму позже → тоже предлагаем доход.
   const incomeOffer = deal.stage === 'won' && deal.amount != null && !deal.wonIncomeId && (stageChanged || amountChanged);
   return { deal, step, stageChanged, incomeOffer };

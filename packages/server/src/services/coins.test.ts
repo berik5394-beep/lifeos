@@ -16,5 +16,7 @@ describe('coins — монеты за дела', () => {
     expect(coinKey.task('t1')).toBe('task:t1');
     expect(coinKey.habit('h1', '2026-11-05')).toBe('habit:h1:2026-11-05');
     expect(coinKey.journal('2026-11-05')).toBe('journal:2026-11-05');
+    expect(coinKey.deal('d1')).toBe('deal:d1');
+    expect(COIN_REWARD.deal).toBe(50);
   });
 });

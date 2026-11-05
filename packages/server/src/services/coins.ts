@@ -14,6 +14,7 @@ export const COIN_REWARD = {
   journal: 5,
   day100: 30,
   start: 200,
+  deal: 50,
 } as const;
 
 export const DAILY_COIN_CAP = 300;
@@ -25,6 +26,7 @@ export const coinKey = {
   journal: (civilDate: string) => `journal:${civilDate}`,
   day100: (civilDate: string) => `day100:${civilDate}`,
   start: () => 'start',
+  deal: (dealId: string) => `deal:${dealId}`,
 };
 
 /** Сколько можно начислить сейчас с учётом лимита (чистая). */
@@ -131,3 +133,9 @@ export async function onJournalWritten(userId: string, now: Date = new Date()): 
   const today = localDateStr(await getUserTimezone(userId), now);
   await awardCoins(userId, coinKey.journal(today), COIN_REWARD.journal, 'Запись в дневнике', now);
 }
+
+/** Сделка выиграна → монеты один раз на сделку (повторный выигрыш — без новых). Не бросает. */
+export async function onDealWon(userId: string, dealId: string, label: string, now: Date = new Date()): Promise<number> {
+  return awardCoins(userId, coinKey.deal(dealId), COIN_REWARD.deal, `Сделка «${label}»`, now);
+}
+
