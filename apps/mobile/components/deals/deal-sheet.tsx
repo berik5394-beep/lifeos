@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
@@ -22,11 +22,19 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
   const { offer, record } = useDealIncome();
   const [events, setEvents] = useState<DealEvent[]>([]);
   const [busy, setBusy] = useState(false);
+  // Синхронный замок от двойного тапа: setBusy применится только к следующему рендеру.
+  const inFlight = useRef(false);
   // Причина проигрыша — кнопками в карточке: Alert на Android показывает не больше 3 кнопок.
   const [askReason, setAskReason] = useState(false);
 
   const dealId = deal?.id ?? null;
   const updatedAt = deal?.updatedAt ?? null;
+  // Другая сделка (или карточку закрыли) — замок снят, кнопки живые.
+  useEffect(() => {
+    inFlight.current = false;
+    setBusy(false);
+  }, [dealId]);
+
   useEffect(() => {
     let alive = true;
     setEvents([]);
@@ -41,33 +49,51 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
     };
   }, [dealId, updatedAt, fetchOne]);
 
+  const lock = useCallback((): boolean => {
+    if (inFlight.current) return false;
+    inFlight.current = true;
+    setBusy(true);
+    return true;
+  }, []);
+  const unlock = useCallback(() => {
+    inFlight.current = false;
+    setBusy(false);
+  }, []);
+  /** Конец действия с закрытием карточки (вопрос про доход тоже держит замок до ответа). */
+  const finishAndClose = useCallback(() => {
+    unlock();
+    onClose();
+  }, [unlock, onClose]);
+
   const onMove = useCallback(
     async (stage: DealStage, lostReason?: string) => {
-      if (!deal) return;
-      setBusy(true);
+      if (!deal || !lock()) return;
       try {
         const r = await moveStage(deal.id, stage, lostReason);
         if (r.incomeOffer && r.deal.amount != null) {
           // Карточка открыта, пока идёт вопрос про доход: Alert поверх закрывающейся модалки на iOS теряется.
-          offer(r.deal, onClose);
+          offer(r.deal, finishAndClose);
           return;
         }
-        onClose();
+        finishAndClose();
       } catch (err) {
+        unlock();
         Alert.alert('Не получилось', dealErrorText(err));
-      } finally {
-        setBusy(false);
       }
     },
-    [deal, moveStage, offer, onClose],
+    [deal, lock, unlock, moveStage, offer, finishAndClose],
   );
 
   const onLost = useCallback(() => setAskReason(true), []);
   const cancelLost = useCallback(() => setAskReason(false), []);
 
   const onRecord = useCallback(() => {
-    if (deal) record(deal, onClose);
-  }, [deal, record, onClose]);
+    if (deal && lock()) record(deal, finishAndClose);
+  }, [deal, lock, record, finishAndClose]);
+  // Пока идёт запрос — карточку не закрываем: ответ/ошибка придут к открытой карточке.
+  const requestClose = useCallback(() => {
+    if (!inFlight.current) onClose();
+  }, [onClose]);
 
   if (!deal) return null;
   const open = isOpenStage(deal.stage);
@@ -76,8 +102,8 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
   const back = !open ? reopenStage(deal, events) : null;
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Закрыть" />
+    <Modal visible transparent animationType="slide" onRequestClose={requestClose}>
+      <Pressable style={styles.backdrop} onPress={requestClose} disabled={busy} accessibilityLabel="Закрыть" />
       <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
         <Text style={styles.title}>{dealHead(deal)}</Text>
         <Text style={styles.meta}>

@@ -1,8 +1,9 @@
-import React, { memo, useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { Input } from '@/components/ui';
 import { FormSheet } from '@/components/deals/form-sheet';
 import { useMoneyField } from '@/hooks/use-money-field';
+import { useSaveGuard } from '@/hooks/use-save-guard';
 import { dealErrorText } from '@/hooks/use-deal-income';
 import { useDealStore } from '@/stores/deal-store';
 
@@ -19,7 +20,7 @@ export const PlanSheet = memo(function PlanSheet({
   const setPlan = useDealStore((s) => s.setPlan);
   const amount = useMoneyField();
   const { parsed, validate, reset: resetAmount } = amount;
-  const [saving, setSaving] = useState(false);
+  const { saving, guard } = useSaveGuard(visible);
 
   useEffect(() => {
     if (visible) resetAmount(current != null ? String(Math.round(current)) : '');
@@ -27,18 +28,17 @@ export const PlanSheet = memo(function PlanSheet({
 
   const value = parsed.ok ? parsed.value : null;
 
-  const onSave = useCallback(async () => {
+  const onSave = useCallback(() => {
     if (!validate() || value == null) return;
-    setSaving(true);
-    try {
-      await setPlan(value);
-      onClose();
-    } catch (err) {
-      Alert.alert('Не получилось', dealErrorText(err));
-    } finally {
-      setSaving(false);
-    }
-  }, [validate, value, setPlan, onClose]);
+    void guard(async () => {
+      try {
+        await setPlan(value);
+        onClose();
+      } catch (err) {
+        Alert.alert('Не получилось', dealErrorText(err));
+      }
+    });
+  }, [validate, value, guard, setPlan, onClose]);
 
   return (
     <FormSheet
@@ -47,7 +47,7 @@ export const PlanSheet = memo(function PlanSheet({
       saveLabel="Сохранить"
       canSave={amount.text.trim().length > 0}
       saving={saving}
-      onSave={() => void onSave()}
+      onSave={onSave}
       onClose={onClose}
     >
       <Input

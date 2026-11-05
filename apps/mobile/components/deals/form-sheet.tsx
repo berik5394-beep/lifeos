@@ -1,4 +1,4 @@
-import React, { memo, useMemo, type ReactNode } from 'react';
+import React, { memo, useCallback, useMemo, type ReactNode } from 'react';
 import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui';
@@ -6,7 +6,9 @@ import { useColors } from '@/hooks/use-colors';
 import { borderRadius, fontSize, spacing } from '@/constants';
 
 /**
- * Модалка-форма панели «Сделки». Форма прижата к ВЕРХУ экрана: клавиатура снизу
+ * Модалка-форма панели «Сделки». Пока сохраняем — не закрывается (ни фоном, ни «Отменой»,
+ * ни «назад» на Android): ошибка не прилетит алертом в уже закрытую форму.
+ * Форма прижата к ВЕРХУ экрана: клавиатура снизу
  * её не перекроет даже там, где отступ шторки игнорируется (баг чата).
  * KeyboardAvoidingView — страховка для длинной формы на маленьком экране.
  */
@@ -32,18 +34,21 @@ export const FormSheet = memo(function FormSheet({
   const c = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(c), [c]);
+  const requestClose = useCallback(() => {
+    if (!saving) onClose();
+  }, [saving, onClose]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={requestClose}>
       <KeyboardAvoidingView behavior="padding" style={styles.fill}>
-        <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Закрыть" />
+        <Pressable style={styles.backdrop} onPress={requestClose} disabled={saving} accessibilityLabel="Закрыть" />
         <View style={[styles.card, { marginTop: insets.top + spacing.lg }]}>
           <Text style={styles.title}>{title}</Text>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.body}>
             {children}
           </ScrollView>
           <View style={styles.actions}>
-            <Button title="Отмена" variant="outline" size="md" onPress={onClose} style={styles.action} />
+            <Button title="Отмена" variant="outline" size="md" onPress={requestClose} disabled={saving} style={styles.action} />
             <Button title={saveLabel} size="md" onPress={onSave} disabled={!canSave || saving} loading={saving} style={styles.action} />
           </View>
         </View>

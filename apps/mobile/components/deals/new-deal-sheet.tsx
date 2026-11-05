@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import { Input } from '@/components/ui';
 import { FormSheet } from '@/components/deals/form-sheet';
 import { useMoneyField } from '@/hooks/use-money-field';
+import { useSaveGuard } from '@/hooks/use-save-guard';
 import { dealErrorText } from '@/hooks/use-deal-income';
 import { useDealStore } from '@/stores/deal-store';
 
@@ -13,7 +14,7 @@ export const NewDealSheet = memo(function NewDealSheet({ visible, onClose }: { v
   const [title, setTitle] = useState('');
   const amount = useMoneyField();
   const { parsed, validate, reset: resetAmount } = amount;
-  const [saving, setSaving] = useState(false);
+  const { saving, guard } = useSaveGuard(visible);
 
   useEffect(() => {
     if (!visible) return;
@@ -24,19 +25,19 @@ export const NewDealSheet = memo(function NewDealSheet({ visible, onClose }: { v
 
   const canSave = personName.trim().length > 0;
 
-  const onSave = useCallback(async () => {
+  const onSave = useCallback(() => {
     // Ошибку суммы показываем по «Добавить», а не пока печатают.
     if (!canSave || !validate() || !parsed.ok) return;
-    setSaving(true);
-    try {
-      await create({ personName, title, amount: parsed.value });
-      onClose();
-    } catch (err) {
-      Alert.alert('Не получилось', dealErrorText(err));
-    } finally {
-      setSaving(false);
-    }
-  }, [canSave, validate, parsed, create, personName, title, onClose]);
+    const value = parsed.value;
+    void guard(async () => {
+      try {
+        await create({ personName, title, amount: value });
+        onClose();
+      } catch (err) {
+        Alert.alert('Не получилось', dealErrorText(err));
+      }
+    });
+  }, [canSave, validate, parsed, guard, create, personName, title, onClose]);
 
   return (
     <FormSheet
@@ -45,7 +46,7 @@ export const NewDealSheet = memo(function NewDealSheet({ visible, onClose }: { v
       saveLabel="Добавить"
       canSave={canSave}
       saving={saving}
-      onSave={() => void onSave()}
+      onSave={onSave}
       onClose={onClose}
     >
       <Input
