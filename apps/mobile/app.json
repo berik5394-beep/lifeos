@@ -15,24 +15,53 @@
       "backgroundColor": "#0F172A"
     },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.lifeos.app",
+      "supportsTablet": false,
+      "bundleIdentifier": "kz.lifeos.app",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "LifeOS использует микрофон для голосового ввода задач, привычек и общения с AI-помощником",
         "NSSpeechRecognitionUsageDescription": "LifeOS использует распознавание речи для голосовых команд",
         "NSCameraUsageDescription": "LifeOS использует камеру для сканирования расписания и заметок",
         "NSPhotoLibraryUsageDescription": "LifeOS использует фото для распознавания расписаний и заметок",
         "UIBackgroundModes": [
-          "fetch",
-          "processing",
           "remote-notification"
         ],
         "NSContactsUsageDescription": "LifeOS использует контакты для голосовых команд",
         "NSCalendarsUsageDescription": "LifeOS синхронизирует события с вашим календарём",
         "NSCalendarsFullAccessUsageDescription": "LifeOS синхронизирует события с вашим календарём для умных напоминаний"
       },
-      "backgroundFetch": {
-        "minimumInterval": 900
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "CA92.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "C617.1",
+              "0A2A.1",
+              "3B52.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategorySystemBootTime",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "35F9.1"
+            ]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryDiskSpace",
+            "NSPrivacyAccessedAPITypeReasons": [
+              "E174.1",
+              "85F4.1"
+            ]
+          }
+        ]
       }
     },
     "android": {
@@ -41,7 +70,7 @@
         "backgroundColor": "#0F172A"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.lifeos.app",
+      "package": "kz.lifeos.app",
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
@@ -84,8 +113,6 @@
           "color": "#6366F1"
         }
       ],
-      "expo-task-manager",
-      "expo-background-fetch",
       [
         "expo-contacts",
         {
