@@ -202,6 +202,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         role: 'assistant',
         content: res.message,
         emotion: res.emotion,
+        // Подтверждение поставило новый вопрос («Записать ещё раз?») → под ним те же
+        // кнопки; слот-вопрос (ответ словами) — без кнопок, как у обычных ответов.
+        pendingAction: isConfirmable(res.pendingAction) ? res.pendingAction : null,
         // Ответ на предложение перегруза — тоже виден поверх открытой карточки.
         ...(target?.kind ? { kind: target.kind } : {}),
         createdAt: new Date().toISOString(),

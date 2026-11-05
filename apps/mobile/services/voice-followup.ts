@@ -50,24 +50,47 @@ export function planVoiceFollowUp(res: ProcessResponse): VoiceFollowUp {
   return { kind: 'done' };
 }
 
+export interface ConfirmResult {
+  message: string;
+  intent: string | null;
+  emotion: RobotEmotion;
+  /** Новый вопрос после подтверждения (страховка «уже записан — ещё раз?»), иначе null. */
+  pendingAction: PendingActionInfo | null;
+  confirmationText: string | null;
+}
+
 /** «Записать» / «Отмена» → сервер исполняет (или отменяет) отложенное действие. */
 export async function confirmPendingVoiceAction(
   confirm: boolean,
   /** Какое действие подтверждает кнопка — сервер вернёт 409, если ожидает другое. */
   action?: string,
-): Promise<{ message: string; intent: string | null; emotion: RobotEmotion }> {
+): Promise<ConfirmResult> {
   const token = useAuthStore.getState().token;
   try {
-    const res = await api.post<{ message: string; intent?: string; emotion?: string }>(
+    const res = await api.post<{
+      message: string;
+      intent?: string;
+      emotion?: string;
+      done?: boolean;
+      pendingAction?: PendingActionInfo | null;
+      confirmationText?: string | null;
+    }>(
       '/voice/confirm-action',
       action ? { confirm, action } : { confirm },
       token || undefined,
     );
-    return { message: res.message, intent: res.intent ?? null, emotion: normalizeEmotion(res.emotion) };
+    return {
+      message: res.message,
+      intent: res.intent ?? null,
+      emotion: normalizeEmotion(res.emotion),
+      // Подтверждение поставило новый вопрос («Записать ещё раз?») — done:false + его pending.
+      pendingAction: res.done === false && res.pendingAction ? res.pendingAction : null,
+      confirmationText: res.confirmationText ?? null,
+    };
   } catch (err) {
     // ApiError несёт status; duck-typing — в тестах модуль api замокан целиком.
     if ((err as { status?: number }).status === 409) {
-      return { message: STALE_TEXT, intent: null, emotion: 'worried' };
+      return { message: STALE_TEXT, intent: null, emotion: 'worried', pendingAction: null, confirmationText: null };
     }
     throw err;
   }

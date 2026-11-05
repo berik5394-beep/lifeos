@@ -44,7 +44,7 @@ describe('confirmPendingVoiceAction', () => {
   beforeEach(() => jest.clearAllMocks());
   it('200 → текст и интент сервера, шлёт confirm на /voice/confirm-action', async () => {
     mockApi.post.mockResolvedValueOnce({ message: 'Записал расход 3000₸', intent: 'add_expense', done: true, emotion: 'happy' });
-    await expect(confirmPendingVoiceAction(true)).resolves.toEqual({ message: 'Записал расход 3000₸', intent: 'add_expense', emotion: 'happy' });
+    await expect(confirmPendingVoiceAction(true)).resolves.toEqual({ message: 'Записал расход 3000₸', intent: 'add_expense', emotion: 'happy', pendingAction: null, confirmationText: null });
     expect(mockApi.post).toHaveBeenCalledWith('/voice/confirm-action', { confirm: true }, 'test-token-123');
   });
   it('409 → «устарело», не бросает', async () => {
@@ -53,7 +53,14 @@ describe('confirmPendingVoiceAction', () => {
       message: 'Нечего подтверждать — предложение устарело. Повтори запрос.',
       intent: null,
       emotion: 'worried',
+      pendingAction: null,
+      confirmationText: null,
     });
+  });
+  it('done:false + pendingAction → новый вопрос отдаётся (ревью-3 I6)', async () => {
+    const pa = { action: 'record_deal_income', input: { dealId: 'd1', force: true } };
+    mockApi.post.mockResolvedValueOnce({ message: 'Записать ещё раз?', intent: 'record_deal_income', done: false, pendingAction: pa, confirmationText: 'Записать ещё раз?' });
+    await expect(confirmPendingVoiceAction(true, 'record_deal_income')).resolves.toMatchObject({ pendingAction: pa, confirmationText: 'Записать ещё раз?' });
   });
   it('сеть упала → бросает (UI покажет ошибку)', async () => {
     mockApi.post.mockRejectedValueOnce(new Error('network'));
