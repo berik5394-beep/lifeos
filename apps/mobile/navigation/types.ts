@@ -1,7 +1,12 @@
 export type RootStackParamList = {
   Onboarding: undefined;
   Auth: undefined;
-  Tabs: undefined;
+  Home: undefined;
+  Dashboard: undefined;
+  Tasks: undefined;
+  Habits: undefined;
+  Goals: undefined;
+  Finance: undefined;
   Activity: undefined;
   Journal: undefined;
   Settings: undefined;
@@ -28,11 +33,3 @@ export type AuthStackParamList = {
   Register: undefined;
 };
 
-export type TabParamList = {
-  Chat: undefined;
-  Dashboard: undefined;
-  Tasks: undefined;
-  Habits: undefined;
-  Goals: undefined;
-  Finance: undefined;
-};

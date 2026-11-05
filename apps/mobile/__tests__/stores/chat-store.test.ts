@@ -101,4 +101,13 @@ describe('chat-store: подтверждение денежных действи
     await useChatStore.getState().sendMessage('что-то');
     expect(useChatStore.getState().messages[0].emotion).toBe('neutral');
   });
+
+  it('«открой задачи»: ответ несёт openPanel — экран откроет панель', async () => {
+    mockApi.post.mockResolvedValueOnce({ message: 'Открываю задачи', openPanel: 'tasks' });
+    await useChatStore.getState().sendMessage('открой задачи');
+    expect(useChatStore.getState().messages[0].openPanel).toBe('tasks');
+    mockApi.post.mockResolvedValueOnce({ message: 'Привет' });
+    await useChatStore.getState().sendMessage('привет');
+    expect(useChatStore.getState().messages[0].openPanel).toBeNull();
+  });
 });

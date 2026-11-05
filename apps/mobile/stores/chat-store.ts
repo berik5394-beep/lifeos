@@ -18,6 +18,8 @@ export interface ChatMessage {
   pendingAction?: PendingActionInfo | null;
   /** Эмоция робота на этот ответ (сервер, по фактам хода). */
   emotion?: RobotEmotion;
+  /** «Открой задачи» → ключ панели, которую экран откроет (Часть 3). */
+  openPanel?: string | null;
   createdAt: string;
 }
 
@@ -74,7 +76,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const data = await api.post<{ message: string; actions?: ChatAction[]; pendingAction?: PendingActionInfo | null; emotion?: string }>(
+      const data = await api.post<{ message: string; actions?: ChatAction[]; pendingAction?: PendingActionInfo | null; emotion?: string; openPanel?: string | null }>(
         '/voice/chat',
         { text, webSearch: webSearch ?? false },
         token,
@@ -88,6 +90,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // Слот-вопрос «На что потратил?» — без кнопок: юзер отвечает текстом.
         pendingAction: isConfirmable(data.pendingAction) ? data.pendingAction : null,
         emotion: normalizeEmotion(data.emotion),
+        openPanel: data.openPanel ?? null,
         createdAt: new Date().toISOString(),
       };
 

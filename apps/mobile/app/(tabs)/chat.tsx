@@ -10,14 +10,18 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Keyboard,
   type ListRenderItemInfo,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useChatStore, type ChatMessage, type ChatAction } from '@/stores/chat-store';
 import { useVoice } from '@/hooks/use-voice';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
 import { RobotAvatar } from '@/components/robot/robot-avatar';
+import { panelRoute, visiblePanels } from '@/services/panels';
+import { useUIStore } from '@/stores/ui-store';
 import { useColors } from '@/hooks/use-colors';
 import { hapticLight } from '@/services/haptics';
 import { spacing, fontSize, borderRadius } from '@/constants';
@@ -223,20 +227,86 @@ export default function ChatScreen() {
   const robotEmotion = isLoading ? 'thinking' : reacted;
   const robotAttention = isRecording || inputText.trim().length > 0 ? 'listening' : 'idle';
 
+  // Рабочий экран (Часть 3): робот крупно; при открытой клавиатуре — компактно.
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', () => setKeyboardUp(true));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardUp(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
+  // Инструменты спрятаны: кнопка раскрывает чипы панелей (шторок).
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const isFeatureVisible = useUIStore((st) => st.isFeatureVisible);
+  const panels = useMemo(() => visiblePanels(isFeatureVisible), [isFeatureVisible]);
+  const openPanel = useCallback(
+    (route: string) => {
+      hapticLight();
+      setToolsOpen(false);
+      navigation.navigate(route as never);
+    },
+    [navigation],
+  );
+
+  // «Открой задачи» → мозг присылает openPanel → открываем шторку (один раз на ответ).
+  const openedFor = useRef<string | null>(null);
+  useEffect(() => {
+    const route = panelRoute(latestAssistant?.openPanel);
+    if (!latestAssistant || !route || openedFor.current === latestAssistant.id) return;
+    openedFor.current = latestAssistant.id;
+    navigation.navigate(route as never);
+  }, [latestAssistant, navigation]);
+
   return (
+    <SafeAreaView style={styles.container} edges={['top']}>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <View style={styles.chatHeader}>
-        <View style={styles.chatHeaderLeft}>
-          <RobotAvatar emotion={robotEmotion} size={72} attention={robotAttention} />
-          <Text style={styles.chatTitle}>LifeOS</Text>
+        <Text style={styles.chatTitle}>LifeOS</Text>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.clearBtn} onPress={handleClearChat} activeOpacity={0.7} accessibilityLabel="Очистить чат">
+            <Feather name="trash-2" size={20} color={c.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.clearBtn}
+            onPress={() => navigation.navigate('Settings')}
+            activeOpacity={0.7}
+            accessibilityLabel="Настройки"
+          >
+            <Feather name="settings" size={20} color={c.textSecondary} />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.clearBtn} onPress={handleClearChat} activeOpacity={0.7}>
-          <Feather name="trash-2" size={20} color={c.textSecondary} />
+      </View>
+
+      <View style={styles.robotStage}>
+        <RobotAvatar emotion={robotEmotion} size={keyboardUp ? 84 : 180} attention={robotAttention} />
+      </View>
+
+      <View style={styles.toolsBar}>
+        <TouchableOpacity
+          style={[styles.toolsToggle, toolsOpen && styles.toolsToggleOpen]}
+          onPress={() => setToolsOpen((v) => !v)}
+          activeOpacity={0.7}
+          accessibilityLabel="Инструменты"
+        >
+          <Feather name="grid" size={16} color={c.text} />
+          <Text style={styles.toolsToggleText}>Инструменты</Text>
         </TouchableOpacity>
+        {toolsOpen && (
+          <View style={styles.toolsChips}>
+            {panels.map((p) => (
+              <TouchableOpacity key={p.key} style={styles.toolChip} onPress={() => openPanel(p.route)} activeOpacity={0.7}>
+                <Feather name={p.icon as never} size={14} color={c.primary} />
+                <Text style={styles.toolChipText}>{p.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       <FlatList
@@ -307,6 +377,7 @@ export default function ChatScreen() {
         </View>
       </View>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -522,10 +593,57 @@ function createStyles(c: C) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
-    chatHeaderLeft: {
+    headerActions: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
-      gap: spacing.sm,
+    },
+    robotStage: {
+      alignItems: 'center' as const,
+      paddingBottom: spacing.xs,
+    },
+    toolsBar: {
+      paddingHorizontal: spacing.md,
+      paddingBottom: spacing.sm,
+      alignItems: 'center' as const,
+    },
+    toolsToggle: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 6,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 6,
+      borderRadius: 16,
+      backgroundColor: c.surface,
+    },
+    toolsToggleOpen: {
+      backgroundColor: c.surfaceLight,
+    },
+    toolsToggleText: {
+      fontSize: fontSize.sm,
+      color: c.text,
+      fontWeight: '600' as const,
+    },
+    toolsChips: {
+      flexDirection: 'row' as const,
+      flexWrap: 'wrap' as const,
+      justifyContent: 'center' as const,
+      gap: spacing.xs,
+      marginTop: spacing.sm,
+    },
+    toolChip: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 4,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 6,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    toolChipText: {
+      fontSize: fontSize.sm,
+      color: c.text,
     },
     chatTitle: {
       fontSize: fontSize.xl,

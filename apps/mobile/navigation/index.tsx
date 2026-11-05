@@ -1,26 +1,23 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, TouchableOpacity } from 'react-native';
-import { NavigationContainer, DefaultTheme, useNavigation } from '@react-navigation/native';
+import { View } from 'react-native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Feather } from '@expo/vector-icons';
 import { storage } from '@/services/storage';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAppStore } from '@/stores/app-store';
-import { useNotifications } from '@/hooks/use-notifications';
 import { useThemeStore } from '@/stores/theme-store';
 import { useUIStore } from '@/stores/ui-store';
 import { initOfflineManager, networkMonitor, offlineQueue } from '@/services/offline-manager';
 import { api } from '@/services/api';
 import { setupVoiceAlarmListener } from '@/services/voice-alarm';
 
-// Tab screens
+// Робот-эпик, Часть 3: дом из двух экранов (Комната ↔ Рабочий) + панели-шторки
+import HomeScreen from '@/screens/home';
 import DashboardScreen from '@/screens/dashboard';
 import TasksScreen from '@/screens/tasks';
 import HabitsScreen from '@/screens/habits';
 import GoalsScreen from '@/screens/goals';
 import FinanceScreen from '@/screens/finance';
-import ChatScreen from '@/screens/chat';
 
 // Auth screens
 import LoginScreen from '@/screens/login';
@@ -49,7 +46,7 @@ const LegalScreen = React.lazy(() => import('@/screens/legal'));
 
 import { ErrorBoundary } from '@/components/shared/error-boundary';
 import { OfflineBanner } from '@/components/shared/offline-banner';
-import type { RootStackParamList, AuthStackParamList, TabParamList } from './types';
+import type { RootStackParamList, AuthStackParamList } from './types';
 
 function useNavigationTheme() {
   const theme = useThemeStore((s) => s.theme);
@@ -68,112 +65,6 @@ function useNavigationTheme() {
       },
     }),
     [theme],
-  );
-}
-
-const Tab = createBottomTabNavigator<TabParamList>();
-
-function SettingsHeaderButton() {
-  const navigation = useNavigation<any>();
-  const theme = useThemeStore((s) => s.theme);
-  return (
-    <TouchableOpacity
-      onPress={() => navigation.navigate('Settings')}
-      style={{ marginRight: 16, padding: 4 }}
-      accessibilityRole="button"
-      accessibilityLabel="Настройки"
-    >
-      <Feather name="settings" size={22} color={theme.text} />
-    </TouchableOpacity>
-  );
-}
-
-function TabNavigator() {
-  useNotifications();
-  const theme = useThemeStore((s) => s.theme);
-  const isFeatureVisible = useUIStore((s) => s.isFeatureVisible);
-
-  const showFinance = isFeatureVisible('finance_tab');
-  const showGoals = isFeatureVisible('goals_tab');
-
-  return (
-    <Tab.Navigator
-      screenOptions={{
-        tabBarStyle: { backgroundColor: theme.tabBar, borderTopColor: theme.tabBarBorder },
-        tabBarActiveTintColor: theme.primary,
-        tabBarInactiveTintColor: theme.textMuted,
-        headerStyle: { backgroundColor: theme.background },
-        headerTintColor: theme.text,
-        headerTitleStyle: { fontWeight: '600' },
-        headerRight: () => <SettingsHeaderButton />,
-      }}
-    >
-      <Tab.Screen
-        name="Dashboard"
-        component={DashboardScreen}
-        options={{
-          title: 'Главная',
-          headerShown: false,
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="home" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Chat"
-        component={ChatScreen}
-        options={{
-          title: 'Чат',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="message-circle" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Tasks"
-        component={TasksScreen}
-        options={{
-          title: 'Задачи',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="check-square" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Habits"
-        component={HabitsScreen}
-        options={{
-          title: 'Привычки',
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="repeat" size={size} color={color} />
-          ),
-        }}
-      />
-      {showGoals && (
-        <Tab.Screen
-          name="Goals"
-          component={GoalsScreen}
-          options={{
-            title: 'Цели',
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="target" size={size} color={color} />
-            ),
-          }}
-        />
-      )}
-      {showFinance && (
-        <Tab.Screen
-          name="Finance"
-          component={FinanceScreen}
-          options={{
-            title: 'Финансы',
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="dollar-sign" size={size} color={color} />
-            ),
-          }}
-        />
-      )}
-    </Tab.Navigator>
   );
 }
 
@@ -302,6 +193,16 @@ export default function Navigation() {
 
   const navTheme = useNavigationTheme();
   const theme = useThemeStore((s) => s.theme);
+  const isFeatureVisible = useUIStore((s) => s.isFeatureVisible);
+  const showFinance = isFeatureVisible('finance_tab');
+  const showGoals = isFeatureVisible('goals_tab');
+  const panelOptions = {
+    presentation: 'modal' as const,
+    headerShown: true,
+    headerStyle: { backgroundColor: theme.background },
+    headerTintColor: theme.text,
+    headerTitleStyle: { fontWeight: '600' as const },
+  };
 
   if (!isReady) {
     return <View style={{ flex: 1, backgroundColor: theme.background }} />;
@@ -324,11 +225,18 @@ export default function Navigation() {
           <RootStack.Screen name="Auth" component={AuthNavigator} />
         ) : (
           <>
-            <RootStack.Screen name="Tabs" component={TabNavigator} />
+            <RootStack.Screen name="Home" component={HomeScreen} />
+            {/* Панели-инструменты: нативная шторка поверх дома (робот за ней). */}
+            <RootStack.Screen name="Dashboard" component={DashboardScreen} options={{ ...panelOptions, title: 'Сегодня', headerShown: false }} />
+            <RootStack.Screen name="Tasks" component={TasksScreen} options={{ ...panelOptions, title: 'Задачи' }} />
+            <RootStack.Screen name="Habits" component={HabitsScreen} options={{ ...panelOptions, title: 'Привычки' }} />
+            {showGoals && <RootStack.Screen name="Goals" component={GoalsScreen} options={{ ...panelOptions, title: 'Цели' }} />}
+            {showFinance && <RootStack.Screen name="Finance" component={FinanceScreen} options={{ ...panelOptions, title: 'Финансы' }} />}
             <RootStack.Screen
               name="Journal"
               component={JournalScreen}
               options={{
+                presentation: 'modal',
                 headerShown: true,
                 title: 'Дневник',
                 headerStyle: { backgroundColor: theme.background },
@@ -374,7 +282,7 @@ export default function Navigation() {
             <RootStack.Screen name="VoiceConversation" component={VoiceConversationScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="FocusMode" component={FocusModeScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="KanbanBoard" component={KanbanBoardScreen} options={{ headerShown: false }} />
-            <RootStack.Screen name="Calendar" component={CalendarScreen} options={{ headerShown: false }} />
+            <RootStack.Screen name="Calendar" component={CalendarScreen} options={{ presentation: 'modal', headerShown: false }} />
             <RootStack.Screen name="GanttView" component={GanttViewScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="SharedSpaces" component={SharedSpacesScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="SharedSpaceDetail" component={SharedSpaceDetailScreen} options={{ headerShown: false }} />

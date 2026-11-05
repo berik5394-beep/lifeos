@@ -192,7 +192,7 @@ export default function LifeInsightsScreen() {
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      navigation.navigate('Tabs' as never);
+      navigation.navigate('Home' as never);
     }
   }, [navigation]);
 
