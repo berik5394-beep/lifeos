@@ -802,6 +802,7 @@ export default function HabitsScreen() {
     deleteHabit,
     toggleHabitLog,
     fetchStats,
+    fetchLogs,
   } = useHabitStore();
 
   const {
@@ -1113,8 +1114,15 @@ export default function HabitsScreen() {
 
   // ─── Effects ──────────────────────────────────────────────────────────────
 
+  // habit-day: отметки текущего месяца с сервера (голос/чат/другое устройство).
+  const monthFrom = useMemo(
+    () => formatDateKey(todayDate.getFullYear(), todayDate.getMonth(), 1),
+    [todayDate],
+  );
+
   useEffect(() => {
     fetchHabits();
+    fetchLogs(monthFrom, today);
     fetchStats(getMonthKey(todayDate.getFullYear(), todayDate.getMonth()));
     fetchJournalEntry(today);
     fetchMonthEntries(getMonthKey(todayDate.getFullYear(), todayDate.getMonth()));
@@ -1127,6 +1135,7 @@ export default function HabitsScreen() {
     try {
       await Promise.all([
         fetchHabits(),
+        fetchLogs(monthFrom, today),
         fetchStats(getMonthKey(todayDate.getFullYear(), todayDate.getMonth())),
         fetchJournalEntry(today),
         fetchMonthEntries(getMonthKey(todayDate.getFullYear(), todayDate.getMonth())),
@@ -1134,7 +1143,7 @@ export default function HabitsScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [fetchHabits, fetchStats, fetchJournalEntry, fetchMonthEntries, today, todayDate]);
+  }, [fetchHabits, fetchLogs, monthFrom, fetchStats, fetchJournalEntry, fetchMonthEntries, today, todayDate]);
 
   // voice-one-brain: голосовую команду исполнил СЕРВЕР (единый мозг) —
   // экран только подтягивает свой срез данных. Никакого локального исполнения.

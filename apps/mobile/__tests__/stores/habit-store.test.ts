@@ -138,3 +138,33 @@ describe('useHabitStore', () => {
     });
   });
 });
+
+describe('fetchLogs — отметки с сервера (habit-day)', () => {
+  it('раскладывает по датам, заменяет весь диапазон, не трогает даты вне диапазона', async () => {
+    useHabitStore.setState({
+      logs: {
+        '2026-11-03': [{ ...MOCK_LOG, id: 'stale', date: '2026-11-03' }], // снята на другом устройстве → должна уйти
+        '2026-10-01': [{ ...MOCK_LOG, id: 'outside', date: '2026-10-01' }], // вне диапазона → остаётся
+      },
+    });
+    mockedApi.get.mockResolvedValueOnce([
+      { id: 'a', habitId: 'habit-1', date: '2026-11-04', completed: true },
+      { id: 'b', habitId: 'habit-2', date: '2026-11-04', completed: true },
+      { id: 'c', habitId: 'habit-1', date: '2026-11-05', completed: true },
+    ]);
+    await useHabitStore.getState().fetchLogs('2026-11-03', '2026-11-05');
+    expect(mockedApi.get).toHaveBeenCalledWith('/habits/logs?from=2026-11-03&to=2026-11-05', 'test-token-123');
+    const logs = useHabitStore.getState().logs;
+    expect(logs['2026-11-03']).toEqual([]);
+    expect(logs['2026-11-04'].map((l) => l.habitId)).toEqual(['habit-1', 'habit-2']);
+    expect(logs['2026-11-05']).toHaveLength(1);
+    expect(logs['2026-10-01'][0].id).toBe('outside');
+  });
+
+  it('сбой сети — локальные отметки не стираются', async () => {
+    useHabitStore.setState({ logs: { '2026-11-05': [{ ...MOCK_LOG, date: '2026-11-05' }] } });
+    mockedApi.get.mockRejectedValueOnce(new Error('network'));
+    await useHabitStore.getState().fetchLogs('2026-11-05', '2026-11-05');
+    expect(useHabitStore.getState().logs['2026-11-05']).toHaveLength(1);
+  });
+});

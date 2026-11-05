@@ -58,6 +58,27 @@ interface HabitState {
   deleteHabit: (id: string) => Promise<void>;
   toggleHabitLog: (habitId: string, date: string, completed: boolean) => Promise<void>;
   fetchStats: (month: string) => Promise<void>;
+  /** Отметки с сервера за [from..to] ('YYYY-MM-DD'): видны отметки голосом/чатом
+   *  и с других устройств; после переустановки история не пропадает. */
+  fetchLogs: (from: string, to: string) => Promise<void>;
+}
+
+interface ServerHabitLog {
+  id: string;
+  habitId: string;
+  date: string; // 'YYYY-MM-DD' — календарная дата (habit-day)
+  completed: boolean;
+}
+
+function datesInRange(from: string, to: string): string[] {
+  const out: string[] = [];
+  const d = new Date(from + 'T00:00:00Z');
+  const end = new Date(to + 'T00:00:00Z');
+  while (d <= end && out.length <= 62) {
+    out.push(d.toISOString().slice(0, 10));
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  return out;
 }
 
 export const useHabitStore = create<HabitState>((set) => ({
@@ -150,6 +171,31 @@ export const useHabitStore = create<HabitState>((set) => ({
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Ошибка при отметке привычки';
       throw new Error(msg);
+    }
+  },
+
+  fetchLogs: async (from: string, to: string) => {
+    const token = useAuthStore.getState().token;
+    if (!token) return;
+    try {
+      const rows = await api.get<ServerHabitLog[]>(`/habits/logs?from=${from}&to=${to}`, token);
+      const byDate: Record<string, HabitLog[]> = {};
+      for (const day of datesInRange(from, to)) byDate[day] = [];
+      for (const r of rows) {
+        (byDate[r.date] ??= []).push({
+          id: r.id,
+          habitId: r.habitId,
+          userId: '',
+          date: r.date,
+          completed: r.completed,
+          autoCompleted: false,
+        });
+      }
+      // Сервер — источник правды за весь диапазон (включая снятые отметки).
+      set((state) => ({ logs: { ...state.logs, ...byDate } }));
+    } catch (err) {
+      // Сеть упала — оставляем локальные отметки как есть.
+      console.warn('fetchLogs failed', err);
     }
   },
 

@@ -206,7 +206,7 @@ export default function PlannerScreen() {
     updateWeeklyGoal,
     deleteWeeklyGoal,
   } = useGoalStore();
-  const { habits, logs, fetchHabits } = useHabitStore();
+  const { habits, logs, fetchHabits, fetchLogs } = useHabitStore();
   const user = useAuthStore((state) => state.user);
   const { todayEntry, fetchEntry: fetchJournalEntry } = useJournalStore();
   const petData = usePetStore((s) => s.petData);
@@ -280,7 +280,9 @@ export default function PlannerScreen() {
     fetchTasks(undefined, weekStartStr);
     fetchWeeklyGoals(weekStartStr);
     fetchHabits();
-  }, [weekStartStr, fetchTasks, fetchWeeklyGoals, fetchHabits]);
+    // habit-day: отметки недели с сервера (голос/чат/другое устройство).
+    fetchLogs(weekStartStr, formatDate(sundayDate));
+  }, [weekStartStr, sundayDate, fetchTasks, fetchWeeklyGoals, fetchHabits, fetchLogs]);
 
   useEffect(() => {
     fetchJournalEntry(todayStr);
@@ -350,6 +352,7 @@ export default function PlannerScreen() {
         fetchTasks(undefined, weekStartStr),
         fetchWeeklyGoals(weekStartStr),
         fetchHabits(),
+        fetchLogs(weekStartStr, formatDate(sundayDate)),
         fetchJournalEntry(todayStr),
         usePetStore.getState().fetchPet(),
       ]);
@@ -357,7 +360,7 @@ export default function PlannerScreen() {
       // silently fail
     }
     setRefreshing(false);
-  }, [weekStartStr, todayStr, fetchTasks, fetchWeeklyGoals, fetchHabits, fetchJournalEntry]);
+  }, [weekStartStr, sundayDate, todayStr, fetchTasks, fetchWeeklyGoals, fetchHabits, fetchLogs, fetchJournalEntry]);
 
   // voice-one-brain: голосовую команду исполнил СЕРВЕР (единый мозг) —
   // экран только подтягивает свой срез данных. Никакого локального исполнения.
