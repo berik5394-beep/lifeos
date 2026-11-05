@@ -47,25 +47,33 @@ use-voice.ts processCommand → /voice/process
 Новый чистый модуль `apps/mobile/services/voice-followup.ts`:
 
 ```ts
+export interface ProcessResponse {
+  intent?: { action: string } | null;
+  response?: string;
+  pendingAction?: { action: string; input: Record<string, unknown> } | null;
+  confirmationText?: string | null;
+}
 export type VoiceFollowUp =
   | { kind: 'confirm'; text: string }  // показать «Записать / Отмена»
-  | { kind: 'refresh' };               // сервер мог записать — обновить данные
+  | { kind: 'done' };                  // сервер уже всё сделал (или это был разговор)
 export function planVoiceFollowUp(res: ProcessResponse): VoiceFollowUp;
-export async function refreshAfterVoice(): Promise<void>;   // задачи на сегодня, привычки, расходы/доходы месяца
-export async function confirmPendingVoiceAction(confirm: boolean): Promise<string>; // POST /voice/confirm-action
+export async function confirmPendingVoiceAction(confirm: boolean): Promise<{ message: string; intent: string | null }>; // POST /voice/confirm-action
 ```
 
 `processCommand` после ответа:
-- озвучивает `response` (он уже правдивый — сервер исполнил ДО ответа);
-- `confirm` → `Alert.alert(confirmationText, …, [Отмена, Записать])`; кнопка → `confirmPendingVoiceAction` → озвучить ответ сервера → `refreshAfterVoice()`. Сказать «да» в микрофон тоже работает (серверный FSM);
-- `refresh` → `refreshAfterVoice()` (best-effort, ошибки глушатся — данные подтянутся при следующем фокусе).
+- озвучивает `response` (он уже правдивый — сервер исполнил ДО ответа) и выставляет `lastResult`;
+- `confirm` → `Alert.alert('Подтверди', confirmationText, [Отмена, Записать])`; кнопка → `confirmPendingVoiceAction` → озвучить ответ сервера → выставить **новый** `lastResult` с этим ответом. Сказать «да» в микрофон тоже работает (серверный FSM).
 
-Экраны `app/(tabs)/index.tsx`, `tasks.tsx`, `habits.tsx`: **удаляются** `handleVoiceAction` и `useEffect` автоисполнения. Экраны больше ничего не исполняют.
+**Слот-вопросы — без кнопок.** Если сумма названа без категории/источника, сервер спрашивает «На что потратил 3000₸?» и тоже возвращает `pendingAction`, но с `input.__awaitingCategory`/`__awaitingSource`. Это вопрос, а не подтверждение: `isConfirmable()` = false → Alert/кнопки не показываются, юзер отвечает голосом/текстом (серверный FSM).
+
+**Обновление данных — забота экрана, не хука.** Экраны грузят данные по-разному (дашборд — неделю, задачи — месяц), общий «рефреш» перезаписал бы им стор чужим срезом. Поэтому на дашборде, в задачах и в привычках `handleVoiceAction` и `useEffect` автоисполнения **заменяются** на `useEffect(() => { if (lastResult) void handleRefresh(); }, [lastResult])` — каждый экран тянет свой срез своим существующим `handleRefresh`. Эффект ставится ПОСЛЕ объявления `handleRefresh` (иначе TDZ на массиве зависимостей).
+
+**Чат: режим «только распознать».** Вкладка чата тоже использует `useVoice`, но сама шлёт транскрипт в `/voice/chat`. Если хук начнёт ходить в мозг через `/voice/process`, голосовая команда в чате исполнится ДВАЖДЫ. Поэтому `useVoice({ transcribeOnly: true })`: хук не зовёт `/voice/process`, не озвучивает, а выставляет `lastResult = { intent:{action:'transcript'}, response:'', transcript }`. `chat.tsx` переходит на этот режим.
 
 ### 3. Чат — `apps/mobile/stores/chat-store.ts` + `app/(tabs)/chat.tsx`
 
 - `ChatMessage` получает `pendingAction?: { action: string; input: Record<string, unknown> } | null`; `sendMessage` сохраняет `data.pendingAction` из `/voice/chat`.
-- Под таким сообщением ассистента — кнопки «Записать / Отмена» → `confirmPendingAction(messageId, confirm)` в сторе: `POST /voice/confirm-action`, снимает `pendingAction` с сообщения, добавляет ответ сервера сообщением ассистента, затем `refreshAfterVoice()`.
+- Под таким сообщением ассистента — кнопки «Записать / Отмена» → `confirmPendingAction(messageId, confirm)` в сторе: `POST /voice/confirm-action`, снимает `pendingAction` с сообщения, добавляет ответ сервера сообщением ассистента. (Данные других вкладок подтянутся их собственным обновлением.)
 
 ### 4. Ошибки
 
@@ -83,7 +91,7 @@ export async function confirmPendingVoiceAction(confirm: boolean): Promise<strin
 
 **Сервер (unit, структурный):** `voice-safety.test.ts` переписан под делегирование; гард «`processVoiceCommand`/`voice-pipeline` нигде не импортируются». В `src/ai/intent-tz-wiring.test.ts` (TZ-фикс 2026-11-05) два кейса про `voice-pipeline`/`processVoiceCommand` удаляются — путь больше не существует, TZ голоса покрыт тем, что `handleMessage` уже резолвит пояс (`intent-tz.it.test.ts`).
 
-**Мобилка (jest):** `__tests__/services/voice-followup.test.ts` — `planVoiceFollowUp` (pending → confirm c confirmationText; без pending → refresh; pending без текста → дефолтный текст).
+**Мобилка (jest):** `__tests__/services/voice-followup.test.ts` — `planVoiceFollowUp` (pending → confirm c confirmationText; без pending → done; pending без текста → дефолтный текст) и `confirmPendingVoiceAction` (200 → текст сервера; 409 → текст «устарело»). `__tests__/stores/chat-store.test.ts` — `sendMessage` сохраняет `pendingAction`, `confirmPendingAction` снимает его и добавляет ответ.
 
 ## Вне скоупа (отдельные задачи)
 
