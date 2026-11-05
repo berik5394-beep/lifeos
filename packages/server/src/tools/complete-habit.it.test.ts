@@ -42,10 +42,24 @@ describe('complete_habit честность + кросс-домен (тест-Б
   it('buildGoalHabitHealth ловит буксующую цель', async () => {
     const userId = await seedUser(`hb-d-${Date.now()}@a.test`);
     const goal = await prisma.yearlyGoal.create({ data: { userId, year: YEAR, area: 'health', goalText: 'Форма' } });
+    const habit = await prisma.habit.create({ data: { userId, name: 'Бег', category: 'health', frequency: 'daily', goalId: goal.id } });
+    // Последняя отметка 5 дней назад → цель буксует (≥3 дней без отметок).
+    // (Без отметок вовсе функция честно отдаёт null, а не сентинел 9999 —
+    // это отдельный кейс ниже; раньше тест ждал число и был устаревшим.)
+    const now = new Date();
+    const fiveDaysAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 5));
+    await prisma.habitLog.create({ data: { habitId: habit.id, userId, date: fiveDaysAgo, completed: true } });
+    const health = await buildGoalHabitHealth(userId, now);
+    expect(health).toHaveLength(1);
+    expect(health[0].daysSinceLastCompletion).toBe(5);
+  });
+
+  it('buildGoalHabitHealth: привычку ни разу не отмечали → null (честно, без сентинела 9999)', async () => {
+    const userId = await seedUser(`hb-d0-${Date.now()}@a.test`);
+    const goal = await prisma.yearlyGoal.create({ data: { userId, year: YEAR, area: 'health', goalText: 'Форма' } });
     await prisma.habit.create({ data: { userId, name: 'Бег', category: 'health', frequency: 'daily', goalId: goal.id } });
     const health = await buildGoalHabitHealth(userId, new Date());
-    expect(health).toHaveLength(1);
-    expect(health[0].daysSinceLastCompletion).toBeGreaterThanOrEqual(3);
+    expect(health[0].daysSinceLastCompletion).toBeNull();
   });
 
   it('cross-user: B не видит цели A', async () => {
