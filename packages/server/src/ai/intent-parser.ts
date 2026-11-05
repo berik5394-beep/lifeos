@@ -111,12 +111,39 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
  * tz/now — пояс юзера и «сейчас» (инжект для тестов). «сегодня/завтра»
  * считаются в КАЛЕНДАРЕ юзера (civilDayRefs). Дефолт 'UTC' = прежнее поведение.
  */
+// Робот-эпик, Часть 3: «покажи/открой X» → открыть панель приложения.
+// Строгий шаблон: только глагол + (мне) (мои) + слово панели + необязательный
+// хвост периода — вопросы и составные просьбы («покажи задачи … и перенеси»)
+// не перехватываем, они идут в мозг.
+const PANEL_WORDS: Array<[RegExp, string]> = [
+  [/^(задачи|задач|дела|таски)$/, 'tasks'],
+  [/^(привычки|привычек)$/, 'habits'],
+  [/^(цели|целей)$/, 'goals'],
+  [/^(финансы|расходы|траты|бюджет|деньги)$/, 'finance'],
+  [/^(календарь|расписание|встречи|события)$/, 'calendar'],
+  [/^(дневник)$/, 'journal'],
+  [/^(сегодня|день|сводку|главную)$/, 'today'],
+];
+const OPEN_PANEL_RE =
+  /^(?:покажи|открой|открыть|выведи)(?:\s+мне)?(?:\s+(?:мои|мой|мою))?\s+([а-яё]+)(?:\s+(?:на\s+сегодня|на\s+неделю|за\s+неделю|за\s+месяц|на\s+месяц|на\s+завтра))?[.!]?$/i;
+
+export function detectOpenPanel(text: string): string | null {
+  const m = text.trim().match(OPEN_PANEL_RE);
+  if (!m) return null;
+  const word = m[1].toLowerCase();
+  for (const [re, panel] of PANEL_WORDS) if (re.test(word)) return panel;
+  return null;
+}
+
 export function deterministicIntent(
   text: string,
   tz: string = 'UTC',
   now: Date = new Date(),
 ): VoiceIntent | null {
   const lower = text.toLowerCase();
+
+  const panel = detectOpenPanel(text);
+  if (panel) return { action: 'open_panel', panel };
 
   for (const re of DICTATION_TRIGGERS) {
     if (re.test(text)) return { action: 'start_dictation' };

@@ -115,7 +115,22 @@ export interface JarvisResponse {
   emotion?: RobotEmotion;
   /** Внутреннее: факты хода для emotionForTurn (обёртка снимает перед ответом). */
   turnFacts?: Partial<TurnFacts>;
+  /**
+   * Робот-эпик, Часть 3: «покажи/открой X» → приложение открывает панель
+   * (tasks|habits|goals|finance|calendar|journal|today). null — не открывать.
+   */
+  openPanel?: string | null;
 }
+
+const PANEL_REPLY: Record<string, string> = {
+  tasks: 'Открываю задачи',
+  habits: 'Открываю привычки',
+  goals: 'Открываю цели',
+  finance: 'Открываю финансы',
+  calendar: 'Открываю календарь',
+  journal: 'Открываю дневник',
+  today: 'Вот твой день',
+};
 
 /**
  * ISSUE-8 gate: стоит ли вообще NLP-извлекать задачи/факты из этой
@@ -552,6 +567,13 @@ async function handleMessageCore(
   // интентах/брони = календарь ЮЗЕРА, не UTC сервера (Алматы 00–05 → вчера).
   const userTz = await getUserTimezone(userId);
   const intent = await parseIntent(text, userTz);
+
+  // ---- Робот-эпик, Часть 3: открыть панель приложения (без ИИ) ----------
+  if (intent.action === 'open_panel' && typeof intent.panel === 'string') {
+    const reply = PANEL_REPLY[intent.panel] ?? 'Открываю';
+    await saveTurn(userId, text, reply);
+    return { reply, intent: 'open_panel', openPanel: intent.panel };
+  }
 
   // ---- Booking: агентный flow -------------------------------------------
   if (intent.action === 'plan_travel') {

@@ -114,4 +114,25 @@ describe('/voice/process → единый мозг', () => {
       expect((res.json() as { emotion: string }).emotion).toBe('happy');
     });
   });
+
+  describe('«покажи X» → открыть панель (Часть 3)', () => {
+    it('/voice/chat «Открой задачи» → openPanel tasks, ничего не создано', async () => {
+      const { userId, headers } = await authed('panel-chat');
+      const res = await app.inject({ method: 'POST', url: '/voice/chat', headers, payload: { text: 'Открой задачи' } });
+      const body = res.json() as { openPanel: string | null; message: string };
+      expect(body.openPanel).toBe('tasks');
+      expect(body.message).toMatch(/задач/i);
+      expect(await prisma.task.count({ where: { userId } })).toBe(0);
+    });
+    it('/voice/process «Покажи расходы» → openPanel finance', async () => {
+      const { headers } = await authed('panel-voice');
+      const res = await say(headers, 'Покажи расходы');
+      expect((res.json() as { openPanel: string | null }).openPanel).toBe('finance');
+    });
+    it('обычная команда → openPanel null', async () => {
+      const { headers } = await authed('panel-none');
+      const res = await say(headers, 'Создай задачу купить хлеб завтра');
+      expect((res.json() as { openPanel: string | null }).openPanel).toBeNull();
+    });
+  });
 });

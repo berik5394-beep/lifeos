@@ -55,6 +55,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         // приложение показывает кнопки «Подтвердить / Отмена».
         pendingAction: res.pendingAction ?? null,
         emotion: res.emotion ?? 'neutral',
+        openPanel: res.openPanel ?? null,
       });
     } catch (err) {
       app.log.error(err);
