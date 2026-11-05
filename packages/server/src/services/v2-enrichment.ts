@@ -34,7 +34,9 @@ import {
   isV2DecayEnabled,
   isV2OpenLoopsEnabled,
   isV2MoodToneEnabled,
+  isV2DealsEnabled,
 } from '../lib/feature-flags.js';
+import { gatherDealsSection } from './deals/service.js';
 import { entityDecayScore } from './memory-decay.js';
 import { recentEvents, significantMemories } from './episodic-memory.js';
 import { buildScheduleConflict } from './schedule-conflict/index.js';
@@ -108,6 +110,8 @@ export type V2EnrichmentData = {
   scheduleConflict: string | null;
   /** Открытые петли (open-loops): «Открыто сейчас: …» или null. */
   openLoops: string | null;
+  /** Сделки (спека 2026-11-05-deals): «Сделки: открыто …» или null. */
+  deals?: string | null;
   /** Комната робота (Часть 4): «Комната робота: диван, лампа» или null. */
   room?: string | null;
 };
@@ -174,6 +178,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (data.scheduleConflict) lines.push(data.scheduleConflict);
   if (data.recentActivity) lines.push(data.recentActivity);
   if (data.openLoops) lines.push(data.openLoops);
+  if (data.deals) lines.push(data.deals);
   if (data.room) lines.push(data.room);
   return lines.join('\n');
 }
@@ -358,6 +363,9 @@ export async function fetchV2EnrichmentData(
       BASE_MEMBER_BUDGET_MS,
       null,
     );
+    const dealsP: Promise<string | null> = isV2DealsEnabled(userId)
+      ? withTimeout(gatherDealsSection(userId, nowDate), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
+      : Promise.resolve(null);
     const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity, scheduleConflict, personTypes, personMeetings, openLoops] = await Promise.all([
       withTimeout(
         getBotIdentityService()
@@ -503,6 +511,7 @@ export async function fetchV2EnrichmentData(
           ).catch(() => null)
         : Promise.resolve(null),
     ]);
+    const deals = await dealsP;
     // mood-tone Part 1: спад → инструкция «мягче» (расширяет «эмпатия>стиль»
     // с одного сообщения на траекторию). off → null → строки нет.
     const moodToneDirective =
@@ -563,6 +572,7 @@ export async function fetchV2EnrichmentData(
       personTypes,
       personMeetings,
       openLoops,
+      deals,
       room,
     };
   } catch (err) {

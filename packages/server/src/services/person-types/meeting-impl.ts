@@ -44,6 +44,22 @@ export async function buildPersonMeetingBriefs(
       oblByEntity.set(o.personEntityId, cur);
     }
 
+    const dealByEntity = new Map<string, string>();
+    const { isV2DealsEnabled } = await import('../../lib/feature-flags.js');
+    if (isV2DealsEnabled(userId)) {
+      const { dealBriefLine, OPEN_STAGES } = await import('../deals/index.js');
+      const deals = await prisma.deal.findMany({
+        where: { userId, stage: { in: [...OPEN_STAGES] }, personEntityId: { in: people.map((p) => p.id) } },
+        orderBy: { amount: { sort: 'desc', nulls: 'last' } },
+        select: { personEntityId: true, title: true, amount: true, stage: true, stageChangedAt: true },
+      });
+      for (const d of deals) {
+        if (!d.personEntityId || dealByEntity.has(d.personEntityId)) continue;
+        const daysInStage = Math.max(0, Math.floor((now.getTime() - d.stageChangedAt.getTime()) / DAY_MS));
+        dealByEntity.set(d.personEntityId, dealBriefLine({ title: d.title, amount: d.amount, stage: d.stage, daysInStage }));
+      }
+    }
+
     const briefs: PersonMeetingBrief[] = [];
     for (const e of events) {
       const mins = minutesUntil(nowHHMM, e.startTime as string);
@@ -54,7 +70,8 @@ export async function buildPersonMeetingBriefs(
       const attrs = (person.attributes ?? {}) as Record<string, unknown>;
       const type = typeof attrs.personType === 'string' ? (attrs.personType as PersonType) : undefined;
       const ob = oblByEntity.get(person.id);
-      if (!type && !ob?.desc && !ob?.owed) continue; // D1-гейт: только с CRM-контекстом
+      const deal = dealByEntity.get(person.id);
+      if (!type && !ob?.desc && !ob?.owed && !deal) continue; // D1-гейт: только с CRM-контекстом
       const daysSince = Math.max(0, Math.floor((now.getTime() - person.lastSeenAt.getTime()) / DAY_MS));
       const brief: PersonMeetingBrief = {
         entityId: person.id,
@@ -65,6 +82,7 @@ export async function buildPersonMeetingBriefs(
         daysSince,
         obligation: ob?.desc,
         owed: ob?.owed,
+        deal,
       };
       brief.insightText = describeMeetingBrief(brief);
       briefs.push(brief);

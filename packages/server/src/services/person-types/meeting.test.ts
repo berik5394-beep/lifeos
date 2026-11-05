@@ -26,4 +26,11 @@ describe('describeMeetingBrief', () => {
   it('далёкая встреча → «сегодня в HH:MM»', () => {
     expect(describeMeetingBrief({ ...base, minutesUntil: 200 })).toContain('сегодня в 14:00');
   });
+  it('сделка в брифе', () => {
+    const t = describeMeetingBrief({
+      entityId: 'e', name: 'Ахмет', type: 'client', startTime: '15:00', minutesUntil: 50, daysSince: 3,
+      deal: 'Сделка «оборудование» 2 млн ₸, КП отправлено 4 дн назад.',
+    });
+    expect(t).toBe('📅 через ~50 мин — встреча с [клиент] Ахмет. Последний контакт 3 дн. Сделка «оборудование» 2 млн ₸, КП отправлено 4 дн назад.');
+  });
 });

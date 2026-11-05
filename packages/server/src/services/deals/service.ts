@@ -5,6 +5,7 @@ import { localDateStr, localDateOnlyUTC, dateOnlyUTC, localMonthOnlyUTC, localMo
 import { getEntityGraph } from '../entity-graph/index.js';
 import { defaultNextStep, isOpenStage, OPEN_STAGES, type DealStage } from './stages.js';
 import { salesPace, coveringDeals, type Pace } from './pace.js';
+import { formatDealsSection, describePlan } from './format.js';
 
 export const DEAL_INCOME_ACTION = 'record_deal_income';
 
@@ -229,4 +230,25 @@ export async function salesPlanStatus(userId: string, now: Date = new Date()): P
     pace,
     covering: coveringDeals(openRows, pace.gap).map((r) => r.personName),
   };
+}
+
+/** Блок «Сделки» для контекста робота. READ-ONLY, только факты из БД. */
+export async function gatherDealsSection(userId: string, now: Date = new Date()): Promise<string | null> {
+  const tz = await getUserTimezone(userId);
+  const todayCivil = localDateStr(tz, now);
+  const open = await prisma.deal.findMany({
+    where: { userId, stage: { in: [...OPEN_STAGES] } },
+    select: { personName: true, amount: true, nextStepAt: true },
+  });
+  const plan = await salesPlanStatus(userId, now);
+  const step = (d: { nextStepAt: Date | null }) => (d.nextStepAt ? d.nextStepAt.toISOString().slice(0, 10) : null);
+  return formatDealsSection({
+    openCount: open.length,
+    openSum: open.reduce((s, d) => s + (d.amount ?? 0), 0),
+    dueToday: open.filter((d) => step(d) === todayCivil).map((d) => d.personName),
+    overdue: open.filter((d) => { const s = step(d); return s != null && s < todayCivil; }).map((d) => d.personName),
+    plan: plan
+      ? describePlan({ plan: plan.plan, won: plan.won, open: plan.open, behind: plan.pace.behind, covering: plan.covering, noAmount: plan.noAmount })
+      : null,
+  });
 }

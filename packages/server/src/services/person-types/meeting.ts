@@ -11,6 +11,7 @@ export interface PersonMeetingBrief {
   obligation?: string;
   owed?: number;
   insightText?: string;
+  deal?: string;
 }
 
 const TYPE_LABEL: Record<PersonType, string> = {
@@ -53,5 +54,6 @@ export function describeMeetingBrief(b: PersonMeetingBrief): string {
   let s = `📅 ${when} — встреча с ${label}${b.name}. Последний контакт ${b.daysSince} дн.`;
   if (b.obligation) s += ` Открыто: «${b.obligation}».`;
   if (b.owed && b.owed > 0) s += ` Должен тебе ${b.owed}₸.`;
+  if (b.deal) s += ` ${b.deal}`;
   return s;
 }
