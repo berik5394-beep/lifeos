@@ -143,6 +143,8 @@ export function describePlan(p: {
 /** Блок для контекста робота (enrichment). Нечего сказать → null. */
 export function formatDealsSection(s: {
   openCount: number; openSum: number; clients: string[]; dueToday: string[]; overdue: string[]; plan: string | null;
+  /** План продаж ↔ денежная цель (describeSalesVsSavings); нет — строки нет. */
+  savings?: string | null;
 }): string | null {
   if (s.openCount === 0 && !s.plan) return null;
   const parts = [`Сделки: открыто ${s.openCount}${s.openSum > 0 ? ` на ${fmtMoney(s.openSum)}` : ''}`];
@@ -152,7 +154,20 @@ export function formatDealsSection(s: {
   if (s.dueToday.length) parts.push(`шаг сегодня: ${s.dueToday.join(', ')}`);
   if (s.overdue.length) parts.push(`просрочен шаг: ${s.overdue.join(', ')}`);
   if (s.plan) parts.push(s.plan);
+  if (s.savings) parts.push(s.savings);
   return parts.join('; ') + '.';
+}
+
+/**
+ * План продаж ↔ денежная цель. Продажи — выручка, НЕ накопления: не ставим
+ * между ними знак равенства, только рядом — сколько нужно откладывать к цели
+ * (requiredMonthly из computePortfolioPace, как у коуча накоплений).
+ */
+export function describeSalesVsSavings(p: { plan: number; goalText: string; requiredMonthly: number }): string {
+  return (
+    `План продаж ${fmtMoney(p.plan)}/мес — это выручка, а не накопления: ` +
+    `чтобы успеть к цели «${p.goalText}», откладывать нужно ~${fmtMoney(p.requiredMonthly)}/мес.`
+  );
 }
 
 /** Сколько сделка в стадии — живой фразой: «КП отправлено 4 дн назад», «переговоры идут 4 дн»; 0 дн → «сегодня». */

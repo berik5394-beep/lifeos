@@ -5,7 +5,10 @@ import { localDateStr, localDateOnlyUTC, dateOnlyUTC, localMonthOnlyUTC, localMo
 import { getEntityGraph } from '../entity-graph/index.js';
 import { defaultNextStep, isOpenStage, OPEN_STAGES, type DealStage } from './stages.js';
 import { salesPace, coveringDeals, type Pace } from './pace.js';
-import { formatDealsSection, describePlan, describeUpdated, describeWhichDeal, fmtMoneyExact, dealStepLabel } from './format.js';
+import { formatDealsSection, describePlan, describeUpdated, describeWhichDeal, fmtMoneyExact, dealStepLabel, describeSalesVsSavings } from './format.js';
+import { gatherReflectorFacts } from '../reflector-service.js';
+import { computePortfolioPace } from '../savings-pace.js';
+import { withTimeout } from '../../lib/with-timeout.js';
 import { isV2DealsEnabled } from '../../lib/feature-flags.js';
 import type { CapacityItem } from '../capacity-fit.js';
 
@@ -391,6 +394,9 @@ export async function gatherDealsSection(userId: string, now: Date = new Date())
     orderBy: { createdAt: 'desc' },
   });
   const plan = await salesPlanStatus(userId, now);
+  // Факты рефлектора тяжёлые — только если план продаж есть; свой потолок,
+  // чтобы медленная строка цели не уронила весь блок по таймауту enrichment.
+  const savings = plan ? await withTimeout(salesVsSavingsLine(userId, plan.plan, now), SAVINGS_LINE_BUDGET_MS, null) : null;
   const step = (d: { nextStepAt: Date | null }) => (d.nextStepAt ? d.nextStepAt.toISOString().slice(0, 10) : null);
   return formatDealsSection({
     openCount: open.length,
@@ -401,7 +407,28 @@ export async function gatherDealsSection(userId: string, now: Date = new Date())
     plan: plan
       ? describePlan({ plan: plan.plan, won: plan.won, open: plan.open, behind: plan.pace.behind, covering: plan.covering, noAmount: plan.noAmount })
       : null,
+    savings,
   });
+}
+
+const SAVINGS_LINE_BUDGET_MS = 700;
+
+/**
+ * План продаж ↔ денежная цель: сколько нужно откладывать к главной фин-цели
+ * (тот же requiredAnchor, что у коуча накоплений). Нет фин-цели с числом /
+ * всё накоплено / сбой → null (строку опускаем).
+ */
+async function salesVsSavingsLine(userId: string, planAmount: number, now: Date): Promise<string | null> {
+  try {
+    const facts = await gatherReflectorFacts(userId, now);
+    if (facts.financeGoals.length === 0) return null;
+    const pf = computePortfolioPace({ goals: facts.financeGoals, capacity: facts.monthlyIncome - facts.monthlyBurn, now });
+    if (!pf.anchor || pf.requiredAnchor <= 0) return null;
+    return describeSalesVsSavings({ plan: planAmount, goalText: pf.anchor.goal.text, requiredMonthly: pf.requiredAnchor });
+  } catch (err) {
+    console.warn('[deals] sales↔savings line skipped:', err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 /** Шаг по сделке ест время дня: звонок/письмо/встреча клиенту. */

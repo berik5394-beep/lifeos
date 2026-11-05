@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   fmtMoney, fmtMoneyExact, whenPhrase, describeCreated, describeUpdated, describeList,
   formatDealsSection, dealBriefLine, describePlan, instrumental, genitive, accusative, describeWhichDeal,
-  dealStepLabel,
+  dealStepLabel, describeSalesVsSavings,
 } from './format.js';
 
 const base = { personName: 'Ахмет', title: 'оборудование', amount: 2_000_000 as number | null };
@@ -125,5 +125,20 @@ describe('шаг по сделке — подпись', () => {
   it('клиент — шаг; без текста шага — «шаг по сделке»', () => {
     expect(dealStepLabel({ personName: 'Ахмет', nextStepText: 'связаться' })).toBe('Ахмет — связаться');
     expect(dealStepLabel({ personName: 'Дана', nextStepText: null })).toBe('Дана — шаг по сделке');
+  });
+});
+
+describe('план продаж ↔ денежная цель', () => {
+  it('выручка ≠ накопления: честная строка с числом из темпа цели', () => {
+    expect(describeSalesVsSavings({ plan: 10_000_000, goalText: 'Квартира', requiredMonthly: 500_400 })).toBe(
+      'План продаж 10 млн ₸/мес — это выручка, а не накопления: чтобы успеть к цели «Квартира», откладывать нужно ~500 400 ₸/мес.',
+    );
+    expect(describeSalesVsSavings({ plan: 3_000_000, goalText: 'Машина', requiredMonthly: 1_250_000 })).toContain('~1,3 млн ₸/мес');
+  });
+  it('секция: строка цели — после плана; без неё — байт-в-байт как раньше', () => {
+    const base2 = { openCount: 1, openSum: 0, clients: ['Ахмет'], dueToday: [], overdue: [], plan: 'План.' };
+    expect(formatDealsSection(base2)).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План..');
+    expect(formatDealsSection({ ...base2, savings: null })).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План..');
+    expect(formatDealsSection({ ...base2, savings: 'Цель.' })).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План.; Цель..');
   });
 });
