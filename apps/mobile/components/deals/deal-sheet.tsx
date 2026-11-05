@@ -3,7 +3,7 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
 import { borderRadius, fontSize, spacing } from '@/constants';
-import { STAGE_LABEL, fmtMoney, isOpenStage, neighborStages, type Deal, type DealEvent, type DealStage } from '@/services/deals';
+import { OPEN_STAGES, STAGE_LABEL, fmtMoney, isOpenStage, neighborStages, type Deal, type DealEvent, type DealStage } from '@/services/deals';
 import { LOST_REASONS, canRecordIncome, dealHead, eventLine, reopenStage, stepLine } from '@/services/deals-view';
 import { dealErrorText, useDealIncome } from '@/hooks/use-deal-income';
 import { useDealStore } from '@/stores/deal-store';
@@ -20,12 +20,14 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
   const moveStage = useDealStore((s) => s.moveStage);
   const fetchOne = useDealStore((s) => s.fetchOne);
   const { offer, record } = useDealIncome();
-  const [events, setEvents] = useState<DealEvent[]>([]);
+  const [history, setHistory] = useState<History | null>(null);
   const [busy, setBusy] = useState(false);
   // Синхронный замок от двойного тапа: setBusy применится только к следующему рендеру.
   const inFlight = useRef(false);
   // Причина проигрыша — кнопками в карточке: Alert на Android показывает не больше 3 кнопок.
   const [askReason, setAskReason] = useState(false);
+  // «Вернуть в работу», а из какой стадии закрыли — не знаем: спрашиваем кнопками стадий.
+  const [pickStage, setPickStage] = useState(false);
 
   const dealId = deal?.id ?? null;
   const updatedAt = deal?.updatedAt ?? null;
@@ -35,19 +37,30 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
     setBusy(false);
   }, [dealId]);
 
+  // История: старую держим на экране, пока не придёт новая (без мигания пустотой).
+  const historyKey = dealId ? `${dealId}:${updatedAt ?? ''}` : null;
   useEffect(() => {
     let alive = true;
-    setEvents([]);
     setAskReason(false);
-    if (dealId) {
+    setPickStage(false);
+    if (dealId && historyKey) {
       void fetchOne(dealId).then((d) => {
-        if (alive) setEvents(d?.events ?? []);
+        if (!alive) return;
+        setHistory((prev) =>
+          d
+            ? { dealId, key: historyKey, events: d.events, failed: false }
+            : { dealId, key: historyKey, events: prev?.dealId === dealId ? prev.events : [], failed: true },
+        );
       });
     }
     return () => {
       alive = false;
     };
-  }, [dealId, updatedAt, fetchOne]);
+  }, [dealId, historyKey, fetchOne]);
+  const events = history && history.dealId === dealId ? history.events : NO_EVENTS;
+  /** История для ЭТОЙ версии сделки загружена (или точно не загрузится). */
+  const historyReady = !!history && history.key === historyKey;
+  const historyFailed = historyReady && !!history?.failed;
 
   const lock = useCallback((): boolean => {
     if (inFlight.current) return false;
@@ -86,6 +99,12 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
 
   const onLost = useCallback(() => setAskReason(true), []);
   const cancelLost = useCallback(() => setAskReason(false), []);
+  const cancelPick = useCallback(() => setPickStage(false), []);
+  const back = deal && !isOpenStage(deal.stage) && historyReady && !historyFailed ? reopenStage(deal, events) : null;
+  const onReopen = useCallback(() => {
+    if (back) void onMove(back);
+    else setPickStage(true);
+  }, [back, onMove]);
 
   const onRecord = useCallback(() => {
     if (deal && lock()) record(deal, finishAndClose);
@@ -99,7 +118,6 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
   const open = isOpenStage(deal.stage);
   const nb = isOpenStage(deal.stage) ? neighborStages(deal.stage) : { prev: null, next: null };
   const step = open ? stepLine(deal) : null;
-  const back = !open ? reopenStage(deal, events) : null;
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={requestClose}>
@@ -145,10 +163,25 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
               </View>
             )}
           </>
+        ) : pickStage ? (
+          <>
+            <Text style={styles.ask}>В какую стадию вернуть?</Text>
+            {[OPEN_STAGES.slice(0, 2), OPEN_STAGES.slice(2)].map((pair) => (
+              <View key={pair[0]} style={styles.row}>
+                {pair.map((st) => (
+                  <StageButton key={st} label={STAGE_LABEL[st]} disabled={busy} onPress={() => void onMove(st)} />
+                ))}
+              </View>
+            ))}
+            <View style={styles.row}>
+              <StageButton label="Отмена" disabled={busy} onPress={cancelPick} />
+            </View>
+          </>
         ) : (
           <View style={styles.row}>
             {canRecordIncome(deal) ? <StageButton label="Записать доход" tone="primary" disabled={busy} onPress={onRecord} /> : null}
-            {back ? <StageButton label="Вернуть в работу" disabled={busy} onPress={() => void onMove(back)} /> : null}
+            {/* Пока история не пришла, не знаем, куда возвращать, — кнопка ждёт. */}
+            <StageButton label="Вернуть в работу" disabled={busy || !historyReady} onPress={onReopen} />
           </View>
         )}
 
@@ -165,6 +198,16 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
 });
 
 const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+interface History {
+  dealId: string;
+  /** dealId:updatedAt — к какой версии сделки относится история. */
+  key: string;
+  events: DealEvent[];
+  /** Не загрузилась: стадию для «Вернуть в работу» спросим. */
+  failed: boolean;
+}
+const NO_EVENTS: DealEvent[] = [];
 
 function createStyles(c: ReturnType<typeof useColors>) {
   return StyleSheet.create({

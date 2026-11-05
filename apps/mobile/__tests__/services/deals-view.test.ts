@@ -85,10 +85,11 @@ describe('панель сделок — что показываем', () => {
     expect(canRecordIncome({ ...deal, stage: 'won', amount: null })).toBe(false);
     expect(canRecordIncome(deal)).toBe(false);
   });
-  it('вернуть в работу — в стадию, откуда закрыли (по истории); нет истории — «Переговоры»', () => {
+  it('вернуть в работу — в стадию, откуда закрыли (по истории); не знаем — null (спросим), а не молча «Переговоры»', () => {
     const events = [ev({ kind: 'stage', from: 'contract', to: 'won' }), ev({ kind: 'stage', from: 'new', to: 'contract' })];
     expect(reopenStage({ ...deal, stage: 'won' }, events)).toBe('contract');
-    expect(reopenStage({ ...deal, stage: 'lost' }, [])).toBe('talks');
+    expect(reopenStage({ ...deal, stage: 'lost' }, [])).toBeNull();
+    expect(reopenStage({ ...deal, stage: 'lost' }, [ev({ kind: 'stage', from: 'won', to: 'lost' })])).toBeNull();
   });
   it('ввод суммы: пробелы, «млн», «к», запятая; пусто — null; мусор/ноль/больше 1 млрд — ошибка', () => {
     expect(parseMoneyInput('2 000 000')).toEqual({ ok: true, value: 2_000_000 });

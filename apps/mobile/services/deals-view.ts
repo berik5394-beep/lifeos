@@ -111,10 +111,13 @@ export function canRecordIncome(d: Deal): boolean {
   return d.stage === 'won' && d.amount != null && !d.wonIncomeId;
 }
 
-/** «Вернуть в работу»: стадия, из которой сделку закрыли (история — свежие сверху); не знаем — «Переговоры». */
-export function reopenStage(d: Deal, events: readonly DealEvent[]): OpenStage {
+/**
+ * «Вернуть в работу»: стадия, из которой сделку закрыли (история — свежие сверху).
+ * Не знаем — null: карточка спросит стадию, а не вернёт молча в «Переговоры».
+ */
+export function reopenStage(d: Deal, events: readonly DealEvent[]): OpenStage | null {
   const closing = events.find((e) => e.kind === 'stage' && e.to === d.stage);
-  return closing?.from && isOpenStage(closing.from) ? closing.from : 'talks';
+  return closing?.from && isOpenStage(closing.from) ? closing.from : null;
 }
 
 /** Целое без суффикса; «,»/«.» + ровно 3 цифры — разделитель тысяч («350,000», «2.000.000»). */
