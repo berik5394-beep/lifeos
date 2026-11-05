@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
-import { handleMessage, runConfirmedAction } from '../services/jarvis-orchestrator.js';
+import { handleMessage, runConfirmedAction, dealChoiceHint } from '../services/jarvis-orchestrator.js';
 import { takePendingAction, peekPendingAction, pendingStagedSince } from '../services/pending-actions.js';
 import { DEAL_INCOME_CHOICE } from '../services/deals/service.js';
 
@@ -85,6 +85,14 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         });
       }
     }
+    if (confirm) {
+      // Ревью-3 N12: устаревшая кнопка «Подтвердить» попала на переспрос «какая сделка
+      // оплачена?» — это выбор словами; подсказываем и НЕ съедаем вопрос.
+      const cur = await peekPendingAction(request.userId);
+      if (cur?.action === DEAL_INCOME_CHOICE) {
+        return reply.send({ message: dealChoiceHint(cur.input), done: false, emotion: 'neutral' });
+      }
+    }
     if (!confirm) {
       await takePendingAction(request.userId);
       return reply.send({ message: 'Окей, отменил — ничего не записал.', done: true, emotion: 'neutral' });
@@ -102,7 +110,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     // Подтверждение поставило новый вопрос (напр. «доход уже записан — ещё раз?») →
     // отдаём его с кнопками, а не «готово».
     const restaged = await pendingStagedSince(request.userId, confirmStart);
-    if (restaged) {
+    if (restaged && restaged.action !== DEAL_INCOME_CHOICE) {
       return reply.send({
         message: msg,
         intent: p.action,

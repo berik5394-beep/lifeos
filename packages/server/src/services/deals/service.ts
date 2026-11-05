@@ -20,6 +20,10 @@ export const DEAL_INCOME_ACTION = 'record_deal_income';
  */
 export const DEAL_INCOME_CHOICE = 'deal_income_choice';
 export const JUST_INCOME_HINT = 'Или скажи «просто доход» — запишу обычным доходом.';
+/** Выход из предложения «закрыть сделку и записать доход» (ревью-3 I4). */
+export const JUST_INCOME_EXIT = 'Или скажи «просто доход» — запишу обычным доходом, сделку не трогаю.';
+/** «просто доход» — обычный доход вместо сделки (переспрос и предложение закрыть). */
+export const JUST_INCOME_RE = /просто\s+доход/i;
 
 export interface CreateDealInput {
   personName: string;
@@ -353,7 +357,8 @@ export { MAX_MONEY_AMOUNT };
 
 export type IncomeRouting =
   | { kind: 'none' }
-  | { kind: 'ask'; message: string }
+  // dealId — переспрос про ОДНУ сделку («это полная оплата?»): «да» закрывает её, «нет» — аванс.
+  | { kind: 'ask'; message: string; dealId: string | null; options: Array<{ personName: string; title: string }> }
   | { kind: 'advance'; dealId: string | null; dealHead: string | null }
   | { kind: 'won'; message: string; dealId: string; amount: number; incomeOffer: boolean };
 
@@ -381,24 +386,33 @@ export async function routeIncomeToDeal(
     return { kind: 'advance', dealId: one?.id ?? null, dealHead: one ? `${one.personName} — ${one.title}` : null };
   }
   const name = deals[0].personName;
-  if (deals.length > 1) return { kind: 'ask', message: `${describeWhichDeal(name, deals, 'Какая оплачена?')} ${JUST_INCOME_HINT}` };
+  const options = deals.map((d) => ({ personName: d.personName, title: d.title }));
+  if (deals.length > 1) {
+    return { kind: 'ask', message: `${describeWhichDeal(name, deals, 'Какая оплачена?')} ${JUST_INCOME_HINT}`, dealId: null, options };
+  }
   const deal = deals[0];
+  // Ревью-3 I3: вопрос про одну сделку — ответ «да»/«нет» решает (pending помнит dealId).
+  const yesNo = `«Да» — закрою сделку на ${fmtMoneyExact(amount)}, «нет» — запишу доходом и отмечу в сделке аванс.`;
   if (deal.amount != null && deal.amount !== amount) {
     return {
       kind: 'ask',
-      message: `Сделка ${name} — ${deal.title} на ${fmtMoneyExact(deal.amount)}, а пришло ${fmtMoneyExact(amount)}. Это полная оплата по сделке? Скажи «${name} оплатил, сумма ${fmtMoneyExact(amount)}» — закрою. ${JUST_INCOME_HINT}`,
+      message: `Сделка ${name} — ${deal.title} на ${fmtMoneyExact(deal.amount)}, а пришло ${fmtMoneyExact(amount)}. Это полная оплата по сделке? ${yesNo} ${JUST_INCOME_HINT}`,
+      dealId: deal.id,
+      options,
     };
   }
   if (deal.amount == null && deal.stage !== 'contract') {
     return {
       kind: 'ask',
-      message: `Сделка ${name} — ${deal.title} ещё на стадии «${STAGE_LABEL[deal.stage as DealStage] ?? deal.stage}», а пришло ${fmtMoneyExact(amount)}. Это оплата по ней целиком? Скажи «${name} оплатил ${fmtMoneyExact(amount)}» — закрою сделку. ${JUST_INCOME_HINT}`,
+      message: `Сделка ${name} — ${deal.title} ещё на стадии «${STAGE_LABEL[deal.stage as DealStage] ?? deal.stage}», а пришло ${fmtMoneyExact(amount)}. Это полная оплата по сделке? ${yesNo} ${JUST_INCOME_HINT}`,
+      dealId: deal.id,
+      options,
     };
   }
   // Вернули в работу сделку, доход по которой уже записан, — второго не предлагаем.
   const incomeOffer = !deal.wonIncomeId;
   const message = incomeOffer
-    ? `Сделка ${name} — ${deal.title}: закрыть как выигранную и записать доход ${fmtMoneyExact(amount)} от ${genitive(name)}? Подтверди — запишу.`
+    ? `Сделка ${name} — ${deal.title}: закрыть как выигранную и записать доход ${fmtMoneyExact(amount)} от ${genitive(name)}? Подтверди — запишу. ${JUST_INCOME_EXIT}`
     : `Сделка ${name} — ${deal.title}: отметить выигранной? Доход по ней уже записан раньше. Подтверди — отмечу.`;
   return { kind: 'won', message, dealId: deal.id, amount, incomeOffer };
 }

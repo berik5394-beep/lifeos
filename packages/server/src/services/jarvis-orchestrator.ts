@@ -44,7 +44,7 @@ import {
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
-import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, OPEN_STAGES, DEAL_INCOME_CHOICE, PARTIAL_PAYMENT } from './deals/index.js';
+import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, OPEN_STAGES, DEAL_INCOME_CHOICE, PARTIAL_PAYMENT, JUST_INCOME_EXIT, JUST_INCOME_RE } from './deals/index.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
@@ -416,7 +416,45 @@ function confirmationText(action: string, input: Record<string, unknown>): strin
   return 'Подтверди действие — выполню.';
 }
 
-const DEAL_CHOICE_HINT = 'Не понял, какая оплата. Скажи «просто доход» — запишу обычным доходом, или назови сделку: «Ахмет оплатил оборудование».';
+/**
+ * Подсказка на «да»/«Подтвердить» при переспросе «какая сделка оплачена?» (ревью-3 I3):
+ * примеры — из настоящих сделок переспроса, а не выдуманный «Ахмет оплатил оборудование».
+ */
+export function dealChoiceHint(input: Record<string, unknown>): string {
+  if (typeof input.dealId === 'string') {
+    return 'Ответь словами: «да» — это полная оплата, закрою сделку; «нет» — запишу доходом и отмечу в сделке аванс. Или скажи «просто доход».';
+  }
+  const options = Array.isArray(input.options) ? (input.options as Array<{ personName?: unknown; title?: unknown }>) : [];
+  const examples = options
+    .filter((o) => typeof o.personName === 'string' && typeof o.title === 'string')
+    .slice(0, 3)
+    .map((o) => `«${String(o.personName)} оплатил ${String(o.title)}»`);
+  const name = examples.length ? `, или назови сделку: ${examples.join(' или ')}` : ', или назови сделку';
+  return `Не понял, какая оплата. Скажи «просто доход» — запишу обычным доходом${name}.`;
+}
+
+/**
+ * Обычный доход + заметка «аванс» в сделке после «да» (X1a). Ставит pending, отдаёт
+ * ответ хода. Служебный __advanceDealId — только в pending, не клиенту.
+ */
+async function stageAdvanceIncome(
+  userId: string,
+  amount: number,
+  source: string,
+  dealId: string | null,
+  dealHead: string | null,
+): Promise<JarvisResponse> {
+  const input: Record<string, unknown> = { amount, source, ...(dealId ? { __advanceDealId: dealId } : {}) };
+  const base = confirmationText('add_income', { amount, source });
+  const ctext = dealHead ? `${base} Сделку ${dealHead} не закрываю — отмечу в ней аванс.` : base;
+  await setPendingAction(userId, 'add_income', input, ctext);
+  return { reply: ctext, pendingAction: { action: 'add_income', input: { amount, source } }, confirmationText: ctext, intent: 'add_income' };
+}
+
+async function dealHeadOf(userId: string, dealId: string): Promise<string | null> {
+  const d = await prisma.deal.findFirst({ where: { id: dealId, userId }, select: { personName: true, title: true } });
+  return d ? `${d.personName} — ${d.title}` : null;
+}
 
 /**
  * Доход от клиента с открытой сделкой (ревью B2/X1). Ничего не пишет — только
@@ -434,21 +472,35 @@ async function routeDealIncome(
   if (routed.kind === 'none') return null;
   if (routed.kind === 'ask') {
     // Ревью I-d: помним сумму/источник — «просто доход» запишет обычный доход.
-    // Кнопок нет (pendingAction в ответ не отдаём): это выбор, а не «записать?».
-    await setPendingAction(userId, DEAL_INCOME_CHOICE, { amount, source }, routed.message);
+    // Ревью-3 I3: про одну сделку — ещё и dealId («да» закроет её, «нет» — аванс);
+    // options — настоящие сделки для подсказки. Кнопок нет (pendingAction в ответ
+    // не отдаём): это выбор словами, а не «записать?».
+    await setPendingAction(
+      userId,
+      DEAL_INCOME_CHOICE,
+      { amount, source, ...(routed.dealId ? { dealId: routed.dealId } : {}), options: routed.options },
+      routed.message,
+    );
     return { reply: routed.message, intent: 'update_deal' };
   }
-  if (routed.kind === 'advance') {
-    const input: Record<string, unknown> = { amount, source, ...(routed.dealId ? { __advanceDealId: routed.dealId } : {}) };
-    const base = confirmationText('add_income', { amount, source });
-    const ctext = routed.dealHead ? `${base} Сделку ${routed.dealHead} не закрываю — отмечу в ней аванс.` : base;
-    await setPendingAction(userId, 'add_income', input, ctext);
-    return { reply: ctext, pendingAction: { action: 'add_income', input }, confirmationText: ctext, intent: 'add_income' };
-  }
+  if (routed.kind === 'advance') return stageAdvanceIncome(userId, amount, source, routed.dealId, routed.dealHead);
   const pa = { action: DEAL_INCOME_ACTION, input: { dealId: routed.dealId, markWon: true, amount: routed.amount } };
-  await setPendingAction(userId, pa.action, pa.input, routed.message);
+  // __source — для «просто доход» (ревью-3 I4) и «проиграна» (N5): обычный доход с тем же источником.
+  await setPendingAction(userId, pa.action, { ...pa.input, __source: source }, routed.message);
   return { reply: routed.message, pendingAction: pa, confirmationText: routed.message, intent: 'update_deal' };
 }
+
+/** Ревью-3 I3: «да» на «это полная оплата?» — предложить закрыть сделку на пришедшую сумму. */
+async function stageFullPayment(userId: string, dealId: string, amount: number, source: string): Promise<JarvisResponse | null> {
+  const head = await dealHeadOf(userId, dealId);
+  if (!head) return null;
+  const input = { dealId, markWon: true, amount, fullPayment: true };
+  const ctext = `Сделка ${head}: закрыть как выигранную на ${fmtMoneyExact(amount)} и записать этот доход? Подтверди — запишу. ${JUST_INCOME_EXIT}`;
+  await setPendingAction(userId, DEAL_INCOME_ACTION, { ...input, __source: source }, ctext);
+  return { reply: ctext, pendingAction: { action: DEAL_INCOME_ACTION, input }, confirmationText: ctext, intent: 'update_deal' };
+}
+
+const DEAL_LOST_REFUSAL = 'Сделку отметили проигранной — доход не записал. Скажи «просто доход», если деньги пришли.';
 
 /**
  * «Подтвердить» на доход по сделке. markWon (из маршрутизации дохода) — сначала
@@ -458,14 +510,26 @@ async function routeDealIncome(
 async function confirmDealIncome(userId: string, input: Record<string, unknown>): Promise<string> {
   const dealId = String(input.dealId ?? '');
   const force = input.force === true;
+  // Сумма из предложения («пришло 2 млн»); в повторе с force её нет.
+  const offered = typeof input.amount === 'number' && Number.isFinite(input.amount) ? input.amount : null;
   const lines: string[] = [];
   if (input.markWon === true) {
     const cur = await prisma.deal.findFirst({ where: { id: dealId, userId } });
     if (!cur) return 'Сделку не нашёл — ничего не записал.';
-    if (cur.stage !== 'won') {
-      const amount = typeof input.amount === 'number' && cur.amount == null ? input.amount : undefined;
-      await updateDeal(userId, dealId, { stage: 'won', ...(amount != null ? { amount } : {}) });
-      lines.push(`Сделка ${cur.personName} — ${cur.title}: выиграна.`);
+    // Ревью-3 N5: пока висело «Подтвердить», сделку в панели отметили проигранной —
+    // не воскрешаем её молча. «просто доход» запишет деньги обычным доходом.
+    if (cur.stage === 'lost') {
+      if (offered != null) {
+        await setPendingAction(userId, DEAL_INCOME_CHOICE, { amount: offered, source: String(input.__source ?? '') }, DEAL_LOST_REFUSAL);
+      }
+      return DEAL_LOST_REFUSAL;
+    }
+    // Суммы нет — ставим из предложения при любой стадии (в панели могли уже отметить
+    // «выиграна» без суммы). «Да, это полная оплата» (fullPayment) — сумма сделки = пришедшая.
+    const setAmount = offered != null && (cur.amount == null || (input.fullPayment === true && cur.amount !== offered));
+    if (cur.stage !== 'won' || setAmount) {
+      await updateDeal(userId, dealId, { ...(cur.stage !== 'won' ? { stage: 'won' as const } : {}), ...(setAmount ? { amount: offered } : {}) });
+      if (cur.stage !== 'won') lines.push(`Сделка ${cur.personName} — ${cur.title}: выиграна.`);
     }
   }
   const r = await recordDealIncome(userId, dealId, new Date(), { force });
@@ -477,6 +541,10 @@ async function confirmDealIncome(userId: string, input: Record<string, unknown>)
   } else if (r.ok && !r.already) {
     const d = await prisma.deal.findFirst({ where: { id: dealId, userId }, select: { personName: true, title: true } });
     lines.push(`Записал доход ${fmtMoneyExact(r.amount)} — сделка ${d?.personName ?? ''} — ${d?.title ?? ''}.`);
+    // Ревью-3 N5: сумму сделки поменяли в панели — пишем по сделке и говорим ровно, сколько.
+    if (offered != null && r.amount !== offered) {
+      lines.push(`Сумму сделки поменяли — записал ${fmtMoneyExact(r.amount)}, не ${fmtMoneyExact(offered)}.`);
+    }
   } else if (r.ok) {
     lines.push('Доход по этой сделке уже записан.');
   } else {
@@ -549,8 +617,11 @@ export async function runConfirmedAction(
     // Переспрос «какая сделка?» — не подтверждение; кнопка сюда не ведёт, но если
     // дошло — подсказываем, ничего не пишем.
     if (action === DEAL_INCOME_CHOICE) {
-      await saveTurn(userId, '(подтверждено)', DEAL_CHOICE_HINT);
-      return DEAL_CHOICE_HINT;
+      // Ревью-3 N12: «Подтвердить» не съедает переспрос — возвращаем его на место.
+      const hint = dealChoiceHint(input);
+      await setPendingAction(userId, DEAL_INCOME_CHOICE, input, hint);
+      await saveTurn(userId, '(подтверждено)', hint);
+      return hint;
     }
 
     if (action === DEAL_INCOME_ACTION) {
@@ -696,20 +767,52 @@ async function handleMessageCore(
         intent: pending.action,
       };
     }
+    // Ревью-3 I4: «закрыть сделку и записать доход?» → «просто доход» — обычный доход
+    // той же суммы, сделку не закрываем (после «да» — заметка «аванс»).
+    if (pending.action === DEAL_INCOME_ACTION && pending.input.markWon === true && JUST_INCOME_RE.test(text)) {
+      const dealId = String(pending.input.dealId ?? '');
+      const r = await stageAdvanceIncome(
+        userId,
+        Number(pending.input.amount),
+        String(pending.input.__source ?? ''),
+        dealId || null,
+        dealId ? await dealHeadOf(userId, dealId) : null,
+      );
+      await saveTurn(userId, text, r.reply);
+      return r;
+    }
     // Ревью I-d: переспрос «какая сделка оплачена?» — «просто доход» → обычный доход
-    // на ту же сумму; «да» тут ничего не решает — подсказываем, вопрос держим.
+    // на ту же сумму. Ревью-3 I3: вопрос про одну сделку («это полная оплата?») —
+    // «да» → предложение закрыть её на пришедшую сумму, «нет» → доход + аванс в сделке.
+    // Несколько сделок — «да» ничего не решает: подсказка, вопрос держим.
     if (pending.action === DEAL_INCOME_CHOICE) {
-      if (/просто\s+доход/i.test(text)) {
+      const amount = Number(pending.input.amount);
+      const source = String(pending.input.source ?? '');
+      if (JUST_INCOME_RE.test(text)) {
         await takePendingAction(userId);
-        const input = { amount: Number(pending.input.amount), source: String(pending.input.source ?? '') };
+        const input = { amount, source };
         const ctext = confirmationText('add_income', input);
         await setPendingAction(userId, 'add_income', input, ctext);
         await saveTurn(userId, text, ctext);
         return { reply: ctext, pendingAction: { action: 'add_income', input }, confirmationText: ctext, intent: 'add_income' };
       }
+      const choiceDealId = typeof pending.input.dealId === 'string' ? pending.input.dealId : null;
+      if (choiceDealId && signal === 'confirm') {
+        const r = await stageFullPayment(userId, choiceDealId, amount, source);
+        if (r) {
+          await saveTurn(userId, text, r.reply);
+          return r;
+        }
+      }
+      if (choiceDealId && signal === 'cancel') {
+        const r = await stageAdvanceIncome(userId, amount, source, choiceDealId, await dealHeadOf(userId, choiceDealId));
+        await saveTurn(userId, text, r.reply);
+        return r;
+      }
       if (signal === 'confirm') {
-        await saveTurn(userId, text, DEAL_CHOICE_HINT);
-        return { reply: DEAL_CHOICE_HINT, intent: 'update_deal' };
+        const hint = dealChoiceHint(pending.input);
+        await saveTurn(userId, text, hint);
+        return { reply: hint, intent: 'update_deal' };
       }
     }
     if (signal === 'confirm') {
@@ -719,7 +822,8 @@ async function handleMessageCore(
       // Ревью I-c: подтверждение могло поставить НОВЫЙ вопрос («Похоже, уже
       // записан… Записать ещё раз?») — отдаём его, чтобы были кнопки.
       const restaged = await pendingStagedSince(userId, confirmStart);
-      if (restaged) {
+      // Переспрос (deal_income_choice) — выбор словами, без кнопок.
+      if (restaged && restaged.action !== DEAL_INCOME_CHOICE) {
         return {
           reply,
           intent: p.action,
