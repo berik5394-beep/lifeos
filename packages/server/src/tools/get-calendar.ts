@@ -61,7 +61,8 @@ export const getCalendarTool = defineTool({
       date: e.date.toISOString().slice(0, 10),
     }));
     // Шаги по сделкам — тоже занятость дня (не CalendarEvent; флаг выкл. → []).
-    const steps = await listDealSteps(ctx.userId, gte, dateOnlyUTC(addCivilDays(input.to, 1)));
+    // Потолок как у событий (take: 100) — ответ инструмента не раздувается.
+    const steps = await listDealSteps(ctx.userId, gte, dateOnlyUTC(addCivilDays(input.to, 1)), { limit: 100 });
     if (steps.length === 0) return out;
     return [
       ...out,

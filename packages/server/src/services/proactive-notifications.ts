@@ -431,6 +431,10 @@ async function generateMorningBriefing(
   return buildMorning(userId, user?.name ?? 'друг', scheduledFor, user?.timezone || 'UTC');
 }
 
+/** Длинный шаг по сделке не раздувает пуш: ~60 символов на шаг. */
+const DEAL_STEP_PUSH_CHARS = 60;
+const clip = (t: string, max: number): string => (t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t);
+
 export async function buildMorning(
   userId: string,
   name: string,
@@ -470,7 +474,7 @@ export async function buildMorning(
   if (dealSteps.length > 0) {
     const n = dealSteps.length;
     const more = n > 3 ? ` и ещё ${n - 3}` : '';
-    parts.push(`${n} ${plural(n, ['шаг', 'шага', 'шагов'])} по сделкам: ${dealSteps.slice(0, 3).map(dealStepLabel).join('; ')}${more}`);
+    parts.push(`${n} ${plural(n, ['шаг', 'шага', 'шагов'])} по сделкам: ${dealSteps.slice(0, 3).map((st) => clip(dealStepLabel(st), DEAL_STEP_PUSH_CHARS)).join('; ')}${more}`);
   }
 
   // C3 friend-tone: точка вместо "!" в title (спокойнее, не реклама),

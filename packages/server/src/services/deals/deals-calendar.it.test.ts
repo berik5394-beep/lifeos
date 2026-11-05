@@ -77,4 +77,13 @@ describe('сделки × календарь', () => {
     expect(facts.join(' ')).toContain('шаг сегодня: Ахмет');
     expect(facts.join(' ')).not.toContain('просрочен');
   });
+
+  it('нит: get_calendar — не больше 100 шагов по сделкам', async () => {
+    const u = await prisma.user.create({ data: { email: `dcal-cap-${Date.now()}@a.test`, name: 'C', passwordHash: 'x', timezone: 'UTC' } });
+    await prisma.deal.createMany({
+      data: Array.from({ length: 105 }, (_, i) => ({ userId: u.id, personName: `Клиент${i}`, title: 't', stage: 'new', nextStepAt: d('2026-03-10'), nextStepText: 'связаться' })),
+    });
+    const out = (await runRegistryTool('get_calendar', { from: '2026-03-10', to: '2026-03-10' }, { userId: u.id })) as Array<{ kind?: string }>;
+    expect(out.filter((x) => x.kind === 'deal_step')).toHaveLength(100);
+  });
 });

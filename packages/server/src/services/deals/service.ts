@@ -538,12 +538,18 @@ export interface DealStep {
  * Открытые сделки с шагом в [from, toExcl) (@db.Date, UTC-полночь гражданских
  * дат). Флаг выкл. → [] без запроса (всё, что на этом строится, — как раньше).
  */
-export async function listDealSteps(userId: string, from: Date, toExcl: Date): Promise<DealStep[]> {
+export async function listDealSteps(
+  userId: string,
+  from: Date,
+  toExcl: Date,
+  opts: { limit?: number } = {},
+): Promise<DealStep[]> {
   if (!isV2DealsEnabled(userId)) return [];
   const rows = await prisma.deal.findMany({
     where: { userId, stage: { in: [...OPEN_STAGES] }, nextStepAt: { gte: from, lt: toExcl } },
     select: { id: true, personName: true, title: true, nextStepText: true, nextStepAt: true },
     orderBy: [{ nextStepAt: 'asc' }, { createdAt: 'asc' }],
+    ...(opts.limit ? { take: opts.limit } : {}),
   });
   return rows.map((r) => ({
     id: r.id,

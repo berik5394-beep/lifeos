@@ -99,4 +99,16 @@ describe('утро × сделки', () => {
     process.env.FEATURE_V2_DEALS = '';
     expect(await dealStepsTodayLabels(userId, d(TODAY))).toBeUndefined();
   });
+
+  it('нит: утренний пуш — длинный шаг обрезан до ~60 символов', async () => {
+    const u = await prisma.user.create({ data: { email: `dmorn-long-${Date.now()}@a.test`, name: 'Берик', passwordHash: 'x', timezone: 'UTC' } });
+    const long = 'позвонить и обсудить '.repeat(10).trim();
+    await createDeal(u.id, { personName: 'Ахмет', title: 'склад', nextStepDate: TODAY, nextStepText: long });
+    const [n] = await buildMorning(u.id, 'Берик', new Date(), 'UTC');
+    const m = n.body.match(/по сделкам: (.*)\. Начнём\?$/);
+    expect(m).not.toBeNull();
+    expect(m![1].length).toBeLessThanOrEqual(60);
+    expect(m![1].startsWith('Ахмет — позвонить и обсудить')).toBe(true);
+    expect(m![1].endsWith('…')).toBe(true);
+  });
 });
