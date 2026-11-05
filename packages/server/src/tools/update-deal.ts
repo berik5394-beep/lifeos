@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { defineTool } from './_types.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import {
-  findOpenDeals, updateDeal, describeUpdated, parseStage, genitive, DEAL_INCOME_ACTION, fmtMoney,
+  findOpenDeals, findRecentClosedDeals, isOpenStage, updateDeal, describeUpdated, parseStage, genitive, DEAL_INCOME_ACTION, fmtMoney,
 } from '../services/deals/index.js';
 import { setPendingAction } from '../services/pending-actions.js';
 import { getUserTimezone } from '../lib/user-context.js';
@@ -33,7 +33,15 @@ export const updateDealTool = defineTool({
   handler: async (input, ctx) => {
     if (!isV2DealsEnabled(ctx.userId)) return { error: 'deals_disabled', hint: 'сделки выключены — для напоминания используй create_task, для обещания create_obligation' };
     const name = input.personName.trim();
-    const found = await findOpenDeals(ctx.userId, name, input.title ?? null);
+    const stage = input.stage ? parseStage(input.stage) : null;
+    if (input.stage && !stage) return { message: `Не понял стадию «${input.stage}». Варианты: новая, переговоры, КП, договор, выиграна, проиграна.` };
+    let found = await findOpenDeals(ctx.userId, name, input.title ?? null);
+    // Ревью I3: открытых нет, но названа сумма или открытая стадия — это может быть
+    // недавно закрытая сделка («выиграна» без суммы / вернуть проигранную в работу).
+    if (found.length === 0 && (input.amount != null || (stage && isOpenStage(stage)))) {
+      const closed = await findRecentClosedDeals(ctx.userId, name, input.title ?? null);
+      if (closed.length === 1) found = closed;
+    }
     if (found.length === 0) {
       // Ревью I5: не вопрос юзеру, а подсказка агенту — иначе «перезвонить Дане» без сделки теряется.
       return {
@@ -45,8 +53,6 @@ export const updateDealTool = defineTool({
       const list = found.map((d) => `«${d.title}»${d.amount != null ? ` (${fmtMoney(d.amount)})` : ''}`).join(', ');
       return { message: `У ${genitive(name)} ${found.length} открытые сделки: ${list}. Про какую?` };
     }
-    const stage = input.stage ? parseStage(input.stage) : null;
-    if (input.stage && !stage) return { message: `Не понял стадию «${input.stage}». Варианты: новая, переговоры, КП, договор, выиграна, проиграна.` };
     const now = new Date();
     const r = await updateDeal(ctx.userId, found[0].id, {
       ...(stage ? { stage } : {}),

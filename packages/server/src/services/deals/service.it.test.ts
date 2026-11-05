@@ -71,6 +71,19 @@ describe('сервис сделок', () => {
     expect(await prisma.dealEvent.count({ where: { dealId: deal.id, kind: 'stage' } })).toBe(2);
   });
 
+  it('ревью I3: выиграна без суммы → назвали сумму → предложение дохода', async () => {
+    const userId = await user('wonamt');
+    const { deal } = await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' }, NOW);
+    const r1 = await updateDeal(userId, deal.id, { stage: 'won' }, NOW);
+    expect(r1.incomeOffer).toBe(false);
+    const r2 = await updateDeal(userId, deal.id, { amount: 2_000_000 }, NOW);
+    expect(r2.incomeOffer).toBe(true);
+    await recordDealIncome(userId, deal.id, NOW);
+    // доход уже записан — смена суммы больше не предлагает его
+    const r3 = await updateDeal(userId, deal.id, { amount: 2_100_000 }, NOW);
+    expect(r3.incomeOffer).toBe(false);
+  });
+
   it('свой срок побеждает дефолт', async () => {
     const userId = await user('own');
     const { deal } = await createDeal(userId, { personName: 'Ахмет', title: 'x' }, NOW);

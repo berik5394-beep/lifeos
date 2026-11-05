@@ -101,20 +101,41 @@ export function titleMatches(dealTitle: string, said: string): boolean {
  * НЕ фильтр (неточное «оборудования» прятало единственную сделку → «нет сделки» →
  * дубль), а только развязка при >1; развязка дала 0 → все (переспросим списком).
  */
-export async function findOpenDeals(userId: string, personName: string, title?: string | null): Promise<Deal[]> {
+async function clientWhere(userId: string, personName: string): Promise<Prisma.DealWhereInput> {
   const ent = await getEntityGraph().resolveForMerge(userId, personName.trim(), 'person');
-  const where: Prisma.DealWhereInput = {
+  return {
     userId,
-    stage: { in: [...OPEN_STAGES] },
     OR: [
       ...(ent ? [{ personEntityId: ent.id }] : []),
       { personName: { equals: personName.trim(), mode: 'insensitive' } },
     ],
   };
-  const all = await prisma.deal.findMany({ where, orderBy: { createdAt: 'desc' } });
+}
+
+function tieBreak(all: Deal[], title?: string | null): Deal[] {
   if (all.length <= 1 || !title?.trim()) return all;
   const narrowed = all.filter((d) => titleMatches(d.title, title));
   return narrowed.length ? narrowed : all;
+}
+
+export async function findOpenDeals(userId: string, personName: string, title?: string | null): Promise<Deal[]> {
+  const where: Prisma.DealWhereInput = { ...(await clientWhere(userId, personName)), stage: { in: [...OPEN_STAGES] } };
+  return tieBreak(await prisma.deal.findMany({ where, orderBy: { createdAt: 'desc' } }), title);
+}
+
+/** Ревью I3: закрытые (won/lost) сделки клиента за 30 дней — чтобы досказать сумму или вернуть в работу. */
+export async function findRecentClosedDeals(
+  userId: string,
+  personName: string,
+  title?: string | null,
+  now: Date = new Date(),
+): Promise<Deal[]> {
+  const where: Prisma.DealWhereInput = {
+    ...(await clientWhere(userId, personName)),
+    stage: { in: ['won', 'lost'] },
+    closedAt: { gte: new Date(now.getTime() - 30 * 86_400_000) },
+  };
+  return tieBreak(await prisma.deal.findMany({ where, orderBy: { closedAt: 'desc' } }), title);
 }
 
 export async function updateDeal(
@@ -145,7 +166,8 @@ export async function updateDeal(
       data.nextStepText = null;
     }
   }
-  if (patch.amount !== undefined && patch.amount !== cur.amount) {
+  const amountChanged = patch.amount !== undefined && patch.amount !== cur.amount;
+  if (amountChanged) {
     data.amount = patch.amount;
     events.push({ kind: 'amount', from: cur.amount != null ? String(cur.amount) : null, to: patch.amount != null ? String(patch.amount) : null });
   }
@@ -166,7 +188,8 @@ export async function updateDeal(
   if (deal.personEntityId) {
     await prisma.entity.update({ where: { id: deal.personEntityId }, data: { lastSeenAt: now } }).catch(() => {});
   }
-  const incomeOffer = stageChanged && deal.stage === 'won' && deal.amount != null && !deal.wonIncomeId;
+  // Ревью I3: «выиграна» без суммы → назвали сумму позже → тоже предлагаем доход.
+  const incomeOffer = deal.stage === 'won' && deal.amount != null && !deal.wonIncomeId && (stageChanged || amountChanged);
   return { deal, step, stageChanged, incomeOffer };
 }
 

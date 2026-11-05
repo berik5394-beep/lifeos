@@ -59,6 +59,37 @@ describe('инструменты сделок', () => {
     expect(await prisma.deal.count({ where: { userId } })).toBe(0);
   });
 
+  it('ревью I3: выиграна без суммы → «сумма 2 млн» → предложение дохода', async () => {
+    const userId = await user('wonamt');
+    await runRegistryTool('create_deal', { personName: 'Ахмет', title: 'оборудование' }, { userId });
+    const a = (await runRegistryTool('update_deal', { personName: 'Ахмет', stage: 'оплатил' }, { userId })) as Out;
+    expect(a.message).toContain('Скажи сумму — запишу доход.');
+    const b = (await runRegistryTool('update_deal', { personName: 'Ахмет', amount: 2_000_000 }, { userId })) as Out;
+    expect(b.message).toMatch(/Записать доход .* от Ахмета\?/);
+    expect((await peekPendingAction(userId))?.action).toBe('record_deal_income');
+  });
+
+  it('ревью I3: недавно проигранную можно вернуть в работу', async () => {
+    const userId = await user('reopen');
+    await runRegistryTool('create_deal', { personName: 'Серик', title: 'склад' }, { userId });
+    await runRegistryTool('update_deal', { personName: 'Серик', stage: 'отказался' }, { userId });
+    const out = (await runRegistryTool('update_deal', { personName: 'Серик', stage: 'переговоры' }, { userId })) as Out;
+    expect(out.message).toMatch(/^Сделка Серик — склад: стадия «Переговоры»/);
+    expect(await prisma.deal.count({ where: { userId, stage: 'talks' } })).toBe(1);
+  });
+
+  it('ревью I3: закрытую не трогаем без суммы/открытой стадии и старше 30 дней', async () => {
+    const userId = await user('closed');
+    await runRegistryTool('create_deal', { personName: 'Серик', title: 'склад' }, { userId });
+    await runRegistryTool('update_deal', { personName: 'Серик', stage: 'отказался' }, { userId });
+    const note = (await runRegistryTool('update_deal', { personName: 'Серик', note: 'звонил' }, { userId })) as Out;
+    expect(note.error).toBe('no_open_deal');
+    await prisma.deal.updateMany({ where: { userId }, data: { closedAt: new Date(Date.now() - 31 * 86_400_000) } });
+    const old = (await runRegistryTool('update_deal', { personName: 'Серик', stage: 'переговоры' }, { userId })) as Out;
+    expect(old.error).toBe('no_open_deal');
+    expect(await prisma.deal.count({ where: { userId, stage: 'lost' } })).toBe(1);
+  });
+
   it('list_deals и set_sales_plan', async () => {
     const userId = await user('list');
     await runRegistryTool('set_sales_plan', { amount: 10_000_000 }, { userId });
