@@ -7,7 +7,6 @@ import crypto from 'node:crypto';
 import Groq from 'groq-sdk';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { processVoiceCommand } from '../ai/voice-pipeline.js';
 import { prisma } from '../lib/prisma.js';
 import {
   calculateStreak,
@@ -20,8 +19,6 @@ import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 // Теперь ответ идёт через единый оркестратор. Контракт ответа
 // ({response, reply, context}) сохранён — старое приложение не ломается.
 import { handleMessage } from '../services/jarvis-orchestrator.js';
-import { getUserTimezone } from '../lib/user-context.js';
-import { matchesCrisisPhrase } from '../services/safety-classifier.js';
 
 // Voice assistant/transcribe are expensive (Groq Whisper + Claude API) — cap per IP
 const assistantRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'voice-assistant' });
@@ -61,27 +58,22 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
     const userId = request.userId;
 
     try {
-      // Phase 6 P0 voice-safety (Berik deep-review, 2026-05-20):
-      // раньше /voice/process шёл сразу в parseIntent + template,
-      // МИНУЯ safety-gate (matchesCrisisPhrase) и весь Phase 5+6
-      // стек, который ВЕСЬ построен в handleMessage. Голосовой
-      // кризис-сигнал не получал ни 150/111/1303, ни crisis-flag
-      // в БД. Реальная P0-дыра в голосовом канале.
-      //
-      // Фикс УЗКИЙ: на crisis-фразе делегируем handleMessage
-      // (полный путь — safety-gate, save crisis=true, P1c вариация
-      // на повтор, retention 30д, изоляция от LLM). Адаптируем
-      // ответ под существующий mobile-shape {intent, response} —
-      // ничего не ломается. Non-crisis путь НЕ затронут.
-      if (matchesCrisisPhrase(text)) {
-        const jarvis = await handleMessage(userId, text, 'voice');
-        return reply.send({
-          intent: { action: jarvis.intent ?? 'safety_crisis' },
-          response: jarvis.reply,
-        });
-      }
-      const result = await processVoiceCommand(text, await getUserTimezone(userId));
-      return reply.send(result);
+      // voice-one-brain (2026-11-05): голосовая кнопка мобилки — ТОТ ЖЕ мозг,
+      // что Telegram/чат: safety-гейт первым (кризис → 150/111/1303 +
+      // crisis=true), confirm-FSM для денег, реестр инструментов с
+      // ToolCall-аудитом, честные матчеры задач/привычек, память. Раньше
+      // тут был второй мозг (свой разбор интента + шаблон «Задача создана»), а
+      // мобилка исполняла интент сама: деньги без «да», «непонятное →
+      // задача», TTS «создано» до записи.
+      const jarvis = await handleMessage(userId, text, 'voice');
+      let response = jarvis.reply;
+      if (jarvis.bookingUrl) response += `\n\n\u{1F517} ${jarvis.bookingUrl}`;
+      return reply.send({
+        intent: { action: jarvis.intent },
+        response,
+        pendingAction: jarvis.pendingAction ?? null,
+        confirmationText: jarvis.confirmationText ?? null,
+      });
     } catch (err) {
       app.log.error(err);
       return reply.status(500).send({

@@ -5,21 +5,15 @@ import { join } from 'node:path';
 /**
  * intent-TZ фикс — структурные гарды мест, где реальный путь требует Claude
  * (сеть/ключ) и it-тестом не покрывается: Claude-промпты экстракторов,
- * voice-fallback, booking/дикт-фоллбэки оркестратора. Серверная UTC-дата
+ * booking/дикт-фоллбэки оркестратора. Серверная UTC-дата
  * («toISOString→YYYY-MM-DD» как «сегодня») здесь больше не должна появиться.
+ * (Голос: старый voice-pipeline удалён — /voice/process идёт через
+ * handleMessage, его TZ покрыт intent-tz.it.test.ts.)
  */
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf-8');
 const UTC_TODAY = /new Date\(\)\.toISOString\(\)\.(?:split\('T'\)\[0\]|slice\(0, ?10\))|Date\.now\(\) \+ 86_400_000\)\.toISOString/;
 
 describe('intent-TZ wiring', () => {
-  it('voice-pipeline: fallback-задача и parseIntent — в поясе юзера', () => {
-    const src = read('src/ai/voice-pipeline.ts');
-    expect(src).not.toMatch(UTC_TODAY);
-    expect(src).toMatch(/parseIntent\(raw, tz\)/);
-  });
-  it('routes/voice: processVoiceCommand получает пояс юзера', () => {
-    expect(read('src/routes/voice.ts')).toMatch(/processVoiceCommand\(text, await getUserTimezone\(userId\)\)/);
-  });
   it('dictation-service: промпты и фоллбэк-даты задач — по civilDayRefs/localDateStr', () => {
     const src = read('src/services/dictation-service.ts');
     expect(src).not.toMatch(UTC_TODAY);
