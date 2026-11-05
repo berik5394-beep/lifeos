@@ -124,3 +124,56 @@ describe('ключ deal_next_step_due (ревью I2)', () => {
     expect(await dueRows(userId)).toBe(2);
   });
 });
+
+describe('просрочка шага: due 1–2 дня, дальше — затихла раз в неделю (ревью I-a)', () => {
+  const D = (civil: string) => new Date(`${civil}T00:00:00Z`);
+  const rows = (userId: string, src: string) => prisma.insight.count({ where: { userId, scopeKey: { startsWith: `${src}:` } } });
+
+  it('шаг 04.11: 04–06 → deal_next_step_due каждый день; 07 → deal_stale; 08 — тишина; 14 — снова stale', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-02T09:00:00Z'));
+    const userId = await user('overdue-cycle');
+    const engine = new V2ProactivityEngine();
+    const { deal } = await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
+    await prisma.deal.update({ where: { id: deal.id }, data: { nextStepAt: D('2026-11-04') } });
+
+    const expectAt = async (day: string, due: number, stale: number) => {
+      vi.setSystemTime(new Date(`${day}T09:00:00Z`));
+      await engine.runForUser(userId);
+      expect({ day, due: await rows(userId, 'deal_next_step_due'), stale: await rows(userId, 'deal_stale') }).toEqual({ day, due, stale });
+    };
+    await expectAt('2026-11-04', 1, 0); // сегодня
+    await expectAt('2026-11-05', 2, 0); // просрочка 1
+    await expectAt('2026-11-06', 3, 0); // просрочка 2
+    await expectAt('2026-11-07', 3, 1); // просрочка 3 → затихла, не «пора»
+    await expectAt('2026-11-08', 3, 1); // не каждый день
+    await expectAt('2026-11-10', 3, 1); // R10 стора (3 дня) прошёл — всё равно неделя
+    await expectAt('2026-11-14', 3, 2); // неделя прошла
+  });
+
+  it('детектор: просрочка ≥3 дней → deal_stale с текстом про шаг, без deal_next_step_due', async () => {
+    const userId = await user('overdue3');
+    const { deal } = await createDeal(userId, { personName: 'Серик', title: 'склад' });
+    await prisma.deal.update({ where: { id: deal.id }, data: { nextStepAt: new Date(Date.now() - 4 * 86_400_000) } });
+    const cands = await new V2ProactivityEngine().detectCandidates(userId);
+    expect(cands.map((c) => c.source)).not.toContain('deal_next_step_due');
+    const st = cands.find((c) => c.source === 'deal_stale');
+    expect(st?.entityId).toBe(deal.id);
+    expect(String(st?.payload.staleText)).toMatch(/Шаг по сделке «склад» с Сериком просрочен на 4 дн/);
+  });
+
+  it('шаг завтра + 8 дн тишины → не «затихла» (шаг назначен)', async () => {
+    const userId = await user('future-step');
+    const { deal } = await createDeal(userId, { personName: 'Серик', title: 'склад' });
+    await prisma.deal.update({ where: { id: deal.id }, data: { nextStepAt: new Date(Date.now() + 86_400_000), lastActivityAt: new Date(Date.now() - 8 * 86_400_000) } });
+    expect(await sources(userId)).not.toContain('deal_stale');
+  });
+
+  it('нит: ключ deals_due — хэш набора (16 hex) + дата, не список id', async () => {
+    const userId = await user('due-hash');
+    const { deal } = await createDeal(userId, { personName: 'Ахмет', title: 'x' });
+    await prisma.deal.update({ where: { id: deal.id }, data: { nextStepAt: new Date(Date.now() - 86_400_000) } });
+    const c = (await new V2ProactivityEngine().detectCandidates(userId)).find((x) => x.source === 'deal_next_step_due');
+    expect(c?.entityId).toMatch(/^deals_due:[0-9a-f]{16}:\d{4}-\d{2}-\d{2}$/);
+  });
+});
