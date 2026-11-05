@@ -6,6 +6,7 @@ import { validate } from '../middleware/validate.js';
 import { generateProactiveNotifications } from '../services/proactive-notifications.js';
 import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
+import { calculateStreak } from '../services/streak-service.js';
 
 const registerTokenSchema = z.object({
   // Expo push token: ExponentPushToken[...] / ExpoPushToken[...]
@@ -80,7 +81,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const { start: monthStart, end: monthEnd } = getMonthRange();
 
-    const [tasks, events, habits, habitLogs, expenses, budgetLimits, pet] =
+    const [tasks, events, habits, habitLogs, expenses, budgetLimits, habitStreak] =
       await Promise.all([
         prisma.task.findMany({
           where: { userId, date: today },
@@ -136,10 +137,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
           select: { monthlyLimit: true },
         }),
 
-        prisma.pet.findFirst({
-          where: { userId },
-          select: { streak: true },
-        }),
+        calculateStreak(userId),
       ]);
 
     // Habits progress
@@ -147,8 +145,8 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     const totalHabits = habits.length;
     const habitsProgress = `${completedHabits}/${totalHabits}`;
 
-    // Streak — use pet streak if available, otherwise 0
-    const streak = pet?.streak ?? 0;
+    // Серия привычек (питомец удалён 2026-11-05; поле streak в ответе сохранено — его ждёт мобилка)
+    const streak = habitStreak;
 
     // Budget
     const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);

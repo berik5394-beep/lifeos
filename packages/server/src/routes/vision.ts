@@ -92,13 +92,6 @@ const captureTaskSchema = z.object({
   hint: z.string().max(500).optional(),
 });
 
-const verifyExerciseSchema = z.object({
-  image: z.string().min(100, 'Image обязателен (base64)'),
-  mediaType: mediaTypeSchema,
-  exercise: z.enum(['squats', 'pushups', 'plank', 'burpees', 'jumps', 'lunges', 'situps', 'highknees']),
-  challengeId: z.string().optional(),
-});
-
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -333,88 +326,6 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
     } catch (err) {
       app.log.error({ err }, 'Save captured tasks error');
       return reply.status(500).send({ message: 'Не удалось сохранить задачи' });
-    }
-  });
-
-  // ----- Arena exercise verification --------------------------------------
-  // Used by battle-screen / challenge flow. User takes a selfie/photo while
-  // doing the exercise. Claude Vision verifies the person is actually doing
-  // the exercise (form + activity detection). Result is passed to
-  // /challenge/complete with `verified: true`.
-  app.post('/vision/verify-exercise', {
-    bodyLimit: PHOTO_BODY_LIMIT,
-    preHandler: [visionRateLimit, aiDailyLimiter, validate(verifyExerciseSchema)],
-  }, async (request, reply) => {
-    const { image, mediaType, exercise } = request.body as z.infer<typeof verifyExerciseSchema>;
-    const userId = request.userId;
-
-    try {
-      assertImageSizeOk(image, mediaType);
-      const exerciseLabels: Record<string, string> = {
-        squats: 'приседания (squat position)',
-        pushups: 'отжимания (push-up position, hands on floor)',
-        plank: 'планка (plank position, body straight, on elbows or hands)',
-        burpees: 'бёрпи (burpee — explosive full-body movement)',
-        jumps: 'прыжки (jumping in place)',
-        lunges: 'выпады (lunge position, one leg forward)',
-        situps: 'упражнения на пресс (sit-up or crunch position)',
-        highknees: 'высокие колени (high knees running in place)',
-      };
-
-      const expected = exerciseLabels[exercise] || exercise;
-
-      const response = await anthropic.messages.create({
-        model: VISION_MODEL,
-        max_tokens: 512,
-        system:
-          'You are a fitness verification assistant. Analyze the image and determine if a person is performing the specified exercise. ' +
-          'Return ONLY a JSON object with this exact shape:\n' +
-          '{"verified": boolean, ' +
-          '"confidence": "high"|"medium"|"low", ' +
-          '"detectedActivity": string (Russian, what you actually see), ' +
-          '"reason": string (Russian, 1 sentence explaining the verdict), ' +
-          '"formFeedback": string (Russian, optional tip on form if relevant)}\n' +
-          'Mark verified=true only if you clearly see a person in the correct position for the exercise. ' +
-          'If the image shows an empty room, an object, or a different activity — mark verified=false. ' +
-          'Be strict but fair — partial positions are OK if the intent is clear.',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: mediaType as SupportedMediaType,
-                  data: image,
-                },
-              },
-              {
-                type: 'text',
-                text: `Подтверди выполнение упражнения: ${expected}. Верни JSON.`,
-              },
-            ],
-          },
-        ],
-      });
-
-      const textBlock = response.content.find((c) => c.type === 'text');
-      if (!textBlock || textBlock.type !== 'text') {
-        return reply.status(500).send({ message: 'Нет ответа от Claude Vision' });
-      }
-
-      const parsed = extractJSON(textBlock.text);
-
-      // Log verification attempt for audit
-      app.log.info({ userId, exercise, verified: parsed.verified }, 'Exercise verification');
-
-      return reply.send(parsed);
-    } catch (err) {
-      if (err instanceof AppError) throw err;
-      app.log.error({ err }, 'Vision verify-exercise error');
-      return reply.status(500).send({
-        message: 'Не удалось проверить упражнение. Попробуй ещё раз.',
-      });
     }
   });
 

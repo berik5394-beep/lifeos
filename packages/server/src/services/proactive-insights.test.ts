@@ -14,7 +14,6 @@ function emptyInput(): InsightInput {
     activeHabits: [],
     monthExpenses: [],
     budgetLimits: [],
-    pet: null,
     upcomingEvents: [],
     todayTasks: [],
     upcomingTrip: null,
@@ -87,34 +86,6 @@ describe('buildInsights — финансы', () => {
       at(10),
     );
     expect(out.find((x) => x.id.startsWith('budget_'))).toBeUndefined();
-  });
-});
-
-describe('buildInsights — питомец', () => {
-  it('мёртв → critical pet_dead', () => {
-    const out = buildInsights(
-      { ...emptyInput(), pet: { isAlive: false, health: 0, streak: 0, name: 'Барс', level: 3 } },
-      at(10),
-    );
-    const i = out.find((x) => x.id === 'pet_dead');
-    expect(i?.severity).toBe('critical');
-    expect(i?.message).toContain('умер');
-  });
-
-  it('болеет (health<30) → warning pet_sick', () => {
-    const out = buildInsights(
-      { ...emptyInput(), pet: { isAlive: true, health: 20, streak: 0, name: 'Барс', level: 3 } },
-      at(10),
-    );
-    expect(out.find((x) => x.id === 'pet_sick')?.severity).toBe('warning');
-  });
-
-  it('серия >=7 → info pet_streak', () => {
-    const out = buildInsights(
-      { ...emptyInput(), pet: { isAlive: true, health: 90, streak: 9, name: 'Барс', level: 5 } },
-      at(10),
-    );
-    expect(out.find((x) => x.id === 'pet_streak_9')?.severity).toBe('info');
   });
 });
 
@@ -364,7 +335,6 @@ describe('buildInsights — сортировка и лимит', () => {
     const out = buildInsights(
       {
         ...emptyInput(),
-        pet: { isAlive: false, health: 0, streak: 0, name: 'Барс', level: 1 },
         monthExpenses: [{ category: 'food', _sum: { amount: 99999 } }],
         budgetLimits: [{ category: 'food', monthlyLimit: 10000 }],
         staleTasks: [{ id: 't1', title: 'X', date: old, priority: 'low' }],

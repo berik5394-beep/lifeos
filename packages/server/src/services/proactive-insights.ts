@@ -31,7 +31,7 @@ export type Severity = 'info' | 'warning' | 'critical';
 export interface Insight {
   id: string;
   severity: Severity;
-  category: 'tasks' | 'habits' | 'finance' | 'health' | 'events' | 'pet' | 'social';
+  category: 'tasks' | 'habits' | 'finance' | 'health' | 'events' | 'social';
   title: string;
   message: string;
   actionable?: { label: string; type: string; payload?: Record<string, unknown> };
@@ -58,9 +58,6 @@ export interface InsightInput {
   activeHabits: Array<{ id: string; name: string }>;
   monthExpenses: Array<{ category: string; _sum: { amount: number | null } }>;
   budgetLimits: Array<{ category: string; monthlyLimit: number }>;
-  pet:
-    | { isAlive: boolean; health: number; streak: number; name: string; level: number }
-    | null;
   upcomingEvents: Array<{ title: string; date: Date; startTime: string | null }>;
   /** Сегодняшние задачи со временем — для детекта конфликта с событиями. */
   todayTasks: Array<{ title: string; time: string | null; completed: boolean }>;
@@ -91,7 +88,6 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
     activeHabits,
     monthExpenses,
     budgetLimits,
-    pet,
     upcomingEvents,
     todayTasks,
     upcomingTrip,
@@ -133,10 +129,6 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
     }),
     prisma.budgetLimit.findMany({
       where: { userId, month: currentMonth, year: currentYear },
-    }),
-    prisma.pet.findUnique({
-      where: { userId },
-      select: { isAlive: true, health: true, streak: true, lastFed: true, name: true, level: true },
     }),
     // Ближайшие события в следующие 24ч (для напоминаний)
     prisma.calendarEvent.findMany({
@@ -192,7 +184,6 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
         category: b.category,
         monthlyLimit: b.monthlyLimit,
       })),
-      pet,
       upcomingEvents,
       todayTasks,
       upcomingTrip,
@@ -247,7 +238,6 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
     activeHabits,
     monthExpenses,
     budgetLimits,
-    pet,
     upcomingEvents,
     todayTasks,
     upcomingTrip,
@@ -369,36 +359,6 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
         break; // только ближайшее
       }
     }
-  }
-
-  // ===== PET =====
-
-  if (pet && !pet.isAlive) {
-    insights.push({
-      id: 'pet_dead',
-      severity: 'critical',
-      category: 'pet',
-      title: `${pet.name} не выдержал`,
-      message: 'Питомец умер от долгого пропуска. Выполни 100% задач за день, чтобы оживить.',
-      actionable: { label: 'Воскресить', type: 'revive_pet' },
-    });
-  } else if (pet && pet.health < 30) {
-    insights.push({
-      id: 'pet_sick',
-      severity: 'warning',
-      category: 'pet',
-      title: `${pet.name} болеет`,
-      message: `Здоровье ${Math.round(pet.health)}%. Закрой задачи и привычки сегодня — он восстановится.`,
-      actionable: { label: 'Питомец', type: 'open_pet' },
-    });
-  } else if (pet && pet.streak >= 7) {
-    insights.push({
-      id: `pet_streak_${pet.streak}`,
-      severity: 'info',
-      category: 'pet',
-      title: `${pet.streak} дней подряд!`,
-      message: `Серия ${pet.streak} дней — не сорвись сегодня. ${pet.name} рассчитывает на тебя.`,
-    });
   }
 
   // ===== EVENTS BRIEF (если есть события на сегодня) =====
@@ -548,7 +508,6 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
   const categoryRank: Record<string, number> = {
     events: 0,
     finance: 1,
-    pet: 2,
     tasks: 3,
     habits: 4,
     health: 5,

@@ -1,6 +1,5 @@
 import { prisma } from '../lib/prisma.js';
 import { generateProactiveNotifications } from './proactive-notifications.js';
-import { runPetStreakSweep } from './pet-streak-service.js';
 import { deliverNotification } from './push-service.js';
 import { deliverTopInsight } from './insight-store.js';
 import { runReflectorDaily } from './reflector-service.js';
@@ -41,18 +40,6 @@ async function tick(): Promise<void> {
   let delivered = 0;
 
   try {
-    // A.1: дневной пересчёт Pet.streak (идемпотентно, раз/день через
-    // streakDate). Для ВСЕХ живых питомцев, не только push-юзеров —
-    // мета-игра не должна зависеть от канала доставки.
-    try {
-      await runPetStreakSweep();
-    } catch (err) {
-      console.warn(
-        '[scheduler] pet-streak sweep failed:',
-        err instanceof Error ? err.message : err,
-      );
-    }
-
     // Phase 6 C1 crisis-isolation (b): retention 30 дней для
     // sensitive кризис-ходов. Идемпотентно by nature (deleteMany
     // только >30д crisis=true); индекс (crisis, createdAt) делает

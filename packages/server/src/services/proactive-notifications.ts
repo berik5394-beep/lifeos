@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localDateOnlyUTC, localDaySlot, localHour, localDayOfWeek } from '../lib/tz.js';
 import { countOverduePending } from './task-overdue.js';
 import { isV2TaskReminderEnabled } from '../lib/feature-flags.js';
+import { calculateStreak } from './streak-service.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -15,7 +16,6 @@ export interface ProactiveNotification {
     | 'task_reminder_30m'
     | 'budget_alert'
     | 'habit_nudge'
-    | 'inactivity_ping'
     | 'weekly_summary'
     | 'morning_briefing'
     | 'evening_summary';
@@ -279,7 +279,7 @@ async function generateHabitNudges(
 
   const today = getToday(tz);
 
-  const [habits, habitLogs, pet] = await Promise.all([
+  const [habits, habitLogs, streak] = await Promise.all([
     prisma.habit.findMany({
       where: { userId, active: true },
       select: { id: true, name: true },
@@ -288,10 +288,8 @@ async function generateHabitNudges(
       where: { userId, date: today, completed: true },
       select: { habitId: true },
     }),
-    prisma.pet.findFirst({
-      where: { userId },
-      select: { streak: true },
-    }),
+    // Серия привычек (питомец удалён 2026-11-05).
+    calculateStreak(userId, tz),
   ]);
 
   const completedIds = new Set(habitLogs.map((l) => l.habitId));
@@ -299,7 +297,6 @@ async function generateHabitNudges(
 
   if (incomplete.length === 0) return notifications;
 
-  const streak = pet?.streak ?? 0;
   const habitNames = incomplete.slice(0, 3).map((h) => h.name);
   const namesList = habitNames.join(', ');
   const suffix =
@@ -319,72 +316,6 @@ async function generateHabitNudges(
     body: `${head} Осталось: ${namesList}${suffix}. ${closingHabit}`,
     type: 'habit_nudge',
     scheduledFor: daySlot(14, tz), // #4: стабильный слот → 1/день локально
-  });
-
-  return notifications;
-}
-
-// ---------------------------------------------------------------------------
-// 4. Inactivity ping — if user hasn't been active by noon
-// ---------------------------------------------------------------------------
-async function generateInactivityPing(
-  userId: string,
-  tz: string,
-): Promise<ProactiveNotification[]> {
-  const notifications: ProactiveNotification[] = [];
-  const now = new Date();
-  const currentHour = now.getHours();
-
-  // Only check between 12:00 and 15:00
-  if (currentHour < 12 || currentHour > 15) return notifications;
-
-  const today = getToday(tz);
-
-  // Check if user has any activity today: habit logs, completed tasks, or expenses
-  const [habitLogCount, completedTaskCount, expenseCount, pet] =
-    await Promise.all([
-      prisma.habitLog.count({
-        where: { userId, date: today, completed: true },
-      }),
-      prisma.task.count({
-        where: { userId, date: today, completed: true },
-      }),
-      prisma.expense.count({
-        where: { userId, date: today },
-      }),
-      prisma.pet.findFirst({
-        where: { userId },
-        select: { name: true, type: true, isAlive: true },
-      }),
-    ]);
-
-  const hasActivity = habitLogCount > 0 || completedTaskCount > 0 || expenseCount > 0;
-
-  if (hasActivity) return notifications;
-
-  const petName = pet?.name ?? 'Питомец';
-  const petEmoji =
-    pet?.type === 'cat'
-      ? '\uD83D\uDC31'
-      : pet?.type === 'dog'
-        ? '\uD83D\uDC36'
-        : pet?.type === 'fox'
-          ? '\uD83E\uDD8A'
-          : pet?.type === 'owl'
-            ? '\uD83E\uDD89'
-            : pet?.type === 'dragon'
-              ? '\uD83D\uDC09'
-              : '\uD83D\uDC3E';
-
-  const body = pet?.isAlive === false
-    ? `${petName} ждёт, когда ты вернёшься... Зайди и воскреси его!`
-    : `Твой ${petName} скучает! Зайди и отметь привычки ${petEmoji}`;
-
-  notifications.push({
-    title: 'Мы скучаем!',
-    body,
-    type: 'inactivity_ping',
-    scheduledFor: daySlot(12, tz), // #4: стабильный слот → 1/день локально
   });
 
   return notifications;
@@ -608,16 +539,6 @@ async function generateEveningSummary(
 export async function generateProactiveNotifications(
   userId: string,
 ): Promise<ProactiveNotification[]> {
-  // FIX (Aydana 2026-05-22): inactivityPing отключён по требованию
-  // юзера — он шлёт «Твой Питомец скучает!»/«Мы скучаем!» как
-  // основной триггер вернуться, и тестер жаловалась на спам. Питомец
-  // как механика остаётся (insights в приложении, рост уровня), но
-  // pushами про него больше не пинаем. Активность по задачам и
-  // привычкам остаётся: eventReminders / habitNudges / morningBriefing
-  // / eveningSummary — это и есть «уведомления о задачах», как просил
-  // Берик. generateInactivityPing/функцию намеренно НЕ удалил, чтобы
-  // не ломать тесты и сохранить историю; просто не вызываем.
-
   // Phase 7 P3 — fetch tz один раз, передаём вниз. Раньше generators
   // юзали server-local time (setHours) → для Алматы юзера evening
   // в 02:00 ночи. Morning уже был tz-aware (его не трогаем).

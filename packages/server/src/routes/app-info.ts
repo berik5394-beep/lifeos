@@ -29,7 +29,6 @@ export async function appInfoRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({
       features: {
         voiceEnabled: true,
-        arenaEnabled: true,
         sharedSpacesEnabled: true,
         maxFileUploadMB: 10,
       },

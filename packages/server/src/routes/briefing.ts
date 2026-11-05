@@ -4,6 +4,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { rateLimiter } from '../middleware/security.js';
 import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
+import { calculateStreak } from '../services/streak-service.js';
 
 // Брифинг делает 8 параллельных запросов к БД за раз — не AI, но тяжело.
 // Нет смысла вызывать чаще чем раз в 2 секунды (пользователь не обновляет
@@ -58,7 +59,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const { start: monthStart, end: monthEnd } = getMonthRange();
 
-    const [tasks, events, habits, habitLogs, expenses, budgetLimits, pet, stepLog] =
+    const [tasks, events, habits, habitLogs, expenses, budgetLimits, habitStreak, stepLog] =
       await Promise.all([
         // Задачи на сегодня (отменённые — скрыты)
         prisma.task.findMany({
@@ -112,11 +113,8 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
           },
           select: { category: true, monthlyLimit: true },
         }),
-        // Питомец
-        prisma.pet.findFirst({
-          where: { userId },
-          select: { health: true, happiness: true, level: true, streak: true, isAlive: true },
-        }),
+        // Серия привычек (питомец удалён 2026-11-05 — серия теперь своя)
+        calculateStreak(userId),
         // Шаги за сегодня
         prisma.stepLog.findFirst({
           where: { userId, date: today },
@@ -154,7 +152,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
     }
 
     // Стрик
-    const streak = pet?.streak ?? 0;
+    const streak = habitStreak;
 
     return {
       date: today.toISOString().split('T')[0],
@@ -180,14 +178,6 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
         dailyBudget: daysRemaining > 0 ? Math.round((totalLimit - totalSpent) / daysRemaining) : 0,
         overBudgetCategories,
       },
-      pet: pet
-        ? {
-            health: Math.round(pet.health),
-            happiness: Math.round(pet.happiness),
-            level: pet.level,
-            isAlive: pet.isAlive,
-          }
-        : null,
       streak,
       steps: stepLog?.steps ?? 0,
       dayProgress:
@@ -202,7 +192,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
     const userId = request.userId;
     const today = await getToday(userId);
 
-    const [tasks, habits, habitLogs, expenses, pet] = await Promise.all([
+    const [tasks, habits, habitLogs, expenses, habitStreak] = await Promise.all([
       prisma.task.findMany({
         where: { userId, date: today, cancelled: false },
         select: { id: true, title: true, completed: true, category: true },
@@ -219,10 +209,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
         where: { userId, date: today },
         select: { amount: true, category: true, description: true },
       }),
-      prisma.pet.findFirst({
-        where: { userId },
-        select: { health: true, streak: true, level: true, xp: true },
-      }),
+      calculateStreak(userId),
     ]);
 
     const completedHabitIds = new Set(habitLogs.map((l) => l.habitId));
@@ -267,10 +254,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
           .slice(0, 3)
           .map((e) => ({ amount: Math.round(e.amount), description: e.description })),
       },
-      pet: pet
-        ? { health: Math.round(pet.health), streak: pet.streak, level: pet.level, xp: pet.xp }
-        : null,
-      streak: pet?.streak ?? 0,
+      streak: habitStreak,
     };
   });
 }

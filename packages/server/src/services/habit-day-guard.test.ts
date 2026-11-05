@@ -19,7 +19,7 @@ describe('habit-day guard — привычки только календарно
   ])('%s не использует localDayStartUTC', (f) => {
     expect(read(f)).not.toMatch(/localDayStartUTC/);
   });
-  it.each(['src/routes/pet.ts', 'src/routes/briefing.ts', 'src/routes/notifications.ts', 'src/services/streak-service.ts'])(
+  it.each(['src/routes/briefing.ts', 'src/routes/notifications.ts', 'src/services/streak-service.ts'])(
     '%s: «сегодня» не из полуночи сервера',
     (f) => {
       expect(read(f)).not.toMatch(/setHours\(0, 0, 0, 0\)[\s\S]{0,200}habitLog|new Date\(now\.getFullYear\(\), now\.getMonth\(\), now\.getDate\(\)\)/);

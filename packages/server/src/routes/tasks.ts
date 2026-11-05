@@ -4,11 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 import { NotFoundError } from '../lib/errors.js';
-import { addXP } from './pet.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
-
-// CLAUDE.md spec: завершил задачу = +15 XP к питомцу.
-const TASK_XP_REWARD = 15;
 
 // Максимум задач на один запрос — защита от OOM на клиенте у power users
 const MAX_TASKS_PER_REQUEST = 500;
@@ -208,7 +204,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
   app.patch('/tasks/:id/complete', async (request, reply) => {
     const { id } = request.params as { id: string };
 
-    // Атомарно: toggle complete + mana reward в одной транзакции.
+    // Атомарно: проверка владельца + toggle complete в одной транзакции.
     const result = await prisma.$transaction(async (tx) => {
       const task = await tx.task.findFirst({
         where: { id, userId: request.userId },
@@ -220,28 +216,6 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         data: { completed: !task.completed },
       });
 
-      // Award mana + XP when completing a task (not when uncompleting).
-      // CLAUDE.md спецификация: задача = +15 XP, привычка = +10 XP.
-      // Раньше тут давалась только мана → pet.xp/level не рос вообще,
-      // юзеры навсегда оставались на level 1 baby (баг пойман prod-тестом).
-      if (!task.completed) {
-        const pet = await tx.pet.findUnique({ where: { userId: request.userId } });
-        if (pet) {
-          const nextMana = Math.min(pet.maxMana, pet.mana + 10);
-          const xpResult = addXP(pet, TASK_XP_REWARD);
-          await tx.pet.update({
-            where: { userId: request.userId },
-            data: {
-              mana: nextMana,
-              xp: xpResult.xp,
-              level: xpResult.level,
-              xpToNext: xpResult.xpToNext,
-              stage: xpResult.stage,
-              roomLevel: xpResult.roomLevel,
-            },
-          });
-        }
-      }
       return updated;
     });
     if (!result) throw new NotFoundError('Задача');
@@ -261,7 +235,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
     const { id } = request.params as { id: string };
     const { status } = request.body as z.infer<typeof kanbanStatusSchema>;
 
-    // Атомарная транзакция: ownership check + kanban update + mana reward.
+    // Атомарная транзакция: ownership check + kanban update.
     const result = await prisma.$transaction(async (tx) => {
       const task = await tx.task.findFirst({
         where: { id, userId: request.userId },
@@ -280,25 +254,6 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-      // Award mana + XP when moving to done (same as complete). See комментарий выше.
-      if (status === 'done' && !task.completed) {
-        const pet = await tx.pet.findUnique({ where: { userId: request.userId } });
-        if (pet) {
-          const nextMana = Math.min(pet.maxMana, pet.mana + 10);
-          const xpResult = addXP(pet, TASK_XP_REWARD);
-          await tx.pet.update({
-            where: { userId: request.userId },
-            data: {
-              mana: nextMana,
-              xp: xpResult.xp,
-              level: xpResult.level,
-              xpToNext: xpResult.xpToNext,
-              stage: xpResult.stage,
-              roomLevel: xpResult.roomLevel,
-            },
-          });
-        }
-      }
       return updated;
     });
     if (!result) throw new NotFoundError('Задача');

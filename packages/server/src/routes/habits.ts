@@ -5,13 +5,9 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 import { rateLimiter } from '../middleware/security.js';
-import { addXP } from './pet.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 
-// CLAUDE.md spec: выполнил привычку = +10 XP.
-const HABIT_XP_REWARD = 10;
-
-// POST /habits/:id/log — каждый лог обновляет pet mana в транзакции. Нормальный
+// POST /habits/:id/log. Нормальный
 // юзер за минуту отмечает максимум 10-20 привычек, даже на полном свайп-списке.
 // 60/мин оставляем запас на мульти-отметки и голосовые команды «отметь всё».
 const logLimiter = rateLimiter({ max: 60, windowMs: 60_000, keyPrefix: 'habits:log' });
@@ -145,48 +141,17 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ message: 'Привычка не найдена' });
     }
 
-    // КРИТИЧНО: раньше upsert логов и update питомца были отдельными
-    // запросами — два параллельных запроса (голос: "отметь бег и отжимания")
-    // видели одинаковое pet.mana и оба писали +5 вместо +10. Теперь всё в
-    // транзакции + атомарный increment + проверка maxMana отдельным шагом
-    // через повторный read внутри транзакции (Prisma не поддерживает
-    // условный increment с clamp, но в рамках транзакции это безопасно).
     const dateObj = new Date(date + 'T00:00:00Z');
 
-    const log = await prisma.$transaction(async (tx) => {
-      const created = await tx.habitLog.upsert({
-        where: { habitId_date: { habitId: id, date: dateObj } },
-        create: {
-          habitId: id,
-          userId: request.userId,
-          date: dateObj,
-          completed,
-        },
-        update: { completed },
-      });
-
-      if (completed) {
-        const pet = await tx.pet.findUnique({ where: { userId: request.userId } });
-        if (pet) {
-          // Мана +5, XP +10 (CLAUDE.md spec). Раньше давалась только мана,
-          // pet.xp/level не рос от привычек — баг пойман prod-тестом.
-          const nextMana = Math.min(pet.maxMana, pet.mana + 5);
-          const xpResult = addXP(pet, HABIT_XP_REWARD);
-          await tx.pet.update({
-            where: { userId: request.userId },
-            data: {
-              mana: nextMana,
-              xp: xpResult.xp,
-              level: xpResult.level,
-              xpToNext: xpResult.xpToNext,
-              stage: xpResult.stage,
-              roomLevel: xpResult.roomLevel,
-            },
-          });
-        }
-      }
-
-      return created;
+    const log = await prisma.habitLog.upsert({
+      where: { habitId_date: { habitId: id, date: dateObj } },
+      create: {
+        habitId: id,
+        userId: request.userId,
+        date: dateObj,
+        completed,
+      },
+      update: { completed },
     });
 
     captureActivity(request.userId, {

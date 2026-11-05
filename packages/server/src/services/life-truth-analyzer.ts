@@ -8,6 +8,7 @@
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
+import { calculateStreak } from './streak-service.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -81,7 +82,8 @@ interface RawUserData {
   journalEntries30d: Array<{ mood: number | null; energy: number | null; sleepHours: number | null; date: Date }>;
   yearlyGoals: Array<{ area: string; goalText: string; progress: number }>;
   weeklyGoals4w: Array<{ goalText: string; completed: boolean; weekStart: Date }>;
-  pet: { health: number; happiness: number; level: number; streak: number; isAlive: boolean } | null;
+  /** Серия привычек в днях (питомец удалён 2026-11-05). */
+  habitStreak: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +146,7 @@ async function gatherAllUserData(userId: string): Promise<RawUserData | null> {
     journalEntries30d,
     yearlyGoals,
     weeklyGoals4w,
-    pet,
+    habitStreak,
   ] = await Promise.all([
     prisma.expense.findMany({
       where: { userId, date: { gte: start3m } },
@@ -196,10 +198,7 @@ async function gatherAllUserData(userId: string): Promise<RawUserData | null> {
       where: { userId, weekStart: { gte: start4w } },
       select: { goalText: true, completed: true, weekStart: true },
     }),
-    prisma.pet.findUnique({
-      where: { userId },
-      select: { health: true, happiness: true, level: true, streak: true, isAlive: true },
-    }),
+    calculateStreak(userId),
   ]);
 
   return {
@@ -217,7 +216,7 @@ async function gatherAllUserData(userId: string): Promise<RawUserData | null> {
     journalEntries30d,
     yearlyGoals,
     weeklyGoals4w,
-    pet,
+    habitStreak,
   };
 }
 
@@ -487,7 +486,7 @@ function analyzeHealth(data: RawUserData): HealthTruth {
 // ---------------------------------------------------------------------------
 
 function analyzeLifeProgress(data: RawUserData): LifeTruth {
-  const { yearlyGoals, habits, habitLogs30d, habitLogs90d, tasks30d, tasks90d, expenses3m, pet } = data;
+  const { yearlyGoals, habits, habitLogs30d, habitLogs90d, tasks30d, tasks90d, expenses3m, habitStreak } = data;
 
   // Goals
   const now = new Date();
@@ -553,7 +552,7 @@ function analyzeLifeProgress(data: RawUserData): LifeTruth {
   }
 
   // Streak
-  const currentStreak = pet?.streak ?? 0;
+  const currentStreak = habitStreak;
   // Best streak is not stored; use current as proxy
   const bestStreak = currentStreak;
 
@@ -662,13 +661,6 @@ function generateLifeTruthPrompt(
   lines.push(`- Тренд продуктивности: ${life.productivityTrend === 'improving' ? 'растёт' : life.productivityTrend === 'declining' ? 'падает' : 'стабильный'}`);
   lines.push(`- Серия: ${life.streakStatus.current} дней`);
   lines.push(`- Стоимость жизни: ${life.lifeCostPerDay.toLocaleString()}₸/день`);
-
-  if (data.pet) {
-    lines.push('');
-    lines.push('ПИТОМЕЦ:');
-    lines.push(`- Здоровье: ${data.pet.health}%, Счастье: ${data.pet.happiness}%, Уровень: ${data.pet.level}`);
-    lines.push(`- Жив: ${data.pet.isAlive ? 'да' : 'НЕТ — питомец умер от игнора'}`);
-  }
 
   lines.push('');
   lines.push('ИНСТРУКЦИЯ:');

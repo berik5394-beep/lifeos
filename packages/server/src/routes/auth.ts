@@ -355,41 +355,19 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     // GDPR / закон РК о перс. данных: «забыть меня» = стереть ВСЁ.
     // Аудит 2.8: раньше список был неполным (17 моделей), а
-    // UserInterest/ArenaProfile без onDelete:Cascade и
+    // UserInterest и др. без onDelete:Cascade и
     // не в списке → tx.user.delete() падал по FK и вся транзакция
     // откатывалась (delete-account был фактически сломан для активных
     // юзеров). Теперь — исчерпывающий FK-упорядоченный проход.
     // ВАЖНО: при добавлении новой модели со связью на User —
     // дополнить этот список.
     await prisma.$transaction(async (tx) => {
-      // 1. Arena: Battle/Challenge ключуются по ArenaProfile.id
-      // (не userId напрямую) — удаляем до ArenaProfile.
-      const ap = await tx.arenaProfile.findUnique({
-        where: { userId },
-        select: { id: true },
-      });
-      if (ap) {
-        await tx.battle.deleteMany({
-          where: { OR: [{ attackerId: ap.id }, { defenderId: ap.id }] },
-        });
-        await tx.challenge.deleteMany({
-          where: { OR: [{ attackerId: ap.id }, { defenderId: ap.id }] },
-        });
-      }
-
-      // 2. PetItem — по petId, удаляем до Pet.
-      const pet = await tx.pet.findUnique({
-        where: { userId },
-        select: { id: true },
-      });
-      if (pet) await tx.petItem.deleteMany({ where: { petId: pet.id } });
-
-      // 3. Shared spaces: членства по userId; пространства, где юзер
+      // 1. Shared spaces: членства по userId; пространства, где юзер
       // владелец (ownerId) — их члены уйдут каскадом по FK.
       await tx.sharedSpaceMember.deleteMany({ where: { userId } });
       await tx.sharedSpace.deleteMany({ where: { ownerId: userId } });
 
-      // 4. Все модели, ключуемые напрямую по userId. TaskTag/
+      // 2. Все модели, ключуемые напрямую по userId. TaskTag/
       // TaskDependency/ConversationMessage уйдут каскадом от
       // Task/ConversationSession (onDelete:Cascade в схеме).
       await tx.insightDismissal.deleteMany({ where: { userId } });
@@ -418,9 +396,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       await tx.calendarEvent.deleteMany({ where: { userId } });
       await tx.budgetLimit.deleteMany({ where: { userId } });
       await tx.integration.deleteMany({ where: { userId } });
-      await tx.achievement.deleteMany({ where: { userId } });
-      await tx.arenaProfile.deleteMany({ where: { userId } });
-      await tx.pet.deleteMany({ where: { userId } });
       // Аудит-фикс: эти user-owned модели не имели cascade и пропускались —
       // tx.user.delete падал по FK для юзеров с фидбэк-коррекциями/скиллами.
       await tx.correctionLog.deleteMany({ where: { userId } });
