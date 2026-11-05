@@ -7,6 +7,11 @@ import * as Haptics from 'expo-haptics';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { storage } from '@/services/storage';
+import {
+  planVoiceFollowUp,
+  confirmPendingVoiceAction,
+  type ProcessResponse,
+} from '@/services/voice-followup';
 
 // ==========================================================
 // TTS VOICE RESOLUTION (gender-aware)
@@ -127,11 +132,6 @@ interface TranscribeResponse {
   text: string;
 }
 
-interface ProcessResponse {
-  intent: VoiceIntent;
-  response: string;
-}
-
 export interface UseVoiceReturn {
   state: VoiceState;
   /** True while recording (backward-compat alias for state === 'recording') */
@@ -226,11 +226,28 @@ async function recordAudio(): Promise<{ uri: string | null; cleanup: () => Promi
   } as unknown as { uri: string | null; cleanup: () => Promise<void> };
 }
 
+async function speakText(text: string): Promise<void> {
+  try {
+    const voiceId = await getPreferredVoiceIdentifier();
+    Speech.speak(text, { language: 'ru-RU', rate: 1.05, voice: voiceId });
+  } catch {
+    /* ignore */
+  }
+}
+
 // -------------------------------------------------------------
 // Main hook
 // -------------------------------------------------------------
 
-export function useVoice(): UseVoiceReturn {
+export interface UseVoiceOptions {
+  /** Только распознать речь: НЕ звать /voice/process и не озвучивать.
+   *  Для экранов, которые сами шлют текст в мозг (чат → /voice/chat),
+   *  иначе команда исполнится дважды. */
+  transcribeOnly?: boolean;
+}
+
+export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
+  const transcribeOnly = options.transcribeOnly === true;
   const [state, setState] = useState<VoiceState>('idle');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [lastResult, setLastResult] = useState<VoiceResult | null>(null);
@@ -455,16 +472,44 @@ export function useVoice(): UseVoiceReturn {
   // STOP + PROCESS
   // ==========================================================
 
+  // voice-one-brain: деньги/необратимое сервер не исполняет без «да».
+  // Кнопки → /voice/confirm-action; сказать «да» в микрофон тоже работает.
+  const askToConfirm = useCallback((text: string, transcript: string) => {
+    const finish = async (confirm: boolean) => {
+      try {
+        const res = await confirmPendingVoiceAction(confirm);
+        if (isMountedRef.current) {
+          setLastResult({ intent: { action: res.intent ?? 'confirm_action' }, response: res.message, transcript });
+        }
+        void speakText(res.message);
+      } catch {
+        Alert.alert('Ошибка', 'Не получилось подтвердить. Попробуй ещё раз или скажи «да».');
+      }
+    };
+    Alert.alert('Подтверди', text, [
+      { text: 'Отмена', style: 'cancel', onPress: () => void finish(false) },
+      { text: 'Записать', onPress: () => void finish(true) },
+    ]);
+  }, []);
+
   const processCommand = useCallback(
     async (transcript: string) => {
+      if (transcribeOnly) {
+        if (isMountedRef.current) {
+          setLastResult({ intent: { action: 'transcript' }, response: '', transcript });
+          setState('idle');
+        }
+        return;
+      }
       const token = useAuthStore.getState().token;
       try {
+        // Единый мозг: сервер исполняет команду ДО ответа (или ждёт «да»),
+        // поэтому озвучиваем только его ответ — он правдивый.
         const processData = await api.post<ProcessResponse>(
           '/voice/process',
           { text: transcript },
           token || undefined,
         );
-
         const result: VoiceResult = {
           intent: processData.intent ?? { action: 'unknown' },
           response:
@@ -477,14 +522,9 @@ export function useVoice(): UseVoiceReturn {
           setState('speaking');
           hapticSuccess();
         }
-        // Fire-and-forget TTS (gender-aware voice)
-        try {
-          const voiceId = await getPreferredVoiceIdentifier();
-          Speech.speak(result.response, { language: 'ru-RU', rate: 1.05, voice: voiceId });
-        } catch {
-          /* ignore */
-        }
-        // Return to idle after a short delay (UI can dismiss state)
+        void speakText(result.response);
+        const follow = planVoiceFollowUp(processData);
+        if (follow.kind === 'confirm') askToConfirm(follow.text, transcript);
         setTimeout(() => {
           if (isMountedRef.current && state !== 'recording') {
             setState((s) => (s === 'speaking' ? 'idle' : s));
@@ -495,7 +535,7 @@ export function useVoice(): UseVoiceReturn {
         if (isMountedRef.current) {
           setLastResult({
             intent: { action: 'unknown' },
-            response: `Я услышал: «${transcript}». Команда не распознана — попробуй переформулировать.`,
+            response: `Я услышал: «${transcript}». Не получилось выполнить — попробуй ещё раз.`,
             transcript,
           });
           setState('idle');
@@ -503,7 +543,7 @@ export function useVoice(): UseVoiceReturn {
         }
       }
     },
-    [state, hapticSuccess, hapticError],
+    [state, transcribeOnly, hapticSuccess, hapticError, askToConfirm],
   );
 
   const stopRecording = useCallback(async () => {

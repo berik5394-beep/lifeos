@@ -125,7 +125,8 @@ export default function ChatScreen() {
   const [inputText, setInputText] = useState('');
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
   const { messages, isLoading, hasMore, sendMessage, fetchHistory, executeAction, clearHistory } = useChatStore();
-  const { isRecording, isProcessing, lastResult, startRecording, stopRecording, amplitude } = useVoice();
+  // transcribeOnly: чат сам шлёт текст в мозг (/voice/chat) — без двойного исполнения.
+  const { isRecording, isProcessing, lastResult, startRecording, stopRecording, amplitude } = useVoice({ transcribeOnly: true });
 
   useEffect(() => {
     fetchHistory(0);
