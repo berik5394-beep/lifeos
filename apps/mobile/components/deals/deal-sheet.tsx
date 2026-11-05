@@ -22,12 +22,15 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
   const { offer, record } = useDealIncome();
   const [events, setEvents] = useState<DealEvent[]>([]);
   const [busy, setBusy] = useState(false);
+  // Причина проигрыша — кнопками в карточке: Alert на Android показывает не больше 3 кнопок.
+  const [askReason, setAskReason] = useState(false);
 
   const dealId = deal?.id ?? null;
   const updatedAt = deal?.updatedAt ?? null;
   useEffect(() => {
     let alive = true;
     setEvents([]);
+    setAskReason(false);
     if (dealId) {
       void fetchOne(dealId).then((d) => {
         if (alive) setEvents(d?.events ?? []);
@@ -59,13 +62,8 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
     [deal, moveStage, offer, onClose],
   );
 
-  const onLost = useCallback(() => {
-    Alert.alert('Почему проиграна?', undefined, [
-      ...LOST_REASONS.map((reason) => ({ text: reason[0].toUpperCase() + reason.slice(1), onPress: () => void onMove('lost', reason) })),
-      { text: 'Без причины', onPress: () => void onMove('lost') },
-      { text: 'Отмена', style: 'cancel' as const },
-    ]);
-  }, [onMove]);
+  const onLost = useCallback(() => setAskReason(true), []);
+  const cancelLost = useCallback(() => setAskReason(false), []);
 
   const onRecord = useCallback(() => {
     if (deal) record(deal, onClose);
@@ -96,10 +94,30 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
                 {nb.next ? <StageButton label={`${STAGE_LABEL[nb.next]} →`} disabled={busy} onPress={() => void onMove(nb.next as DealStage)} /> : null}
               </View>
             ) : null}
-            <View style={styles.row}>
-              <StageButton label="Выиграна" tone="success" disabled={busy} onPress={() => void onMove('won')} />
-              <StageButton label="Проиграна" tone="danger" disabled={busy} onPress={onLost} />
-            </View>
+            {askReason ? (
+              <>
+                <Text style={styles.ask}>Почему проиграна?</Text>
+                <View style={styles.row}>
+                  {LOST_REASONS.slice(0, 2).map((r) => (
+                    <StageButton key={r} label={capitalize(r)} disabled={busy} onPress={() => void onMove('lost', r)} />
+                  ))}
+                </View>
+                <View style={styles.row}>
+                  {LOST_REASONS.slice(2).map((r) => (
+                    <StageButton key={r} label={capitalize(r)} disabled={busy} onPress={() => void onMove('lost', r)} />
+                  ))}
+                  <StageButton label="Без причины" disabled={busy} onPress={() => void onMove('lost')} />
+                </View>
+                <View style={styles.row}>
+                  <StageButton label="Отмена" disabled={busy} onPress={cancelLost} />
+                </View>
+              </>
+            ) : (
+              <View style={styles.row}>
+                <StageButton label="Выиграна" tone="success" disabled={busy} onPress={() => void onMove('won')} />
+                <StageButton label="Проиграна" tone="danger" disabled={busy} onPress={onLost} />
+              </View>
+            )}
           </>
         ) : (
           <View style={styles.row}>
@@ -120,6 +138,8 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
   );
 });
 
+const capitalize = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
 function createStyles(c: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
@@ -133,6 +153,7 @@ function createStyles(c: ReturnType<typeof useColors>) {
     title: { color: c.text, fontSize: fontSize.lg, fontWeight: '700' },
     meta: { color: c.textSecondary, fontSize: fontSize.sm, marginTop: spacing.xs },
     row: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+    ask: { color: c.text, fontSize: fontSize.sm, fontWeight: '600', marginTop: spacing.md },
     history: { marginTop: spacing.md },
     event: { color: c.textSecondary, fontSize: fontSize.xs, marginBottom: 4 },
   });
