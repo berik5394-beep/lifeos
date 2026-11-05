@@ -49,8 +49,14 @@ describe('доход от клиента с открытой сделкой', ()
     const userId = await user('no');
     const { deal } = await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', stage: 'contract' });
     const before = await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } });
+    const events = () => prisma.dealEvent.count({ where: { dealId: deal.id } });
+    const seen = async () => (await prisma.entity.findUniqueOrThrow({ where: { id: before.personEntityId! } })).lastSeenAt;
+    const [eventsBefore, seenBefore] = [await events(), await seen()];
     await handleMessage(userId, 'получил 2 млн от Ахмета');
     const r = await handleMessage(userId, 'нет');
+    // ни событий сделки, ни «видел клиента» — маршрутизация и отказ ничего не трогают
+    expect(await events()).toBe(eventsBefore);
+    expect(await seen()).toEqual(seenBefore);
     expect(r.reply).toBe('Окей, отменил — ничего не записал.');
     const d = await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } });
     expect({ stage: d.stage, amount: d.amount, nextStepAt: d.nextStepAt, wonIncomeId: d.wonIncomeId }).toEqual({ stage: before.stage, amount: before.amount, nextStepAt: before.nextStepAt, wonIncomeId: null });

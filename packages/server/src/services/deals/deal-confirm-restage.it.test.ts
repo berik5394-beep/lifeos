@@ -28,7 +28,7 @@ async function dupSetup(tag: string) {
 
 describe('повторный вопрос после подтверждения — с кнопками', () => {
   it('POST /voice/confirm-action → done:false + pendingAction + confirmationText', async () => {
-    const { dealId, headers } = await dupSetup('rest');
+    const { userId, dealId, headers } = await dupSetup('rest');
     const res = await app.inject({ method: 'POST', url: '/voice/confirm-action', headers, payload: { confirm: true } });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -40,6 +40,9 @@ describe('повторный вопрос после подтверждения 
     const again = await app.inject({ method: 'POST', url: '/voice/confirm-action', headers, payload: { confirm: true, action: DEAL_INCOME_ACTION } });
     expect(again.json().done).toBe(true);
     expect(again.json().pendingAction ?? null).toBeNull();
+    // повтор действительно записан: ручной доход + доход по сделке
+    expect(await prisma.income.count({ where: { userId } })).toBe(2);
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: dealId } })).wonIncomeId).not.toBeNull();
   });
 
   it('POST /voice/chat «да» → pendingAction в ответе', async () => {
