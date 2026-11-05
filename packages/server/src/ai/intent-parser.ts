@@ -83,13 +83,33 @@ export type MoneyIntent =
 // «5 тыс», «500к», «5 к», «2 000 000», «1,000». Ревью сделок B2: раньше «2 млн» → сумма 2,
 // а «млн …» уезжал в источник. «к» приклеенное к числу («500к») — тысяча; отдельное
 // («5 к») — только в конце или перед «на/за/от/тенге» (иначе это предлог: «500 к ужину»).
-// Число, приклеенное к слову («5000кофе», «500р»), — сумма + остаток, как до B2.
+// Ревью-3 N3: всё прочее — как до сделок: число — цифры через пробелы (как прежнее
+// `\d[\d\s]*`, «8 777 123 45 67» — одно число → потолок), без требований к символу
+// после числа («5000кофе», «500р», «2x500», «100usd», «100$» — сумма + остаток, как раньше).
+// Дробь («2,5») — только перед множителем; без него «12.11», «12,50» — как раньше.
+// Множитель — целым словом («5 тысячелетий» — не тысячи).
+const WORD_MULT = String.raw`(?:млрд\.?|миллиард(?:ами|ов|а|ы)?|млн\.?|миллион(?:ами|ов|а|ы)?|тыс(?:яч(?:ами|ей|а|и|у)?)?\.?)(?![а-яё])`;
+const K_SEP_AHEAD = String.raw`(?=$|[,.!?]|\s+(?:на|за|от|—|-|тенге|тг|₸)(?:\s|$))`;
+const K_GLUED_AHEAD = String.raw`(?=\s|$|[,.!?₸]|тг|тенге|руб)`;
 const AMOUNT =
-  String.raw`(\d{1,3}(?:\s\d{3})+|\d{1,3}(?:,\d{3})+(?!\d)|\d+(?:[.,]\d+)?)` +
-  String.raw`(?:\s*(млрд|миллиард[а-яё]*|млн|миллион[а-яё]*|тыс[а-яё]*\.?)` +
-  String.raw`|\s+(к)(?=$|[,.!?]|\s+(?:на|за|от|—|-|тенге|тг|₸)(?:\s|$))` +
-  String.raw`|(к)(?=\s|$|[,.!?₸]|тг|тенге|руб))?(?=\s|$|[,.!?₸]|тг|тенге|руб|[а-яёa-z])`;
+  String.raw`(\d{1,3}(?:,\d{3})+(?![.,]?\d)` +
+  String.raw`|\d+[.,]\d+(?=\s*(?:${WORD_MULT})|\s+к${K_SEP_AHEAD}|к${K_GLUED_AHEAD})` +
+  String.raw`|\d+(?:\s+\d+)*)` +
+  String.raw`(?:\s*(${WORD_MULT})|\s+(к)${K_SEP_AHEAD}|(к)${K_GLUED_AHEAD})?`;
 
+/** Валюта после суммы — длинные формы раньше короткой («рублей», не «руб»+«лей»). */
+const CURRENCY = String.raw`(?:тенге|тг|₸|рублей|рубля|рубль|руб)`;
+
+/**
+ * Остаток после суммы (источник/категория). Ревью-3 N1: «получил 5000, от Ахмета» —
+ * без ведущей запятой. Но если за знаком цифра («12.11», «12,50») — это хвост числа,
+ * оставляем как было до сделок.
+ */
+function cleanRest(rest: string): string {
+  const t = rest.trim();
+  const stripped = t.replace(/^[,.!?\s]+/, '');
+  return /^\d/.test(stripped) ? t : stripped;
+}
 
 function parseAmount(num: string, word: string | undefined, k: string | undefined): number {
   const n = num.replace(/\s/g, '');
@@ -112,7 +132,7 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
     new RegExp(
       String.raw`^(?:[а-яё]+\s+){0,3}?(?:запиши\s+)?(?:доход|получил[аи]?|заработал[аи]?|пришла зарплата|зарплат[ауы]?|преми[яю])\s+(?:[а-яё]+\s+){0,2}?(?:на\s+)?` +
         AMOUNT +
-        String.raw`\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:от|за|—|-)?\s*(.*)$`,
+        String.raw`\s*${CURRENCY}?\s*(?:от|за|—|-)?\s*(.*)$`,
       'i',
     ),
   );
@@ -120,7 +140,7 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
     const amount = parseAmount(m[1], m[2], m[3] ?? m[4]);
     if (amount > MAX_MONEY_AMOUNT) return null;
     if (Number.isFinite(amount) && amount > 0) {
-      const source = m[5].trim();
+      const source = cleanRest(m[5]);
       return source
         ? { action: 'add_income', amount, source }
         : { action: 'add_income', amount };
@@ -130,7 +150,7 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
     new RegExp(
       String.raw`^(?:[а-яё]+\s+){0,3}?(?:запиши\s+)?(?:расход|потратил[аи]?|потрачено|трата|купил[аи]?\s+на)\s+(?:на\s+)?` +
         AMOUNT +
-        String.raw`\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:на|за|—|-)?\s*(.*)$`,
+        String.raw`\s*${CURRENCY}?\s*(?:на|за|—|-)?\s*(.*)$`,
       'i',
     ),
   );
@@ -138,7 +158,7 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
     const amount = parseAmount(m[1], m[2], m[3] ?? m[4]);
     if (amount > MAX_MONEY_AMOUNT) return null;
     if (Number.isFinite(amount) && amount > 0) {
-      const rest = m[5].trim();
+      const rest = cleanRest(m[5]);
       return rest
         ? { action: 'add_expense', amount, category: rest, description: rest }
         : { action: 'add_expense', amount };
