@@ -19,7 +19,7 @@ import {
  * Нет фактов → честное «пока пусто» без ИИ. Модель молчит/падает → ответ из
  * тех же фактов. В историю чата не пишется.
  */
-export const EXPLAIN_PANELS = ['today', 'tasks', 'habits', 'goals', 'finance', 'calendar', 'journal'] as const;
+export const EXPLAIN_PANELS = ['today', 'tasks', 'habits', 'goals', 'finance', 'calendar', 'journal', 'deals'] as const;
 export type ExplainPanel = (typeof EXPLAIN_PANELS)[number];
 
 export const PANEL_LABEL: Record<ExplainPanel, string> = {
@@ -30,6 +30,7 @@ export const PANEL_LABEL: Record<ExplainPanel, string> = {
   finance: 'Финансы',
   calendar: 'Календарь',
   journal: 'Дневник',
+  deals: 'Сделки',
 };
 
 const EMPTY: Record<ExplainPanel, string> = {
@@ -40,6 +41,7 @@ const EMPTY: Record<ExplainPanel, string> = {
   finance: 'В этом месяце трат пока не записано. Скажи «потратил 2000 на обед» — и я учту.',
   calendar: 'В ближайшие дни встреч нет. Хочешь — запишу новую.',
   journal: 'Дневник пока пустой. Как ты сегодня — сон, энергия, настроение?',
+  deals: 'Сделок пока нет. Скажи «Ахмет хочет оборудование на 2 млн» — заведу.',
 };
 
 const EXPLAIN_TIMEOUT_MS = 6000;
@@ -186,6 +188,12 @@ export async function gatherPanelFacts(
       }
       const inc = incomes._sum.amount ?? 0;
       if (inc > 0) facts.push(`Доход в этом месяце: ${fmtMoney(inc)}.`);
+      break;
+    }
+    case 'deals': {
+      const { gatherDealsSection } = await import('./deals/service.js');
+      const s = await gatherDealsSection(userId);
+      if (s) facts.push(s);
       break;
     }
     case 'journal': {

@@ -131,6 +131,7 @@ const PANEL_REPLY: Record<string, string> = {
   finance: 'Открываю финансы',
   calendar: 'Открываю календарь',
   journal: 'Открываю дневник',
+  deals: 'Открываю сделки',
   today: 'Вот твой день',
 };
 
