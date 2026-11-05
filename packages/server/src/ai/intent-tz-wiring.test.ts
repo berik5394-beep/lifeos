@@ -22,7 +22,7 @@ describe('intent-TZ wiring', () => {
   it('orchestrator: parseIntent/экстракторы/booking получают tz юзера', () => {
     const src = read('src/services/jarvis-orchestrator.ts');
     expect(src).not.toMatch(UTC_TODAY);
-    expect(src).toMatch(/parseIntent\(text, userTz\)/);
+    expect(src).toMatch(/parseIntent\(text, userTz[,)]/);
     expect(src).toMatch(/isV2SupersedeEnabled\(userId\), tz \}/);
     expect(src).toMatch(/extractFromTranscript\(text, [^\n]*, tz\)/);
   });

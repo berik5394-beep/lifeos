@@ -31,7 +31,7 @@ export const updateDealTool = defineTool({
   sideEffects: 'write',
   examples: ['отправил Ахмету КП', 'Ахмет оплатил', 'Серик отказался, дорого', 'перезвонить Ахмету во вторник'],
   handler: async (input, ctx) => {
-    if (!isV2DealsEnabled(ctx.userId)) return { error: 'функция отключена' };
+    if (!isV2DealsEnabled(ctx.userId)) return { error: 'deals_disabled', hint: 'сделки выключены — для напоминания используй create_task, для обещания create_obligation' };
     const name = input.personName.trim();
     const found = await findOpenDeals(ctx.userId, name, input.title ?? null);
     if (found.length === 0) {

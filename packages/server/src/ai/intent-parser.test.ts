@@ -250,3 +250,22 @@ describe('deterministicIntent — open_panel (панели приложения)
     expect(deterministicIntent(text)?.action).not.toBe('open_panel');
   });
 });
+
+/**
+ * Ревью сделок I4: флаг сделок выключен → «покажи сделки» ведёт себя как до
+ * фичи (панель не открывается, фраза идёт дальше по обычному пути).
+ */
+describe('open_panel: выключенная панель не перехватывается', () => {
+  const off = { disabledPanels: new Set(['deals']) };
+  it.each(['Покажи сделки', 'Открой воронку', 'покажи продажи'])('«%s» при выключенных сделках → не панель', (text) => {
+    expect(deterministicIntent(text, 'UTC', new Date(), off)).toBeNull();
+  });
+  it('другие панели не задеты', () => {
+    expect(deterministicIntent('Покажи задачи', 'UTC', new Date(), off)).toEqual({ action: 'open_panel', panel: 'tasks' });
+  });
+  it('оркестратор передаёт выключенные панели по флагу сделок', () => {
+    const src = readFileSync(join(process.cwd(), 'src/services/jarvis-orchestrator.ts'), 'utf-8');
+    expect(src).toMatch(/parseIntent\(text, userTz, undefined, \{ disabledPanels: isV2DealsEnabled\(userId\) \? undefined : DEALS_PANEL_OFF \}\)/);
+  });
+});
+

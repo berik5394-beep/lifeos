@@ -1,4 +1,5 @@
 import { MODELS } from '../lib/models.js';
+import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 import {
@@ -140,7 +141,7 @@ export async function gatherAssistantContext(
       },
     }),
     getRelevantMemories(userId, text, 20),
-    knownIntent ? Promise.resolve(knownIntent) : parseIntent(text, tz),
+    knownIntent ? Promise.resolve(knownIntent) : parseIntent(text, tz, undefined, { disabledPanels: isV2DealsEnabled(userId) ? undefined : new Set(['deals']) }),
     // meta#9: план на эту неделю (WeeklyGoal, weekStart = понедельник)
     (() => {
       // Понедельник недели юзера (weekStart @db.Date). SSOT-хелпер —

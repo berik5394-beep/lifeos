@@ -13,7 +13,7 @@ export const setSalesPlanTool = defineTool({
   sideEffects: 'write',
   examples: ['план продаж на месяц 10 млн', 'хочу продать на 5 миллионов в этом месяце'],
   handler: async (input, ctx) => {
-    if (!isV2DealsEnabled(ctx.userId)) return { error: 'функция отключена' };
+    if (!isV2DealsEnabled(ctx.userId)) return { error: 'deals_disabled', hint: 'сделки выключены — денежную цель месяца ставь через create_monthly_goal' };
     await setSalesPlan(ctx.userId, input.amount);
     return { message: `План продаж на месяц: ${fmtMoney(input.amount)}. Буду считать темп.` };
   },

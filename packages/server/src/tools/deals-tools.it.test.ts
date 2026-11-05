@@ -56,10 +56,18 @@ describe('инструменты сделок', () => {
     expect(out.message).toContain('План месяца 10 млн ₸');
   });
 
-  it('флаг off → функция отключена', async () => {
+  it.each([
+    ['create_deal', { personName: 'Ахмет' }],
+    ['update_deal', { personName: 'Ахмет', nextStepDate: '2026-11-10' }],
+    ['list_deals', {}],
+    ['set_sales_plan', { amount: 1000 }],
+  ] as const)('флаг off → %s говорит агенту, чем заменить', async (tool, args) => {
     process.env.FEATURE_V2_DEALS = '';
-    const userId = await user('off');
-    const out = (await runRegistryTool('create_deal', { personName: 'Ахмет' }, { userId })) as Out;
-    expect(out.error).toBe('функция отключена');
+    const userId = await user(`off-${tool}`);
+    const out = (await runRegistryTool(tool, { ...args }, { userId })) as Out & { hint?: string };
+    expect(out.error).toBe('deals_disabled');
+    expect(out.hint).toMatch(/^сделки выключены — /);
+    if (tool === 'update_deal') expect(out.hint).toMatch(/create_task.*create_obligation/);
+    expect(await prisma.deal.count({ where: { userId } })).toBe(0);
   });
 });

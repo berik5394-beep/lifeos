@@ -125,6 +125,9 @@ export interface JarvisResponse {
   openPanel?: string | null;
 }
 
+/** Флаг сделок выключен → «покажи сделки» не панель, а как до фичи (ревью I4). */
+const DEALS_PANEL_OFF: ReadonlySet<string> = new Set(['deals']);
+
 const PANEL_REPLY: Record<string, string> = {
   tasks: 'Открываю задачи',
   habits: 'Открываю привычки',
@@ -603,7 +606,7 @@ async function handleMessageCore(
   // intent-TZ фикс (аудит brain-hands 2026-06-11): «сегодня/завтра» в
   // интентах/брони = календарь ЮЗЕРА, не UTC сервера (Алматы 00–05 → вчера).
   const userTz = await getUserTimezone(userId);
-  const intent = await parseIntent(text, userTz);
+  const intent = await parseIntent(text, userTz, undefined, { disabledPanels: isV2DealsEnabled(userId) ? undefined : DEALS_PANEL_OFF });
 
   // ---- Робот-эпик, Часть 3: открыть панель приложения (без ИИ) ----------
   if (intent.action === 'open_panel' && typeof intent.panel === 'string') {

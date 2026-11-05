@@ -26,7 +26,7 @@ export const createDealTool = defineTool({
   sideEffects: 'write',
   examples: ['Ахмет хочет оборудование на 2 млн', 'новая сделка с Даной — склад', 'Серик готов брать сервис, уже на переговорах'],
   handler: async (input, ctx) => {
-    if (!isV2DealsEnabled(ctx.userId)) return { error: 'функция отключена' };
+    if (!isV2DealsEnabled(ctx.userId)) return { error: 'deals_disabled', hint: 'сделки выключены — клиента запомни через remember_entity/set_person_type, напоминание связаться — create_task' };
     const stage = input.stage ? parseStage(input.stage) ?? 'new' : 'new';
     const now = new Date();
     const r = await createDeal(ctx.userId, {
