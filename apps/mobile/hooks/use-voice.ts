@@ -111,8 +111,10 @@ type ExpoSpeechRecognitionOptions = {
  * Fallback path: expo-av record → base64 → /voice/transcribe (Groq Whisper).
  *   - Used if speech recognition permission denied or unavailable.
  *
- * Command processing: always goes to /voice/process (parses intent) and
- * optionally /voice/assistant (conversational reply).
+ * Command processing: /voice/process = единый мозг (handleMessage) — сервер
+ * исполняет команду ДО ответа или ставит её на подтверждение (pendingAction).
+ * Клиент только озвучивает ответ и показывает «Подтвердить / Отмена».
+ * transcribeOnly: только распознать (чат сам шлёт текст в /voice/chat).
  */
 
 export type VoiceState = 'idle' | 'recording' | 'processing' | 'speaking' | 'error';
@@ -488,7 +490,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
     };
     Alert.alert('Подтверди', text, [
       { text: 'Отмена', style: 'cancel', onPress: () => void finish(false) },
-      { text: 'Записать', onPress: () => void finish(true) },
+      { text: 'Подтвердить', onPress: () => void finish(true) },
     ]);
   }, []);
 
@@ -525,25 +527,26 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
         void speakText(result.response);
         const follow = planVoiceFollowUp(processData);
         if (follow.kind === 'confirm') askToConfirm(follow.text, transcript);
+        // Слот-вопрос («На что потратил?») — показать текстом: следующая фраза
+        // станет значением слота, при выключенном звуке вопрос нельзя пропустить.
+        if (follow.kind === 'ask') Alert.alert('LifeOS', follow.text);
+        // Функциональный setter: прочитанный здесь `state` — из замыкания
+        // момента записи ('recording'), проверка по нему никогда не срабатывала.
         setTimeout(() => {
-          if (isMountedRef.current && state !== 'recording') {
-            setState((s) => (s === 'speaking' ? 'idle' : s));
-          }
+          if (isMountedRef.current) setState((s) => (s === 'speaking' ? 'idle' : s));
         }, 2500);
       } catch (err) {
         console.warn('Voice process failed, showing transcript only', err);
         if (isMountedRef.current) {
-          setLastResult({
-            intent: { action: 'unknown' },
-            response: `Я услышал: «${transcript}». Не получилось выполнить — попробуй ещё раз.`,
-            transcript,
-          });
+          const failText = `Я услышал: «${transcript}». Не получилось выполнить — попробуй ещё раз.`;
+          setLastResult({ intent: { action: 'unknown' }, response: failText, transcript });
           setState('idle');
           hapticError();
+          Alert.alert('Не получилось', failText);
         }
       }
     },
-    [state, transcribeOnly, hapticSuccess, hapticError, askToConfirm],
+    [transcribeOnly, hapticSuccess, hapticError, askToConfirm],
   );
 
   const stopRecording = useCallback(async () => {

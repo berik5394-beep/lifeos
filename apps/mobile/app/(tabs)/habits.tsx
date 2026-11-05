@@ -1139,7 +1139,8 @@ export default function HabitsScreen() {
   // voice-one-brain: голосовую команду исполнил СЕРВЕР (единый мозг) —
   // экран только подтягивает свой срез данных. Никакого локального исполнения.
   useEffect(() => {
-    if (lastResult) void handleRefresh();
+    // Ошибку рефреша глушим: данные подтянутся при следующем фокусе/pull-to-refresh.
+    if (lastResult) void handleRefresh().catch(() => {});
   }, [lastResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleHabit = useCallback(

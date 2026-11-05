@@ -59,8 +59,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       createdAt: new Date().toISOString(),
     };
 
+    // Сервер держит ОДИН pending на юзера: любое новое сообщение его
+    // подтверждает/отменяет/заменяет. Старые кнопки «Подтвердить» подтвердили
+    // бы уже ЧУЖОЕ (новое) предложение → снимаем их со всех сообщений.
     set((state) => ({
-      messages: [userMessage, ...state.messages],
+      messages: [
+        userMessage,
+        ...state.messages.map((m) => (m.pendingAction ? { ...m, pendingAction: null } : m)),
+      ],
       isLoading: true,
     }));
 
@@ -151,6 +157,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   confirmPendingAction: async (messageId: string, confirm: boolean) => {
+    // Снимаем кнопки СРАЗУ (до ответа сервера) — двойной тап не шлёт второй
+    // запрос. При сбое возвращаем, чтобы можно было повторить.
+    const target = get().messages.find((m) => m.id === messageId);
+    const pending = target?.pendingAction;
+    if (!pending) return;
+    set((state) => ({
+      messages: state.messages.map((m) => (m.id === messageId ? { ...m, pendingAction: null } : m)),
+    }));
     try {
       const res = await confirmPendingVoiceAction(confirm);
       const reply: ChatMessage = {
@@ -159,12 +173,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         content: res.message,
         createdAt: new Date().toISOString(),
       };
-      set((state) => ({
-        messages: [
-          reply,
-          ...state.messages.map((m) => (m.id === messageId ? { ...m, pendingAction: null } : m)),
-        ],
-      }));
+      set((state) => ({ messages: [reply, ...state.messages] }));
     } catch {
       const errorMessage: ChatMessage = {
         id: uniqueId('error'),
@@ -172,7 +181,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         content: 'Не получилось подтвердить — попробуй ещё раз или напиши «да».',
         createdAt: new Date().toISOString(),
       };
-      set((state) => ({ messages: [errorMessage, ...state.messages] }));
+      set((state) => ({
+        messages: [
+          errorMessage,
+          ...state.messages.map((m) => (m.id === messageId ? { ...m, pendingAction: pending } : m)),
+        ],
+      }));
     }
   },
 

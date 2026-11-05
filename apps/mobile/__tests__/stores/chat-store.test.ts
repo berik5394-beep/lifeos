@@ -59,4 +59,37 @@ describe('chat-store: подтверждение денежных действи
     expect(msgs.find((m) => m.id === askId)?.pendingAction).not.toBeNull();
     expect(msgs[0].content).toMatch(/Не получилось подтвердить/);
   });
+
+  it('новое сообщение юзера снимает кнопки со СТАРЫХ предложений (сервер держит один pending — старая кнопка подтвердила бы чужое)', async () => {
+    mockApi.post.mockResolvedValueOnce({
+      message: 'Записать расход 3000₸ на еду?',
+      pendingAction: { action: 'add_expense', input: { amount: 3000 } },
+    });
+    await useChatStore.getState().sendMessage('потратил 3000 на еду');
+    const oldAskId = useChatStore.getState().messages[0].id;
+    mockApi.post.mockResolvedValueOnce({
+      message: 'Записать расход 50000₸ на телефон?',
+      pendingAction: { action: 'add_expense', input: { amount: 50000 } },
+    });
+    await useChatStore.getState().sendMessage('потратил 50000 на телефон');
+    const msgs = useChatStore.getState().messages;
+    expect(msgs.find((m) => m.id === oldAskId)?.pendingAction).toBeNull();
+    expect(msgs[0].pendingAction).toEqual({ action: 'add_expense', input: { amount: 50000 } });
+  });
+
+  it('двойное нажатие: второй запрос не уходит (кнопки снимаются сразу)', async () => {
+    mockApi.post.mockResolvedValueOnce({
+      message: 'Записать?',
+      pendingAction: { action: 'add_expense', input: { amount: 1 } },
+    });
+    await useChatStore.getState().sendMessage('потратил 1 на тест');
+    const askId = useChatStore.getState().messages[0].id;
+    mockApi.post.mockResolvedValue({ message: 'Записал', intent: 'add_expense', done: true });
+    await Promise.all([
+      useChatStore.getState().confirmPendingAction(askId, true),
+      useChatStore.getState().confirmPendingAction(askId, true),
+    ]);
+    const confirmCalls = mockApi.post.mock.calls.filter((c) => c[0] === '/voice/confirm-action');
+    expect(confirmCalls).toHaveLength(1);
+  });
 });

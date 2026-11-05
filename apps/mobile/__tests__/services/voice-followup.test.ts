@@ -20,14 +20,16 @@ describe('planVoiceFollowUp', () => {
       text: 'Подтвердить действие?',
     });
   });
-  it('слот-вопрос «На что потратил?» (__awaitingCategory/__awaitingSource) → done: отвечают голосом, не кнопкой', () => {
+  it('слот-вопрос «На что потратил?» (__awaitingCategory/__awaitingSource) → ask: показать вопрос (не кнопку «Подтвердить»)', () => {
+    // Показываем текстом, а не только голосом: с выключенным звуком юзер не
+    // узнал бы, что следующая фраза станет категорией расхода (ревью S3).
     expect(
       planVoiceFollowUp({
         response: 'На что потратил 3000₸? (или «отмена»)',
         pendingAction: { action: 'add_expense', input: { amount: 3000, __awaitingCategory: true } },
         confirmationText: 'На что потратил 3000₸? (или «отмена»)',
       }),
-    ).toEqual({ kind: 'done' });
+    ).toEqual({ kind: 'ask', text: 'На что потратил 3000₸? (или «отмена»)' });
     expect(isConfirmable({ action: 'add_income', input: { amount: 1, __awaitingSource: true } })).toBe(false);
     expect(isConfirmable({ action: 'add_income', input: { amount: 1, source: 'зп' } })).toBe(true);
   });
@@ -66,5 +68,21 @@ describe('экраны не исполняют голос сами (voice-one-br
     const src = readFileSync(join(__dirname, '../../app/(tabs)', f), 'utf-8');
     expect(src).not.toMatch(/handleVoiceAction/);
     expect(src).not.toMatch(/Auto-execute voice actions/);
+  });
+});
+
+describe('чат не исполняет голосовую команду дважды (transcribeOnly)', () => {
+  it('chat.tsx берёт useVoice в режиме transcribeOnly', () => {
+    const src = readFileSync(join(__dirname, '../../app/(tabs)/chat.tsx'), 'utf-8');
+    expect(src).toMatch(/useVoice\(\{\s*transcribeOnly:\s*true\s*\}\)/);
+  });
+  it('use-voice: в transcribeOnly processCommand возвращается ДО запроса к /voice/process', () => {
+    const src = readFileSync(join(__dirname, '../../hooks/use-voice.ts'), 'utf-8');
+    const body = src.slice(src.indexOf('const processCommand = useCallback('));
+    const guard = body.indexOf('if (transcribeOnly)');
+    const call = body.indexOf("'/voice/process'");
+    expect(guard).toBeGreaterThan(-1);
+    expect(call).toBeGreaterThan(guard);
+    expect(body.slice(guard, call)).toMatch(/return;/);
   });
 });

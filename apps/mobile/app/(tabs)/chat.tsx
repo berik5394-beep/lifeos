@@ -84,7 +84,7 @@ const ChatBubble = memo(function ChatBubble({ message, onAction, onConfirm }: Ch
               onPress={() => onConfirm(message.id, true)}
               activeOpacity={0.7}
             >
-              <Text style={styles.actionButtonText}>✅ Записать</Text>
+              <Text style={styles.actionButtonText}>✅ Подтвердить</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.actionButton}

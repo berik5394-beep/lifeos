@@ -18,7 +18,10 @@ export interface ProcessResponse {
   confirmationText?: string | null;
 }
 
-export type VoiceFollowUp = { kind: 'confirm'; text: string } | { kind: 'done' };
+export type VoiceFollowUp =
+  | { kind: 'confirm'; text: string } // «Подтвердить / Отмена»
+  | { kind: 'ask'; text: string } // слот-вопрос «На что потратил?» — показать, ответ словами
+  | { kind: 'done' };
 
 const DEFAULT_CONFIRM_TEXT = 'Подтвердить действие?';
 const STALE_TEXT = 'Нечего подтверждать — предложение устарело. Повтори запрос.';
@@ -33,6 +36,11 @@ export function isConfirmable(p: PendingActionInfo | null | undefined): p is Pen
 export function planVoiceFollowUp(res: ProcessResponse): VoiceFollowUp {
   if (isConfirmable(res.pendingAction)) {
     return { kind: 'confirm', text: res.confirmationText || DEFAULT_CONFIRM_TEXT };
+  }
+  if (res.pendingAction) {
+    // Слот-вопрос: следующая фраза юзера станет значением слота (категорией) —
+    // показываем вопрос текстом, чтобы он не прошёл мимо при выключенном звуке.
+    return { kind: 'ask', text: res.confirmationText || res.response || 'Уточни, пожалуйста.' };
   }
   return { kind: 'done' };
 }
