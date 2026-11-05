@@ -24,7 +24,9 @@ export const createTaskTool = defineTool({
     'Создать ОДНУ задачу пользователю. Вызывай на «создай задачу», ' +
     '«добавь задачу», «напомни сделать X». Для разбивки БОЛЬШОЙ цели ' +
     'в дерево (план под цель: год → кварталы → недели) — используй ' +
-    'decompose_goal, не create_task в цикле.',
+    'decompose_goal, не create_task в цикле. Встреча/созвон с людьми, ' +
+    'место или время «с–до» — create_event, не я. «Я обещал X человеку» / ' +
+    '«X должен мне» — create_obligation, не я.',
   category: 'task',
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: { name: 'title', taskTitle: 'title', task: 'title', due_date: 'date', dueDate: 'date', deadline: 'date' },

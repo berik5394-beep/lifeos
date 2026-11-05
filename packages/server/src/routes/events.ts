@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseMonth as validateMonthRange, invalidDateReply } from '../middleware/validate.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
+import { proposeReschedule } from '../services/reschedule.js';
 
 const createEventSchema = z.object({
   title: z.string().min(1, 'Название обязательно').max(500),
@@ -149,9 +150,15 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
         type: 'event_created',
         content: `Встреча «${event.title}» ${data.date}${data.startTime ? ' в ' + data.startTime : ''}`,
       });
+      // Перегруз дня (флаг): встреча съела время дня → робот предлагает сдвинуть задачи.
+      const proposal =
+        event.startTime && event.endTime
+          ? await proposeReschedule(request.userId, data.date, null, new Date(), { fromCard: true })
+          : null;
       return reply.status(201).send({
         ...event,
         ...(conflicts.length > 0 ? { conflicts } : {}),
+        ...(proposal ? { proposal: { text: proposal.text, staged: proposal.staged } } : {}),
       });
     },
   );
@@ -208,9 +215,19 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
         type: 'event_updated',
         content: `Изменил встречу «${updated.title}»`,
       });
+      // Перегруз дня (флаг): встречу перенесли/удлинили → проверяем её день.
+      const timeChanged =
+        updated.date.getTime() !== existing.date.getTime() ||
+        updated.startTime !== existing.startTime ||
+        updated.endTime !== existing.endTime;
+      const proposal =
+        timeChanged && updated.startTime && updated.endTime
+          ? await proposeReschedule(request.userId, updated.date.toISOString().slice(0, 10), null, new Date(), { fromCard: true })
+          : null;
       return reply.send({
         ...updated,
         ...(conflicts.length > 0 ? { conflicts } : {}),
+        ...(proposal ? { proposal: { text: proposal.text, staged: proposal.staged } } : {}),
       });
     },
   );

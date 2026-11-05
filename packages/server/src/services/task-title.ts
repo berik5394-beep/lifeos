@@ -31,6 +31,27 @@ export function sanitizeTaskTitle(raw: string): string {
  * ДВУНАПРАВЛЕННО (хранимое⊇запрос ИЛИ запрос⊇хранимое), при нескольких —
  * самый свежий по createdAt. Пустой запрос → null.
  */
+/**
+ * Строгий матч для «сделал X» → задача (когда привычки X нет): ВСЕ слова фразы
+ * целыми словами в названии задачи и ровно ОДНА такая задача. Без подстрок
+ * («йогу» не находит «Купить йогурт»), без гаданий при двусмысленности.
+ */
+export function matchTaskByWholeWords<T extends { title: string }>(query: string, candidates: T[]): T | null {
+  const words = (s: string) =>
+    sanitizeTaskTitle(s)
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .split(/[^a-zа-я0-9]+/i)
+      .filter(Boolean);
+  const q = words(query);
+  if (q.length === 0) return null;
+  const hits = candidates.filter((c) => {
+    const t = new Set(words(c.title));
+    return q.every((w) => t.has(w));
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
 export function matchOpenTask<T extends { title: string; createdAt: Date }>(
   query: string,
   candidates: T[],

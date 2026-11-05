@@ -9,7 +9,9 @@ export const completeTaskTool = defineTool({
   name: 'complete_task',
   description:
     'Отметить задачу выполненной. Вызывай на «закрой задачу X», ' +
-    '«сделал X», «выполнил задачу X», «X готово».',
+    '«сделал X», «выполнил задачу X», «X готово», если X — разовое дело из ' +
+    'задач. Если X — привычка (бег, чтение, зарядка из списка привычек) — ' +
+    'complete_habit, не я.',
   category: 'task',
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: { taskTitle: 'title', task: 'title', name: 'title', task_title: 'title' },

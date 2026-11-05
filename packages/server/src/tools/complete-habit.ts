@@ -13,7 +13,9 @@ export const completeHabitTool = defineTool({
     'Отметить ОДНУ привычку выполненной сегодня. Если в одном сообщении ' +
     'несколько привычек («бег И чтение», «все утренние») — используй ' +
     'complete_multiple_habits. Вызывай на «отметь X», «сделал X», ' +
-    '«выполнил X».',
+    '«выполнил X», если X — привычка из списка привычек. Если X — разовое ' +
+    'дело из задач — complete_task, не я (не нашёл привычку, но есть такая ' +
+    'задача — закрою задачу сам).',
   category: 'habit',
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: { habitName: 'name', habit: 'name', title: 'name', habit_name: 'name' },
@@ -47,6 +49,30 @@ export const completeHabitTool = defineTool({
       if (matched) {
         habit = active.find((h) => h.id === matched.id) ?? null;
       } else {
+        // «Сделал X» без такой привычки, но с открытой задачей X → закрываем
+        // задачу (флаг; спека перегруза, часть D: сначала привычка, иначе задача).
+        const { isV2RescheduleEnabled } = await import('../lib/feature-flags.js');
+        if (isV2RescheduleEnabled(userId)) {
+          const { matchTaskByWholeWords } = await import('../services/task-title.js');
+          const open = await prisma.task.findMany({
+            where: { userId, completed: false, cancelled: false },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+          });
+          // Строго: все слова фразы — целыми словами в названии, и ровно одна
+          // такая задача («йогу» ≠ «Купить йогурт»; две «отчёт» → не гадаем).
+          const task = matchTaskByWholeWords(input.name, open);
+          if (task) {
+            // Через реестр (аудит ToolCall + честная память «Выполнил задачу «…»»).
+            const { runRegistryTool } = await import('./index.js');
+            const out = (await runRegistryTool('complete_task', { taskId: task.id, title: task.title }, ctx)) as {
+              message: string;
+              taskId: string;
+            };
+            // completedTask — чтобы внешний захват памяти не записал «Отметил привычку».
+            return { ...out, completedTask: true };
+          }
+        }
         // ЧЕСТНОСТЬ: throw → claude-agent ставит is_error:true → модель НЕ врёт «отметил».
         throw new Error(buildNotFoundMessage(input.name, active));
       }

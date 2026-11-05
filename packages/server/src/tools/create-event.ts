@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { dateOnlyUTC } from '../lib/tz.js';
 import { defineTool } from './_types.js';
+import { proposeReschedule } from '../services/reschedule.js';
 
 /**
  * SSOT Step 5 — write-tool. Anti-dup: если есть событие с ТЕМ ЖЕ
@@ -22,8 +23,10 @@ import { defineTool } from './_types.js';
 export const createEventTool = defineTool({
   name: 'create_event',
   description:
-    'Создать или перенести встречу/событие в календаре. Похожее ' +
-    'событие в ±3 дня обновляется (не плодит дубль).',
+    'Создать или перенести встречу/событие в календаре: с людьми, местом ' +
+    'или временем «с–до». Похожее событие в ±3 дня обновляется (не плодит ' +
+    'дубль). Дело без встречи («купить», «сделать отчёт», «позвонить») — ' +
+    'create_task, не я.',
   category: 'calendar',
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: { name: 'title', eventTitle: 'title', due_date: 'date', dueDate: 'date', day: 'date', place: 'location', desc: 'description', notes: 'description', note: 'description' },
@@ -91,12 +94,21 @@ export const createEventTool = defineTool({
           description: input.description ?? existingEv.description,
         },
       });
+      // Перегруз дня (флаг): встреча съела время дня → предложить сдвинуть задачи.
+      // Только если время/день встречи реально поменялись (как PUT /events).
+      const timeChanged =
+        existingEv.date.getTime() !== date.getTime() ||
+        existingEv.startTime !== startTime ||
+        existingEv.endTime !== endTime;
+      const rs = timeChanged && startTime && endTime ? await proposeReschedule(userId, input.date, null) : null;
+      const msg = `Обновил встречу «${title}»: ${input.date}${
+        startTime ? ' в ' + startTime : ''
+      } (была одна запись — не плодил дубль)`;
       return {
-        message: `Обновил встречу «${title}»: ${input.date}${
-          startTime ? ' в ' + startTime : ''
-        } (была одна запись — не плодил дубль)`,
+        message: rs ? `${msg}\n\n${rs.text}` : msg,
         eventId: updated.id,
         updated: true,
+        ...(rs?.staged ? { rescheduleStaged: true } : {}),
       };
     }
 
@@ -128,11 +140,15 @@ export const createEventTool = defineTool({
     } catch {
       /* best-effort: конфликт не должен ронять создание */
     }
+    // Перегруз дня (флаг): встреча съела время дня → предложить сдвинуть задачи.
+    // Только для встречи с началом и концом (без них времени она не занимает).
+    const rs = startTime && endTime ? await proposeReschedule(userId, input.date, null) : null;
+    const base = `Встреча "${title}" создана на ${input.date}${startTime ? ' в ' + startTime : ''}`;
     return {
-      message:
-        `Встреча "${title}" создана на ${input.date}${startTime ? ' в ' + startTime : ''}` + conflictWarn,
+      message: rs ? `${base}${conflictWarn}\n\n${rs.text}` : base + conflictWarn,
       eventId: event.id,
       updated: false,
+      ...(rs?.staged ? { rescheduleStaged: true } : {}),
     };
   },
 });

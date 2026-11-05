@@ -4,6 +4,11 @@ import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../test/integration/build-test-app.js';
 import { taskRoutes } from '../routes/tasks.js';
 import { chatRoutes } from '../routes/chat.js';
+import { eventRoutes } from '../routes/events.js';
+import { createEventTool } from '../tools/create-event.js';
+import { completeHabitTool } from '../tools/complete-habit.js';
+import { completeTaskTool } from '../tools/complete-task.js';
+import { buildNotFoundMessage } from '../tools/_habit-match.js';
 import { createTaskTool } from '../tools/create-task.js';
 import { civilDayRefs, addCivilDays } from '../lib/tz.js';
 import { setPendingAction } from './pending-actions.js';
@@ -20,7 +25,7 @@ const prisma = new PrismaClient();
 let app: FastifyInstance;
 const ORIG = process.env.FEATURE_V2_RESCHEDULE;
 beforeAll(async () => {
-  app = await buildTestApp([taskRoutes, chatRoutes]);
+  app = await buildTestApp([taskRoutes, chatRoutes, eventRoutes]);
 });
 afterEach(() => {
   process.env.FEATURE_V2_RESCHEDULE = 'all';
@@ -193,5 +198,120 @@ describe('перегруз дня → предложение сдвинуть г
     expect(out.message).not.toContain('перегружен: дел');
     expect(out.rescheduleStaged).toBeUndefined();
     expect(await prisma.pendingAction.findUnique({ where: { userId } })).toBeNull();
+  });
+});
+
+describe('этап 2: встречи съедают время дня', () => {
+  // Завтра без встречи: «Почта» + «Банк» по 30 мин — влезает. Встреча 09:00–19:30 → 30 мин свободно.
+  async function freeTomorrow(tag: string) {
+    const u = await prisma.user.create({
+      data: { email: `rs2-${tag}-${Date.now()}@a.test`, name: 'R', passwordHash: 'x', timezone: TZ },
+    });
+    const base = { userId: u.id, category: 'personal', date: d(tomorrow), estimatedMinutes: 30 };
+    const mail = await prisma.task.create({ data: { ...base, title: 'Почта', priority: 'low' } });
+    await prisma.task.create({ data: { ...base, title: 'Банк', priority: 'medium' } });
+    return { userId: u.id, mail, headers: { authorization: `Bearer ${app.jwt.sign({ sub: u.id })}` } };
+  }
+
+  it('create_event на весь день → предложение сдвинуть задачи (все двигаемы)', async () => {
+    const { userId, mail } = await freeTomorrow('ev-tool');
+    const out = (await createEventTool.handler(
+      { title: 'Выезд на объект', date: tomorrow, startTime: '09:00', endTime: '19:30' },
+      { userId },
+    )) as { message: string; rescheduleStaged?: boolean };
+    expect(out.message).toContain('Завтра день перегружен');
+    expect(out.message).toContain('«Почта» → на');
+    expect(out.rescheduleStaged).toBe(true);
+    expect((await prisma.pendingAction.findUnique({ where: { userId } }))?.inputJson).toMatchObject({
+      moves: [{ taskId: mail.id }],
+    });
+  });
+
+  it('встреча без конца времени не занимает → без предложения', async () => {
+    const { userId } = await freeTomorrow('ev-open');
+    const out = (await createEventTool.handler({ title: 'Звонок', date: tomorrow, startTime: '10:00' }, { userId })) as { message: string };
+    expect(out.message).not.toContain('перегружен');
+  });
+
+  it('POST /events → proposal в ответе; PUT /events, удлинили встречу → proposal', async () => {
+    const a = await freeTomorrow('ev-rest');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/events',
+      headers: a.headers,
+      payload: { title: 'Выезд', date: tomorrow, startTime: '09:00', endTime: '19:30' },
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().proposal).toMatchObject({ staged: true });
+
+    const b = await freeTomorrow('ev-put');
+    const ev = await app.inject({
+      method: 'POST',
+      url: '/events',
+      headers: b.headers,
+      payload: { title: 'Созвон', date: tomorrow, startTime: '09:00', endTime: '10:00' },
+    });
+    expect(ev.json().proposal).toBeUndefined();
+    const put = await app.inject({ method: 'PUT', url: `/events/${ev.json().id}`, headers: b.headers, payload: { endTime: '19:30' } });
+    expect(put.json().proposal?.text).toContain('«Почта» → на');
+    // правка без смены времени — без предложения
+    const rename = await app.inject({ method: 'PUT', url: `/events/${ev.json().id}`, headers: b.headers, payload: { title: 'Созвон 2' } });
+    expect(rename.json().proposal).toBeUndefined();
+  });
+});
+
+describe('этап 2: «сделал X» — привычка или задача, без пересечений', () => {
+  async function u(tag: string) {
+    return (await prisma.user.create({ data: { email: `rs3-${tag}-${Date.now()}@a.test`, name: 'R', passwordHash: 'x', timezone: TZ } })).id;
+  }
+
+  it('complete_habit «отчёт»: привычки нет, задача есть → закрыта задача', async () => {
+    const userId = await u('h2t');
+    await prisma.habit.create({ data: { userId, name: 'Бег', category: 'health', frequency: 'daily' } });
+    const t = await prisma.task.create({ data: { userId, title: 'Квартальный отчёт', category: 'work', priority: 'medium', date: d(tomorrow) } });
+    const out = (await completeHabitTool.handler({ name: 'квартальный отчёт' }, { userId })) as { message: string };
+    expect(out.message).toContain('выполнена');
+    expect((await prisma.task.findUnique({ where: { id: t.id } }))?.completed).toBe(true);
+  });
+
+  it('не гадаем: «йогу» ≠ «Купить йогурт», две задачи «отчёт» → ничего не закрыто', async () => {
+    const userId = await u('strict');
+    const y = await prisma.task.create({ data: { userId, title: 'Купить йогурт', category: 'home', priority: 'low', date: d(tomorrow) } });
+    await expect(completeHabitTool.handler({ name: 'йогу' }, { userId })).rejects.toThrow();
+    const base = { userId, category: 'work', priority: 'medium', date: d(tomorrow) };
+    await prisma.task.create({ data: { ...base, title: 'Отчёт для банка' } });
+    await prisma.task.create({ data: { ...base, title: 'Отчёт по продажам' } });
+    await expect(completeHabitTool.handler({ name: 'отчёт' }, { userId })).rejects.toThrow();
+    expect(await prisma.task.count({ where: { userId, completed: true } })).toBe(0);
+    expect((await prisma.task.findUnique({ where: { id: y.id } }))?.completed).toBe(false);
+  });
+
+  it('через реестр: монеты один раз, задача закрыта, «complete_task» в аудите', async () => {
+    const userId = await u('reg');
+    const t = await prisma.task.create({ data: { userId, title: 'Квартальный отчёт', category: 'work', priority: 'medium', date: d(tomorrow) } });
+    const { runRegistryTool } = await import('../tools/index.js');
+    const out = (await runRegistryTool('complete_habit', { name: 'квартальный отчёт' }, { userId })) as { completedTask?: boolean };
+    expect(out.completedTask).toBe(true);
+    expect((await prisma.task.findUnique({ where: { id: t.id } }))?.completed).toBe(true);
+    expect(await prisma.coinTransaction.count({ where: { userId, refKey: `task:${t.id}` } })).toBe(1);
+    expect(await prisma.toolCall.count({ where: { userId, toolName: 'complete_task' } })).toBe(1);
+  });
+
+  it('complete_task «зарядка» (это привычка) → честно «Задача не найдена», привычку не трогаем', async () => {
+    const userId = await u('t2h');
+    const h = await prisma.habit.create({ data: { userId, name: 'Зарядка', category: 'health', frequency: 'daily' } });
+    const out = (await completeTaskTool.handler({ title: 'зарядка' }, { userId })) as { message: string };
+    expect(out.message).toBe('Задача не найдена');
+    expect(await prisma.habitLog.count({ where: { habitId: h.id } })).toBe(0);
+  });
+
+  it('флаг выкл. → как раньше: «привычка не найдена» / «Задача не найдена»', async () => {
+    process.env.FEATURE_V2_RESCHEDULE = '';
+    const userId = await u('off2');
+    await prisma.habit.create({ data: { userId, name: 'Бег', category: 'health', frequency: 'daily' } });
+    await prisma.task.create({ data: { userId, title: 'Отчёт', category: 'work', priority: 'medium', date: d(tomorrow) } });
+    const habits = await prisma.habit.findMany({ where: { userId, active: true }, select: { id: true, name: true } });
+    await expect(completeHabitTool.handler({ name: 'отчёт' }, { userId })).rejects.toThrow(buildNotFoundMessage('отчёт', habits));
+    expect(await prisma.task.count({ where: { userId, completed: true } })).toBe(0);
   });
 });

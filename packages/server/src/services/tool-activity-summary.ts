@@ -96,6 +96,10 @@ export function summarizeToolAction(
         };
       }
       case 'complete_habit': {
+        // «Сделал X» закрыл задачу (привычки X нет) — её запишет сам complete_task.
+        if (result && typeof result === 'object' && (result as { completedTask?: unknown }).completedTask === true) {
+          return null;
+        }
         const habit = str(input, 'name') ?? str(input, 'habitId') ?? 'привычку';
         return {
           type: 'habit_logged',

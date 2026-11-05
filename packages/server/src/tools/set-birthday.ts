@@ -14,7 +14,8 @@ export const setBirthdayTool = defineTool({
   description:
     'Запомнить день рождения человека. Вызывай когда юзер называет ДР — ' +
     'явно («запомни, у Ахмета ДР 12 мая») или вскользь («у Серика др завтра, ' +
-    '8 июня»). Год опционален.',
+    '8 июня»). Год опционален. Для ДР вызывай меня, а не remember_entity ' +
+    '(человека я заведу сам, если его ещё нет).',
   category: 'memory',
   aliases: { name: 'person', personName: 'person' },
   schema: z.object({
