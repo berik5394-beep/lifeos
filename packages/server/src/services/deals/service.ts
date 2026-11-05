@@ -482,6 +482,8 @@ export async function gatherDealsSection(userId: string, now: Date = new Date())
   const plan = await salesPlanStatus(userId, now);
   // Факты рефлектора тяжёлые — только если план продаж есть; свой потолок,
   // чтобы медленная строка цели не уронила весь блок по таймауту enrichment.
+  // TODO(deals-review): при плане продаж gatherReflectorFacts считается на КАЖДОМ ходе
+  // чата (enrichment) — кэшировать строку на день/до смены плана или целей.
   const savings = plan ? await withTimeout(salesVsSavingsLine(userId, plan.plan, now), SAVINGS_LINE_BUDGET_MS, null) : null;
   const step = (d: { nextStepAt: Date | null }) => (d.nextStepAt ? d.nextStepAt.toISOString().slice(0, 10) : null);
   return formatDealsSection({
