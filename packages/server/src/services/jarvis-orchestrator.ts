@@ -44,7 +44,8 @@ import {
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
-import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoney } from './deals/index.js';
+import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoney, routeIncomeToDeal, describePossibleDuplicate } from './deals/index.js';
+import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js';
@@ -448,9 +449,14 @@ export async function runConfirmedAction(
     // из сделки в БД (модель её не передаёт), доход пишется ровно один раз.
     if (action === DEAL_INCOME_ACTION) {
       const dealId = String((input as { dealId?: unknown }).dealId ?? '');
-      const r = await recordDealIncome(userId, dealId);
+      const force = (input as { force?: unknown }).force === true;
+      const r = await recordDealIncome(userId, dealId, new Date(), { force });
       let message: string;
-      if (r.ok && !r.already) {
+      if (!r.ok && r.reason === 'possible_duplicate') {
+        // Страховка B2: такой доход уже есть — не пишем молча; «да» → повтор с force.
+        message = describePossibleDuplicate(r.amount, r.personName, r.existingDate);
+        await setPendingAction(userId, DEAL_INCOME_ACTION, { dealId, force: true }, message);
+      } else if (r.ok && !r.already) {
         const d = await prisma.deal.findFirst({ where: { id: dealId, userId }, select: { personName: true, title: true } });
         message = `Записал доход ${fmtMoney(r.amount)} — сделка ${d?.personName ?? ''} — ${d?.title ?? ''}.`;
       } else if (r.ok) {
@@ -933,6 +939,21 @@ async function handleMessageCore(
           return { reply, intent: 'send_telegram', turnFacts: { failed: true } };
         }
         input.text = body;
+      }
+    }
+    // Ревью сделок B2: «получил 2 млн от Ахмета» при открытой сделке с Ахметом —
+    // оплата сделки, а не голый доход (иначе Income задвоится при «выиграна»).
+    if (intent.action === 'add_income' && input.source != null && isV2DealsEnabled(userId)) {
+      const routed = await routeIncomeToDeal(userId, Number(input.amount), String(input.source));
+      if (routed.kind === 'ask') {
+        await saveTurn(userId, text, routed.message);
+        return { reply: routed.message, intent: 'update_deal' };
+      }
+      if (routed.kind === 'won') {
+        const pa = { action: DEAL_INCOME_ACTION, input: { dealId: routed.dealId } };
+        await setPendingAction(userId, pa.action, pa.input, routed.message);
+        await saveTurn(userId, text, routed.message);
+        return { reply: routed.message, pendingAction: pa, confirmationText: routed.message, intent: 'update_deal', turnFacts: { executed: true } };
       }
     }
     // #189 деньги без слота → детерминированно доспрашиваем категорию/

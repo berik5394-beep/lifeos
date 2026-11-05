@@ -5,7 +5,7 @@ import { localDateStr, localDateOnlyUTC, dateOnlyUTC, localMonthOnlyUTC, localMo
 import { getEntityGraph } from '../entity-graph/index.js';
 import { defaultNextStep, isOpenStage, OPEN_STAGES, type DealStage } from './stages.js';
 import { salesPace, coveringDeals, type Pace } from './pace.js';
-import { formatDealsSection, describePlan } from './format.js';
+import { formatDealsSection, describePlan, describeUpdated, describeWhichDeal, fmtMoneyExact } from './format.js';
 
 export const DEAL_INCOME_ACTION = 'record_deal_income';
 
@@ -152,10 +152,27 @@ export async function updateDeal(
 
 export type IncomeResult =
   | { ok: true; already: boolean; amount: number }
-  | { ok: false; reason: 'not_found' | 'no_amount' | 'not_won' };
+  | { ok: false; reason: 'not_found' | 'no_amount' | 'not_won' }
+  | { ok: false; reason: 'possible_duplicate'; amount: number; personName: string; existingDate: string };
 
-/** Доход по выигранной сделке — ровно один раз (wonIncomeId @unique). */
-export async function recordDealIncome(userId: string, dealId: string, now: Date = new Date()): Promise<IncomeResult> {
+/** «Ахмет»→«ахмет», «Дана»→«дан»: основа имени для поиска в свободном тексте источника дохода. */
+function nameStem(name: string): string {
+  const n = name.trim().toLowerCase();
+  return n.length > 3 ? n.replace(/[аяеиоуыьй]$/, '') : n;
+}
+
+/**
+ * Доход по выигранной сделке — ровно один раз (wonIncomeId @unique).
+ * Страховка (ревью B2): если за 30 дней уже есть доход той же суммы с именем клиента
+ * в источнике (записан руками/голым add_income) — молча не пишем, а переспрашиваем;
+ * force — юзер подтвердил «записать ещё раз».
+ */
+export async function recordDealIncome(
+  userId: string,
+  dealId: string,
+  now: Date = new Date(),
+  opts: { force?: boolean } = {},
+): Promise<IncomeResult> {
   const deal = await prisma.deal.findFirst({ where: { id: dealId, userId } });
   if (!deal) return { ok: false, reason: 'not_found' };
   if (deal.amount == null) return { ok: false, reason: 'no_amount' };
@@ -163,6 +180,20 @@ export async function recordDealIncome(userId: string, dealId: string, now: Date
   if (deal.wonIncomeId) return { ok: true, already: true, amount: deal.amount };
   const tz = await getUserTimezone(userId);
   const amount = deal.amount;
+  if (!opts.force) {
+    const dup = await prisma.income.findFirst({
+      where: {
+        userId,
+        amount,
+        source: { contains: nameStem(deal.personName), mode: 'insensitive' },
+        createdAt: { gte: new Date(now.getTime() - 30 * 86_400_000) },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (dup) {
+      return { ok: false, reason: 'possible_duplicate', amount, personName: deal.personName, existingDate: civil(dup.date) ?? localDateStr(tz, now) };
+    }
+  }
   try {
     await prisma.$transaction(async (tx) => {
       const inc = await tx.income.create({
@@ -176,6 +207,56 @@ export async function recordDealIncome(userId: string, dealId: string, now: Date
     throw err;
   }
   return { ok: true, already: false, amount };
+}
+
+/** «Ахмета за оборудование» → варианты имени: «Ахмета», «Ахмет» (род. → им.: -а, -ы→-а, -и→-я/-а, -я→-й/-ь). */
+function mentionCandidates(mention: string): string[] {
+  const w = mention.trim().replace(/^от\s+/i, '').split(/[\s,.;:!?—-]+/)[0] ?? '';
+  if (w.length < 2) return [];
+  const out = [w];
+  if (/[бвгджзклмнпрстфхцчшщ]а$/i.test(w)) out.push(w.slice(0, -1));
+  if (/ы$/i.test(w)) out.push(w.slice(0, -1) + 'а');
+  if (/и$/i.test(w)) out.push(w.slice(0, -1) + 'я', w.slice(0, -1) + 'а');
+  if (/я$/i.test(w)) out.push(w.slice(0, -1) + 'й', w.slice(0, -1) + 'ь');
+  return out;
+}
+
+export type IncomeRouting =
+  | { kind: 'none' }
+  | { kind: 'ask'; message: string }
+  | { kind: 'won'; message: string; dealId: string };
+
+/**
+ * Ревью B2: «получил 2 млн от Ахмета» при ОДНОЙ открытой сделке с Ахметом — это оплата
+ * сделки: ставим «выиграна» (сумму берём из сообщения, если у сделки её нет) и предлагаем
+ * доход через сделку (одно подтверждение, без второго Income). Несколько сделок или другая
+ * сумма — переспрос, ничего не ставим. Нет сделки — none (обычный add_income).
+ */
+export async function routeIncomeToDeal(
+  userId: string,
+  amount: number,
+  source: string,
+  now: Date = new Date(),
+): Promise<IncomeRouting> {
+  const seen = new Map<string, Deal>();
+  for (const c of mentionCandidates(source)) {
+    for (const d of await findOpenDeals(userId, c)) seen.set(d.id, d);
+    if (seen.size) break;
+  }
+  const deals = [...seen.values()];
+  if (deals.length === 0) return { kind: 'none' };
+  const name = deals[0].personName;
+  if (deals.length > 1) return { kind: 'ask', message: describeWhichDeal(name, deals, 'Какая оплачена?') };
+  const deal = deals[0];
+  if (deal.amount != null && deal.amount !== amount) {
+    return {
+      kind: 'ask',
+      message: `Сделка ${name} — ${deal.title} на ${fmtMoneyExact(deal.amount)}, а пришло ${fmtMoneyExact(amount)}. Это полная оплата по сделке? Скажи «${name} оплатил, сумма ${fmtMoneyExact(amount)}» — закрою.`,
+    };
+  }
+  const r = await updateDeal(userId, deal.id, { stage: 'won', ...(deal.amount == null ? { amount } : {}) }, now);
+  const { today: t } = await today(userId, now);
+  return { kind: 'won', message: describeUpdated(r.deal, r, t), dealId: deal.id };
 }
 
 export async function listDeals(userId: string, status: 'open' | 'closed', now: Date = new Date()): Promise<Deal[]> {

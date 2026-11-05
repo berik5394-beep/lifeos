@@ -78,30 +78,60 @@ export type MoneyIntent =
  *  Консервативно: нужен money-глагол + число (голое «100000» → null).
  *  `[а-яё]` (НЕ \w — кириллица).
  */
+// Сумма + необязательный множитель: «2 млн», «2,5 млн», «3 миллиона», «500 тысяч»,
+// «5 тыс», «500к», «2 000 000». Ревью сделок B2: раньше «2 млн» → сумма 2, а «млн …»
+// уезжал в источник. «к» — только приклеенное к числу («500к»), иначе это предлог.
+const AMOUNT =
+  String.raw`(\d{1,3}(?:\s\d{3})+|\d+(?:[.,]\d+)?)(?:\s*(млн|миллион[а-яё]*|тыс[а-яё]*\.?)|(к))?(?=\s|$|[,.!?₸]|тг|тенге|руб)`;
+
+function parseAmount(num: string, word: string | undefined, k: string | undefined): number {
+  const base = Number(num.replace(/\s/g, '').replace(',', '.'));
+  const w = (word ?? '').toLowerCase();
+  const mult = w.startsWith('млн') || w.startsWith('миллион') ? 1_000_000 : w.startsWith('тыс') || k ? 1_000 : 1;
+  return Math.round(base * mult);
+}
+
 export function detectMoneyIntent(text: string): MoneyIntent | null {
   let m = text.match(
-    /^(?:[а-яё]+\s+){0,3}?(?:запиши\s+)?(?:доход|получил[аи]?|заработал[аи]?|пришла зарплата|зарплат[ауы]?|преми[яю])\s+(?:[а-яё]+\s+){0,2}?(?:на\s+)?(\d[\d\s]*)\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:от|за|—|-)?\s*(.*)$/i,
+    new RegExp(
+      String.raw`^(?:[а-яё]+\s+){0,3}?(?:запиши\s+)?(?:доход|получил[аи]?|заработал[аи]?|пришла зарплата|зарплат[ауы]?|преми[яю])\s+(?:[а-яё]+\s+){0,2}?(?:на\s+)?` +
+        AMOUNT +
+        String.raw`\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:от|за|—|-)?\s*(.*)$`,
+      'i',
+    ),
   );
   if (m) {
-    const amount = Number(m[1].replace(/\s/g, ''));
+    const amount = parseAmount(m[1], m[2], m[3]);
     if (Number.isFinite(amount) && amount > 0) {
-      const source = m[2].trim();
+      const source = m[4].trim();
       return source
         ? { action: 'add_income', amount, source }
         : { action: 'add_income', amount };
     }
   }
-  m =
-    text.match(
-      /^(?:[а-яё]+\s+){0,3}?(?:запиши\s+)?(?:расход|потратил[аи]?|потрачено|трата|купил[аи]?\s+на)\s+(?:на\s+)?(\d[\d\s]*)\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:на|за|—|-)?\s*(.*)$/i,
-    ) || text.match(/^(\d[\d\s]{2,})\s*(?:тенге|тг|₸)?\s+на\s+(.+)$/i);
+  m = text.match(
+    new RegExp(
+      String.raw`^(?:[а-яё]+\s+){0,3}?(?:запиши\s+)?(?:расход|потратил[аи]?|потрачено|трата|купил[аи]?\s+на)\s+(?:на\s+)?` +
+        AMOUNT +
+        String.raw`\s*(?:тенге|тг|₸|руб|рублей)?\s*(?:на|за|—|-)?\s*(.*)$`,
+      'i',
+    ),
+  );
+  if (m) {
+    const amount = parseAmount(m[1], m[2], m[3]);
+    if (Number.isFinite(amount) && amount > 0) {
+      const rest = m[4].trim();
+      return rest
+        ? { action: 'add_expense', amount, category: rest, description: rest }
+        : { action: 'add_expense', amount };
+    }
+  }
+  m = text.match(/^(\d[\d\s]{2,})\s*(?:тенге|тг|₸)?\s+на\s+(.+)$/i);
   if (m) {
     const amount = Number(m[1].replace(/\s/g, ''));
     if (Number.isFinite(amount) && amount > 0) {
       const rest = m[2].trim();
-      return rest
-        ? { action: 'add_expense', amount, category: rest, description: rest }
-        : { action: 'add_expense', amount };
+      return { action: 'add_expense', amount, category: rest, description: rest };
     }
   }
   return null;

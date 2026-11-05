@@ -12,7 +12,8 @@ export const addIncomeTool = defineTool({
   name: 'add_income',
   description:
     'Записать доход. ДЕНЬГИ — выполняется только после явного ' +
-    'подтверждения пользователя («да»). Не подтверждай сам.',
+    'подтверждения пользователя («да»). Не подтверждай сам. ' +
+    'Получил деньги по открытой сделке («Ахмет оплатил 2 млн») — update_deal (он предложит доход сам), не я.',
   category: 'finance',
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: { sum: 'amount', cost: 'amount', from: 'source', description: 'source', desc: 'source', note: 'source' },

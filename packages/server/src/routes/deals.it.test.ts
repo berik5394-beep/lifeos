@@ -51,6 +51,20 @@ describe('REST /deals', () => {
     expect((await app.inject({ method: 'GET', url: '/sales-plan', headers })).json().plan).toMatchObject({ plan: 10000000, won: 0 });
   });
 
+  it('доход уже записан руками → 409 с вопросом; force=true → пишем', async () => {
+    const { userId, headers } = await user('dup');
+    await prisma.income.create({ data: { userId, date: new Date(), source: 'Ахмет', amount: 2000000 } });
+    const c = await app.inject({ method: 'POST', url: '/deals', headers, payload: { personName: 'Ахмет', title: 'оборудование', amount: 2000000 } });
+    const id = c.json().deal.id as string;
+    await app.inject({ method: 'PUT', url: `/deals/${id}`, headers, payload: { stage: 'won' } });
+    const i1 = await app.inject({ method: 'POST', url: `/deals/${id}/income`, headers });
+    expect(i1.statusCode).toBe(409);
+    expect(i1.json().message).toMatch(/^Похоже, этот доход уже записан/);
+    const i2 = await app.inject({ method: 'POST', url: `/deals/${id}/income?force=true`, headers });
+    expect(i2.json()).toMatchObject({ ok: true, already: false });
+    expect(await prisma.income.count({ where: { userId } })).toBe(2);
+  });
+
   it('флаг off → 404', async () => {
     process.env.FEATURE_V2_DEALS = '';
     const { headers } = await user('off');

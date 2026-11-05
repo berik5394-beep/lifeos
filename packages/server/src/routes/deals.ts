@@ -6,6 +6,7 @@ import { validate } from '../middleware/validate.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import {
   createDeal, updateDeal, listDeals, recordDealIncome, setSalesPlan, salesPlanStatus, isDealStage, type DealStage,
+  describePossibleDuplicate,
 } from '../services/deals/index.js';
 
 const civil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
@@ -74,8 +75,13 @@ export async function dealRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/deals/:id/income', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const r = await recordDealIncome(request.userId, id);
+    const force = (request.query as { force?: string }).force === 'true';
+    const r = await recordDealIncome(request.userId, id, new Date(), { force });
     if (!r.ok && r.reason === 'not_found') return reply.status(404).send({ message: 'Сделка не найдена' });
+    if (!r.ok && r.reason === 'possible_duplicate') {
+      // Страховка B2: похожий доход уже есть — приложение переспрашивает и шлёт ?force=true.
+      return reply.status(409).send({ message: describePossibleDuplicate(r.amount, r.personName, r.existingDate), reason: r.reason });
+    }
     if (!r.ok) return reply.status(422).send({ message: r.reason === 'no_amount' ? 'У сделки нет суммы' : 'Сделка ещё не выиграна' });
     return r;
   });

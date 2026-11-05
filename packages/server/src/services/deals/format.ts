@@ -13,6 +13,11 @@ export function fmtMoney(n: number): string {
   return `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ₸`;
 }
 
+/** Точная сумма для денежных подтверждений: «2 345 678 ₸» (без округления до млн). */
+export function fmtMoneyExact(n: number): string {
+  return `${Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ₸`;
+}
+
 export function whenPhrase(date: string, today: string): string {
   if (date === today) return 'сегодня';
   if (date === addCivilDays(today, 1)) return 'завтра';
@@ -67,11 +72,32 @@ interface ListDeal extends DealLike {
   nextStepText: string | null;
 }
 
-function dealsWord(n: number): string {
+/** Русское множественное: plural(n, ['сделка', 'сделки', 'сделок']). */
+export function plural(n: number, forms: readonly [string, string, string]): string {
   const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return 'сделка';
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'сделки';
-  return 'сделок';
+  if (m10 === 1 && m100 !== 11) return forms[0];
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return forms[1];
+  return forms[2];
+}
+
+function dealsWord(n: number): string {
+  return plural(n, ['сделка', 'сделки', 'сделок']);
+}
+
+/** «У Ахмета 2 открытые сделки: «…», «…». Про какую?» */
+export function describeWhichDeal(
+  name: string,
+  deals: ReadonlyArray<{ title: string; amount: number | null }>,
+  question = 'Про какую?',
+): string {
+  const list = deals.map((d) => `«${d.title}»${d.amount != null ? ` (${fmtMoney(d.amount)})` : ''}`).join(', ');
+  const n = deals.length;
+  return `У ${genitive(name)} ${n} ${plural(n, ['открытая сделка', 'открытые сделки', 'открытых сделок'])}: ${list}. ${question}`;
+}
+
+/** Страховка от двойного дохода: такой же уже записан. */
+export function describePossibleDuplicate(amount: number, personName: string, dateCivil: string): string {
+  return `Похоже, этот доход уже записан (${fmtMoneyExact(amount)} от ${genitive(personName)}, ${dateCivil.slice(8, 10)}.${dateCivil.slice(5, 7)}). Записать ещё раз?`;
 }
 
 export function describeList(deals: readonly ListDeal[], today: string): string {

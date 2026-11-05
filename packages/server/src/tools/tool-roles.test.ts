@@ -28,6 +28,7 @@ const PAIRS: Array<[string, string]> = [
   ['update_deal', 'create_task'],
   ['create_task', 'update_deal'],
   ['update_deal', 'add_income'],
+  ['add_income', 'update_deal'],
 ];
 
 describe('роли инструментов: каждый знает соседа по смыслу', () => {
