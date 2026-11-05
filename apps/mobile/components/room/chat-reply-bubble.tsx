@@ -31,7 +31,7 @@ export const ChatReplyBubble = memo(function ChatReplyBubble({
         {confirm && onConfirm && (
           <View style={styles.actions}>
             <Pressable style={[styles.btn, styles.yes]} onPress={() => onConfirm(true)} accessibilityRole="button">
-              <Text style={styles.btnText}>Да, записать</Text>
+              <Text style={styles.btnText}>Подтвердить</Text>
             </Pressable>
             <Pressable style={styles.btn} onPress={() => onConfirm(false)} accessibilityRole="button">
               <Text style={styles.btnText}>Отмена</Text>

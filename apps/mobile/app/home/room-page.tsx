@@ -246,6 +246,8 @@ export const RoomPage = memo(function RoomPage() {
   const openToolScene = useCallback(
     (tool: ToolKey) => {
       if (size.w === 0) return;
+      // Скрытый в настройках инструмент не достаём (как раньше: скрытая вкладка не открывалась).
+      if (!visibleToolKeys.includes(tool)) return;
       timers.current.forEach(clearTimeout);
       timers.current = [];
       if (zoomed) zoomOut();
@@ -289,7 +291,7 @@ export const RoomPage = memo(function RoomPage() {
         (source ? WALK_MS : 120) + FETCH_MS,
       );
     },
-    [size, zoomed, zoomOut, moveRobot, later, recede, token],
+    [size, zoomed, zoomOut, moveRobot, later, recede, token, visibleToolKeys],
   );
 
   const closeTool = useCallback(() => {
@@ -304,11 +306,14 @@ export const RoomPage = memo(function RoomPage() {
   }, [robotToRest]);
 
   // Запросы «достань инструмент» из пушей/голоса/дашборда.
+  // Забираем запрос, только когда комната уже знает свой размер — иначе пуш на
+  // холодном старте «съедался» бы до раскладки и ничего не открывалось.
   useEffect(() => {
+    if (size.w === 0) return;
     const tool = useRoomToolStore.getState().take();
     if (tool) openToolScene(tool);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toolSeq]);
+  }, [toolSeq, size.w]);
 
   // «Покажи задачи» → мозг присылает openPanel → робот достаёт (один раз на ответ).
   const openedFor = useRef<string | null>(reply?.id ?? null);

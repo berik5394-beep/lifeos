@@ -111,3 +111,29 @@ describe('chat-store: подтверждение денежных действи
     expect(useChatStore.getState().messages[0].openPanel).toBeNull();
   });
 });
+
+describe('chat-store: шторка «История» не теряет кнопки подтверждения', () => {
+  it('fetchHistory(0) оставляет локальную копию сообщения (кнопки, id), а старое догружает с сервера', async () => {
+    mockApi.post.mockResolvedValueOnce({
+      message: 'Записать расход 3000₸ на еду?',
+      pendingAction: { action: 'add_expense', input: { amount: 3000 } },
+    });
+    await useChatStore.getState().sendMessage('потратил 3000 на еду');
+    const askId = useChatStore.getState().messages[0].id;
+    // Сервер отдаёт историю старым-первым, без pendingAction и со своими id.
+    mockApi.get.mockResolvedValueOnce({
+      messages: [
+        { id: 's0', role: 'assistant', content: 'Привет!', createdAt: '2026-11-05T08:00:00Z' },
+        { id: 's1', role: 'user', content: 'потратил 3000 на еду', createdAt: '2026-11-05T09:00:00Z' },
+        { id: 's2', role: 'assistant', content: 'Записать расход 3000₸ на еду?', createdAt: '2026-11-05T09:00:01Z' },
+      ],
+      hasMore: false,
+    });
+    await useChatStore.getState().fetchHistory(0);
+    const msgs = useChatStore.getState().messages;
+    expect(msgs).toHaveLength(3);
+    expect(msgs[0].id).toBe(askId);
+    expect(msgs[0].pendingAction).toEqual({ action: 'add_expense', input: { amount: 3000 } });
+    expect(msgs[2]).toMatchObject({ id: 's0', content: 'Привет!' });
+  });
+});

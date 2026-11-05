@@ -137,7 +137,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set((state) => {
         const reversed = messages.reverse();
         if (offset === 0) {
-          return { messages: reversed, hasMore: serverHasMore };
+          // Шторка «История» открывается много раз (Часть 5) и каждый раз
+          // перечитывает сервер. Серверные строки без кнопок подтверждения/эмоции
+          // и с другими id → оставляем ЛОКАЛЬНУЮ копию того же сообщения (та же
+          // роль и текст), иначе кнопки «Подтвердить» пропадали бы.
+          const pool = [...state.messages];
+          const merged = reversed.map((m) => {
+            const i = pool.findIndex((l) => l.role === m.role && l.content === m.content);
+            return i >= 0 ? pool.splice(i, 1)[0] : m;
+          });
+          return { messages: merged, hasMore: serverHasMore };
         }
         const existingIds = new Set(state.messages.map(m => m.id));
         const newMessages = reversed.filter(m => !existingIds.has(m.id));
