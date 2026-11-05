@@ -5,6 +5,7 @@ import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { matchTaskByWholeWords } from '../services/task-title.js';
 import { summarizeToolAction } from '../services/tool-activity-summary.js';
+import { mayNeedLocalTools } from '../services/jarvis-orchestrator.js';
 
 /**
  * «Каждый инструмент с каждым, без пересечений интересов» (спека перегруза,
@@ -62,6 +63,24 @@ describe('строгий матч «сделал X» → задача и чес�
 describe('маршрутизация без ИИ', () => {
   it.each(DETERMINISTIC)('«%s» → %s', (text, action) => {
     expect(deterministicIntent(text, 'Asia/Almaty', new Date('2026-11-05T06:00:00Z'))?.action).toBe(action);
+  });
+});
+
+/**
+ * Пример инструмента должен до него ДОХОДИТЬ: либо детерминированный интент,
+ * либо агент запускается С инструментами (mayNeedLocalTools). Иначе модель
+ * отвечает болтовнёй без tools. Пока — только сделки (у части старых
+ * инструментов примеры этому не отвечают, см. отчёт ревью сделок).
+ */
+const EXAMPLE_GUARDED = ['create_deal', 'update_deal', 'list_deals', 'set_sales_plan'];
+
+describe('примеры инструментов доходят до инструментов', () => {
+  const cases = EXAMPLE_GUARDED.flatMap((name) => (registry.get(name)?.examples ?? []).map((e) => [name, e] as const));
+  it('у охраняемых инструментов есть примеры', () => {
+    expect(cases.length).toBeGreaterThanOrEqual(EXAMPLE_GUARDED.length);
+  });
+  it.each(cases)('%s: «%s» → инструменты предложены', (_name, example) => {
+    expect(mayNeedLocalTools(example) || deterministicIntent(example) != null).toBe(true);
   });
 });
 
