@@ -139,7 +139,7 @@ describe('инструменты сделок', () => {
     const out = (await runRegistryTool(tool, { ...args }, { userId })) as Out & { hint?: string };
     expect(out.error).toBe('deals_disabled');
     expect(out.hint).toMatch(/^сделки выключены — /);
-    if (tool === 'update_deal') expect(out.hint).toMatch(/create_task.*create_obligation/);
+    if (tool === 'update_deal') expect(out.hint).toMatch(/create_task.*create_obligation.*add_income/);
     expect(await prisma.deal.count({ where: { userId } })).toBe(0);
   });
 });

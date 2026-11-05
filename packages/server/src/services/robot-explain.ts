@@ -201,6 +201,9 @@ export async function gatherPanelFacts(
       break;
     }
     case 'deals': {
+      // Флаг выкл. → как до сделок: фактов нет, честное «пусто».
+      const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
+      if (!isV2DealsEnabled(userId)) break;
       const { gatherDealsSection } = await import('./deals/service.js');
       const s = await gatherDealsSection(userId, now);
       if (s) facts.push(s);
