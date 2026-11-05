@@ -59,6 +59,10 @@ import { createObligationTool } from './create-obligation.js';
 import { listObligationsTool } from './list-obligations.js';
 import { settleObligationTool } from './settle-obligation.js';
 import { cancelObligationTool } from './cancel-obligation.js';
+import { createDealTool } from './create-deal.js';
+import { updateDealTool } from './update-deal.js';
+import { listDealsTool } from './list-deals.js';
+import { setSalesPlanTool } from './set-sales-plan.js';
 
 /**
  * SSOT migration Step 2 — реестр инструментов (единственный источник
@@ -134,6 +138,11 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   listObligationsTool,
   settleObligationTool,
   cancelObligationTool,
+  // Сделки (спека 2026-11-05-deals) — флаг-гейт в хендлерах.
+  createDealTool,
+  updateDealTool,
+  listDealsTool,
+  setSalesPlanTool,
 ];
 
 // L99 #14 fix: load-time dup-name guard. Раньше `new Map(...)` silent

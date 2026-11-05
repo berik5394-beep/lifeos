@@ -22,6 +22,11 @@ const PAIRS: Array<[string, string]> = [
   ['set_birthday', 'remember_entity'],
   ['suggest_goal', 'create_monthly_goal'],
   ['create_monthly_goal', 'suggest_goal'],
+  ['update_deal', 'create_obligation'],
+  ['create_obligation', 'update_deal'],
+  ['update_deal', 'create_task'],
+  ['create_task', 'update_deal'],
+  ['update_deal', 'add_income'],
 ];
 
 describe('роли инструментов: каждый знает соседа по смыслу', () => {
