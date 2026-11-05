@@ -75,3 +75,44 @@ describe('каденс sales_plan_behind (ревью I1)', () => {
     expect(await planRows()).toBe(2);
   });
 });
+
+describe('ключ deal_next_step_due (ревью I2)', () => {
+  const D = (civil: string) => new Date(`${civil}T00:00:00Z`);
+  const dueRows = (userId: string) => prisma.insight.count({ where: { userId, scopeKey: { startsWith: 'deal_next_step_due:' } } });
+
+  it('A просрочена и напомнена; назавтра наступает шаг B → нудж снова; повтор в тот же день — нет', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-02T09:00:00Z'));
+    const userId = await user('due-b');
+    const engine = new V2ProactivityEngine();
+    const a = (await createDeal(userId, { personName: 'Ахмет', title: 'a' })).deal;
+    const b = (await createDeal(userId, { personName: 'Серик', title: 'b' })).deal;
+    await prisma.deal.update({ where: { id: a.id }, data: { nextStepAt: D('2026-11-01') } });
+    await prisma.deal.update({ where: { id: b.id }, data: { nextStepAt: D('2026-11-03') } });
+
+    await engine.runForUser(userId);
+    expect(await dueRows(userId)).toBe(1);
+    await engine.runForUser(userId); // тот же день — дедуп
+    expect(await dueRows(userId)).toBe(1);
+
+    vi.setSystemTime(new Date('2026-11-03T09:00:00Z'));
+    await engine.runForUser(userId);
+    expect(await dueRows(userId)).toBe(2);
+  });
+
+  it('A напомнена в понедельник, юзер перенёс шаг на среду → в среду нудж', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-02T09:00:00Z')); // понедельник
+    const userId = await user('due-move');
+    const engine = new V2ProactivityEngine();
+    const a = (await createDeal(userId, { personName: 'Ахмет', title: 'a' })).deal;
+    await prisma.deal.update({ where: { id: a.id }, data: { nextStepAt: D('2026-11-02') } });
+    await engine.runForUser(userId);
+    expect(await dueRows(userId)).toBe(1);
+
+    await prisma.deal.update({ where: { id: a.id }, data: { nextStepAt: D('2026-11-04') } });
+    vi.setSystemTime(new Date('2026-11-04T09:00:00Z')); // среда
+    await engine.runForUser(userId);
+    expect(await dueRows(userId)).toBe(2);
+  });
+});

@@ -1110,17 +1110,21 @@ async function detectDealNextStepDue(userId: string): Promise<NudgeCandidate[]> 
     const { localDateOnlyUTC } = await import('../lib/tz.js');
     const { OPEN_STAGES } = await import('./deals/stages.js');
     const today = localDateOnlyUTC(await getUserTimezone(userId));
-    const rows = await prisma.deal.findMany({
+    const due = await prisma.deal.findMany({
       where: { userId, stage: { in: [...OPEN_STAGES] }, nextStepAt: { lte: today } },
       orderBy: { nextStepAt: 'asc' },
-      take: 3,
       select: { id: true, personName: true, nextStepText: true },
     });
-    if (rows.length === 0) return [];
+    if (due.length === 0) return [];
+    const rows = due.slice(0, 3);
+    // Ревью I2: ключ = весь набор «пора» + дата юзера. Новая сделка в наборе или
+    // новый день шага → новый ключ (R10-кулдаун 3 дня не глушит); повтор в тот же
+    // день с тем же набором — дедуп.
+    const ids = due.map((r) => r.id).sort().join(',');
     const cand: NudgeCandidate = {
       source: 'deal_next_step_due',
       significance: 0,
-      entityId: rows[0].id,
+      entityId: `deals_due:${ids}:${today.toISOString().slice(0, 10)}`,
       payload: { list: rows.map((r) => `${r.personName} — ${r.nextStepText ?? 'шаг'}`).join('; ') },
       toneHint: 'gentle',
     };
