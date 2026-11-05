@@ -1,5 +1,5 @@
-import React, { memo, useCallback, useEffect, useState } from 'react';
-import { Alert } from 'react-native';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, type TextInput } from 'react-native';
 import { Input } from '@/components/ui';
 import { FormSheet } from '@/components/deals/form-sheet';
 import { useMoneyField } from '@/hooks/use-money-field';
@@ -15,6 +15,11 @@ export const NewDealSheet = memo(function NewDealSheet({ visible, onClose }: { v
   const amount = useMoneyField();
   const { parsed, validate, reset: resetAmount } = amount;
   const { saving, guard } = useSaveGuard(visible);
+  // «Далее» на клавиатуре ведёт по полям: клиент → что продаём → сумма.
+  const titleRef = useRef<TextInput>(null);
+  const amountRef = useRef<TextInput>(null);
+  const focusTitle = useCallback(() => titleRef.current?.focus(), []);
+  const focusAmount = useCallback(() => amountRef.current?.focus(), []);
 
   useEffect(() => {
     if (!visible) return;
@@ -57,11 +62,24 @@ export const NewDealSheet = memo(function NewDealSheet({ visible, onClose }: { v
         autoFocus
         maxLength={120}
         returnKeyType="next"
+        blurOnSubmit={false}
+        onSubmitEditing={focusTitle}
       />
-      <Input label="Что продаём" placeholder="оборудование" value={title} onChangeText={setTitle} maxLength={200} />
+      <Input
+        ref={titleRef}
+        label="Что продаём"
+        placeholder="оборудование"
+        value={title}
+        onChangeText={setTitle}
+        maxLength={200}
+        returnKeyType="next"
+        blurOnSubmit={false}
+        onSubmitEditing={focusAmount}
+      />
       <Input
         label="Сумма, ₸"
         placeholder="2 000 000"
+        ref={amountRef}
         value={amount.text}
         onChangeText={amount.setText}
         onBlur={amount.onBlur}

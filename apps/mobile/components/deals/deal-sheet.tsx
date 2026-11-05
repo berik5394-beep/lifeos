@@ -102,6 +102,15 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
     [deal, lock, unlock, moveStage, offer, finishAndClose],
   );
 
+  // Стабильные обработчики кнопок (value — из StageButton): inline-лямбды ломали memo.
+  const onMoveTo = useCallback(
+    (stage: string | undefined) => {
+      if (stage && isOpenStage(stage)) void onMove(stage);
+    },
+    [onMove],
+  );
+  const onWon = useCallback(() => void onMove('won'), [onMove]);
+  const onLostReason = useCallback((reason: string | undefined) => void onMove('lost', reason), [onMove]);
   const onLost = useCallback(() => setAskReason(true), []);
   const cancelLost = useCallback(() => setAskReason(false), []);
   const cancelPick = useCallback(() => setPickStage(false), []);
@@ -151,8 +160,8 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
           <>
             {nb.prev || nb.next ? (
               <View style={styles.row}>
-                {nb.prev ? <StageButton label={`← ${STAGE_LABEL[nb.prev]}`} disabled={busy} onPress={() => void onMove(nb.prev as DealStage)} /> : null}
-                {nb.next ? <StageButton label={`${STAGE_LABEL[nb.next]} →`} disabled={busy} onPress={() => void onMove(nb.next as DealStage)} /> : null}
+                {nb.prev ? <StageButton label={`← ${STAGE_LABEL[nb.prev]}`} disabled={busy} value={nb.prev} onPress={onMoveTo} /> : null}
+                {nb.next ? <StageButton label={`${STAGE_LABEL[nb.next]} →`} disabled={busy} value={nb.next} onPress={onMoveTo} /> : null}
               </View>
             ) : null}
             {askReason ? (
@@ -160,14 +169,14 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
                 <Text style={styles.ask}>Почему проиграна?</Text>
                 <View style={styles.row}>
                   {LOST_REASONS.slice(0, 2).map((r) => (
-                    <StageButton key={r} label={capitalize(r)} disabled={busy} onPress={() => void onMove('lost', r)} />
+                    <StageButton key={r} label={capitalize(r)} disabled={busy} value={r} onPress={onLostReason} />
                   ))}
                 </View>
                 <View style={styles.row}>
                   {LOST_REASONS.slice(2).map((r) => (
-                    <StageButton key={r} label={capitalize(r)} disabled={busy} onPress={() => void onMove('lost', r)} />
+                    <StageButton key={r} label={capitalize(r)} disabled={busy} value={r} onPress={onLostReason} />
                   ))}
-                  <StageButton label="Без причины" disabled={busy} onPress={() => void onMove('lost')} />
+                  <StageButton label="Без причины" disabled={busy} onPress={onLostReason} />
                 </View>
                 <View style={styles.row}>
                   <StageButton label="Отмена" disabled={busy} onPress={cancelLost} />
@@ -175,7 +184,7 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
               </>
             ) : (
               <View style={styles.row}>
-                <StageButton label="Выиграна" tone="success" disabled={busy} onPress={() => void onMove('won')} />
+                <StageButton label="Выиграна" tone="success" disabled={busy} onPress={onWon} />
                 <StageButton label="Проиграна" tone="danger" disabled={busy} onPress={onLost} />
               </View>
             )}
@@ -186,7 +195,7 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
             {[OPEN_STAGES.slice(0, 2), OPEN_STAGES.slice(2)].map((pair) => (
               <View key={pair[0]} style={styles.row}>
                 {pair.map((st) => (
-                  <StageButton key={st} label={STAGE_LABEL[st]} disabled={busy} onPress={() => void onMove(st)} />
+                  <StageButton key={st} label={STAGE_LABEL[st]} disabled={busy} value={st} onPress={onMoveTo} />
                 ))}
               </View>
             ))}
@@ -249,7 +258,8 @@ function createStyles(c: ReturnType<typeof useColors>) {
     meta: { color: c.textSecondary, fontSize: fontSize.sm, marginTop: spacing.xs },
     row: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
     ask: { color: c.text, fontSize: fontSize.sm, fontWeight: '600', marginTop: spacing.md },
-    history: { marginTop: spacing.md },
+    // Длинная история сжимается внутри шторки (maxHeight 75%), а не выталкивает кнопки.
+    history: { marginTop: spacing.md, flexShrink: 1 },
     event: { color: c.textSecondary, fontSize: fontSize.xs, marginBottom: 4 },
   });
 }

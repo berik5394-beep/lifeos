@@ -2,6 +2,7 @@ import React, { memo, useCallback, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { Input } from '@/components/ui';
 import { FormSheet } from '@/components/deals/form-sheet';
+import { fmtAmountInput } from '@/services/deals-view';
 import { useMoneyField } from '@/hooks/use-money-field';
 import { useSaveGuard } from '@/hooks/use-save-guard';
 import { dealErrorText } from '@/hooks/use-deal-income';
@@ -23,8 +24,10 @@ export const PlanSheet = memo(function PlanSheet({
   const { saving, guard } = useSaveGuard(visible);
 
   useEffect(() => {
-    if (visible) resetAmount(current != null ? String(Math.round(current)) : '');
-  }, [visible, current, resetAmount]);
+    // Только при открытии: фоновая перезагрузка плана не стирает то, что набирают.
+    if (visible) resetAmount(fmtAmountInput(current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, resetAmount]);
 
   const value = parsed.ok ? parsed.value : null;
 

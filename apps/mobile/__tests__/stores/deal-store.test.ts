@@ -122,9 +122,9 @@ describe('deal-store', () => {
   });
 
   it('409 possible_duplicate → переспрос с текстом сервера; force=true пишет', async () => {
-    mocked.post.mockRejectedValueOnce(new ApiError(409, 'Похоже, доход 2 000 000 ₸ от Ахмета уже записан 05.11. Записать ещё раз?'));
+    mocked.post.mockRejectedValueOnce(new ApiError(409, 'Похоже, этот доход уже записан (2 000 000 ₸ от Ахмета, 05.11). Записать ещё раз?'));
     const r = await useDealStore.getState().recordIncome('d1');
-    expect(r).toEqual({ kind: 'duplicate', message: 'Похоже, доход 2 000 000 ₸ от Ахмета уже записан 05.11. Записать ещё раз?' });
+    expect(r).toEqual({ kind: 'duplicate', message: 'Похоже, этот доход уже записан (2 000 000 ₸ от Ахмета, 05.11). Записать ещё раз?' });
     mocked.post.mockResolvedValueOnce({ ok: true, already: false, amount: 2_000_000 } as never);
     await useDealStore.getState().recordIncome('d1', true);
     expect(mocked.post).toHaveBeenLastCalledWith('/deals/d1/income?force=true', {}, 'test-token-123', { queueOffline: false });
