@@ -53,9 +53,9 @@ describe('тексты сделок', () => {
       .toBe('План месяца 10 млн ₸: закрыто 4 млн ₸, в работе ещё 7 млн ₸. Успеешь, если закроешь Ахмета и Серика. У 1 сделки нет суммы.');
   });
   it('блок контекста и строка брифа', () => {
-    expect(formatDealsSection({ openCount: 3, openSum: 5_000_000, dueToday: ['Ахмет'], overdue: ['Дана'], plan: null }))
-      .toBe('Сделки: открыто 3 на 5 млн ₸; шаг сегодня: Ахмет; просрочен шаг: Дана.');
-    expect(formatDealsSection({ openCount: 0, openSum: 0, dueToday: [], overdue: [], plan: null })).toBeNull();
+    expect(formatDealsSection({ openCount: 3, openSum: 5_000_000, clients: ['Ахмет', 'Дана', 'Ахмет'], dueToday: ['Ахмет'], overdue: ['Дана'], plan: null }))
+      .toBe('Сделки: открыто 3 на 5 млн ₸; клиенты в работе: Ахмет, Дана; шаг сегодня: Ахмет; просрочен шаг: Дана.');
+    expect(formatDealsSection({ openCount: 0, openSum: 0, clients: [], dueToday: [], overdue: [], plan: null })).toBeNull();
     expect(dealBriefLine({ title: 'оборудование', amount: 2_000_000, stage: 'proposal', daysInStage: 4 }))
       .toBe('Сделка «оборудование» 2 млн ₸, КП отправлено 4 дн назад.');
   });
@@ -68,3 +68,12 @@ describe('творительный падеж', () => {
     expect(instrumental('Аля')).toBe('Алей');
   });
 });
+
+describe('ревью I5: модель видит, у кого открыта сделка', () => {
+  it('клиенты: без дублей, не больше 8', () => {
+    const many = ['А1', 'А2', 'А3', 'А4', 'А5', 'А6', 'А7', 'А8', 'А9', 'А1'];
+    const t = formatDealsSection({ openCount: 10, openSum: 0, clients: many, dueToday: [], overdue: [], plan: null });
+    expect(t).toBe('Сделки: открыто 10; клиенты в работе: А1, А2, А3, А4, А5, А6, А7, А8.');
+  });
+});
+

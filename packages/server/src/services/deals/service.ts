@@ -340,12 +340,14 @@ export async function gatherDealsSection(userId: string, now: Date = new Date())
   const open = await prisma.deal.findMany({
     where: { userId, stage: { in: [...OPEN_STAGES] } },
     select: { personName: true, amount: true, nextStepAt: true },
+    orderBy: { createdAt: 'desc' },
   });
   const plan = await salesPlanStatus(userId, now);
   const step = (d: { nextStepAt: Date | null }) => (d.nextStepAt ? d.nextStepAt.toISOString().slice(0, 10) : null);
   return formatDealsSection({
     openCount: open.length,
     openSum: open.reduce((s, d) => s + (d.amount ?? 0), 0),
+    clients: open.map((d) => d.personName),
     dueToday: open.filter((d) => step(d) === todayCivil).map((d) => d.personName),
     overdue: open.filter((d) => { const s = step(d); return s != null && s < todayCivil; }).map((d) => d.personName),
     plan: plan

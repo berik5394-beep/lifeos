@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { defineTool } from './_types.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import {
-  findOpenDeals, updateDeal, describeUpdated, parseStage, genitive, instrumental, DEAL_INCOME_ACTION, fmtMoney,
+  findOpenDeals, updateDeal, describeUpdated, parseStage, genitive, DEAL_INCOME_ACTION, fmtMoney,
 } from '../services/deals/index.js';
 import { setPendingAction } from '../services/pending-actions.js';
 import { getUserTimezone } from '../lib/user-context.js';
@@ -35,7 +35,11 @@ export const updateDealTool = defineTool({
     const name = input.personName.trim();
     const found = await findOpenDeals(ctx.userId, name, input.title ?? null);
     if (found.length === 0) {
-      return { message: `С ${instrumental(name)} открытых сделок нет. Завести новую?` };
+      // Ревью I5: не вопрос юзеру, а подсказка агенту — иначе «перезвонить Дане» без сделки теряется.
+      return {
+        error: 'no_open_deal',
+        hint: 'у этого человека нет открытой сделки — если это просто напоминание, используй create_task; если новая продажа — create_deal',
+      };
     }
     if (found.length > 1) {
       const list = found.map((d) => `«${d.title}»${d.amount != null ? ` (${fmtMoney(d.amount)})` : ''}`).join(', ');

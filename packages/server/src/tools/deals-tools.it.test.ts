@@ -49,10 +49,14 @@ describe('инструменты сделок', () => {
     expect(p?.action).toBe('record_deal_income');
   });
 
-  it('update_deal без сделки → предлагает завести', async () => {
+  it('ревью I5: update_deal без сделки → подсказка агенту (create_task / create_deal), не вопрос юзеру', async () => {
     const userId = await user('none');
-    const out = (await runRegistryTool('update_deal', { personName: 'Дана', stage: 'proposal' }, { userId })) as Out;
-    expect(out.message).toMatch(/С Даной открытых сделок нет/);
+    const out = (await runRegistryTool('update_deal', { personName: 'Дана', nextStepDate: '2026-11-10' }, { userId })) as Out & { hint?: string };
+    expect(out.message).toBeUndefined();
+    expect(out.error).toBe('no_open_deal');
+    expect(out.hint).toMatch(/create_task/);
+    expect(out.hint).toMatch(/create_deal/);
+    expect(await prisma.deal.count({ where: { userId } })).toBe(0);
   });
 
   it('list_deals и set_sales_plan', async () => {

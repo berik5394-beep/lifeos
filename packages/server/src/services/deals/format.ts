@@ -129,10 +129,13 @@ export function describePlan(p: {
 
 /** Блок для контекста робота (enrichment). Нечего сказать → null. */
 export function formatDealsSection(s: {
-  openCount: number; openSum: number; dueToday: string[]; overdue: string[]; plan: string | null;
+  openCount: number; openSum: number; clients: string[]; dueToday: string[]; overdue: string[]; plan: string | null;
 }): string | null {
   if (s.openCount === 0 && !s.plan) return null;
   const parts = [`Сделки: открыто ${s.openCount}${s.openSum > 0 ? ` на ${fmtMoney(s.openSum)}` : ''}`];
+  // Ревью I5: модель должна знать, у кого открыта сделка («перезвонить Ахмету» → update_deal).
+  const clients = [...new Set(s.clients)].slice(0, 8);
+  if (clients.length) parts.push(`клиенты в работе: ${clients.join(', ')}`);
   if (s.dueToday.length) parts.push(`шаг сегодня: ${s.dueToday.join(', ')}`);
   if (s.overdue.length) parts.push(`просрочен шаг: ${s.overdue.join(', ')}`);
   if (s.plan) parts.push(s.plan);
