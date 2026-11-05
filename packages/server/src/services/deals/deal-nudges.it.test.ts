@@ -26,6 +26,14 @@ describe('нуджи сделок', () => {
     await prisma.deal.update({ where: { id: deal.id }, data: { nextStepAt: null, lastActivityAt: new Date(Date.now() - 8 * 86_400_000) } });
     expect(await sources(userId)).toContain('deal_stale');
   });
+  it('просроченный шаг + 8 дн тишины → только deal_next_step_due, без deal_stale (ревью: двойное напоминание)', async () => {
+    const userId = await user('stale-overdue');
+    const { deal } = await createDeal(userId, { personName: 'Серик', title: 'y' });
+    await prisma.deal.update({ where: { id: deal.id }, data: { nextStepAt: new Date(Date.now() - 2 * 86_400_000), lastActivityAt: new Date(Date.now() - 8 * 86_400_000) } });
+    const s = await sources(userId);
+    expect(s).toContain('deal_next_step_due');
+    expect(s).not.toContain('deal_stale');
+  });
   it('план есть, отстаём, 20-е число → sales_plan_behind с ключом месяца', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-20T09:00:00Z'));

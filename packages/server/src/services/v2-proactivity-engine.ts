@@ -1136,24 +1136,22 @@ async function detectDealNextStepDue(userId: string): Promise<NudgeCandidate[]> 
   }
 }
 
-// Сделки: открытая, 7+ дней без активности и без будущего шага.
+// Сделки: открытая, 7+ дней без активности и вообще без шага. Просроченный шаг
+// сюда не берём — о нём уже напоминает deal_next_step_due (иначе двойное).
 async function detectDealStale(userId: string): Promise<NudgeCandidate[]> {
   try {
     const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
     if (!isV2DealsEnabled(userId)) return [];
     const { prisma } = await import('../lib/prisma.js');
-    const { getUserTimezone } = await import('../lib/user-context.js');
-    const { localDateOnlyUTC } = await import('../lib/tz.js');
     const { OPEN_STAGES } = await import('./deals/stages.js');
     const { instrumental } = await import('./deals/format.js');
-    const today = localDateOnlyUTC(await getUserTimezone(userId));
     const cutoff = new Date(Date.now() - 7 * DAY_MS);
     const row = await prisma.deal.findFirst({
       where: {
         userId,
         stage: { in: [...OPEN_STAGES] },
         lastActivityAt: { lte: cutoff },
-        OR: [{ nextStepAt: null }, { nextStepAt: { lt: today } }],
+        nextStepAt: null,
       },
       orderBy: [{ amount: { sort: 'desc', nulls: 'last' } }, { lastActivityAt: 'asc' }],
       select: { id: true, personName: true, title: true, lastActivityAt: true },

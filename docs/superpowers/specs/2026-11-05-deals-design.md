@@ -139,7 +139,7 @@ model SalesPlan {
 | source | Когда | significance | При спаде настроения |
 |---|---|---|---|
 | `deal_next_step_due` | `nextStepAt ≤ сегодня`, открытая; до 3 сделок в одном нудже | 0.6 (как obligation_due) | **выживает** — это обязательство клиенту |
-| `deal_stale` | открытая, `lastActivityAt` ≥ 7 дней, нет будущего шага | 0.6 | глушится (в `PRESSURE_SOURCES`) |
+| `deal_stale` | открытая, `lastActivityAt` ≥ 7 дней, шага нет вообще (просроченный шаг — это `deal_next_step_due`, без двойного напоминания) | 0.6 | глушится (в `PRESSURE_SOURCES`) |
 | `sales_plan_behind` | план есть и `salesPace` = отстаёшь; кулдаун неделя | 0.65 | глушится (в `PRESSURE_SOURCES`) |
 
 `PRESSURE_SOURCES` растёт с 10 до 12 — обновить анти-регресс тест размера.
