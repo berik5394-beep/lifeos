@@ -82,7 +82,25 @@ export async function createDeal(
   return { deal, taggedClient: tagged, step };
 }
 
-/** Открытые сделки клиента (+ уточнение названия). Сущность → по FK, иначе по имени. */
+const norm = (t: string): string => t.trim().toLowerCase().replace(/ё/g, 'е');
+const stems = (t: string): Set<string> =>
+  new Set(norm(t).split(/[^а-яa-z0-9]+/).filter((w) => w.length >= 5).map((w) => w.slice(0, 5)));
+
+/** Похоже ли название сделки на сказанное: вхождение в любую сторону или общий корень ≥5 букв. */
+export function titleMatches(dealTitle: string, said: string): boolean {
+  const a = norm(dealTitle), b = norm(said);
+  if (!a || !b) return false;
+  if (a.includes(b) || b.includes(a)) return true;
+  const sa = stems(a);
+  for (const st of stems(b)) if (sa.has(st)) return true;
+  return false;
+}
+
+/**
+ * Открытые сделки клиента. Сущность → по FK, иначе по имени. Ревью I6: название —
+ * НЕ фильтр (неточное «оборудования» прятало единственную сделку → «нет сделки» →
+ * дубль), а только развязка при >1; развязка дала 0 → все (переспросим списком).
+ */
 export async function findOpenDeals(userId: string, personName: string, title?: string | null): Promise<Deal[]> {
   const ent = await getEntityGraph().resolveForMerge(userId, personName.trim(), 'person');
   const where: Prisma.DealWhereInput = {
@@ -92,9 +110,11 @@ export async function findOpenDeals(userId: string, personName: string, title?: 
       ...(ent ? [{ personEntityId: ent.id }] : []),
       { personName: { equals: personName.trim(), mode: 'insensitive' } },
     ],
-    ...(title ? { title: { contains: title.trim(), mode: 'insensitive' } } : {}),
   };
-  return prisma.deal.findMany({ where, orderBy: { createdAt: 'desc' } });
+  const all = await prisma.deal.findMany({ where, orderBy: { createdAt: 'desc' } });
+  if (all.length <= 1 || !title?.trim()) return all;
+  const narrowed = all.filter((d) => titleMatches(d.title, title));
+  return narrowed.length ? narrowed : all;
 }
 
 export async function updateDeal(

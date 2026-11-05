@@ -32,6 +32,14 @@ describe('инструменты сделок', () => {
     expect(await prisma.deal.count({ where: { userId, stage: 'proposal' } })).toBe(0);
   });
 
+  it('ревью I6: неточное название единственной сделки → обновляем её, не «нет сделки»', async () => {
+    const userId = await user('tie');
+    await runRegistryTool('create_deal', { personName: 'Ахмет', title: 'оборудование' }, { userId });
+    const out = (await runRegistryTool('update_deal', { personName: 'Ахмет', title: 'оборудования', stage: 'proposal' }, { userId })) as Out;
+    expect(out.message).toMatch(/^Сделка Ахмет — оборудование: стадия «КП отправлено»/);
+    expect(await prisma.deal.count({ where: { userId } })).toBe(1);
+  });
+
   it('update_deal won с суммой → pending record_deal_income', async () => {
     const userId = await user('won');
     await runRegistryTool('create_deal', { personName: 'Ахмет', title: 'оборудование', amount: 2_000_000 }, { userId });

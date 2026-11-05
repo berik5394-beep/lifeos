@@ -43,6 +43,21 @@ describe('сервис сделок', () => {
     expect(await findOpenDeals(userId, 'Дана')).toHaveLength(0);
   });
 
+  it('ревью I6: название — только развязка при >1, не фильтр', async () => {
+    const userId = await user('tie');
+    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' }, NOW);
+    // одна сделка: неточное название не прячет её (раньше → «нет сделки» → дубль)
+    expect(await findOpenDeals(userId, 'Ахмет', 'оборудования для склада')).toHaveLength(1);
+    expect(await findOpenDeals(userId, 'Ахмет', 'склад')).toHaveLength(1);
+    await createDeal(userId, { personName: 'Ахмет', title: 'сервис' }, NOW);
+    // две: развязка по общему корню ≥5 букв / вхождению в любую сторону
+    const byStem = await findOpenDeals(userId, 'Ахмет', 'сервисное обслуживание');
+    expect(byStem.map((d) => d.title)).toEqual(['сервис']);
+    expect((await findOpenDeals(userId, 'Ахмет', 'ОБОРУДОВАНИЕ')).map((d) => d.title)).toEqual(['оборудование']);
+    // развязка ничего не дала → все (инструмент переспросит списком)
+    expect(await findOpenDeals(userId, 'Ахмет', 'склад')).toHaveLength(2);
+  });
+
   it('смена стадии: шаг по умолчанию, события, won → предложение дохода', async () => {
     const userId = await user('stage');
     const { deal } = await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', amount: 2_000_000 }, NOW);
