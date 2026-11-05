@@ -44,7 +44,7 @@ import {
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
-import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoney, routeIncomeToDeal, describePossibleDuplicate } from './deals/index.js';
+import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate } from './deals/index.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
@@ -461,7 +461,7 @@ export async function runConfirmedAction(
         await setPendingAction(userId, DEAL_INCOME_ACTION, { dealId, force: true }, message);
       } else if (r.ok && !r.already) {
         const d = await prisma.deal.findFirst({ where: { id: dealId, userId }, select: { personName: true, title: true } });
-        message = `Записал доход ${fmtMoney(r.amount)} — сделка ${d?.personName ?? ''} — ${d?.title ?? ''}.`;
+        message = `Записал доход ${fmtMoneyExact(r.amount)} — сделка ${d?.personName ?? ''} — ${d?.title ?? ''}.`;
       } else if (r.ok) {
         message = 'Доход по этой сделке уже записан.';
       } else {

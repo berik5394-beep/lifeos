@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  fmtMoney, whenPhrase, describeCreated, describeUpdated, describeList,
+  fmtMoney, fmtMoneyExact, whenPhrase, describeCreated, describeUpdated, describeList,
   formatDealsSection, dealBriefLine, describePlan, instrumental,
 } from './format.js';
 
@@ -27,7 +27,14 @@ describe('тексты сделок', () => {
   });
   it('смена стадии + предложение дохода', () => {
     const t = describeUpdated({ ...base, stage: 'won' }, { stageChanged: true, step: null, incomeOffer: true }, '2026-11-05');
-    expect(t).toBe('Сделка Ахмет — оборудование: стадия «Выиграна». Записать доход 2 млн ₸ от Ахмета?');
+    expect(t).toBe('Сделка Ахмет — оборудование: стадия «Выиграна». Записать доход 2 000 000 ₸ от Ахмета?');
+  });
+  it('нит: денежный вопрос — точная сумма, не округлённая', () => {
+    const t = describeUpdated({ ...base, amount: 2_345_678, stage: 'won' }, { stageChanged: true, step: null, incomeOffer: true }, '2026-11-05');
+    expect(t).toContain('Записать доход 2 345 678 ₸ от Ахмета?');
+    const c = describeCreated({ ...base, amount: 2_345_678, stage: 'won' }, false, null, '2026-11-05', true);
+    expect(c).toBe('Записал сделку: Ахмет — оборудование, 2,3 млн ₸, стадия «Выиграна». Записать доход 2 345 678 ₸ от Ахмета?');
+    expect(fmtMoneyExact(2_345_678)).toBe('2 345 678 ₸');
   });
   it('выиграна без суммы — просим сумму', () => {
     const t = describeUpdated({ ...base, amount: null, stage: 'won' }, { stageChanged: true, step: null, incomeOffer: false }, '2026-11-05');

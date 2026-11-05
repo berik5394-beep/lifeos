@@ -53,7 +53,7 @@ export function describeCreated(
   const parts = [`Записал сделку: ${head(d)}${d.amount != null ? `, ${fmtMoney(d.amount)}` : ''}, стадия «${STAGE_LABEL[d.stage as DealStage] ?? d.stage}».`];
   if (taggedClient) parts.push(`${genitive(d.personName)} отметил клиентом.`);
   if (step) parts.push(`Напомню ${step.text} ${whenPhrase(step.date, today)}.`);
-  if (incomeOffer && d.amount != null) parts.push(`Записать доход ${fmtMoney(d.amount)} от ${genitive(d.personName)}?`);
+  if (incomeOffer && d.amount != null) parts.push(`Записать доход ${fmtMoneyExact(d.amount)} от ${genitive(d.personName)}?`);
   return parts.join(' ');
 }
 
@@ -64,7 +64,7 @@ export function describeUpdated(
 ): string {
   const parts = [`Сделка ${head(d)}: ${r.stageChanged ? `стадия «${STAGE_LABEL[d.stage as DealStage] ?? d.stage}»` : 'обновил'}.`];
   if (r.step) parts.push(`Напомню ${r.step.text} ${whenPhrase(r.step.date, today)}.`);
-  if (r.incomeOffer && d.amount != null) parts.push(`Записать доход ${fmtMoney(d.amount)} от ${genitive(d.personName)}?`);
+  if (r.incomeOffer && d.amount != null) parts.push(`Записать доход ${fmtMoneyExact(d.amount)} от ${genitive(d.personName)}?`);
   else if (d.stage === 'won' && d.amount == null) parts.push('Скажи сумму — запишу доход.');
   return parts.join(' ');
 }

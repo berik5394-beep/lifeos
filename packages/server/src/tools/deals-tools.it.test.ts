@@ -65,7 +65,7 @@ describe('инструменты сделок', () => {
     const userId = await user('won');
     await runRegistryTool('create_deal', { personName: 'Ахмет', title: 'оборудование', amount: 2_000_000 }, { userId });
     const out = (await runRegistryTool('update_deal', { personName: 'Ахмет', stage: 'оплатил' }, { userId })) as Out;
-    expect(out.message).toMatch(/Записать доход 2 млн ₸ от Ахмета\?/);
+    expect(out.message).toMatch(/Записать доход 2 000 000 ₸ от Ахмета\?/);
     const p = await peekPendingAction(userId);
     expect(p?.action).toBe('record_deal_income');
   });
