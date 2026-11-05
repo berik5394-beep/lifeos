@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import { Audio } from 'expo-av';
+import { createPushToTalk } from '@/services/push-to-talk';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Speech from 'expo-speech';
 import * as Haptics from 'expo-haptics';
@@ -178,6 +179,9 @@ export interface UseVoiceReturn {
 
 let speechRecognitionAvailable: boolean | null = null;
 
+/** Короче этого «нажал-отпустил» — не запись, а случайное касание: подсказываем держать. */
+const MIN_HOLD_MS = 350;
+
 async function isSpeechRecognitionAvailable(): Promise<boolean> {
   if (speechRecognitionAvailable !== null) return speechRecognitionAvailable;
   // Module failed to load at import time — we're in Expo Go or similar
@@ -256,6 +260,18 @@ export interface UseVoiceOptions {
 export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
   const transcribeOnly = options.transcribeOnly === true;
   const [state, setState] = useState<VoiceState>('idle');
+  // Удержание кнопки (push-to-talk): колбэки живут дольше рендера, поэтому
+  // правду о состоянии держим в ref-ах, а не в замыкании `state`. Иначе
+  // «отпустил» до того, как запись реально началась (разрешения, первый
+  // запуск), терялось — запись висла, и микрофон больше не реагировал.
+  const stateRef = useRef<VoiceState>('idle');
+  const liveTranscriptRef = useRef('');
+  const stopRef = useRef<() => Promise<void>>(async () => {});
+  const startInnerRef = useRef<() => Promise<void>>(async () => {});
+  const cancelRef = useRef<() => Promise<void>>(async () => {});
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
   const [liveTranscript, setLiveTranscript] = useState('');
   const [lastResult, setLastResult] = useState<VoiceResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -286,10 +302,15 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
     if (event.isFinal) {
       finalTranscriptRef.current = text;
     }
+    liveTranscriptRef.current = text;
     setLiveTranscript(text);
   });
 
   useSpeechRecognitionEvent('error', (event) => {
+    // После нашей отмены iOS шлёт 'aborted' — это не ошибка юзера, и она не
+    // должна затирать подсказку «удерживай кнопку». Вне записи — тоже молчим:
+    // пустой результат после «стоп» обрабатывает stopRecording.
+    if (event.error === 'aborted' || stateRef.current !== 'recording') return;
     // code: 'no-speech' | 'audio-capture' | 'not-allowed' | 'network' | ...
     if (event.error === 'no-speech') {
       setError('Ничего не услышал. Говорите ближе к микрофону.');
@@ -300,10 +321,21 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
     } else {
       setError('Ошибка распознавания: ' + (event.message || event.error));
     }
+    // Сессия умерла, пока кнопку держат: не оставляем «вечную запись».
+    if (stateRef.current === 'recording' && modeRef.current === 'speech-recognition') {
+      modeRef.current = null;
+      stateRef.current = 'error';
+      setState('error');
+    }
   });
 
   useSpeechRecognitionEvent('end', () => {
-    // end fires after stop() — we handle processing in stopRecording()
+    // После нашего stop() обработку ведёт stopRecording. Если распознавание
+    // закончилось само, пока кнопку ещё держат (лимит/тишина) — обрабатываем
+    // то, что успели услышать, а не висим в «записи».
+    if (stateRef.current === 'recording' && modeRef.current === 'speech-recognition') {
+      void stopRef.current();
+    }
   });
 
   // ---- Amplitude simulation for waveform when using speech-recognition ----
@@ -362,13 +394,12 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
   // START
   // ==========================================================
 
-  const startRecording = useCallback(async () => {
-    if (state === 'recording' || state === 'processing') return;
-
+  const startInner = useCallback(async () => {
     setError(null);
     setLastResult(null);
     setLiveTranscript('');
     finalTranscriptRef.current = '';
+    liveTranscriptRef.current = '';
     cancelledRef.current = false;
 
     // Prefer on-device speech recognition
@@ -384,7 +415,8 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
         const options: ExpoSpeechRecognitionOptions = {
           lang: 'ru-RU',
           interimResults: true,
-          continuous: false,
+          // Держишь кнопку — слушаем до отпускания, а не до первой паузы.
+          continuous: true,
           requiresOnDeviceRecognition: false,
           addsPunctuation: true,
         };
@@ -392,6 +424,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
         ExpoSpeechRecognitionModule.start(options);
         modeRef.current = 'speech-recognition';
         startSyntheticMeter();
+        stateRef.current = 'recording';
         setState('recording');
         hapticMedium();
         return;
@@ -427,6 +460,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
       recordingRef.current = recording;
       modeRef.current = 'audio-fallback';
       startRealMeter();
+      stateRef.current = 'recording';
       setState('recording');
       hapticMedium();
     } catch (err) {
@@ -435,7 +469,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
       setState('error');
       hapticError();
     }
-  }, [state, startRealMeter, startSyntheticMeter, hapticMedium, hapticError]);
+  }, [startRealMeter, startSyntheticMeter, hapticMedium, hapticError]);
 
   // ==========================================================
   // CANCEL
@@ -471,6 +505,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
     modeRef.current = null;
     setLiveTranscript('');
     setLastResult(null);
+    stateRef.current = 'idle';
     setState('idle');
     hapticLight();
   }, [stopSyntheticMeter, hapticLight]);
@@ -557,7 +592,8 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
   );
 
   const stopRecording = useCallback(async () => {
-    if (state !== 'recording') return;
+    if (stateRef.current !== 'recording') return;
+    stateRef.current = 'processing';
     hapticLight();
 
     // --- Speech recognition path ---
@@ -573,7 +609,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
       // Wait briefly for final transcript (event may arrive after stop)
       await new Promise((r) => setTimeout(r, 300));
 
-      const transcript = (finalTranscriptRef.current || liveTranscript).trim();
+      const transcript = (finalTranscriptRef.current || liveTranscriptRef.current).trim();
       modeRef.current = null;
 
       if (cancelledRef.current) {
@@ -686,13 +722,35 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
       }
     }
   }, [
-    state,
-    liveTranscript,
     processCommand,
     stopSyntheticMeter,
     hapticLight,
     hapticError,
   ]);
+  stopRef.current = stopRecording;
+  startInnerRef.current = startInner;
+  cancelRef.current = cancelRecording;
+
+  // Нажал — пишем, отпустил — отправляем (services/push-to-talk держит гонку
+  // «отпустил раньше, чем запись началась»). Стабильный объект: колбэки — через ref.
+  const ptt = useMemo(
+    () =>
+      createPushToTalk({
+        start: async () => {
+          await startInnerRef.current();
+          return stateRef.current === 'recording';
+        },
+        stop: () => stopRef.current(),
+        cancel: () => cancelRef.current(),
+        isRecording: () => stateRef.current === 'recording',
+        now: () => Date.now(),
+        minHoldMs: MIN_HOLD_MS,
+        onTooShort: () => setError('Удерживай кнопку, пока говоришь, и отпусти, когда закончишь.'),
+      }),
+    [],
+  );
+  const startRecording = ptt.pressIn;
+  const publicStop = ptt.pressOut;
 
   // ==========================================================
   // TOGGLE
@@ -700,11 +758,11 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
 
   const toggleRecording = useCallback(async () => {
     if (state === 'recording') {
-      await stopRecording();
+      await publicStop();
     } else if (state === 'idle' || state === 'error') {
       await startRecording();
     }
-  }, [state, startRecording, stopRecording]);
+  }, [state, startRecording, publicStop]);
 
   // ==========================================================
   // SPEAK / RESET
@@ -741,7 +799,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
       error,
       amplitude,
       startRecording,
-      stopRecording,
+      stopRecording: publicStop,
       cancelRecording,
       toggleRecording,
       speak,
@@ -756,7 +814,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
       error,
       amplitude,
       startRecording,
-      stopRecording,
+      publicStop,
       cancelRecording,
       toggleRecording,
       speak,
