@@ -1,6 +1,7 @@
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { civilDayRefs } from '../lib/tz.js';
+import { MAX_MONEY_AMOUNT } from '../lib/money.js';
 
 const anthropic = createAnthropic();
 
@@ -89,8 +90,6 @@ const AMOUNT =
   String.raw`|\s+(к)(?=$|[,.!?]|\s+(?:на|за|от|—|-|тенге|тг|₸)(?:\s|$))` +
   String.raw`|(к)(?=\s|$|[,.!?₸]|тг|тенге|руб))?(?=\s|$|[,.!?₸]|тг|тенге|руб|[а-яёa-z])`;
 
-/** Потолок суммы (как zod у add_income/add_expense): больше — не деньги, а опечатка/шутка. */
-const MAX_MONEY = 1_000_000_000;
 
 function parseAmount(num: string, word: string | undefined, k: string | undefined): number {
   const n = num.replace(/\s/g, '');
@@ -119,7 +118,7 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
   );
   if (m) {
     const amount = parseAmount(m[1], m[2], m[3] ?? m[4]);
-    if (amount > MAX_MONEY) return null;
+    if (amount > MAX_MONEY_AMOUNT) return null;
     if (Number.isFinite(amount) && amount > 0) {
       const source = m[5].trim();
       return source
@@ -137,7 +136,7 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
   );
   if (m) {
     const amount = parseAmount(m[1], m[2], m[3] ?? m[4]);
-    if (amount > MAX_MONEY) return null;
+    if (amount > MAX_MONEY_AMOUNT) return null;
     if (Number.isFinite(amount) && amount > 0) {
       const rest = m[5].trim();
       return rest
@@ -148,7 +147,7 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
   m = text.match(/^(\d[\d\s]{2,})\s*(?:тенге|тг|₸)?\s+на\s+(.+)$/i);
   if (m) {
     const amount = Number(m[1].replace(/\s/g, ''));
-    if (amount > MAX_MONEY) return null;
+    if (amount > MAX_MONEY_AMOUNT) return null;
     if (Number.isFinite(amount) && amount > 0) {
       const rest = m[2].trim();
       return { action: 'add_expense', amount, category: rest, description: rest };

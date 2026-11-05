@@ -4,6 +4,7 @@ import { localDayStartUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { analyzeBudgetAfterExpense } from './_finance.js';
+import { MAX_MONEY_AMOUNT } from '../lib/money.js';
 
 /**
  * SSOT Step 6 — ДЕНЬГИ. needsConfirm:true (гейт ЖИВЁТ НА ИНСТРУМЕНТЕ,
@@ -21,7 +22,7 @@ export const addExpenseTool = defineTool({
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: { sum: 'amount', cost: 'amount', price: 'amount', desc: 'description', note: 'description', item: 'description', title: 'description', name: 'description' },
   schema: z.object({
-    amount: z.coerce.number().positive().max(1_000_000_000),
+    amount: z.coerce.number().positive().max(MAX_MONEY_AMOUNT),
     category: z.string().max(40).optional(),
     description: z.string().max(300).optional(),
   }),

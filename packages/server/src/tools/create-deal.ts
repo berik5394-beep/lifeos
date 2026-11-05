@@ -5,6 +5,7 @@ import { createDeal, describeCreated, parseStage, DEAL_INCOME_ACTION } from '../
 import { setPendingAction } from '../services/pending-actions.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { localDateStr } from '../lib/tz.js';
+import { MAX_MONEY_AMOUNT } from '../lib/money.js';
 
 export const createDealTool = defineTool({
   name: 'create_deal',
@@ -17,7 +18,7 @@ export const createDealTool = defineTool({
   schema: z.object({
     personName: z.string().min(1).max(120),
     title: z.string().max(200).nullable().optional(),
-    amount: z.coerce.number().positive().max(1_000_000_000).nullable().optional(),
+    amount: z.coerce.number().positive().max(MAX_MONEY_AMOUNT).nullable().optional(),
     stage: z.string().max(60).nullable().optional(),
     nextStepDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD').nullable().optional(),
     nextStepText: z.string().max(200).nullable().optional(),

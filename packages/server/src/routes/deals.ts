@@ -8,10 +8,11 @@ import {
   createDeal, updateDeal, listDeals, recordDealIncome, setSalesPlan, salesPlanStatus, isDealStage, type DealStage,
   describePossibleDuplicate,
 } from '../services/deals/index.js';
+import { MAX_MONEY_AMOUNT } from '../lib/money.js';
 
 const civil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
 const monthStr = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM');
-const money = z.number().positive().max(1_000_000_000);
+const money = z.number().positive().max(MAX_MONEY_AMOUNT);
 const stage = z.string().refine((s) => isDealStage(s), 'неизвестная стадия');
 const createSchema = z.object({
   personName: z.string().min(1).max(120),

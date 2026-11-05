@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { parseStage, defaultNextStep, isOpenStage, STAGE_LABEL } from './stages.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { parseStage, defaultNextStep, isOpenStage, STAGE_LABEL, PARTIAL_PAYMENT } from './stages.js';
+import { MAX_MONEY_AMOUNT } from '../../lib/money.js';
 
 describe('стадии сделки', () => {
   it.each([
@@ -58,5 +61,20 @@ describe('стадии сделки', () => {
   it('полная оплата по-прежнему выиграна', () => {
     expect(parseStage('оплатил')).toBe('won');
     expect(parseStage('оплатил полностью')).toBe('won');
+  });
+});
+
+describe('PARTIAL_PAYMENT — один на стадии и доход (ревью-3 N4)', () => {
+  it.each(['оплатил аванс', 'внёс предоплату', 'первую часть', 'первый платёж', 'оплатил частью', 'частично'])('«%s» → частичная', (t) =>
+    expect(PARTIAL_PAYMENT.test(t)).toBe(true));
+  it.each(['оплатил полностью', 'участник', 'счастье', 'Ахмет оплатил'])('«%s» → не частичная', (t) =>
+    expect(PARTIAL_PAYMENT.test(t)).toBe(false));
+  it('сервис и парсер берут один регэксп и один потолок суммы', () => {
+    const svc = readFileSync(join(process.cwd(), 'src/services/deals/service.ts'), 'utf-8');
+    const parser = readFileSync(join(process.cwd(), 'src/ai/intent-parser.ts'), 'utf-8');
+    expect(svc).not.toMatch(/const PARTIAL_PAYMENT/);
+    expect(svc).not.toMatch(/1_000_000_000/);
+    expect(parser).not.toMatch(/const MAX_MONEY/);
+    expect(MAX_MONEY_AMOUNT).toBe(1_000_000_000);
   });
 });

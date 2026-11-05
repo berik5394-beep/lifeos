@@ -3,7 +3,8 @@ import { prisma } from '../../lib/prisma.js';
 import { getUserTimezone } from '../../lib/user-context.js';
 import { localDateStr, localDateOnlyUTC, dateOnlyUTC, localMonthOnlyUTC, localMonthStartUTC, localNextMonthStartUTC } from '../../lib/tz.js';
 import { getEntityGraph } from '../entity-graph/index.js';
-import { defaultNextStep, isOpenStage, OPEN_STAGES, STAGE_LABEL, type DealStage } from './stages.js';
+import { defaultNextStep, isOpenStage, OPEN_STAGES, STAGE_LABEL, PARTIAL_PAYMENT, type DealStage } from './stages.js';
+import { MAX_MONEY_AMOUNT } from '../../lib/money.js';
 import { salesPace, coveringDeals, type Pace } from './pace.js';
 import { formatDealsSection, describePlan, describeWhichDeal, fmtMoneyExact, dealStepLabel, describeSalesVsSavings, genitive } from './format.js';
 import { computePortfolioPace } from '../savings-pace.js';
@@ -334,11 +335,7 @@ export function openDealsForMatching(userId: string): Promise<Deal[]> {
   return prisma.deal.findMany({ where: { userId, stage: { in: [...OPEN_STAGES] } }, orderBy: { createdAt: 'desc' }, take: 50 });
 }
 
-/** Частичная оплата — не повод закрывать сделку («аванс», «предоплата», «первую часть»). */
-const PARTIAL_PAYMENT = /(предоплат|аванс|частич|(?:^|[^а-я])част(?:ь|ью)(?=$|[^а-я])|перв(?:ый|ого) плат[её]ж|первую часть)/i;
-
-/** Потолок суммы (как zod у add_income/update_deal). Больше — не деньги. */
-export const MAX_MONEY_AMOUNT = 1_000_000_000;
+export { MAX_MONEY_AMOUNT };
 
 export type IncomeRouting =
   | { kind: 'none' }
@@ -359,12 +356,13 @@ export async function routeIncomeToDeal(
   userId: string,
   amount: number,
   source: string,
-  opts: { text?: string } = {},
+  opts: { text?: string; partial?: boolean } = {},
 ): Promise<IncomeRouting> {
   if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_MONEY_AMOUNT) return { kind: 'none' };
   const deals = matchDealsByMention(await openDealsForMatching(userId), source);
   if (deals.length === 0) return { kind: 'none' };
-  if (PARTIAL_PAYMENT.test(norm(opts.text ?? source))) {
+  // partial — «аванс» был в первой фразе двухшагового ввода («получил аванс 2 млн» → «от Серика»).
+  if (opts.partial === true || PARTIAL_PAYMENT.test(norm(opts.text ?? source))) {
     const one = deals.length === 1 ? deals[0] : null;
     return { kind: 'advance', dealId: one?.id ?? null, dealHead: one ? `${one.personName} — ${one.title}` : null };
   }

@@ -44,7 +44,7 @@ import {
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
-import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, OPEN_STAGES, DEAL_INCOME_CHOICE } from './deals/index.js';
+import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, OPEN_STAGES, DEAL_INCOME_CHOICE, PARTIAL_PAYMENT } from './deals/index.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
@@ -428,8 +428,9 @@ async function routeDealIncome(
   amount: number,
   source: string,
   text: string,
+  opts: { partial?: boolean } = {},
 ): Promise<JarvisResponse | null> {
-  const routed = await routeIncomeToDeal(userId, amount, source, { text });
+  const routed = await routeIncomeToDeal(userId, amount, source, { text, partial: opts.partial });
   if (routed.kind === 'none') return null;
   if (routed.kind === 'ask') {
     // Ревью I-d: помним сумму/источник — «просто доход» запишет обычный доход.
@@ -672,7 +673,10 @@ async function handleMessageCore(
       }
       // Ревью I-d: «получил 2 млн» → «от Серика» — тот же путь сделки, что и одной фразой.
       if (pending.action === 'add_income' && slot === 'source' && isV2DealsEnabled(userId)) {
-        const routed = await routeDealIncome(userId, Number(pending.input.amount), text.trim(), text);
+        // Ревью-3 I1: «аванс» был в первой фразе («получил аванс 2 млн») — помним его.
+        const routed = await routeDealIncome(userId, Number(pending.input.amount), text.trim(), text, {
+          partial: pending.input.__partial === true,
+        });
         if (routed) {
           await saveTurn(userId, text, routed.reply);
           return routed;
@@ -1104,7 +1108,14 @@ async function handleMessageCore(
     if (intent.action === 'add_income' && input.source == null) {
       const amount = Number(input.amount);
       const q = `Откуда доход ${amount}₸? (или «отмена»)`;
-      await setPendingAction(userId, 'add_income', { amount, __awaitingSource: true }, q);
+      // Ревью-3 I1: «получил аванс 2 млн» → «от Серика» — частичная оплата не должна
+      // потеряться между ходами (иначе слот предложит закрыть сделку выигранной).
+      const slotInput: Record<string, unknown> = {
+        amount,
+        __awaitingSource: true,
+        ...(PARTIAL_PAYMENT.test(text) ? { __partial: true } : {}),
+      };
+      await setPendingAction(userId, 'add_income', slotInput, q);
       await saveTurn(userId, text, q);
       return {
         reply: q,

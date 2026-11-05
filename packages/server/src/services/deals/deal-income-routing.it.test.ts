@@ -240,3 +240,21 @@ describe('ревью I-d: слот источника и «просто дохо
     expect(await prisma.deal.count({ where: { userId, stage: 'won' } })).toBe(0);
   });
 });
+
+describe('ревью-3 I1: слот источника помнит «аванс»', () => {
+  it('«получил аванс 2 млн» → «от Серика» (сделка на «договоре») → обычный доход + заметка «аванс», не выигрыш', async () => {
+    const userId = await user('slot-adv');
+    const { deal } = await createDeal(userId, { personName: 'Серик', title: 'склад', stage: 'contract' });
+    const q = await handleMessage(userId, 'получил аванс 2 млн');
+    expect(q.pendingAction?.input).toMatchObject({ amount: 2_000_000, __awaitingSource: true });
+    const r = await handleMessage(userId, 'от Серика');
+    expect(r.pendingAction?.action).toBe('add_income');
+    expect(r.reply).toMatch(/не закрываю/);
+    await handleMessage(userId, 'да');
+    const d = await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } });
+    expect(d.stage).toBe('contract');
+    expect(await prisma.income.count({ where: { userId, amount: 2_000_000 } })).toBe(1);
+    expect(await coins(userId)).toBe(0);
+    expect((await prisma.dealEvent.findFirst({ where: { dealId: deal.id, kind: 'note' } }))?.text).toBe('аванс 2 000 000 ₸');
+  });
+});

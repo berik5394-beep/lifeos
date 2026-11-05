@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { defineTool } from './_types.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { setSalesPlan, fmtMoney } from '../services/deals/index.js';
+import { MAX_MONEY_AMOUNT } from '../lib/money.js';
 
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
 
@@ -13,7 +14,7 @@ export const setSalesPlanTool = defineTool({
   category: 'finance',
   aliases: { sum: 'amount', plan: 'amount' },
   schema: z.object({
-    amount: z.coerce.number().positive().max(1_000_000_000),
+    amount: z.coerce.number().positive().max(MAX_MONEY_AMOUNT),
     month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM').nullable().optional(),
   }),
   needsConfirm: false,
