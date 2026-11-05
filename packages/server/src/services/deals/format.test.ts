@@ -1,0 +1,70 @@
+import { describe, it, expect } from 'vitest';
+import {
+  fmtMoney, whenPhrase, describeCreated, describeUpdated, describeList,
+  formatDealsSection, dealBriefLine, describePlan, instrumental,
+} from './format.js';
+
+const base = { personName: 'Ахмет', title: 'оборудование', amount: 2_000_000 as number | null };
+
+describe('тексты сделок', () => {
+  it('деньги', () => {
+    expect(fmtMoney(2_000_000)).toBe('2 млн ₸');
+    expect(fmtMoney(1_500_000)).toBe('1,5 млн ₸');
+    expect(fmtMoney(350_000)).toBe('350 000 ₸');
+  });
+  it('когда', () => {
+    expect(whenPhrase('2026-11-05', '2026-11-05')).toBe('сегодня');
+    expect(whenPhrase('2026-11-06', '2026-11-05')).toBe('завтра');
+    expect(whenPhrase('2026-11-10', '2026-11-05')).toBe('во вторник (10.11)');
+  });
+  it('создание: клиент отмечен, шаг назван', () => {
+    const t = describeCreated({ ...base, stage: 'new' }, true, { date: '2026-11-07', text: 'связаться' }, '2026-11-05');
+    expect(t).toBe('Записал сделку: Ахмет — оборудование, 2 млн ₸, стадия «Новая». Ахмета отметил клиентом. Напомню связаться в субботу (07.11).');
+  });
+  it('создание без суммы — без выдумки', () => {
+    const t = describeCreated({ ...base, amount: null, stage: 'new' }, false, null, '2026-11-05');
+    expect(t).toBe('Записал сделку: Ахмет — оборудование, стадия «Новая».');
+  });
+  it('смена стадии + предложение дохода', () => {
+    const t = describeUpdated({ ...base, stage: 'won' }, { stageChanged: true, step: null, incomeOffer: true }, '2026-11-05');
+    expect(t).toBe('Сделка Ахмет — оборудование: стадия «Выиграна». Записать доход 2 млн ₸ от Ахмета?');
+  });
+  it('выиграна без суммы — просим сумму', () => {
+    const t = describeUpdated({ ...base, amount: null, stage: 'won' }, { stageChanged: true, step: null, incomeOffer: false }, '2026-11-05');
+    expect(t).toContain('Скажи сумму — запишу доход.');
+  });
+  it('список: по стадиям, шаги сегодня', () => {
+    const t = describeList(
+      [
+        { ...base, stage: 'proposal', nextStepAt: '2026-11-05', nextStepText: 'спросить ответ по КП' },
+        { personName: 'Серик', title: 'сделка', amount: null, stage: 'talks', nextStepAt: '2026-11-09', nextStepText: 'следующий контакт' },
+      ],
+      '2026-11-05',
+    );
+    expect(t).toContain('Открыто 2 сделки на 2 млн ₸');
+    expect(t).toContain('КП отправлено: Ахмет — оборудование (2 млн ₸)');
+    expect(t).toContain('Сегодня: Ахмет — спросить ответ по КП');
+  });
+  it('пустой список', () => {
+    expect(describeList([], '2026-11-05')).toBe('Открытых сделок нет. Скажи «Ахмет хочет … на 2 млн» — заведу.');
+  });
+  it('план', () => {
+    expect(describePlan({ plan: 10_000_000, won: 4_000_000, open: 7_000_000, behind: true, covering: ['Ахмет', 'Серик'], noAmount: 1 }))
+      .toBe('План месяца 10 млн ₸: закрыто 4 млн ₸, в работе ещё 7 млн ₸. Успеешь, если закроешь Ахмета и Серика. У 1 сделки нет суммы.');
+  });
+  it('блок контекста и строка брифа', () => {
+    expect(formatDealsSection({ openCount: 3, openSum: 5_000_000, dueToday: ['Ахмет'], overdue: ['Дана'], plan: null }))
+      .toBe('Сделки: открыто 3 на 5 млн ₸; шаг сегодня: Ахмет; просрочен шаг: Дана.');
+    expect(formatDealsSection({ openCount: 0, openSum: 0, dueToday: [], overdue: [], plan: null })).toBeNull();
+    expect(dealBriefLine({ title: 'оборудование', amount: 2_000_000, stage: 'proposal', daysInStage: 4 }))
+      .toBe('Сделка «оборудование» 2 млн ₸, КП отправлено 4 дн назад.');
+  });
+});
+
+describe('творительный падеж', () => {
+  it('имена', () => {
+    expect(instrumental('Дана')).toBe('Даной');
+    expect(instrumental('Ахмет')).toBe('Ахметом');
+    expect(instrumental('Аля')).toBe('Алей');
+  });
+});
