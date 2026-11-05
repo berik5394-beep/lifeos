@@ -485,3 +485,12 @@ export function isV2MoodToneEnabled(userId: string): boolean {
 export function isV2RescheduleEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_RESCHEDULE, userId);
 }
+
+/**
+ * Сделки (спека 2026-11-05-deals): воронка продаж, follow-up, план, доход.
+ * Off → инструменты отвечают «функция отключена», REST /deals → 404, нуджи,
+ * enrichment и бриф встречи — байт-идентичны прежним.
+ */
+export function isV2DealsEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_DEALS, userId);
+}
