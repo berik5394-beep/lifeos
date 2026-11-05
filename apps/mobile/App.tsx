@@ -5,19 +5,17 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Navigation from './navigation';
 import { useThemeStore } from '@/stores/theme-store';
 
-// Keep splash visible while we load auth/storage
-SplashScreen.preventAutoHideAsync().catch(() => {});
+// Заставку прячет нативная сторона сама, как только нарисован первый кадр
+// (RCTContentDidAppear). Раньше держали её из JS (preventAutoHide + hideAsync
+// по setTimeout) — в релизе с UIScene (iOS 27) таймер не срабатывал до первого
+// касания, и приложение «висело» на заставке.
 
 export default function App() {
   const statusBarStyle = useThemeStore((s) => s.theme.statusBar);
-  // Прячем заставку после первого кадра. Раньше это висело на onLayout корня:
-  // onLayout срабатывает один раз — ДО того, как appReady стал true, — и
-  // hideAsync не вызывался никогда (заставка зависала). Теперь — эффект.
+  // Страховка: если нативное автоскрытие не сработало — прячем сразу после
+  // монтирования (без таймера).
   useEffect(() => {
-    const timer = setTimeout(() => {
-      SplashScreen.hideAsync().catch(() => {});
-    }, 100);
-    return () => clearTimeout(timer);
+    SplashScreen.hideAsync().catch(() => {});
   }, []);
 
   return (
