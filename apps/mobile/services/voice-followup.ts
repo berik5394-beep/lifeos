@@ -1,5 +1,6 @@
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
 
 /**
  * voice-one-brain: что мобилка делает ПОСЛЕ ответа сервера на голосовую
@@ -16,6 +17,8 @@ export interface ProcessResponse {
   response?: string;
   pendingAction?: PendingActionInfo | null;
   confirmationText?: string | null;
+  /** Эмоция робота на этот ход (сервер, по фактам). */
+  emotion?: string | null;
 }
 
 export type VoiceFollowUp =
@@ -48,19 +51,19 @@ export function planVoiceFollowUp(res: ProcessResponse): VoiceFollowUp {
 /** «Записать» / «Отмена» → сервер исполняет (или отменяет) отложенное действие. */
 export async function confirmPendingVoiceAction(
   confirm: boolean,
-): Promise<{ message: string; intent: string | null }> {
+): Promise<{ message: string; intent: string | null; emotion: RobotEmotion }> {
   const token = useAuthStore.getState().token;
   try {
-    const res = await api.post<{ message: string; intent?: string }>(
+    const res = await api.post<{ message: string; intent?: string; emotion?: string }>(
       '/voice/confirm-action',
       { confirm },
       token || undefined,
     );
-    return { message: res.message, intent: res.intent ?? null };
+    return { message: res.message, intent: res.intent ?? null, emotion: normalizeEmotion(res.emotion) };
   } catch (err) {
     // ApiError несёт status; duck-typing — в тестах модуль api замокан целиком.
     if ((err as { status?: number }).status === 409) {
-      return { message: STALE_TEXT, intent: null };
+      return { message: STALE_TEXT, intent: null, emotion: 'worried' };
     }
     throw err;
   }

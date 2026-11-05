@@ -92,4 +92,13 @@ describe('chat-store: подтверждение денежных действи
     const confirmCalls = mockApi.post.mock.calls.filter((c) => c[0] === '/voice/confirm-action');
     expect(confirmCalls).toHaveLength(1);
   });
+
+  it('эмоция робота: sendMessage сохраняет emotion ответа; мусор → neutral', async () => {
+    mockApi.post.mockResolvedValueOnce({ message: 'Готово!', emotion: 'happy' });
+    await useChatStore.getState().sendMessage('создай задачу');
+    expect(useChatStore.getState().messages[0].emotion).toBe('happy');
+    mockApi.post.mockResolvedValueOnce({ message: 'Хм', emotion: 'ecstatic' });
+    await useChatStore.getState().sendMessage('что-то');
+    expect(useChatStore.getState().messages[0].emotion).toBe('neutral');
+  });
 });

@@ -12,6 +12,7 @@ import {
   confirmPendingVoiceAction,
   type ProcessResponse,
 } from '@/services/voice-followup';
+import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
 
 // ==========================================================
 // TTS VOICE RESOLUTION (gender-aware)
@@ -128,6 +129,8 @@ interface VoiceResult {
   intent: VoiceIntent;
   response: string;
   transcript: string;
+  /** Эмоция робота на этот ход (сервер, по фактам; робот-эпик Часть 2). */
+  emotion: RobotEmotion;
 }
 
 interface TranscribeResponse {
@@ -481,7 +484,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
       try {
         const res = await confirmPendingVoiceAction(confirm);
         if (isMountedRef.current) {
-          setLastResult({ intent: { action: res.intent ?? 'confirm_action' }, response: res.message, transcript });
+          setLastResult({ intent: { action: res.intent ?? 'confirm_action' }, response: res.message, transcript, emotion: res.emotion });
         }
         void speakText(res.message);
       } catch {
@@ -498,7 +501,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
     async (transcript: string) => {
       if (transcribeOnly) {
         if (isMountedRef.current) {
-          setLastResult({ intent: { action: 'transcript' }, response: '', transcript });
+          setLastResult({ intent: { action: 'transcript' }, response: '', transcript, emotion: 'neutral' });
           setState('idle');
         }
         return;
@@ -518,6 +521,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
             processData.response ||
             `Я услышал: «${transcript}». Но не понял команду.`,
           transcript,
+          emotion: normalizeEmotion(processData.emotion),
         };
         if (isMountedRef.current) {
           setLastResult(result);
@@ -539,7 +543,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
         console.warn('Voice process failed, showing transcript only', err);
         if (isMountedRef.current) {
           const failText = `Я услышал: «${transcript}». Не получилось выполнить — попробуй ещё раз.`;
-          setLastResult({ intent: { action: 'unknown' }, response: failText, transcript });
+          setLastResult({ intent: { action: 'unknown' }, response: failText, transcript, emotion: 'worried' });
           setState('idle');
           hapticError();
           Alert.alert('Не получилось', failText);

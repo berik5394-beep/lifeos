@@ -43,8 +43,8 @@ describe('planVoiceFollowUp', () => {
 describe('confirmPendingVoiceAction', () => {
   beforeEach(() => jest.clearAllMocks());
   it('200 → текст и интент сервера, шлёт confirm на /voice/confirm-action', async () => {
-    mockApi.post.mockResolvedValueOnce({ message: 'Записал расход 3000₸', intent: 'add_expense', done: true });
-    await expect(confirmPendingVoiceAction(true)).resolves.toEqual({ message: 'Записал расход 3000₸', intent: 'add_expense' });
+    mockApi.post.mockResolvedValueOnce({ message: 'Записал расход 3000₸', intent: 'add_expense', done: true, emotion: 'happy' });
+    await expect(confirmPendingVoiceAction(true)).resolves.toEqual({ message: 'Записал расход 3000₸', intent: 'add_expense', emotion: 'happy' });
     expect(mockApi.post).toHaveBeenCalledWith('/voice/confirm-action', { confirm: true }, 'test-token-123');
   });
   it('409 → «устарело», не бросает', async () => {
@@ -52,6 +52,7 @@ describe('confirmPendingVoiceAction', () => {
     await expect(confirmPendingVoiceAction(true)).resolves.toEqual({
       message: 'Нечего подтверждать — предложение устарело. Повтори запрос.',
       intent: null,
+      emotion: 'worried',
     });
   });
   it('сеть упала → бросает (UI покажет ошибку)', async () => {

@@ -18,6 +18,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ProgressRing } from '@/components/ui';
 import { Heatmap } from '@/components/charts';
 import { Confetti } from '@/components/shared';
+import { RobotAvatar } from '@/components/robot/robot-avatar';
+import { useRobotReaction } from '@/hooks/use-robot-reaction';
 import { VoiceButton, MorningGreeting, EveningRitual, DictationModal } from '@/components/voice';
 import { useVoice } from '@/hooks/use-voice';
 import { useMorningGreeting } from '@/hooks/use-morning-greeting';
@@ -471,8 +473,18 @@ export default function PlannerScreen() {
 
   const isLoading = tasksLoading || goalsLoading;
 
+  // Робот-компаньон (вместо удалённого питомца): реагирует на голосовую команду
+  // эмоцией с сервера, слушает пока идёт запись. Часть 3 перенесёт его в
+  // двухэкранную схему.
+  const voiceKey = lastResult ? `${lastResult.transcript}|${lastResult.response}` : null;
+  const reacted = useRobotReaction(lastResult?.emotion, voiceKey);
+  const robotEmotion = isProcessing ? 'thinking' : reacted;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <View style={styles.robotCorner} pointerEvents="none">
+        <RobotAvatar emotion={robotEmotion} size={78} attention={isRecording ? 'listening' : 'idle'} />
+      </View>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -1179,5 +1191,11 @@ function createStyles(c: C) {
       elevation: 8,
     },
     dictationFabEmoji: { fontSize: 22 },
+    robotCorner: {
+      position: 'absolute',
+      top: 4,
+      right: 12,
+      zIndex: 10,
+    },
   });
 }

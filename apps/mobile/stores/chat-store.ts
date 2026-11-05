@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { confirmPendingVoiceAction, isConfirmable, type PendingActionInfo } from '@/services/voice-followup';
+import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
 
 export interface ChatAction {
   type: string;
@@ -15,6 +16,8 @@ export interface ChatMessage {
   actions?: ChatAction[];
   /** Деньги/необратимое: мозг ждёт подтверждения → под сообщением кнопки «Записать / Отмена». */
   pendingAction?: PendingActionInfo | null;
+  /** Эмоция робота на этот ответ (сервер, по фактам хода). */
+  emotion?: RobotEmotion;
   createdAt: string;
 }
 
@@ -71,7 +74,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const data = await api.post<{ message: string; actions?: ChatAction[]; pendingAction?: PendingActionInfo | null }>(
+      const data = await api.post<{ message: string; actions?: ChatAction[]; pendingAction?: PendingActionInfo | null; emotion?: string }>(
         '/voice/chat',
         { text, webSearch: webSearch ?? false },
         token,
@@ -84,6 +87,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         actions: data.actions,
         // Слот-вопрос «На что потратил?» — без кнопок: юзер отвечает текстом.
         pendingAction: isConfirmable(data.pendingAction) ? data.pendingAction : null,
+        emotion: normalizeEmotion(data.emotion),
         createdAt: new Date().toISOString(),
       };
 
@@ -171,6 +175,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         id: uniqueId('assistant'),
         role: 'assistant',
         content: res.message,
+        emotion: res.emotion,
         createdAt: new Date().toISOString(),
       };
       set((state) => ({ messages: [reply, ...state.messages] }));

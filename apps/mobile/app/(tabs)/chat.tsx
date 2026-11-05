@@ -16,6 +16,8 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useChatStore, type ChatMessage, type ChatAction } from '@/stores/chat-store';
 import { useVoice } from '@/hooks/use-voice';
+import { useRobotReaction } from '@/hooks/use-robot-reaction';
+import { RobotAvatar } from '@/components/robot/robot-avatar';
 import { useColors } from '@/hooks/use-colors';
 import { hapticLight } from '@/services/haptics';
 import { spacing, fontSize, borderRadius } from '@/constants';
@@ -213,6 +215,14 @@ export default function ChatScreen() {
     );
   }, [clearHistory]);
 
+  // Робот реагирует на НОВЫЙ ответ эмоцией с сервера; пока мозг думает —
+  // «размышляет»; пока юзер пишет/говорит — слушает (уменьшается).
+  const latest = messages[0];
+  const latestAssistant = latest && latest.role === 'assistant' ? latest : undefined;
+  const reacted = useRobotReaction(latestAssistant?.emotion, latestAssistant?.id ?? null);
+  const robotEmotion = isLoading ? 'thinking' : reacted;
+  const robotAttention = isRecording || inputText.trim().length > 0 ? 'listening' : 'idle';
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -220,7 +230,10 @@ export default function ChatScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <View style={styles.chatHeader}>
-        <Text style={styles.chatTitle}>AI Чат</Text>
+        <View style={styles.chatHeaderLeft}>
+          <RobotAvatar emotion={robotEmotion} size={72} attention={robotAttention} />
+          <Text style={styles.chatTitle}>LifeOS</Text>
+        </View>
         <TouchableOpacity style={styles.clearBtn} onPress={handleClearChat} activeOpacity={0.7}>
           <Feather name="trash-2" size={20} color={c.textSecondary} />
         </TouchableOpacity>
@@ -508,6 +521,11 @@ function createStyles(c: C) {
       alignItems: 'center' as const,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
+    },
+    chatHeaderLeft: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.sm,
     },
     chatTitle: {
       fontSize: fontSize.xl,
