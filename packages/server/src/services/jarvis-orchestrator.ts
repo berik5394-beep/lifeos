@@ -44,6 +44,7 @@ import {
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
+import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoney } from './deals/index.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js';
@@ -437,6 +438,24 @@ export async function runConfirmedAction(
     // модель их не сочиняет; applyReschedule двигает лишь свои задачи на fromDate.
     if (action === RESCHEDULE_ACTION) {
       const message = await applyReschedule(userId, input);
+      await saveTurn(userId, '(подтверждено)', message);
+      return message;
+    }
+
+    // Сделки: «Подтвердить» на «Записать доход … ?». НЕ tool реестра: сумму берём
+    // из сделки в БД (модель её не передаёт), доход пишется ровно один раз.
+    if (action === DEAL_INCOME_ACTION) {
+      const dealId = String((input as { dealId?: unknown }).dealId ?? '');
+      const r = await recordDealIncome(userId, dealId);
+      let message: string;
+      if (r.ok && !r.already) {
+        const d = await prisma.deal.findFirst({ where: { id: dealId, userId }, select: { personName: true, title: true } });
+        message = `Записал доход ${fmtMoney(r.amount)} — сделка ${d?.personName ?? ''} — ${d?.title ?? ''}.`;
+      } else if (r.ok) {
+        message = 'Доход по этой сделке уже записан.';
+      } else {
+        message = r.reason === 'no_amount' ? 'У сделки нет суммы — скажи сумму, запишу доход.' : 'Сделку не нашёл — доход не записал.';
+      }
       await saveTurn(userId, '(подтверждено)', message);
       return message;
     }
