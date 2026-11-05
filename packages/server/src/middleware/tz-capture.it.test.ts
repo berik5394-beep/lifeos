@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { captureTimezone } from './tz-capture.js';
 
@@ -7,6 +7,8 @@ import { captureTimezone } from './tz-capture.js';
  * User.timezone. Реальный путь (real prisma, тест-БД), zero vi.mock.
  */
 const prisma = new PrismaClient();
+// Свой пул на файл — закрываем, иначе пулы копятся за прогон и Postgres упирается в max_connections.
+afterAll(() => prisma.$disconnect());
 const KEY = 'FEATURE_V2_REALTIME';
 
 function mkUser(email: string, timezone = 'Asia/Almaty') {

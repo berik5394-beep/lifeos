@@ -1,8 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { editExpenseTool } from './edit-expense.js';
 
 const prisma = new PrismaClient();
+// Свой пул на файл — закрываем, иначе пулы копятся за прогон и Postgres упирается в max_connections.
+afterAll(() => prisma.$disconnect());
 
 function mkUser(email: string) {
   return prisma.user.create({ data: { email, name: 'T', passwordHash: 'x' } });

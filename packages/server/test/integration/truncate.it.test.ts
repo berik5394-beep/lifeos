@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
+// Свой пул на файл — закрываем, иначе пулы копятся за прогон и Postgres упирается в max_connections.
+afterAll(() => prisma.$disconnect());
 
 // Два теста: первый вставляет юзера, второй ОБЯЗАН видеть пустую таблицу.
 // Если TRUNCATE-beforeEach не работает — второй тест увидит юзера из первого.

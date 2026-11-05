@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { createMonthlyGoalTool } from './create-monthly-goal.js';
 import { getMonthlyPlanTool } from './get-monthly-plan.js';
@@ -10,6 +10,8 @@ import { localMonthOnlyUTC } from '../lib/tz.js';
  * сразу видит цель. Real prisma, zero vi.mock.
  */
 const prisma = new PrismaClient();
+// Свой пул на файл — закрываем, иначе пулы копятся за прогон и Postgres упирается в max_connections.
+afterAll(() => prisma.$disconnect());
 
 function mkUser(email: string, timezone = 'Asia/Almaty') {
   return prisma.user.create({ data: { email, name: 'T', passwordHash: 'x', timezone } });
