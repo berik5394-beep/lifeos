@@ -31,3 +31,10 @@ describe('assistant-service: @db.Date конвенции (review-catch d67417d)'
     expect(SRC).not.toContain('date: { gte: today, lt: tomorrow }');
   });
 });
+
+describe('assistant-service: шаги по сделкам сегодня (флаг сделок)', () => {
+  it('dealStepsToday — из dealStepsTodayLabels (флаг выкл. → undefined → строки нет)', () => {
+    expect(SRC).toContain('dealStepsTodayLabels(userId, todayDateOnly)');
+    expect(SRC).toMatch(/dealStepsToday,/);
+  });
+});

@@ -7,6 +7,8 @@ import { generateProactiveNotifications } from '../services/proactive-notificati
 import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { calculateStreak } from '../services/streak-service.js';
+import { isV2DealsEnabled } from '../lib/feature-flags.js';
+import { listDealStepsForDay } from '../services/deals/service.js';
 
 const registerTokenSchema = z.object({
   // Expo push token: ExponentPushToken[...] / ExpoPushToken[...]
@@ -75,7 +77,9 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const { start: monthStart, end: monthEnd } = getMonthRange();
 
-    const [tasks, events, habits, habitLogs, expenses, budgetLimits, habitStreak] =
+    // Шаги по сделкам на сегодня — только при включённом флаге (иначе ключа нет).
+    const dealsOn = isV2DealsEnabled(userId);
+    const [tasks, events, habits, habitLogs, expenses, budgetLimits, habitStreak, dealSteps] =
       await Promise.all([
         prisma.task.findMany({
           where: { userId, date: today },
@@ -132,6 +136,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
         }),
 
         calculateStreak(userId, tz),
+        dealsOn ? listDealStepsForDay(userId, today) : Promise.resolve([]),
       ]);
 
     // Habits progress
@@ -163,6 +168,17 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
         date: e.date.toISOString().split('T')[0],
         startTime: e.startTime,
       })),
+      ...(dealsOn
+        ? {
+            dealSteps: dealSteps.map((st) => ({
+              id: st.id,
+              personName: st.personName,
+              title: st.title,
+              nextStepText: st.nextStepText,
+              date: st.date,
+            })),
+          }
+        : {}),
       habitsProgress,
       streak,
       quote,

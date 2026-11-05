@@ -72,6 +72,9 @@ export interface AssistantContext {
    *  Заполняется ТОЛЬКО за флагом isV2AntiFabEnabled → off=поле отсутствует =
    *  строка не рендерится (байт-идентично). Иначе модель выдумывала «128 висят». */
   overduePending?: number;
+  /** Шаги по сделкам на сегодня («Ахмет — связаться»). Только при флаге
+   *  сделок → off = поле отсутствует = строка не рендерится (байт-идентично). */
+  dealStepsToday?: string[];
   habitsProgress: { total: number; completed: number };
   upcomingEvents: { title: string; startTime: string | null; date: string }[];
   spentThisMonth: number;
@@ -177,6 +180,9 @@ export function renderContext(
     if (pending.length > 0) {
       L.push(`Невыполненные: ${pending.map((t) => t.title).join(', ')}`);
     }
+  }
+  if (ctx.dealStepsToday && ctx.dealStepsToday.length > 0) {
+    L.push(`Шаги по сделкам сегодня (${ctx.dealStepsToday.length}): ${ctx.dealStepsToday.join('; ')}`);
   }
   // #5 честность: реальный счётчик просрочки (за флагом → поле задано). > 0 →
   // строка; иначе опускаем (нет лжи «всё чисто» и нет выдуманных «128»).

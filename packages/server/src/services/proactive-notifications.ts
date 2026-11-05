@@ -3,6 +3,8 @@ import { localDayStartUTC, localDateOnlyUTC, localDaySlot, localHour, localDayOf
 import { countOverduePending } from './task-overdue.js';
 import { isV2TaskReminderEnabled } from '../lib/feature-flags.js';
 import { calculateStreak } from './streak-service.js';
+import { listDealStepsForDay } from './deals/service.js';
+import { dealStepLabel, plural } from './deals/format.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -429,14 +431,14 @@ async function generateMorningBriefing(
   return buildMorning(userId, user?.name ?? 'друг', scheduledFor, user?.timezone || 'UTC');
 }
 
-async function buildMorning(
+export async function buildMorning(
   userId: string,
   name: string,
   scheduledFor: Date,
   tz: string,
 ): Promise<ProactiveNotification[]> {
   const today = getToday(tz);
-  const [taskCount, events, habits, habitLogs, overdue] = await Promise.all([
+  const [taskCount, events, habits, habitLogs, overdue, dealSteps] = await Promise.all([
     prisma.task.count({ where: { userId, date: today, completed: false, cancelled: false } }),
     prisma.calendarEvent.findMany({
       where: { userId, date: today },
@@ -447,6 +449,8 @@ async function buildMorning(
     prisma.habit.count({ where: { userId, active: true } }),
     prisma.habitLog.count({ where: { userId, date: today, completed: true } }),
     countOverduePending(userId, today),
+    // Шаги по сделкам на сегодня (флаг выкл. → [] → части нет).
+    listDealStepsForDay(userId, today),
   ]);
 
   const parts: string[] = [];
@@ -462,6 +466,11 @@ async function buildMorning(
       `${events.length} ${events.length === 1 ? 'встреча' : 'встречи'}` +
         (first.startTime ? ` (первая в ${first.startTime} — «${first.title}»)` : ''),
     );
+  }
+  if (dealSteps.length > 0) {
+    const n = dealSteps.length;
+    const more = n > 3 ? ` и ещё ${n - 3}` : '';
+    parts.push(`${n} ${plural(n, ['шаг', 'шага', 'шагов'])} по сделкам: ${dealSteps.slice(0, 3).map(dealStepLabel).join('; ')}${more}`);
   }
 
   // C3 friend-tone: точка вместо "!" в title (спокойнее, не реклама),

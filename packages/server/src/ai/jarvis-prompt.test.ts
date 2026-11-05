@@ -110,6 +110,18 @@ describe('buildJarvisPrompt — ровно один стиль', () => {
   });
 });
 
+describe('renderContext — шаги по сделкам сегодня', () => {
+  it('есть шаги → строка рядом с задачами', () => {
+    const c = renderContext(ctx({ todayTasks: [{ title: 'Отчёт', completed: false }], dealStepsToday: ['Ахмет — связаться', 'Серик — КП'] }));
+    expect(c).toContain('Невыполненные: Отчёт\nШаги по сделкам сегодня (2): Ахмет — связаться; Серик — КП');
+  });
+  it('не задано / пусто → строки нет, контекст байт-в-байт прежний', () => {
+    const base = renderContext(ctx({ todayTasks: [{ title: 'Отчёт', completed: false }] }));
+    expect(base).not.toContain('Шаги по сделкам');
+    expect(renderContext(ctx({ todayTasks: [{ title: 'Отчёт', completed: false }], dealStepsToday: [] }))).toBe(base);
+  });
+});
+
 describe('renderContext — пустые секции опускаются', () => {
   it('нет данных → нет секций задач/привычек/финансов', () => {
     const c = renderContext(ctx());

@@ -473,3 +473,17 @@ export async function dealStepLoadItems(userId: string, from: Date, toExcl: Date
   return steps.map((s) => ({ label: dealStepLabel(s), demand: DEFAULT_DEAL_STEP_MINUTES, importance: DEAL_STEP_IMPORTANCE }));
 }
 
+/** Шаги по сделкам на день (@db.Date дня). Флаг выкл. → [] без запроса. */
+export function listDealStepsForDay(userId: string, day: Date): Promise<DealStep[]> {
+  return listDealSteps(userId, day, new Date(day.getTime() + 86_400_000));
+}
+
+/**
+ * Подписи шагов на сегодня для контекста робота («Ахмет — связаться»).
+ * Флаг выкл. → undefined: поле в контексте не задано, строка не рендерится.
+ */
+export async function dealStepsTodayLabels(userId: string, today: Date): Promise<string[] | undefined> {
+  if (!isV2DealsEnabled(userId)) return undefined;
+  return (await listDealStepsForDay(userId, today)).map(dealStepLabel);
+}
+

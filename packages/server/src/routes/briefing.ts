@@ -5,6 +5,8 @@ import { rateLimiter } from '../middleware/security.js';
 import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { calculateStreak } from '../services/streak-service.js';
+import { isV2DealsEnabled } from '../lib/feature-flags.js';
+import { listDealStepsForDay } from '../services/deals/service.js';
 
 // Брифинг делает 8 параллельных запросов к БД за раз — не AI, но тяжело.
 // Нет смысла вызывать чаще чем раз в 2 секунды (пользователь не обновляет
@@ -53,7 +55,9 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
     tomorrow.setDate(tomorrow.getDate() + 1);
     const { start: monthStart, end: monthEnd } = getMonthRange();
 
-    const [tasks, events, habits, habitLogs, expenses, budgetLimits, habitStreak, stepLog] =
+    // Шаги по сделкам на сегодня — только при включённом флаге (иначе ключа нет).
+    const dealsOn = isV2DealsEnabled(userId);
+    const [tasks, events, habits, habitLogs, expenses, budgetLimits, habitStreak, stepLog, dealSteps] =
       await Promise.all([
         // Задачи на сегодня (отменённые — скрыты)
         prisma.task.findMany({
@@ -114,6 +118,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
           where: { userId, date: today },
           select: { steps: true },
         }),
+        dealsOn ? listDealStepsForDay(userId, today) : Promise.resolve([]),
       ]);
 
     // Считаем прогресс привычек
@@ -160,6 +165,14 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
         items: events,
         total: events.length,
       },
+      ...(dealsOn
+        ? {
+            deals: {
+              items: dealSteps.map((st) => ({ id: st.id, personName: st.personName, title: st.title, nextStepText: st.nextStepText })),
+              total: dealSteps.length,
+            },
+          }
+        : {}),
       habits: {
         completed: habitsCompleted,
         total: habitsTotal,

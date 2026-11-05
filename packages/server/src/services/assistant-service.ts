@@ -8,6 +8,7 @@ import {
   isV2RealtimeEnabled,
 } from '../lib/feature-flags.js';
 import { countOverduePending } from './task-overdue.js';
+import { dealStepsTodayLabels } from './deals/service.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import {
   buildJarvisPrompt,
@@ -228,6 +229,8 @@ export async function gatherAssistantContext(
   const overduePending = isV2AntiFabEnabled(userId)
     ? await countOverduePending(userId, todayDateOnly)
     : undefined;
+  // Шаги по сделкам сегодня — только при флаге сделок (off → undefined → строки нет).
+  const dealStepsToday = await dealStepsTodayLabels(userId, todayDateOnly);
 
   const context: AssistantContext = {
     userName: user.name,
@@ -235,6 +238,7 @@ export async function gatherAssistantContext(
     assistantGender: user.assistantGender,
     todayTasks: todayTasks.map((t) => ({ title: t.title, completed: t.completed })),
     overduePending,
+    dealStepsToday,
     habitsProgress,
     upcomingEvents: upcomingEvents.map((e) => ({
       title: e.title,
