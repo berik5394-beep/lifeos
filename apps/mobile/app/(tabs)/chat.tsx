@@ -317,7 +317,12 @@ export default function ChatScreen() {
         keyExtractor={keyExtractor}
         inverted
         contentContainerStyle={messages.length === 0 ? styles.emptyListContent : styles.listContent}
-        ListEmptyComponent={<EmptyState onSuggestion={handleSuggestion} />}
+        ListEmptyComponent={
+          // inverted-список переворачивает и пустое состояние — разворачиваем обратно.
+          <View style={styles.emptyFlip}>
+            <EmptyState onSuggestion={handleSuggestion} />
+          </View>
+        }
         ListFooterComponent={
           isLoading && messages.length > 0 ? (
             <View style={styles.loadingContainer}>
@@ -387,6 +392,7 @@ type C = ReturnType<typeof useColors>;
 
 function createStyles(c: C) {
   return StyleSheet.create({
+    emptyFlip: { transform: [{ scaleY: -1 }] },
     container: {
       flex: 1,
       backgroundColor: c.background,
