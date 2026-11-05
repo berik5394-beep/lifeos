@@ -41,6 +41,8 @@ const SYNONYMS: Array<[RegExp, DealStage]> = [
 ];
 
 const NEGATED_WON = /(^|\s)не\s+(выигр|оплатил|заплатил|купил)/;
+/** Частичная оплата («оплатил аванс», «внёс предоплату», «первую часть») — сделка ещё не выиграна. */
+const PARTIAL_PAYMENT = /(предоплат|аванс|частич|(^|[^а-я])част(ь|ью)($|[^а-я])|перв(ый|ого|ую) (плат[её]ж|част))/;
 
 /** Стадия из ключа или русской фразы; не поняли — null (не угадываем). */
 export function parseStage(raw: string): DealStage | null {
@@ -49,6 +51,8 @@ export function parseStage(raw: string): DealStage | null {
   if (isDealStage(s)) return s;
   // «не оплатил / не купил» — не выиграна (и не «оплат»→договор): не угадываем.
   if (NEGATED_WON.test(s)) return null;
+  // «оплатил аванс / частично» — не выиграна и не угадываем стадию (ревью).
+  if (PARTIAL_PAYMENT.test(s)) return null;
   for (const [re, stage] of SYNONYMS) if (re.test(s)) return stage;
   return null;
 }

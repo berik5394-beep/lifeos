@@ -51,4 +51,12 @@ describe('стадии сделки', () => {
     expect(STAGE_LABEL.proposal).toBe('КП отправлено');
     expect(STAGE_LABEL.contract).toBe('Договор/оплата');
   });
+  it.each(['оплатил аванс', 'оплатил частично', 'внёс предоплату', 'заплатил первую часть', 'оплатил часть'])(
+    'нит: частичная оплата «%s» → не выиграна (null)',
+    (t) => expect(parseStage(t)).toBeNull(),
+  );
+  it('полная оплата по-прежнему выиграна', () => {
+    expect(parseStage('оплатил')).toBe('won');
+    expect(parseStage('оплатил полностью')).toBe('won');
+  });
 });
