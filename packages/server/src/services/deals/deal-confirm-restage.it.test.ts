@@ -61,3 +61,36 @@ describe('повторный вопрос после подтверждения 
     expect(res.json().pendingAction ?? null).toBeNull();
   });
 });
+
+describe('ревью-3 N6: служебные __-ключи не уходят клиенту', () => {
+  const setup = async (tag: string) => {
+    const u = await prisma.user.create({ data: { email: `dcr-n6-${tag}-${Date.now()}@a.test`, name: 'R', passwordHash: 'x', timezone: 'UTC' } });
+    return { userId: u.id, headers: { authorization: `Bearer ${app.jwt.sign({ sub: u.id })}` } };
+  };
+  const chat = (headers: Record<string, string>, text: string) =>
+    app.inject({ method: 'POST', url: '/voice/chat', headers, payload: { text } });
+  const pending = async (headers: Record<string, string>) =>
+    (await app.inject({ method: 'GET', url: '/voice/pending-action', headers })).json().pending;
+
+  it('аванс по сделке: ни ответ чата, ни GET /voice/pending-action не несут __advanceDealId', async () => {
+    const { userId, headers } = await setup('adv');
+    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', amount: 2_000_000, stage: 'contract' });
+    const r = await chat(headers, 'получил 500000 предоплату от Ахмета');
+    expect(r.json().pendingAction).toEqual({ action: 'add_income', input: { amount: 500_000, source: 'предоплату от Ахмета' } });
+    expect(await pending(headers)).toEqual({ action: 'add_income', input: { amount: 500_000, source: 'предоплату от Ахмета' } });
+  });
+
+  it('предложение закрыть сделку: GET /voice/pending-action без __source', async () => {
+    const { userId, headers } = await setup('won');
+    const { deal } = await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', stage: 'contract' });
+    await chat(headers, 'получил 2 млн от Ахмета');
+    expect(await pending(headers)).toEqual({ action: DEAL_INCOME_ACTION, input: { dealId: deal.id, markWon: true, amount: 2_000_000 } });
+  });
+
+  it('слот «получил аванс 2 млн»: клиенту — только __awaitingSource (протокол мобилки), без __partial', async () => {
+    const { headers } = await setup('slot');
+    const r = await chat(headers, 'получил аванс 2 млн');
+    expect(r.json().pendingAction).toEqual({ action: 'add_income', input: { amount: 2_000_000, __awaitingSource: true } });
+    expect(await pending(headers)).toEqual({ action: 'add_income', input: { amount: 2_000_000, __awaitingSource: true } });
+  });
+});

@@ -35,6 +35,7 @@ import {
   clearPendingAction,
   readConfirmSignal,
   awaitingSlot,
+  clientPendingInput,
 } from './pending-actions.js';
 import { isV2MemoryEnabled } from '../lib/feature-flags.js';
 import { captureV2InBackground } from './v2-capture.js';
@@ -687,6 +688,8 @@ export async function handleMessage(
     pending: pa ? (slot ? 'slot' : 'confirm') : null,
     ...turnFacts,
   });
+  // Ревью-3 N6: служебные __-ключи pending-а клиенту не отдаём (чат, голос, Telegram).
+  if (pa) out.pendingAction = { action: pa.action, input: clientPendingInput(pa.input ?? {}) };
   return out;
 }
 

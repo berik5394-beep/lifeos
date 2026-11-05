@@ -96,6 +96,22 @@ const prismaPendingStore: PendingStore = {
   },
 };
 
+/** Служебные ключи, которые клиент понимает: протокол слот-филла мобилки (isConfirmable). */
+const CLIENT_VISIBLE_INTERNAL = new Set(['__awaitingCategory', '__awaitingSource']);
+
+/**
+ * Ревью-3 N6: input pending-а для КЛИЕНТА — без служебных `__*` (`__advanceDealId`,
+ * `__partial`, `__source`…): это внутренняя кухня сервера. Протокол слота
+ * (`__awaitingCategory/__awaitingSource`) остаётся — по нему мобилка прячет кнопки.
+ */
+export function clientPendingInput(input: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (!k.startsWith('__') || CLIENT_VISIBLE_INTERNAL.has(k)) out[k] = v;
+  }
+  return out;
+}
+
 export async function setPendingAction(
   userId: string,
   action: string,

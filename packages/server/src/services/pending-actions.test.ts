@@ -11,6 +11,7 @@ import {
   PENDING_TTL_MS,
   type PendingStore,
   type PendingAction,
+  clientPendingInput,
 } from './pending-actions.js';
 
 /**
@@ -169,5 +170,16 @@ describe('confirm-FSM — 4 сценария спеки', () => {
     expect(p?.action).toBe('add_income');
     expect(p?.input.amount).toBe(150000);
     expect(p?.confirmationText).toBe('зарплата');
+  });
+});
+
+describe('clientPendingInput — служебные __-ключи не уходят клиенту (ревью-3 N6)', () => {
+  it('убирает __advanceDealId/__partial/__source, оставляет протокол слота мобилки', () => {
+    expect(
+      clientPendingInput({ amount: 1, source: 's', __advanceDealId: 'd', __partial: true, __source: 'x', __awaitingSource: true, __awaitingCategory: true }),
+    ).toEqual({ amount: 1, source: 's', __awaitingSource: true, __awaitingCategory: true });
+  });
+  it('без служебных ключей — тот же набор полей', () => {
+    expect(clientPendingInput({ dealId: 'd', markWon: true, amount: 5 })).toEqual({ dealId: 'd', markWon: true, amount: 5 });
   });
 });
