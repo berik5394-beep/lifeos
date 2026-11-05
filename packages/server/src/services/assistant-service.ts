@@ -101,6 +101,7 @@ export async function gatherAssistantContext(
     intent,
     weeklyGoals,
     monthlyGoals,
+    dealStepsToday,
   ] = await Promise.all([
     prisma.task.findMany({
       where: { userId, date: todayDateOnly, cancelled: false },
@@ -165,6 +166,8 @@ export async function gatherAssistantContext(
         take: 10,
       });
     })(),
+    // Шаги по сделкам сегодня — только при флаге сделок (off → undefined → строки нет).
+    dealStepsTodayLabels(userId, todayDateOnly),
   ]);
 
   const habitsProgress = {
@@ -229,9 +232,6 @@ export async function gatherAssistantContext(
   const overduePending = isV2AntiFabEnabled(userId)
     ? await countOverduePending(userId, todayDateOnly)
     : undefined;
-  // Шаги по сделкам сегодня — только при флаге сделок (off → undefined → строки нет).
-  const dealStepsToday = await dealStepsTodayLabels(userId, todayDateOnly);
-
   const context: AssistantContext = {
     userName: user.name,
     assistantStyle: user.assistantStyle as AssistantContext['assistantStyle'],
