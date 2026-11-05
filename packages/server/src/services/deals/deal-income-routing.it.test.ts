@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll, beforeEach } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { handleMessage, runConfirmedAction } from '../jarvis-orchestrator.js';
 import { peekPendingAction } from '../pending-actions.js';
-import { createDeal, updateDeal, recordDealIncome, DEAL_INCOME_ACTION } from './service.js';
+import { createDeal, updateDeal, recordDealIncome, DEAL_INCOME_ACTION, DEAL_INCOME_CHOICE } from './service.js';
 
 /**
  * Ревью B2: «получил 2 млн от Ахмета» при открытой сделке с Ахметом — доход
@@ -137,7 +137,8 @@ describe('доход от клиента с открытой сделкой', ()
     const r = await handleMessage(userId, 'получил 2000000 от Ахмета');
     expect(r.reply).toMatch(/У Ахмета 2 открытые сделки/);
     expect(r.pendingAction ?? null).toBeNull();
-    expect(await peekPendingAction(userId)).toBeNull();
+    // Денежного pending нет — только выбор «просто доход» (без кнопок).
+    expect((await peekPendingAction(userId))?.action).toBe(DEAL_INCOME_CHOICE);
     expect(await prisma.deal.count({ where: { userId, stage: 'won' } })).toBe(0);
   });
 
@@ -146,7 +147,7 @@ describe('доход от клиента с открытой сделкой', ()
     await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', amount: 3_000_000 });
     const r = await handleMessage(userId, 'получил 1 млн от Ахмета');
     expect(r.reply).toMatch(/оборудование/);
-    expect(await peekPendingAction(userId)).toBeNull();
+    expect((await peekPendingAction(userId))?.action).toBe(DEAL_INCOME_CHOICE);
     expect(await prisma.deal.count({ where: { userId, stage: 'won' } })).toBe(0);
   });
 
@@ -193,5 +194,49 @@ describe('страховка: доход уже записан руками', ()
     expect(p).toMatchObject({ action: DEAL_INCOME_ACTION, input: { dealId: deal.id, force: true } });
     await handleMessage(userId, 'да');
     expect(await prisma.income.count({ where: { userId } })).toBe(2);
+  });
+});
+
+describe('ревью I-d: слот источника и «просто доход»', () => {
+  it('«получил 2 млн» → «от Серика» (сделка на «договоре») → тот же путь сделки, не голый доход', async () => {
+    const userId = await user('slot');
+    const { deal } = await createDeal(userId, { personName: 'Серик', title: 'склад', stage: 'contract' });
+    const q = await handleMessage(userId, 'получил 2 млн');
+    expect(q.pendingAction?.input).toMatchObject({ amount: 2_000_000, __awaitingSource: true });
+    const r = await handleMessage(userId, 'от Серика');
+    expect(r.pendingAction).toEqual({ action: DEAL_INCOME_ACTION, input: { dealId: deal.id, markWon: true, amount: 2_000_000 } });
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).stage).toBe('contract');
+    await handleMessage(userId, 'да');
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).stage).toBe('won');
+    expect(await prisma.income.count({ where: { userId } })).toBe(1);
+  });
+
+  it('слот → переспрос (ранняя стадия) → «просто доход» → обычный доход на ту же сумму', async () => {
+    const userId = await user('slot-ask');
+    const { deal } = await createDeal(userId, { personName: 'Серик', title: 'склад' });
+    await handleMessage(userId, 'получил 2 млн');
+    const ask = await handleMessage(userId, 'от Серика');
+    expect(ask.reply).toMatch(/«просто доход» — запишу обычным доходом/);
+    expect(ask.pendingAction ?? null).toBeNull();
+    const r = await handleMessage(userId, 'просто доход');
+    expect(r.pendingAction).toEqual({ action: 'add_income', input: { amount: 2_000_000, source: 'от Серика' } });
+    await handleMessage(userId, 'да');
+    expect(await prisma.income.count({ where: { userId, amount: 2_000_000 } })).toBe(1);
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).stage).toBe('new');
+  });
+
+  it('две сделки → «аванс — просто доход» → обычный доход; «да» на переспрос — подсказка, ничего не пишем', async () => {
+    const userId = await user('ask-two');
+    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
+    await createDeal(userId, { personName: 'Ахмет', title: 'сервис' });
+    const ask = await handleMessage(userId, 'получил 2000000 от Ахмета');
+    expect(ask.reply).toMatch(/просто доход/);
+    const yes = await handleMessage(userId, 'да');
+    expect(yes.reply).toMatch(/просто доход/);
+    expect(yes.pendingAction ?? null).toBeNull();
+    expect(await prisma.income.count({ where: { userId } })).toBe(0);
+    const r = await handleMessage(userId, 'аванс — просто доход');
+    expect(r.pendingAction).toEqual({ action: 'add_income', input: { amount: 2_000_000, source: 'Ахмета' } });
+    expect(await prisma.deal.count({ where: { userId, stage: 'won' } })).toBe(0);
   });
 });

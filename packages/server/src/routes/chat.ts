@@ -6,6 +6,7 @@ import { validate } from '../middleware/validate.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { handleMessage, runConfirmedAction } from '../services/jarvis-orchestrator.js';
 import { takePendingAction, peekPendingAction, pendingStagedSince } from '../services/pending-actions.js';
+import { DEAL_INCOME_CHOICE } from '../services/deals/service.js';
 
 // AI chat is expensive (Claude API + web search) — limit per minute and per hour
 const chatRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'ai-chat' });
@@ -117,8 +118,9 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
   // --- Есть ли ожидающее подтверждения действие (для восстановления UI) ---
   app.get('/voice/pending-action', async (request, reply) => {
     const p = await peekPendingAction(request.userId);
+    // Переспрос «какая сделка оплачена?» — выбор словами, не кнопки.
     return reply.send(
-      p
+      p && p.action !== DEAL_INCOME_CHOICE
         ? { pending: { action: p.action, input: p.input }, confirmationText: p.confirmationText }
         : { pending: null },
     );

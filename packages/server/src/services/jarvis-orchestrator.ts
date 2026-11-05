@@ -44,7 +44,7 @@ import {
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
-import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, OPEN_STAGES } from './deals/index.js';
+import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, OPEN_STAGES, DEAL_INCOME_CHOICE } from './deals/index.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
@@ -416,6 +416,8 @@ function confirmationText(action: string, input: Record<string, unknown>): strin
   return 'Подтверди действие — выполню.';
 }
 
+const DEAL_CHOICE_HINT = 'Не понял, какая оплата. Скажи «просто доход» — запишу обычным доходом, или назови сделку: «Ахмет оплатил оборудование».';
+
 /**
  * Доход от клиента с открытой сделкой (ревью B2/X1). Ничего не пишет — только
  * готовит ответ хода: переспрос, предложение «закрыть и записать доход» или
@@ -429,7 +431,12 @@ async function routeDealIncome(
 ): Promise<JarvisResponse | null> {
   const routed = await routeIncomeToDeal(userId, amount, source, { text });
   if (routed.kind === 'none') return null;
-  if (routed.kind === 'ask') return { reply: routed.message, intent: 'update_deal' };
+  if (routed.kind === 'ask') {
+    // Ревью I-d: помним сумму/источник — «просто доход» запишет обычный доход.
+    // Кнопок нет (pendingAction в ответ не отдаём): это выбор, а не «записать?».
+    await setPendingAction(userId, DEAL_INCOME_CHOICE, { amount, source }, routed.message);
+    return { reply: routed.message, intent: 'update_deal' };
+  }
   if (routed.kind === 'advance') {
     const input: Record<string, unknown> = { amount, source, ...(routed.dealId ? { __advanceDealId: routed.dealId } : {}) };
     const base = confirmationText('add_income', { amount, source });
@@ -538,6 +545,13 @@ export async function runConfirmedAction(
 
     // Сделки: «Подтвердить» на «Записать доход … ?». НЕ tool реестра: сумму берём
     // из сделки в БД (модель её не передаёт), доход пишется ровно один раз.
+    // Переспрос «какая сделка?» — не подтверждение; кнопка сюда не ведёт, но если
+    // дошло — подсказываем, ничего не пишем.
+    if (action === DEAL_INCOME_CHOICE) {
+      await saveTurn(userId, '(подтверждено)', DEAL_CHOICE_HINT);
+      return DEAL_CHOICE_HINT;
+    }
+
     if (action === DEAL_INCOME_ACTION) {
       const message = await confirmDealIncome(userId, input);
       await saveTurn(userId, '(подтверждено)', message);
@@ -656,6 +670,14 @@ async function handleMessageCore(
         await saveTurn(userId, text, reply);
         return { reply, intent: 'cancel_pending' };
       }
+      // Ревью I-d: «получил 2 млн» → «от Серика» — тот же путь сделки, что и одной фразой.
+      if (pending.action === 'add_income' && slot === 'source' && isV2DealsEnabled(userId)) {
+        const routed = await routeDealIncome(userId, Number(pending.input.amount), text.trim(), text);
+        if (routed) {
+          await saveTurn(userId, text, routed.reply);
+          return routed;
+        }
+      }
       const filled: Record<string, unknown> = {
         amount: pending.input.amount,
         [slot]: text.trim(),
@@ -669,6 +691,22 @@ async function handleMessageCore(
         confirmationText: ctext,
         intent: pending.action,
       };
+    }
+    // Ревью I-d: переспрос «какая сделка оплачена?» — «просто доход» → обычный доход
+    // на ту же сумму; «да» тут ничего не решает — подсказываем, вопрос держим.
+    if (pending.action === DEAL_INCOME_CHOICE) {
+      if (/просто\s+доход/i.test(text)) {
+        await takePendingAction(userId);
+        const input = { amount: Number(pending.input.amount), source: String(pending.input.source ?? '') };
+        const ctext = confirmationText('add_income', input);
+        await setPendingAction(userId, 'add_income', input, ctext);
+        await saveTurn(userId, text, ctext);
+        return { reply: ctext, pendingAction: { action: 'add_income', input }, confirmationText: ctext, intent: 'add_income' };
+      }
+      if (signal === 'confirm') {
+        await saveTurn(userId, text, DEAL_CHOICE_HINT);
+        return { reply: DEAL_CHOICE_HINT, intent: 'update_deal' };
+      }
     }
     if (signal === 'confirm') {
       const p = (await takePendingAction(userId))!;

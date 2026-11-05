@@ -13,6 +13,12 @@ import { onDealWon } from '../coins.js';
 import type { CapacityItem } from '../capacity-fit.js';
 
 export const DEAL_INCOME_ACTION = 'record_deal_income';
+/**
+ * Переспрос «какая сделка оплачена?» (ревью I-d): хранит сумму/источник, чтобы
+ * «просто доход» записал обычный доход. Не денежное подтверждение — без кнопок.
+ */
+export const DEAL_INCOME_CHOICE = 'deal_income_choice';
+export const JUST_INCOME_HINT = 'Или скажи «просто доход» — запишу обычным доходом.';
 
 export interface CreateDealInput {
   personName: string;
@@ -351,18 +357,18 @@ export async function routeIncomeToDeal(
     return { kind: 'advance', dealId: one?.id ?? null, dealHead: one ? `${one.personName} — ${one.title}` : null };
   }
   const name = deals[0].personName;
-  if (deals.length > 1) return { kind: 'ask', message: describeWhichDeal(name, deals, 'Какая оплачена?') };
+  if (deals.length > 1) return { kind: 'ask', message: `${describeWhichDeal(name, deals, 'Какая оплачена?')} ${JUST_INCOME_HINT}` };
   const deal = deals[0];
   if (deal.amount != null && deal.amount !== amount) {
     return {
       kind: 'ask',
-      message: `Сделка ${name} — ${deal.title} на ${fmtMoneyExact(deal.amount)}, а пришло ${fmtMoneyExact(amount)}. Это полная оплата по сделке? Скажи «${name} оплатил, сумма ${fmtMoneyExact(amount)}» — закрою.`,
+      message: `Сделка ${name} — ${deal.title} на ${fmtMoneyExact(deal.amount)}, а пришло ${fmtMoneyExact(amount)}. Это полная оплата по сделке? Скажи «${name} оплатил, сумма ${fmtMoneyExact(amount)}» — закрою. ${JUST_INCOME_HINT}`,
     };
   }
   if (deal.amount == null && deal.stage !== 'contract') {
     return {
       kind: 'ask',
-      message: `Сделка ${name} — ${deal.title} ещё на стадии «${STAGE_LABEL[deal.stage as DealStage] ?? deal.stage}», а пришло ${fmtMoneyExact(amount)}. Это оплата по ней целиком? Скажи «${name} оплатил ${fmtMoneyExact(amount)}» — закрою сделку.`,
+      message: `Сделка ${name} — ${deal.title} ещё на стадии «${STAGE_LABEL[deal.stage as DealStage] ?? deal.stage}», а пришло ${fmtMoneyExact(amount)}. Это оплата по ней целиком? Скажи «${name} оплатил ${fmtMoneyExact(amount)}» — закрою сделку. ${JUST_INCOME_HINT}`,
     };
   }
   // Вернули в работу сделку, доход по которой уже записан, — второго не предлагаем.
