@@ -21,6 +21,9 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://lifeos-api-production-736d.up.railway.app"
+      },
+      "android": {
+        "buildType": "apk"
       }
     },
     "production": {
@@ -32,7 +35,9 @@
   },
   "submit": {
     "production": {
-      "ios": { "ascAppId": "6831057162" },
+      "ios": {
+        "ascAppId": "6831057162"
+      },
       "android": {
         "serviceAccountKeyPath": "./google-service-account.json",
         "track": "production"
