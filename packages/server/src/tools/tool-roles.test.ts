@@ -5,7 +5,7 @@ import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { matchTaskByWholeWords } from '../services/task-title.js';
 import { summarizeToolAction } from '../services/tool-activity-summary.js';
-import { mayNeedLocalTools } from '../services/jarvis-orchestrator.js';
+import { mayNeedLocalTools, mayNeedDealTools } from '../services/jarvis-orchestrator.js';
 
 /**
  * «Каждый инструмент с каждым, без пересечений интересов» (спека перегруза,
@@ -81,7 +81,8 @@ describe('примеры инструментов доходят до инстр
     expect(cases.length).toBeGreaterThanOrEqual(EXAMPLE_GUARDED.length);
   });
   it.each(cases)('%s: «%s» → инструменты предложены', (_name, example) => {
-    expect(mayNeedLocalTools(example) || deterministicIntent(example) != null).toBe(true);
+    // Сделки включены (флаг on) — работает и словарь сделок (ревью-3 I5).
+    expect(mayNeedLocalTools(example) || mayNeedDealTools(example) || deterministicIntent(example) != null).toBe(true);
   });
 });
 

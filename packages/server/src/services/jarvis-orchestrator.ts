@@ -45,7 +45,7 @@ import {
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
-import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, OPEN_STAGES, DEAL_INCOME_CHOICE, PARTIAL_PAYMENT, JUST_INCOME_EXIT, JUST_INCOME_RE } from './deals/index.js';
+import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, openDealsForMatching, DEAL_INCOME_CHOICE, PARTIAL_PAYMENT, JUST_INCOME_EXIT, JUST_INCOME_RE } from './deals/index.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
@@ -314,10 +314,32 @@ async function saveTurn(
 
 // Fix D: эвристика «сообщению нужны локальные инструменты». Без \b —
 // кириллические границы в JS не работают; ловим по подстрокам корней.
-// Сделки (ревью B1/I-b): «отправил КП», «оплатил», «отказался», «на 2 млн», «как воронка»,
-// «на 500 тысяч», «за 800к», «выставила счёт», «подписал контракт», «перевёл», «передумал».
+// Ревью-3 I5: словарь — РОВНО как до сделок (флаг off = байт-в-байт прежнее поведение);
+// корни сделок — отдельно (DEAL_TOOL_HINTS), только при включённых сделках.
 const TOOL_HINTS =
-  /(задач|календар|встреч|событи|бюджет|потрат|расход|доход|привычк|напомн|почт|письм|gmail|расписан|план(?!ета)|поездк|цел[ьия]|сколько|что у меня|что сегодня|что по|добав|созда|отмет|перенес|свобод|кто так|телефон|контакт|номер|что я говорил про|помнишь про|погод|надеть|надену|одет|оденусь|выезж|вылет|лечу|бронь|билет|когда у меня|навык|сделк|воронк|продаж|клиент|(?:^|\s)кп(?=\s|$|[,.!?])|оплатил|заплатил|отказал|перегов|договор|перезвон|млн|миллион|тыс|\d\s*к(?=\s|$|[.,!?])|предложени|сч[её]т|контракт|подписал|согласил|перев[её]л|скинул|передумал)/i;
+  /(задач|календар|встреч|событи|бюджет|потрат|расход|доход|привычк|напомн|почт|письм|gmail|расписан|план(?!ета)|поездк|цел[ьия]|сколько|что у меня|что сегодня|что по|добав|созда|отмет|перенес|свобод|кто так|телефон|контакт|номер|что я говорил про|помнишь про|погод|надеть|надену|одет|оденусь|выезж|вылет|лечу|бронь|билет|когда у меня|навык)/i;
+
+/**
+ * Сделки (ревью B1/I-b, ревью-3 I5): «отправил КП», «оплатил», «на 2 млн», «как воронка»,
+ * «на 500 тысяч», «за 800к», «выставила счёт», «подписал контракт», «перевёл 500 000».
+ * Корни, которые живут и в болтовне, — только в контексте сделки: «счёт» — с глаголом
+ * «выставил/отправил…» или с числом («насчёт», «за счёт», «счёт в матче» — мимо);
+ * «тыс» — после числа («тысяча чертей» — мимо); «перевёл/скинул» — с суммой
+ * («перевёл статью», «скинул вес» — мимо); «предложение» — только если его отправили;
+ * «согласился» — на условия/сделку/цену.
+ */
+const DEAL_TOOL_HINTS: readonly RegExp[] = [
+  /(сделк|воронк|продаж|клиент|(?:^|\s)кп(?=\s|$|[,.!?])|оплатил|заплатил|отказал|перегов|договор|перезвон|млн|миллион|контракт|подписал|передумал)/i,
+  /\d\s*тыс/i,
+  /\d\s*к(?=\s|$|[.,!?])/i,
+  /(?:выстав|отправ|выслал|скинул|прислал|оплатил)[а-яё]*\s+(?:[а-яё]+\s+)?сч[её]т|(?:^|[^а-яё])сч[её]т[а-яё]*\s+(?:на\s+)?\d/i,
+  /перев[её]л[аи]?\s+\d/i,
+  /скинул[аи]?\s+\d/i,
+  /согласил[а-яё]*\s+на\s+(?:услов|сделк|цен)/i,
+];
+/** «предложение» — только вместе с отправкой («отправил Ахмету предложение»). */
+const DEAL_PROPOSAL = /предложени/i;
+const DEAL_PROPOSAL_SENT = /(отправ|выслал|скинул)/i;
 
 /**
  * ISSUE-1: честный отказ когда tool-путь упал, а запрос требовал
@@ -333,21 +355,26 @@ export function mayNeedLocalTools(text: string): boolean {
   return TOOL_HINTS.test(t);
 }
 
+/** Словарь сделок (зовётся только при включённых сделках). Порог < 12 символов — тот же. */
+export function mayNeedDealTools(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 12) return false;
+  if (DEAL_TOOL_HINTS.some((re) => re.test(t))) return true;
+  return DEAL_PROPOSAL.test(t) && DEAL_PROPOSAL_SENT.test(t);
+}
+
 /**
  * Ревью I-b: словаря мало («как там Ахмет по оборудованию?»). При включённых
- * сделках — если в сообщении имя клиента с открытой сделкой, тоже нужны
- * инструменты. Один маленький запрос (personName открытых, ≤50); сбой — только словарь.
+ * сделках — словарь сделок и имя клиента с открытой сделкой в сообщении тоже
+ * включают инструменты. Один запрос (открытые сделки, тот же, что для дохода);
+ * сбой — только словари. Флаг off — ровно прежний mayNeedLocalTools.
  */
 export async function needsLocalTools(userId: string, text: string): Promise<boolean> {
   if (mayNeedLocalTools(text)) return true;
   if (text.trim().length < 12 || !isV2DealsEnabled(userId)) return false;
+  if (mayNeedDealTools(text)) return true;
   try {
-    const open = await prisma.deal.findMany({
-      where: { userId, stage: { in: [...OPEN_STAGES] } },
-      select: { personName: true },
-      orderBy: { lastActivityAt: 'desc' },
-      take: 50,
-    });
+    const open = await openDealsForMatching(userId);
     return textMentionsClient(open.map((d) => d.personName), text);
   } catch (err) {
     console.warn('[jarvis] deal-client tools hint skipped:', err instanceof Error ? err.message : err);

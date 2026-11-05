@@ -1,7 +1,12 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { needsLocalTools } from '../jarvis-orchestrator.js';
+import { prisma as appPrisma } from '../../lib/prisma.js';
 import { createDeal, updateDeal } from './service.js';
+
+// Агент-цикл (модель) замокан: проверяем, что чат доходит до ответа и с какими инструментами.
+const runAgent = vi.fn(async (_opts: { localTools?: boolean }) => 'ответ робота');
+vi.mock('../claude-agent.js', () => ({ runAgent: (opts: { localTools?: boolean }) => runAgent(opts) }));
+const { needsLocalTools, mayNeedLocalTools, mayNeedDealTools, handleMessage } = await import('../jarvis-orchestrator.js');
 
 /**
  * Ревью I-b: живые фразы о сделке должны включать инструменты — по словарю
@@ -10,6 +15,7 @@ import { createDeal, updateDeal } from './service.js';
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
 beforeEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
+afterEach(() => { vi.restoreAllMocks(); });
 
 async function user(tag: string) {
   return (await prisma.user.create({ data: { email: `dtg-${tag}-${Date.now()}-${Math.random()}@a.test`, name: 'G', passwordHash: 'x', timezone: 'UTC' } })).id;
@@ -58,5 +64,60 @@ describe('инструменты на живые фразы о сделках', 
     const userId = await user('chat');
     await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
     expect(await needsLocalTools(userId, 'расскажи анекдот про кота')).toBe(false);
+  });
+});
+
+/** Словарь до сделок (16c0f5a): при выключенных сделках включение инструментов — как раньше. */
+const PRE_DEALS_TOOL_HINTS =
+  /(задач|календар|встреч|событи|бюджет|потрат|расход|доход|привычк|напомн|почт|письм|gmail|расписан|план(?!ета)|поездк|цел[ьия]|сколько|что у меня|что сегодня|что по|добав|созда|отмет|перенес|свобод|кто так|телефон|контакт|номер|что я говорил про|помнишь про|погод|надеть|надену|одет|оденусь|выезж|вылет|лечу|бронь|билет|когда у меня|навык)/i;
+const preDeals = (t: string): boolean => t.trim().length >= 12 && PRE_DEALS_TOOL_HINTS.test(t.trim());
+
+const CHITCHAT = [
+  'а насчёт фильма что думаешь?',
+  'за счёт чего растут мышцы?',
+  'какой счёт в матче Реала?',
+  'перевёл статью на английский',
+  'придумай предложение со словом кот',
+  'я согласился с ним, ты прав',
+  'тысяча чертей, ну и день',
+  'скинул вес на 3 кг за месяц',
+];
+
+describe('ревью-3 I5: словарь сделок только при включённых сделках', () => {
+  it('флаг off: needsLocalTools == прежний mayNeedLocalTools на всём корпусе (фразы сделок и болтовня)', async () => {
+    const userId = await user('off-corpus');
+    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
+    process.env.FEATURE_V2_DEALS = '';
+    for (const p of [...PHRASES, ...CHITCHAT, 'добавь задачу купить хлеб', 'расскажи анекдот про кота']) {
+      expect({ p, tools: await needsLocalTools(userId, p) }).toEqual({ p, tools: preDeals(p) });
+    }
+  });
+
+  it('флаг on: болтовня с «опасными» корнями — без инструментов (даже при открытой сделке)', async () => {
+    const userId = await user('on-chat');
+    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
+    for (const p of CHITCHAT) expect({ p, tools: await needsLocalTools(userId, p) }).toEqual({ p, tools: false });
+  });
+
+  it('инструменты включает ТОЛЬКО имя клиента (словари молчат)', async () => {
+    const userId = await user('name-only');
+    const p = 'как там Ахмет по оборудованию?';
+    expect(mayNeedLocalTools(p) || mayNeedDealTools(p)).toBe(false);
+    expect(await needsLocalTools(userId, p)).toBe(false);
+    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
+    expect(await needsLocalTools(userId, p)).toBe(true);
+  });
+
+  it('сбой БД при поиске клиента → false, чат продолжается', async () => {
+    const userId = await user('db-err');
+    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
+    const spy = vi.spyOn(appPrisma.deal, 'findMany').mockRejectedValue(new Error('db down'));
+    expect(await needsLocalTools(userId, 'как там Ахмет по оборудованию?')).toBe(false);
+    expect(spy).toHaveBeenCalled();
+    runAgent.mockClear();
+    const r = await handleMessage(userId, 'как там Ахмет по оборудованию?');
+    expect(r.reply).toBe('ответ робота');
+    expect(runAgent).toHaveBeenCalledTimes(1);
+    expect(runAgent.mock.calls[0][0].localTools).toBe(false);
   });
 });
