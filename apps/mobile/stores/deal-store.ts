@@ -81,6 +81,15 @@ function rememberAvailable(v: boolean): void {
 type MutationReply = { deal: Deal; incomeOffer: boolean };
 
 export const useDealStore = create<DealState>((set, get) => {
+  /**
+   * Счётчик правок (и сброса): загрузка запоминает его на старте и выбрасывает ответ,
+   * если за время запроса что-то поменяли — иначе старый снимок сервера затёр бы свежую правку.
+   */
+  let mutationSeq = 0;
+  const mutated = () => {
+    mutationSeq += 1;
+  };
+
   /** Ответ сервера по сделке → открытые/закрытые списки. */
   const applyDeal = (deal: Deal) =>
     set((s) => {
@@ -127,10 +136,15 @@ export const useDealStore = create<DealState>((set, get) => {
     fetch: async () => {
       if (!token()) return;
       set((s) => ({ isLoading: true, ...(s.available === null ? { available: rememberedAvailable() } : {}) }));
+      const seq = mutationSeq;
       const [dealsRes, planRes] = await Promise.allSettled([
         api.get<{ deals: Deal[] }>('/deals?status=open', token()),
         api.get<{ plan: PlanStatus | null }>('/sales-plan', token()),
       ]);
+      if (seq !== mutationSeq) {
+        set({ isLoading: false });
+        return;
+      }
       const planPart = planRes.status === 'fulfilled' ? { plan: planRes.value.plan ?? null, planKnown: true } : {};
       if (dealsRes.status === 'rejected') {
         const off = is404(dealsRes.reason);
@@ -150,10 +164,13 @@ export const useDealStore = create<DealState>((set, get) => {
     },
 
     fetchClosed: async () => {
+      const seq = mutationSeq;
       try {
         const { deals } = await api.get<{ deals: Deal[] }>('/deals?status=closed', token());
+        if (seq !== mutationSeq) return;
         set({ closed: deals ?? [], closedLoaded: true, closedError: false });
       } catch (err) {
+        if (seq !== mutationSeq) return;
         if (is404(err)) {
           rememberAvailable(false);
           set({ available: false });
@@ -179,32 +196,42 @@ export const useDealStore = create<DealState>((set, get) => {
         ...(title ? { title } : {}),
         ...(input.amount != null ? { amount: input.amount } : {}),
       };
+      mutated();
       const { deal } = await api.post<{ deal: Deal }>('/deals', body, token(), ONLINE);
+      mutated();
       bumpRevision();
       await get().fetch();
       return deal;
     },
 
     update: async (id, patch) => {
+      mutated();
       const r = await api.put<MutationReply>(`/deals/${id}`, patch, token(), ONLINE);
+      mutated();
       applyDeal(r.deal);
       if (patch.amount !== undefined) await refreshPlan();
       return { deal: r.deal, incomeOffer: r.incomeOffer };
     },
 
     moveStage: async (id, stage, lostReason) => {
-      const before = { deals: get().deals, closed: get().closed };
-      set((s) => ({
-        deals: s.deals.map((d) => (d.id === id ? { ...d, stage } : d)),
-        closed: s.closed.map((d) => (d.id === id ? { ...d, stage } : d)),
-      }));
+      mutated();
+      const prev = get().deals.find((d) => d.id === id) ?? get().closed.find((d) => d.id === id);
+      const optimistic = prev ? { ...prev, stage } : null;
+      const swap = (list: Deal[], from: Deal | null, to: Deal | null | undefined) =>
+        from && to ? list.map((d) => (d === from ? to : d)) : list;
+      if (prev && optimistic) {
+        set((s) => ({ deals: swap(s.deals, prev, optimistic), closed: swap(s.closed, prev, optimistic) }));
+      }
       let r: MutationReply;
       try {
         r = await api.put<MutationReply>(`/deals/${id}`, { stage, ...(lostReason ? { lostReason } : {}) }, token(), ONLINE);
       } catch (err) {
-        set(before);
+        mutated();
+        // Откат — только своей сделки и только если её никто не успел обновить; остальное не трогаем.
+        set((s) => ({ deals: swap(s.deals, optimistic, prev), closed: swap(s.closed, optimistic, prev) }));
         throw err;
       }
+      mutated();
       applyDeal(r.deal);
       await refreshPlan();
       return { deal: r.deal, incomeOffer: r.incomeOffer };
@@ -219,6 +246,7 @@ export const useDealStore = create<DealState>((set, get) => {
           ONLINE,
         );
         // wonIncomeId сервер не отдаёт — перечитаем закрытые, чтобы кнопка «Записать доход» ушла.
+        mutated();
         if (!r.already) bumpRevision();
         void get().fetchClosed();
         return { kind: 'recorded', already: r.already, amount: r.amount };
@@ -235,6 +263,7 @@ export const useDealStore = create<DealState>((set, get) => {
     },
 
     reset: () => {
+      mutated();
       storage.remove(AVAILABLE_KEY);
       set({ ...initial, available: null });
     },

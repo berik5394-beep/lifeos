@@ -286,4 +286,65 @@ describe('deal-store', () => {
       expect([st.loaded, st.loadError, st.closedLoaded, st.closedError, st.planKnown]).toEqual([false, false, false, false, false]);
     });
   });
+
+  describe('гонки: старый fetch не затирает свежую правку', () => {
+    const deferred = <T,>() => {
+      let resolve: (v: T) => void = () => undefined;
+      let reject: (e: unknown) => void = () => undefined;
+      const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+      return { promise, resolve, reject };
+    };
+
+    it('fetch ушёл до смены стадии, вернулся после — устаревший список не применяем', async () => {
+      useDealStore.setState({ deals: [deal] });
+      const slow = deferred<unknown>();
+      mocked.get.mockImplementation((url: string) => (url.startsWith('/deals') ? slow.promise : Promise.resolve({ plan })) as never);
+      const f = useDealStore.getState().fetch();
+      mocked.put.mockResolvedValueOnce({ deal: { ...deal, stage: 'talks' }, step: null, incomeOffer: false } as never);
+      await useDealStore.getState().moveStage('d1', 'talks');
+      slow.resolve({ deals: [deal] }); // снимок сервера ДО смены стадии
+      await f;
+      expect(useDealStore.getState().deals[0].stage).toBe('talks');
+      expect(useDealStore.getState().isLoading).toBe(false);
+    });
+
+    it('откат возвращает только свою сделку, чужую свежую правку не трогает', async () => {
+      const d2: Deal = { ...deal, id: 'd2', personName: 'Серик', amount: 1_000_000 };
+      useDealStore.setState({ deals: [deal, d2] });
+      const slowPut = deferred<unknown>();
+      mocked.put.mockImplementationOnce(() => slowPut.promise as never);
+      const move = useDealStore.getState().moveStage('d1', 'talks');
+      mocked.put.mockResolvedValueOnce({ deal: { ...d2, amount: 5_000_000 }, step: null, incomeOffer: false } as never);
+      mocked.get.mockResolvedValue({ plan } as never);
+      await useDealStore.getState().update('d2', { amount: 5_000_000 });
+      slowPut.reject(new ApiError(0, 'сеть'));
+      await expect(move).rejects.toThrow();
+      const st = useDealStore.getState();
+      expect(st.deals.find((d) => d.id === 'd1')?.stage).toBe('new');
+      expect(st.deals.find((d) => d.id === 'd2')?.amount).toBe(5_000_000);
+    });
+
+    it('выход во время загрузки: сделки прошлого аккаунта не возвращаются', async () => {
+      const slow = deferred<unknown>();
+      mocked.get.mockImplementation(() => slow.promise as never);
+      const f = useDealStore.getState().fetch();
+      useDealStore.getState().reset();
+      slow.resolve({ deals: [deal], plan });
+      await f;
+      expect(useDealStore.getState().deals).toEqual([]);
+      expect(useDealStore.getState().plan).toBeNull();
+    });
+
+    it('закрытые: старый ответ после выигрыша сделки не затирает её', async () => {
+      useDealStore.setState({ deals: [deal], closed: [] });
+      const slow = deferred<unknown>();
+      mocked.get.mockImplementation((url: string) => (url.includes('closed') ? slow.promise : Promise.resolve({ plan })) as never);
+      const f = useDealStore.getState().fetchClosed();
+      mocked.put.mockResolvedValueOnce({ deal: { ...deal, stage: 'won' }, step: null, incomeOffer: true } as never);
+      await useDealStore.getState().moveStage('d1', 'won');
+      slow.resolve({ deals: [] });
+      await f;
+      expect(useDealStore.getState().closed.map((d) => d.id)).toEqual(['d1']);
+    });
+  });
 });
