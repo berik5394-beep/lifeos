@@ -1,7 +1,8 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { buildPersonMeetingBriefs } from './meeting-impl.js';
 import { localDateOnlyUTC } from '../../lib/tz.js';
+import { prisma as appPrisma } from '../../lib/prisma.js';
 
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
@@ -46,5 +47,35 @@ describe('buildPersonMeetingBriefs — real prisma', () => {
     await prisma.entity.create({ data: { userId: a, type: 'person', name: 'Бекзат', attributes: { personType: 'investor' } } });
     await prisma.calendarEvent.create({ data: { userId: a, title: 'Звонок Бекзату', date: TODAY, startTime: '13:00', source: 'manual' } });
     expect(await buildPersonMeetingBriefs(b, NOW)).toEqual([]);
+  });
+});
+
+describe('бриф встречи + сделки (флаг deals on)', () => {
+  const prevFlag = process.env.FEATURE_V2_DEALS;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    process.env.FEATURE_V2_DEALS = prevFlag;
+  });
+  async function clientWithDeal(email: string) {
+    process.env.FEATURE_V2_DEALS = 'all';
+    const u = await mkUser(email);
+    const e = await prisma.entity.create({ data: { userId: u, type: 'person', name: 'Ахмет', attributes: { personType: 'client' }, lastSeenAt: new Date(NOW.getTime() - 3 * DAY) } });
+    await prisma.deal.create({ data: { userId: u, personEntityId: e.id, personName: 'Ахмет', title: 'оборудование', amount: 2_000_000, stage: 'talks', stageChangedAt: new Date(NOW.getTime() - 4 * DAY) } });
+    await prisma.calendarEvent.create({ data: { userId: u, title: 'Встреча с Ахметом', date: TODAY, startTime: '13:00', source: 'manual' } });
+    return u;
+  }
+  it('сделка клиента попадает в бриф живой фразой', async () => {
+    const u = await clientWithDeal('pm-deal-a@a.test');
+    const briefs = await buildPersonMeetingBriefs(u, NOW);
+    expect(briefs.length).toBe(1);
+    expect(briefs[0].deal).toBe('Сделка «оборудование» 2 млн ₸, переговоры идут 4 дн.');
+  });
+  it('сбой запроса сделок → бриф встречи всё равно есть (без строки сделки)', async () => {
+    const u = await clientWithDeal('pm-deal-b@a.test');
+    vi.spyOn(appPrisma.deal, 'findMany').mockRejectedValueOnce(new Error('deals down'));
+    const briefs = await buildPersonMeetingBriefs(u, NOW);
+    expect(briefs.length).toBe(1);
+    expect(briefs[0].name).toBe('Ахмет');
+    expect(briefs[0].deal).toBeUndefined();
   });
 });
