@@ -24,6 +24,7 @@ export const RoomBottomBar = memo(function RoomBottomBar({
   onMicIn,
   onMicOut,
   onTyping,
+  compact = false,
   highlight = null,
 }: {
   tools: PanelDef[];
@@ -40,6 +41,8 @@ export const RoomBottomBar = memo(function RoomBottomBar({
   onMicOut: () => void;
   /** Юзер пишет — робот «слушает». */
   onTyping?: (typing: boolean) => void;
+  /** Открыта клавиатура: только строка ввода — полки прячем, чтобы не съедать место. */
+  compact?: boolean;
   /** Знакомство: подсветить кнопку/строку, о которой говорит робот. */
   highlight?: 'input' | 'tools' | 'furnish' | null;
 }) {
@@ -60,6 +63,7 @@ export const RoomBottomBar = memo(function RoomBottomBar({
 
   return (
     <View style={styles.wrap}>
+      {!compact && (
       <View style={styles.toggles}>
         <Pressable
           style={[styles.toggle, shelf === 'tools' && styles.toggleOn, highlight === 'tools' && styles.glow]}
@@ -80,8 +84,9 @@ export const RoomBottomBar = memo(function RoomBottomBar({
           <Text style={styles.toggleText}>Обставить</Text>
         </Pressable>
       </View>
+      )}
 
-      {shelf === 'tools' && (
+      {!compact && shelf === 'tools' && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shelf}>
           {tools.map((p) => (
             <Pressable
@@ -100,7 +105,7 @@ export const RoomBottomBar = memo(function RoomBottomBar({
           ))}
         </ScrollView>
       )}
-      {shelf === 'furnish' && (
+      {!compact && shelf === 'furnish' && (
         <View style={styles.shelfFurnish}>{shop}</View>
       )}
 

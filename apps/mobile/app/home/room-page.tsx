@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, type LayoutChangeEvent, Pressable, StyleSheet, View } from 'react-native';
+import { Alert, Keyboard, type LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -70,6 +70,9 @@ const THANKS_MS = 8000;
 /** Робот, пока открыт магазин (комната короче). */
 const FURNISH_ROBOT_SCALE = 0.6;
 const ROBOT_SIZE = 150;
+/** Пишем роботу (клавиатура открыта): комната короткая — маленький робот в углу над вводом. */
+const CHAT_ROBOT_SCALE = 0.42;
+const VOICE_NOTE_MS = 4000;
 const ROBOT_SIDE_SCALE = 0.68;
 const ROBOT_CORNER_SCALE = 0.55;
 const WALK_MS = 560;
@@ -125,6 +128,19 @@ export const RoomPage = memo(function RoomPage() {
   const scheduleRevision = useScheduleStore((s) => s.revision);
   // Часть 6: ячейки видны, пока обставляешь или тащишь предмет.
   const [furnishing, setFurnishing] = useState(false);
+  // Клавиатура открыта → режим разговора: робот маленький над полем ввода,
+  // ответ — справа от него, а не огромный робот на пол-экрана.
+  const [kbOpen, setKbOpen] = useState(false);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const a = Keyboard.addListener(showEvt, () => setKbOpen(true));
+    const b = Keyboard.addListener(hideEvt, () => setKbOpen(false));
+    return () => {
+      a.remove();
+      b.remove();
+    };
+  }, []);
   const [dragSpot, setDragSpot] = useState<RoomSpot | null>(null);
   const [dragging, setDragging] = useState(false);
   const [buying, setBuying] = useState<string | null>(null);
@@ -138,7 +154,23 @@ export const RoomPage = memo(function RoomPage() {
   const tools = useMemo(() => visiblePanels(isFeatureVisible), [isFeatureVisible]);
   const visibleToolKeys = useMemo(() => tools.map((t) => t.key), [tools]);
   const toolSeq = useRoomToolStore((s) => s.seq);
-  const { isRecording, isProcessing, lastResult, startRecording, stopRecording } = useVoice({ transcribeOnly: true });
+  const {
+    isRecording,
+    isProcessing,
+    lastResult,
+    liveTranscript,
+    error: voiceError,
+    startRecording,
+    stopRecording,
+  } = useVoice({ transcribeOnly: true });
+  // Ошибка/подсказка голоса («удерживай кнопку…», «не расслышал») — облачком робота, ненадолго.
+  const [voiceNote, setVoiceNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!voiceError) return;
+    setVoiceNote(voiceError);
+    const t = setTimeout(() => setVoiceNote(null), VOICE_NOTE_MS);
+    return () => clearTimeout(t);
+  }, [voiceError]);
 
   const latest = messages[0];
   const reply =
@@ -484,11 +516,20 @@ export const RoomPage = memo(function RoomPage() {
 
   // Обставляем: комната короче (магазин снизу) — робот уменьшается, чтобы не
   // закрывать задние ячейки; ноги остаются на полу.
+  const chatMode = kbOpen && !zoomed && !scene && introStep == null;
   useEffect(() => {
     if (zoomed || scene) return;
-    if (furnishing) moveRobot(0, (ROBOT_SIZE * (1 - FURNISH_ROBOT_SCALE)) / 2, FURNISH_ROBOT_SCALE);
+    if (chatMode) {
+      // Левый нижний угол: ноги на полу, сразу над строкой ввода.
+      moveRobot(
+        -(size.w / 2 - (ROBOT_SIZE * CHAT_ROBOT_SCALE) / 2 - 6),
+        (ROBOT_SIZE * (1 - CHAT_ROBOT_SCALE)) / 2,
+        CHAT_ROBOT_SCALE,
+        220,
+      );
+    } else if (furnishing) moveRobot(0, (ROBOT_SIZE * (1 - FURNISH_ROBOT_SCALE)) / 2, FURNISH_ROBOT_SCALE);
     else robotToRest();
-  }, [furnishing, zoomed, scene, moveRobot, robotToRest]);
+  }, [chatMode, size.w, furnishing, zoomed, scene, moveRobot, robotToRest]);
 
   const onShelfChange = useCallback(
     (shelf: 'tools' | 'furnish' | null) => {
@@ -531,6 +572,11 @@ export const RoomPage = memo(function RoomPage() {
       ? reply
       : undefined;
   const showProposal = !!scene && scene.phase === 'open' && !scene.closing && (chatLoading || !!sceneReply);
+  const voiceBubble = isRecording
+    ? liveTranscript || 'Слушаю… говори, пока держишь кнопку'
+    : isProcessing
+      ? 'Распознаю…'
+      : voiceNote;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -628,7 +674,7 @@ export const RoomPage = memo(function RoomPage() {
               {explain ? <RobotSpeechBubble text={explain} tail="left" /> : <ChatReplyBubble text="" thinking tail="left" />}
             </View>
           )}
-          {showReply && (
+          {showReply && !chatMode && !voiceBubble && (
             <View style={[styles.bubbleReply, { bottom: size.h * 0.04 + ROBOT_SIZE + 6 }]}>
               <ChatReplyBubble
                 text={reply?.content ?? ''}
@@ -638,6 +684,27 @@ export const RoomPage = memo(function RoomPage() {
                 onConfirm={onConfirm}
                 onDismiss={reply ? () => setDismissedReply(reply.id) : undefined}
               />
+            </View>
+          )}
+          {/* Пишем роботу: ответ справа от маленького робота, длинный — прокручивается. */}
+          {chatMode && (showReply || voiceBubble) && (
+            <View style={[styles.bubbleChat, { maxHeight: Math.max(80, size.h - 56) }]}>
+              <ScrollView bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <ChatReplyBubble
+                  text={voiceBubble ?? reply?.content ?? ''}
+                  thinking={!voiceBubble && chatLoading}
+                  tail="left"
+                  confirm={!voiceBubble && !chatLoading && !!reply?.pendingAction}
+                  onConfirm={onConfirm}
+                  onDismiss={!voiceBubble && reply ? () => setDismissedReply(reply.id) : undefined}
+                />
+              </ScrollView>
+            </View>
+          )}
+          {/* Голос: пока держишь — что расслышал; ошибка — подсказка. */}
+          {!chatMode && voiceBubble && !scene && !zoomed && (
+            <View style={[styles.bubbleReply, { bottom: size.h * 0.04 + ROBOT_SIZE + 6 }]} pointerEvents="none">
+              <ChatReplyBubble text={voiceBubble} tail="bottom" />
             </View>
           )}
 
@@ -729,6 +796,7 @@ export const RoomPage = memo(function RoomPage() {
         onMicIn={() => void startRecording()}
         onMicOut={() => void stopRecording()}
         onTyping={setTyping}
+        compact={kbOpen}
         highlight={introTarget === 'input' || introTarget === 'tools' || introTarget === 'furnish' ? introTarget : null}
       />
     </SafeAreaView>
@@ -751,6 +819,8 @@ function createStyles(c: ReturnType<typeof useColors>) {
     bubbleExplain: { position: 'absolute', left: 64, right: -6, bottom: 2, maxHeight: ROBOT_STRIP_H },
     // Ответ робота в разговоре — над ним, хвостик вниз.
     bubbleReply: { position: 'absolute', left: 0, right: 0 },
+    // Режим разговора: справа от маленького робота, низ — на уровне пола.
+    bubbleChat: { position: 'absolute', left: ROBOT_SIZE * CHAT_ROBOT_SCALE + 6, right: 2, bottom: 6 },
     // Предложение перегруза поверх низа карточки, хвостик к маленькому роботу.
     bubbleProposal: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: ROBOT_STRIP_H - 8 },
     mirror: { transform: [{ scaleX: -1 }] },

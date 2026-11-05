@@ -12,6 +12,7 @@ import {
   Alert,
   Keyboard,
   type ListRenderItemInfo,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -250,9 +251,11 @@ export default function ChatScreen() {
 
   // Рабочий экран (Часть 3): робот крупно; при открытой клавиатуре — компактно.
   const [keyboardUp, setKeyboardUp] = useState(false);
+  const [kavOffset, setKavOffset] = useState(0);
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardWillShow', () => setKeyboardUp(true));
-    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardUp(false));
+    // Android шлёт только did-события (will* там не приходят).
+    const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardUp(true));
+    const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
     return () => {
       show.remove();
       hide.remove();
@@ -286,9 +289,18 @@ export default function ChatScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+    <View
+      style={styles.container}
+      // Низ экрана = низ окна; верх — ниже на отступ шторки (modal). measureInWindow
+      // внутри шторки отдаёт y=0, поэтому отступ = высота окна − высота экрана.
+      onLayout={(e) => setKavOffset(Math.max(0, Dimensions.get('window').height - e.nativeEvent.layout.height))}
+    >
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
+      // Экран открыт шторкой (modal) — он начинается не с верха окна. Без этого
+      // сдвига клавиатура перекрывала строку ввода на высоту отступа шторки.
+      keyboardVerticalOffset={kavOffset}
     >
       <View style={styles.chatHeader}>
         <Text style={styles.chatTitle}>LifeOS</Text>
@@ -307,10 +319,14 @@ export default function ChatScreen() {
         </View>
       </View>
 
-      <View style={styles.robotStage}>
-        <RobotAvatar emotion={robotEmotion} size={keyboardUp ? 84 : 180} attention={robotAttention} />
-      </View>
+      {/* Пишем — сообщениям всё место: большой робот уходит, маленький садится над вводом. */}
+      {!keyboardUp && (
+        <View style={styles.robotStage}>
+          <RobotAvatar emotion={robotEmotion} size={180} attention={robotAttention} />
+        </View>
+      )}
 
+      {!keyboardUp && (
       <View style={styles.toolsBar}>
         <TouchableOpacity
           style={[styles.toolsToggle, toolsOpen && styles.toolsToggleOpen]}
@@ -332,6 +348,7 @@ export default function ChatScreen() {
           </View>
         )}
       </View>
+      )}
 
       <FlatList
         ref={flatListRef}
@@ -367,7 +384,14 @@ export default function ChatScreen() {
         </View>
       )}
 
-      <View style={styles.inputArea}>
+      {keyboardUp && (
+        <View style={styles.miniRobot} pointerEvents="none">
+          <RobotAvatar emotion={robotEmotion} size={56} attention={robotAttention} />
+        </View>
+      )}
+
+      {/* Клавиатура закрывает полоску «домой» — нижний запас под неё не нужен. */}
+      <View style={[styles.inputArea, keyboardUp && styles.inputAreaKb]}>
         <View style={styles.inputRow}>
           <TouchableOpacity
             style={[styles.micButton, isRecording && styles.micButtonActive]}
@@ -406,6 +430,7 @@ export default function ChatScreen() {
         </View>
       </View>
     </KeyboardAvoidingView>
+    </View>
     </SafeAreaView>
   );
 }
@@ -501,6 +526,7 @@ function createStyles(c: C) {
       fontSize: fontSize.sm,
       fontStyle: 'italic',
     },
+    inputAreaKb: { paddingBottom: spacing.sm },
     inputArea: {
       backgroundColor: c.surface,
       borderTopWidth: 1,
@@ -609,6 +635,11 @@ function createStyles(c: C) {
     robotStage: {
       alignItems: 'center' as const,
       paddingBottom: spacing.xs,
+    },
+    miniRobot: {
+      alignItems: 'flex-start' as const,
+      paddingHorizontal: spacing.md,
+      paddingTop: 2,
     },
     toolsBar: {
       paddingHorizontal: spacing.md,

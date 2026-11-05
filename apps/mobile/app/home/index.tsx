@@ -1,5 +1,5 @@
 import React from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView, StyleSheet } from 'react-native';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useColors } from '@/hooks/use-colors';
 import { RoomPage } from './room-page';
@@ -15,7 +15,8 @@ export default function HomeScreen() {
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: c.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Android с edge-to-edge не сжимает окно сам — без padding клавиатура закрывает ввод.
+      behavior="padding"
     >
       <RoomPage />
     </KeyboardAvoidingView>
