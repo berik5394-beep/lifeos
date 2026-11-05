@@ -45,6 +45,26 @@ describe('account deletion coverage — каждая user-owned модель у�
     expect(ownedUncovered).toEqual([]);
   });
 
+  // Приватность («забудь меня», закон РК о ПД / Apple 5.1.1(v)): модели с
+  // колонкой userId БЕЗ FK на User не блокируют user.delete (поэтому FK-гард
+  // выше их не видит), но без явного удаления их строки ОСТАЮТСЯ сиротами с
+  // персональными данными (ToolCall.inputJson = суммы/тексты задач).
+  it('нет моделей с userId-колонкой без FK, которые роут не стирает', () => {
+    const orphanable: string[] = [];
+    for (const block of blocks) {
+      const name = block.split(/\s/)[0];
+      if (name === 'User') continue;
+      const hasUserIdCol = /^\s+userId\s+String/m.test(block);
+      const hasUserFk = /@relation\([^)]*fields:\s*\[userId\]/.test(block);
+      if (!hasUserIdCol || hasUserFk) continue;
+      const accessor = camel(name);
+      if (!new RegExp(`tx\\.${accessor}\\.(deleteMany|delete)\\b`).test(route)) {
+        orphanable.push(name);
+      }
+    }
+    expect(orphanable).toEqual([]);
+  });
+
   it('роут удаляет User последним и в транзакции', () => {
     expect(route).toContain('tx.user.delete({ where: { id: userId } })');
     expect(route).toContain('$transaction');

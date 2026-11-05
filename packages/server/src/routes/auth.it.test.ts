@@ -119,4 +119,37 @@ describe('auth поведенчески', () => {
     expect(await prisma.correctionLog.count({ where: { userId: user.id } })).toBe(0);
     expect(await prisma.skillDefinition.count({ where: { userId: user.id } })).toBe(0);
   });
+  it('delete-account стирает и таблицы без FK (ToolCall/PendingAction/AiUsageDaily/CronJobRun) — нет сирот с ПД', async () => {
+    const user = await prisma.user.create({
+      data: { email: 'del-orph@a.test', name: 'Del', passwordHash: await bcrypt.hash('Str0ng!Passw0rd', 12) },
+    });
+    const other = await prisma.user.create({
+      data: { email: 'keep-orph@a.test', name: 'Keep', passwordHash: 'x' },
+    });
+    const accessToken = app.jwt.sign({ sub: user.id });
+    for (const uid of [user.id, other.id]) {
+      await prisma.toolCall.create({
+        data: { userId: uid, toolName: 'add_expense', inputJson: { amount: 5000, description: 'аптека' }, durationMs: 1 },
+      });
+      await prisma.pendingAction.create({
+        data: { userId: uid, action: 'add_expense', inputJson: { amount: 1 }, confirmationText: 'да?' },
+      });
+      await prisma.aiUsageDaily.create({ data: { userId: uid, day: new Date('2026-11-05T00:00:00Z'), count: 3 } });
+      await prisma.cronJobRun.create({ data: { jobName: 'morning', userId: uid } });
+    }
+
+    const del = await app.inject({
+      method: 'POST',
+      url: '/auth/delete-account',
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { password: 'Str0ng!Passw0rd' },
+    });
+    expect(del.statusCode).toBe(200);
+    for (const [uid, n] of [[user.id, 0], [other.id, 1]] as const) {
+      expect(await prisma.toolCall.count({ where: { userId: uid } })).toBe(n);
+      expect(await prisma.pendingAction.count({ where: { userId: uid } })).toBe(n);
+      expect(await prisma.aiUsageDaily.count({ where: { userId: uid } })).toBe(n);
+      expect(await prisma.cronJobRun.count({ where: { userId: uid } })).toBe(n);
+    }
+  });
 });

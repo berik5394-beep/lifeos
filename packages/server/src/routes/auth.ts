@@ -426,6 +426,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       await tx.correctionLog.deleteMany({ where: { userId } });
       await tx.skillDefinition.deleteMany({ where: { userId } });
       await tx.refreshToken.deleteMany({ where: { userId } });
+      // Приватность: модели с userId-колонкой БЕЗ FK на User. user.delete их
+      // не блокирует, но без явного удаления строки остаются сиротами с ПД
+      // (ToolCall.inputJson = суммы/описания/тексты). Гард: auth-delete-coverage.
+      await tx.toolCall.deleteMany({ where: { userId } });
+      await tx.pendingAction.deleteMany({ where: { userId } });
+      await tx.aiUsageDaily.deleteMany({ where: { userId } });
+      await tx.cronJobRun.deleteMany({ where: { userId } });
 
       await tx.user.delete({ where: { id: userId } });
     });
