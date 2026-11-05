@@ -1094,10 +1094,16 @@ model RoomItem {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   itemKey   String
-  x         Float
-  y         Float
+  /// Часть 6: вариант каталога «<класс>:<вид>» (room-catalog.ts); null — старый предмет Части 4.
+  variantKey String?
+  /// Часть 6: ячейка комнаты; null — в кладовке. Одна ячейка — один предмет.
+  slot      String?
+  /// Часть 4 (свободная расстановка) — с Части 6 не используется.
+  x         Float    @default(0.5)
+  y         Float    @default(0.5)
   createdAt DateTime @default(now())
 
+  @@unique([userId, slot])
   @@index([userId])
 }
 

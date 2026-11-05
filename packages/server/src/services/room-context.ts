@@ -1,3 +1,5 @@
+import { variantByKey, TIER_LABEL } from './room-catalog.js';
+
 /**
  * Робот-эпик, Часть 4: комната робота. Каталог бесплатной мебели — общий
  * с мобилкой (apps/mobile/services/room-catalog.ts, те же ключи).
@@ -16,6 +18,9 @@ export const ROOM_ITEM_LABELS = {
   desk: 'стол',
   nightstand: 'тумбочка',
   dresser: 'комод',
+  // Часть 6: отделка.
+  walls: 'стены',
+  floor: 'пол',
 } as const;
 
 export type RoomItemKey = keyof typeof ROOM_ITEM_LABELS;
@@ -38,4 +43,34 @@ export function roomContextLine(itemKeys: string[]): string | null {
   if (counts.size === 0) return null;
   const parts = [...counts].map(([k, n]) => (n > 1 ? `${ROOM_ITEM_LABELS[k]} ×${n}` : ROOM_ITEM_LABELS[k]));
   return `Комната робота: ${parts.join(', ')}`;
+}
+
+const lower = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+
+/**
+ * Часть 6: строка для мозга по реальным предметам — только то, что СТОИТ в
+ * комнате (кладовка не в счёт), с классом ремонта: «Комната робота: шкаф-купе
+ * (средний), диван-книжка (бюджет); стены — виниловые обои (средний)».
+ * Предметы Части 4 без варианта (ещё не переведены) — по старым названиям.
+ */
+export function roomContextFromItems(
+  rows: Array<{ itemKey: string; variantKey: string | null; slot: string | null }>,
+): string | null {
+  const furniture: string[] = [];
+  const finish: string[] = [];
+  const legacy: string[] = [];
+  for (const r of rows) {
+    const v = variantByKey(r.variantKey);
+    if (!v) {
+      if (r.variantKey === null) legacy.push(r.itemKey);
+      continue;
+    }
+    if (!r.slot) continue; // в кладовке
+    const tier = v.tier === 'free' ? '' : ` (${lower(TIER_LABEL[v.tier])})`;
+    if (v.spot === 'finish') finish.push(`${ROOM_ITEM_LABELS[v.kind as RoomItemKey] ?? v.kind} — ${lower(v.label)}${tier}`);
+    else furniture.push(`${lower(v.label)}${tier}`);
+  }
+  const old = roomContextLine(legacy)?.replace('Комната робота: ', '');
+  const parts = [[...furniture, ...(old ? [old] : [])].join(', '), finish.join(', ')].filter(Boolean);
+  return parts.length ? `Комната робота: ${parts.join('; ')}` : null;
 }

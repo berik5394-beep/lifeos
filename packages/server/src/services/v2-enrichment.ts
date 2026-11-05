@@ -10,7 +10,7 @@
  * prompt diff stays predictable turn-to-turn.
  */
 
-import { roomContextLine } from './room-context.js';
+import { roomContextFromItems } from './room-context.js';
 import { prisma } from '../lib/prisma.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { getProceduralMemory } from './procedural-memory.singleton.js';
@@ -348,8 +348,12 @@ export async function fetchV2EnrichmentData(
     // отвечал по факту, а не выдумывал. Сбой → null → строки нет.
     const roomPromise = withTimeout(
       prisma.roomItem
-        .findMany({ where: { userId }, orderBy: { createdAt: 'asc' }, select: { itemKey: true } })
-        .then((rows) => roomContextLine(rows.map((r) => r.itemKey)))
+        .findMany({
+          where: { userId },
+          orderBy: { createdAt: 'asc' },
+          select: { itemKey: true, variantKey: true, slot: true },
+        })
+        .then(roomContextFromItems)
         .catch(() => null),
       BASE_MEMBER_BUDGET_MS,
       null,
