@@ -17,4 +17,11 @@ describe('подтверждение дохода по сделке', () => {
     expect(m2).toBe('Доход по этой сделке уже записан.');
     expect(await prisma.income.count({ where: { userId: u.id } })).toBe(1);
   });
+
+  it('нит: сделка не выиграна → понятный отказ', async () => {
+    const u = await prisma.user.create({ data: { email: `dinc-nw-${Date.now()}@a.test`, name: 'D', passwordHash: 'x', timezone: 'UTC' } });
+    const { deal } = await createDeal(u.id, { personName: 'Ахмет', title: 'оборудование', amount: 1000 });
+    expect(await runConfirmedAction(u.id, DEAL_INCOME_ACTION, { dealId: deal.id })).toBe('Сделка ещё не выиграна — доход не записал.');
+    expect(await prisma.income.count({ where: { userId: u.id } })).toBe(0);
+  });
 });

@@ -27,9 +27,20 @@ export function whenPhrase(date: string, today: string): string {
   return `${prep} ${day} (${dd})`;
 }
 
-/** Родительный «отметил Ахмета», «закроешь Серика»: согласная → +а. */
+/** Родительный «от Ахмета / от Даны / у Али»: согласная → +а, -й → -я, -а → -ы (после г/к/х/ж/ш/щ/ч → -и), -я → -и. */
 export function genitive(name: string): string {
+  if (/[гкхжшщч]а$/i.test(name)) return name.slice(0, -1) + 'и';
+  if (/а$/i.test(name)) return name.slice(0, -1) + 'ы';
+  if (/я$/i.test(name)) return name.slice(0, -1) + 'и';
+  if (/й$/i.test(name)) return name.slice(0, -1) + 'я';
   return /[бвгджзклмнпрстфхцчшщ]$/i.test(name) ? `${name}а` : name;
+}
+
+/** Винительный «отметил Ахмета», «закроешь Дану / Алю»: -а → -у, -я → -ю, мужские — как родительный. */
+export function accusative(name: string): string {
+  if (/а$/i.test(name)) return name.slice(0, -1) + 'у';
+  if (/я$/i.test(name)) return name.slice(0, -1) + 'ю';
+  return genitive(name);
 }
 
 interface DealLike {
@@ -51,7 +62,7 @@ export function describeCreated(
   incomeOffer = false,
 ): string {
   const parts = [`Записал сделку: ${head(d)}${d.amount != null ? `, ${fmtMoney(d.amount)}` : ''}, стадия «${STAGE_LABEL[d.stage as DealStage] ?? d.stage}».`];
-  if (taggedClient) parts.push(`${genitive(d.personName)} отметил клиентом.`);
+  if (taggedClient) parts.push(`${accusative(d.personName)} отметил клиентом.`);
   if (step) parts.push(`Напомню ${step.text} ${whenPhrase(step.date, today)}.`);
   if (incomeOffer && d.amount != null) parts.push(`Записать доход ${fmtMoneyExact(d.amount)} от ${genitive(d.personName)}?`);
   return parts.join(' ');
@@ -123,7 +134,7 @@ export function describePlan(p: {
 }): string {
   const parts = [`План месяца ${fmtMoney(p.plan)}: закрыто ${fmtMoney(p.won)}, в работе ещё ${fmtMoney(p.open)}.`];
   if (p.won >= p.plan) parts.push('План выполнен!');
-  else if (p.covering.length) parts.push(`Успеешь, если закроешь ${p.covering.map(genitive).join(' и ')}.`);
+  else if (p.covering.length) parts.push(`Успеешь, если закроешь ${p.covering.map(accusative).join(' и ')}.`);
   else parts.push('В работе не хватает на план — нужны новые сделки.');
   if (p.noAmount > 0) parts.push(`У ${p.noAmount} ${p.noAmount === 1 ? 'сделки' : 'сделок'} нет суммы.`);
   return parts.join(' ');

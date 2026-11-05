@@ -465,7 +465,10 @@ export async function runConfirmedAction(
       } else if (r.ok) {
         message = 'Доход по этой сделке уже записан.';
       } else {
-        message = r.reason === 'no_amount' ? 'У сделки нет суммы — скажи сумму, запишу доход.' : 'Сделку не нашёл — доход не записал.';
+        message =
+          r.reason === 'no_amount' ? 'У сделки нет суммы — скажи сумму, запишу доход.'
+            : r.reason === 'not_won' ? 'Сделка ещё не выиграна — доход не записал.'
+              : 'Сделку не нашёл — доход не записал.';
       }
       await saveTurn(userId, '(подтверждено)', message);
       return message;

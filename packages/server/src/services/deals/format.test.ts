@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   fmtMoney, fmtMoneyExact, whenPhrase, describeCreated, describeUpdated, describeList,
-  formatDealsSection, dealBriefLine, describePlan, instrumental,
+  formatDealsSection, dealBriefLine, describePlan, instrumental, genitive, accusative, describeWhichDeal,
 } from './format.js';
 
 const base = { personName: 'Ахмет', title: 'оборудование', amount: 2_000_000 as number | null };
@@ -81,6 +81,32 @@ describe('ревью I5: модель видит, у кого открыта с�
     const many = ['А1', 'А2', 'А3', 'А4', 'А5', 'А6', 'А7', 'А8', 'А9', 'А1'];
     const t = formatDealsSection({ openCount: 10, openSum: 0, clients: many, dueToday: [], overdue: [], plan: null });
     expect(t).toBe('Сделки: открыто 10; клиенты в работе: А1, А2, А3, А4, А5, А6, А7, А8.');
+  });
+});
+
+describe('нит: падежи и число', () => {
+  it('родительный: -а/-я → -ы/-и', () => {
+    expect(genitive('Ахмет')).toBe('Ахмета');
+    expect(genitive('Дана')).toBe('Даны');
+    expect(genitive('Аля')).toBe('Али');
+    expect(genitive('Ольга')).toBe('Ольги');
+    expect(genitive('Алексей')).toBe('Алексея');
+  });
+  it('винительный: «закроешь Дану», «отметил Ахмета»', () => {
+    expect(accusative('Ахмет')).toBe('Ахмета');
+    expect(accusative('Дана')).toBe('Дану');
+    expect(accusative('Аля')).toBe('Алю');
+  });
+  it('тексты используют верный падеж', () => {
+    expect(describeCreated({ personName: 'Дана', title: 'склад', amount: null, stage: 'new' }, true, null, '2026-11-05'))
+      .toBe('Записал сделку: Дана — склад, стадия «Новая». Дану отметил клиентом.');
+    expect(describePlan({ plan: 10_000_000, won: 0, open: 9_000_000, behind: true, covering: ['Дана', 'Ахмет'], noAmount: 0 }))
+      .toContain('Успеешь, если закроешь Дану и Ахмета.');
+  });
+  it('«У Ахмета 5 открытых сделок»', () => {
+    const d = (title: string) => ({ title, amount: null });
+    expect(describeWhichDeal('Ахмет', ['а', 'б', 'в', 'г', 'д'].map(d))).toMatch(/^У Ахмета 5 открытых сделок: /);
+    expect(describeWhichDeal('Дана', ['а', 'б'].map(d))).toBe('У Даны 2 открытые сделки: «а», «б». Про какую?');
   });
 });
 

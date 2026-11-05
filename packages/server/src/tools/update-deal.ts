@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { defineTool } from './_types.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import {
-  findOpenDeals, findRecentClosedDeals, isOpenStage, updateDeal, describeUpdated, parseStage, genitive, DEAL_INCOME_ACTION, fmtMoney,
+  findOpenDeals, findRecentClosedDeals, isOpenStage, updateDeal, describeUpdated, describeWhichDeal, parseStage, DEAL_INCOME_ACTION,
 } from '../services/deals/index.js';
 import { setPendingAction } from '../services/pending-actions.js';
 import { getUserTimezone } from '../lib/user-context.js';
@@ -49,10 +49,7 @@ export const updateDealTool = defineTool({
         hint: 'у этого человека нет открытой сделки — если это просто напоминание, используй create_task; если новая продажа — create_deal',
       };
     }
-    if (found.length > 1) {
-      const list = found.map((d) => `«${d.title}»${d.amount != null ? ` (${fmtMoney(d.amount)})` : ''}`).join(', ');
-      return { message: `У ${genitive(name)} ${found.length} открытые сделки: ${list}. Про какую?` };
-    }
+    if (found.length > 1) return { message: describeWhichDeal(found[0].personName, found) };
     const now = new Date();
     const r = await updateDeal(ctx.userId, found[0].id, {
       ...(stage ? { stage } : {}),
