@@ -48,10 +48,12 @@ export function describeCreated(
   taggedClient: boolean,
   step: { date: string; text: string } | null,
   today: string,
+  incomeOffer = false,
 ): string {
   const parts = [`Записал сделку: ${head(d)}${d.amount != null ? `, ${fmtMoney(d.amount)}` : ''}, стадия «${STAGE_LABEL[d.stage as DealStage] ?? d.stage}».`];
   if (taggedClient) parts.push(`${genitive(d.personName)} отметил клиентом.`);
   if (step) parts.push(`Напомню ${step.text} ${whenPhrase(step.date, today)}.`);
+  if (incomeOffer && d.amount != null) parts.push(`Записать доход ${fmtMoney(d.amount)} от ${genitive(d.personName)}?`);
   return parts.join(' ');
 }
 

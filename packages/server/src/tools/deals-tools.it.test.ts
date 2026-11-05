@@ -23,6 +23,27 @@ describe('инструменты сделок', () => {
     expect(await prisma.deal.count({ where: { userId } })).toBe(1);
   });
 
+  it('нит: create_deal с непонятной стадией → переспрос, ничего не создаём', async () => {
+    const userId = await user('cstage');
+    const out = (await runRegistryTool('create_deal', { personName: 'Ахмет', stage: 'хз какая' }, { userId })) as Out;
+    expect(out.message).toMatch(/^Не понял стадию «хз какая»/);
+    expect(await prisma.deal.count({ where: { userId } })).toBe(0);
+  });
+
+  it('нит: create_deal закрытой стадией — шаг игнорируем', async () => {
+    const userId = await user('cclosed');
+    const out = (await runRegistryTool('create_deal', { personName: 'Серик', stage: 'проиграна', nextStepDate: '2026-11-10' }, { userId })) as Out;
+    expect(out.message).not.toMatch(/Напомню/);
+    expect((await prisma.deal.findFirstOrThrow({ where: { userId } })).nextStepAt).toBeNull();
+  });
+
+  it('нит: create_deal сразу «выиграна» с суммой → предложение дохода', async () => {
+    const userId = await user('cwon');
+    const out = (await runRegistryTool('create_deal', { personName: 'Ахмет', title: 'сервис', amount: 300_000, stage: 'оплатил' }, { userId })) as Out;
+    expect(out.message).toMatch(/Записать доход .* от Ахмета\?$/);
+    expect((await peekPendingAction(userId))?.action).toBe('record_deal_income');
+  });
+
   it('update_deal: две открытые у клиента → переспрос, ничего не меняем', async () => {
     const userId = await user('ask');
     await runRegistryTool('create_deal', { personName: 'Ахмет', title: 'оборудование' }, { userId });

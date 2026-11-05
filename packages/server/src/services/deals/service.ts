@@ -53,14 +53,17 @@ export async function createDeal(
   userId: string,
   input: CreateDealInput,
   now: Date = new Date(),
-): Promise<{ deal: Deal; taggedClient: boolean; step: Step }> {
+): Promise<{ deal: Deal; taggedClient: boolean; step: Step; incomeOffer: boolean }> {
   const { today: t } = await today(userId, now);
   const personName = input.personName.trim();
   const { entityId, tagged } = await ensureClient(userId, personName);
   const stage: DealStage = input.stage ?? 'new';
-  const step: Step = input.nextStepDate
-    ? { date: input.nextStepDate, text: input.nextStepText?.trim() || 'следующий шаг' }
-    : defaultNextStep(stage, t);
+  // Закрытая стадия — следующего шага нет, даже если его назвали.
+  const step: Step = !isOpenStage(stage)
+    ? null
+    : input.nextStepDate
+      ? { date: input.nextStepDate, text: input.nextStepText?.trim() || 'следующий шаг' }
+      : defaultNextStep(stage, t);
   const deal = await prisma.deal.create({
     data: {
       userId,
@@ -79,7 +82,7 @@ export async function createDeal(
       },
     },
   });
-  return { deal, taggedClient: tagged, step };
+  return { deal, taggedClient: tagged, step, incomeOffer: stage === 'won' && deal.amount != null };
 }
 
 const norm = (t: string): string => t.trim().toLowerCase().replace(/ё/g, 'е');

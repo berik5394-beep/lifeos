@@ -58,7 +58,7 @@ export async function dealRoutes(app: FastifyInstance): Promise<void> {
   app.post('/deals', { preHandler: validate(createSchema) }, async (request, reply) => {
     const body = request.body as z.infer<typeof createSchema>;
     const r = await createDeal(request.userId, { ...body, stage: body.stage as DealStage | undefined });
-    return reply.status(201).send({ deal: r.deal, step: r.step, taggedClient: r.taggedClient });
+    return reply.status(201).send({ deal: r.deal, step: r.step, taggedClient: r.taggedClient, incomeOffer: r.incomeOffer });
   });
 
   app.put('/deals/:id', { preHandler: validate(updateSchema) }, async (request, reply) => {

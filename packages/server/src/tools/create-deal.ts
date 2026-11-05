@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { defineTool } from './_types.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
-import { createDeal, describeCreated, parseStage } from '../services/deals/index.js';
+import { createDeal, describeCreated, parseStage, DEAL_INCOME_ACTION } from '../services/deals/index.js';
+import { setPendingAction } from '../services/pending-actions.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { localDateStr } from '../lib/tz.js';
 
@@ -27,7 +28,8 @@ export const createDealTool = defineTool({
   examples: ['Ахмет хочет оборудование на 2 млн', 'новая сделка с Даной — склад', 'Серик готов брать сервис, уже на переговорах'],
   handler: async (input, ctx) => {
     if (!isV2DealsEnabled(ctx.userId)) return { error: 'deals_disabled', hint: 'сделки выключены — клиента запомни через remember_entity/set_person_type, напоминание связаться — create_task' };
-    const stage = input.stage ? parseStage(input.stage) ?? 'new' : 'new';
+    const stage = input.stage ? parseStage(input.stage) : 'new';
+    if (!stage) return { message: `Не понял стадию «${input.stage}». Варианты: новая, переговоры, КП, договор, выиграна, проиграна.` };
     const now = new Date();
     const r = await createDeal(ctx.userId, {
       personName: input.personName,
@@ -39,6 +41,9 @@ export const createDealTool = defineTool({
       note: input.note ?? null,
     }, now);
     const today = localDateStr(await getUserTimezone(ctx.userId), now);
-    return { message: describeCreated(r.deal, r.taggedClient, r.step, today), dealId: r.deal.id };
+    const message = describeCreated(r.deal, r.taggedClient, r.step, today, r.incomeOffer);
+    // Сразу «выиграна» с суммой — как в update_deal: доход через подтверждение, один раз.
+    if (r.incomeOffer) await setPendingAction(ctx.userId, DEAL_INCOME_ACTION, { dealId: r.deal.id }, message);
+    return { message, dealId: r.deal.id };
   },
 });
