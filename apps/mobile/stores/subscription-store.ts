@@ -13,7 +13,6 @@ const PRO_FEATURES = [
   'advanced_analytics',
   'export_reports',
   'shared_spaces_10',
-  'all_costumes',
 ] as const;
 
 type ProFeature = (typeof PRO_FEATURES)[number];

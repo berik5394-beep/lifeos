@@ -6,7 +6,6 @@ import {
   FlatList,
   Dimensions,
   TouchableOpacity,
-  TextInput,
   Alert,
   type ViewToken,
   type ListRenderItemInfo,
@@ -25,15 +24,7 @@ const { width } = Dimensions.get('window');
 
 interface Slide {
   id: string;
-  type: 'welcome' | 'complexity' | 'pet' | 'assistant' | 'ready';
-}
-
-type PetKey = 'cat' | 'dog' | 'fox' | 'owl' | 'dragon';
-
-interface PetOption {
-  key: PetKey;
-  icon: string;
-  label: string;
+  type: 'welcome' | 'complexity' | 'assistant' | 'ready';
 }
 
 type AssistantStyle = 'friendly' | 'strict' | 'calm' | 'toxic';
@@ -57,17 +48,8 @@ interface ComplexityOption {
 const SLIDES: Slide[] = [
   { id: '1', type: 'welcome' },
   { id: '2', type: 'complexity' },
-  { id: '3', type: 'pet' },
-  { id: '4', type: 'assistant' },
-  { id: '5', type: 'ready' },
-];
-
-const PET_OPTIONS: PetOption[] = [
-  { key: 'cat', icon: '\uD83D\uDC31', label: '\u041A\u043E\u0442\u0438\u043A' },
-  { key: 'dog', icon: '\uD83D\uDC36', label: '\u0421\u043E\u0431\u0430\u0447\u043A\u0430' },
-  { key: 'fox', icon: '\uD83E\uDD8A', label: '\u041B\u0438\u0441\u0451\u043D\u043E\u043A' },
-  { key: 'owl', icon: '\uD83E\uDD89', label: '\u0421\u043E\u0432\u0451\u043D\u043E\u043A' },
-  { key: 'dragon', icon: '\uD83D\uDC09', label: '\u0414\u0440\u0430\u043A\u043E\u043D\u0447\u0438\u043A' },
+  { id: '3', type: 'assistant' },
+  { id: '4', type: 'ready' },
 ];
 
 const COMPLEXITY_OPTIONS: ComplexityOption[] = [
@@ -131,22 +113,6 @@ const ASSISTANT_LABELS: Record<AssistantStyle, string> = {
   toxic: '\u0422\u043E\u043A\u0441\u0438\u0447\u043D\u044B\u0439 \u043C\u043E\u0442\u0438\u0432\u0430\u0442\u043E\u0440',
 };
 
-const PET_LABELS: Record<PetKey, string> = {
-  cat: '\u041A\u043E\u0442\u0438\u043A',
-  dog: '\u0421\u043E\u0431\u0430\u0447\u043A\u0430',
-  fox: '\u041B\u0438\u0441\u0451\u043D\u043E\u043A',
-  owl: '\u0421\u043E\u0432\u0451\u043D\u043E\u043A',
-  dragon: '\u0414\u0440\u0430\u043A\u043E\u043D\u0447\u0438\u043A',
-};
-
-const PET_ICONS: Record<PetKey, string> = {
-  cat: '\uD83D\uDC31',
-  dog: '\uD83D\uDC36',
-  fox: '\uD83E\uDD8A',
-  owl: '\uD83E\uDD89',
-  dragon: '\uD83D\uDC09',
-};
-
 /* ─── Component ─── */
 
 export default function OnboardingScreen() {
@@ -157,8 +123,6 @@ export default function OnboardingScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   const [selectedComplexity, setSelectedComplexity] = useState<UIComplexity>('standard');
-  const [selectedPet, setSelectedPet] = useState<PetKey>('cat');
-  const [petName, setPetName] = useState('LifePet');
   const [selectedAssistant, setSelectedAssistant] = useState<AssistantStyle>('friendly');
 
   const onViewableItemsChanged = useCallback(
@@ -186,10 +150,6 @@ export default function OnboardingScreen() {
     setSelectedComplexity(complexity);
   }, []);
 
-  const handlePetSelect = useCallback((pet: PetKey) => {
-    setSelectedPet(pet);
-  }, []);
-
   const handleAssistantSelect = useCallback((style: AssistantStyle) => {
     if (style === 'toxic') {
       Alert.alert(
@@ -211,15 +171,13 @@ export default function OnboardingScreen() {
   const handleStart = useCallback(() => {
     // Save all selections
     storage.setBoolean('onboarding_complete', true);
-    storage.set('petType', selectedPet);
-    storage.set('petName', petName.trim() || 'LifePet');
     storage.set('assistantStyle', selectedAssistant);
 
     // Save UI complexity to store
     useUIStore.getState().setComplexity(selectedComplexity);
 
     useAppStore.getState().setOnboardingDone(true);
-  }, [selectedPet, petName, selectedAssistant, selectedComplexity]);
+  }, [selectedAssistant, selectedComplexity]);
 
   const isLastSlide = currentIndex === SLIDES.length - 1;
   const isFirstSlide = currentIndex === 0;
@@ -277,45 +235,6 @@ export default function OnboardingScreen() {
       </View>
     ),
     [styles, selectedComplexity, handleComplexitySelect],
-  );
-
-  const renderPet = useCallback(
-    () => (
-      <View style={styles.slide}>
-        <Text style={styles.title}>
-          {'\u0412\u044B\u0431\u0435\u0440\u0438 \u0441\u0432\u043E\u0435\u0433\u043E \u043F\u0438\u0442\u043E\u043C\u0446\u0430'}
-        </Text>
-        <Text style={styles.subtitle}>
-          {'\u041E\u043D \u0431\u0443\u0434\u0435\u0442 \u0440\u0430\u0441\u0442\u0438 \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 \u0442\u0432\u043E\u0438\u043C \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441\u043E\u043C'}
-        </Text>
-        <View style={styles.petGrid}>
-          {PET_OPTIONS.map((option) => (
-            <TouchableOpacity
-              key={option.key}
-              style={[
-                styles.petCard,
-                selectedPet === option.key && styles.petCardSelected,
-              ]}
-              onPress={() => handlePetSelect(option.key)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.petIcon}>{option.icon}</Text>
-              <Text style={styles.petLabel}>{option.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <TextInput
-          style={styles.petNameInput}
-          value={petName}
-          onChangeText={setPetName}
-          placeholder={'\u041A\u0430\u043A \u043D\u0430\u0437\u043E\u0432\u0451\u043C?'}
-          placeholderTextColor={c.textSecondary}
-          maxLength={20}
-          returnKeyType="done"
-        />
-      </View>
-    ),
-    [styles, selectedPet, handlePetSelect, petName, c.textSecondary],
   );
 
   const renderAssistant = useCallback(
@@ -379,15 +298,6 @@ export default function OnboardingScreen() {
           <View style={styles.summaryDivider} />
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>
-              {'\u041F\u0438\u0442\u043E\u043C\u0435\u0446'}
-            </Text>
-            <Text style={styles.summaryValue}>
-              {PET_ICONS[selectedPet]} {petName.trim() || 'LifePet'}
-            </Text>
-          </View>
-          <View style={styles.summaryDivider} />
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>
               {'\u0410\u0441\u0441\u0438\u0441\u0442\u0435\u043D\u0442'}
             </Text>
             <Text style={styles.summaryValue}>
@@ -397,7 +307,7 @@ export default function OnboardingScreen() {
         </View>
       </View>
     ),
-    [styles, selectedComplexity, selectedPet, petName, selectedAssistant],
+    [styles, selectedComplexity, selectedAssistant],
   );
 
   const renderSlide = useCallback(
@@ -407,8 +317,6 @@ export default function OnboardingScreen() {
           return renderWelcome();
         case 'complexity':
           return renderComplexity();
-        case 'pet':
-          return renderPet();
         case 'assistant':
           return renderAssistant();
         case 'ready':
@@ -417,7 +325,7 @@ export default function OnboardingScreen() {
           return null;
       }
     },
-    [renderWelcome, renderComplexity, renderPet, renderAssistant, renderReady],
+    [renderWelcome, renderComplexity, renderAssistant, renderReady],
   );
 
   const keyExtractor = useCallback((item: Slide) => item.id, []);
@@ -571,53 +479,6 @@ function createStyles(c: ReturnType<typeof useColors>) {
       color: '#FFFFFF',
       fontSize: 14,
       fontWeight: '700',
-    },
-
-    /* Pet grid */
-    petGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-      justifyContent: 'center',
-      paddingHorizontal: spacing.sm,
-    },
-    petCard: {
-      backgroundColor: c.surface,
-      borderRadius: borderRadius.lg,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.md,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 2,
-      borderColor: c.border,
-      width: 90,
-    },
-    petCardSelected: {
-      borderColor: c.primary,
-    },
-    petIcon: {
-      fontSize: 36,
-      marginBottom: spacing.xs,
-    },
-    petLabel: {
-      fontSize: fontSize.sm,
-      fontWeight: '600',
-      color: c.text,
-      textAlign: 'center',
-    },
-    petNameInput: {
-      marginTop: spacing.lg,
-      backgroundColor: c.surface,
-      borderRadius: borderRadius.md,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.md,
-      color: c.text,
-      fontSize: fontSize.md,
-      fontWeight: '600',
-      textAlign: 'center',
-      width: '80%',
-      borderWidth: 1,
-      borderColor: c.border,
     },
 
     /* Summary (ready page) */

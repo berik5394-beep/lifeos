@@ -139,13 +139,3 @@ export type GoalArea = 'finance' | 'spirituality' | 'career' | 'health';
 export type AssistantStyle = 'friendly' | 'strict' | 'calm' | 'toxic';
 export type ExpenseCategory = 'food' | 'transport' | 'entertainment' | 'clothing' | 'health' | 'home' | 'other';
 
-export type PetStage = 'baby' | 'teen' | 'adult' | 'master' | 'legend';
-
-export interface Achievement {
-  key: string;
-  type: string;
-  name: string;
-  description?: string;
-  unlocked: boolean;
-  claimed: boolean;
-}

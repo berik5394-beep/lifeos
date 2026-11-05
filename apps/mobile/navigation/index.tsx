@@ -32,11 +32,6 @@ const JournalScreen = React.lazy(() => import('@/screens/journal'));
 const SettingsScreen = React.lazy(() => import('@/screens/settings'));
 const IntegrationsScreen = React.lazy(() => import('@/screens/integrations'));
 const ImportScreen = React.lazy(() => import('@/screens/import'));
-const PetScreen = React.lazy(() => import('@/screens/pet'));
-const AchievementsScreen = React.lazy(() => import('@/screens/achievements'));
-const CharacterSelectScreen = React.lazy(() => import('@/screens/character-select'));
-const ArenaScreen = React.lazy(() => import('@/screens/arena'));
-const BattleScreen = React.lazy(() => import('@/screens/battle-screen'));
 const ScheduleImportScreen = React.lazy(() => import('@/screens/schedule-import'));
 const TaskCaptureScreen = React.lazy(() => import('@/screens/task-capture'));
 const VoiceConversationScreen = React.lazy(() => import('@/screens/voice-conversation'));
@@ -50,7 +45,6 @@ const TagManagerScreen = React.lazy(() => import('@/screens/tag-manager'));
 const SubscriptionScreen = React.lazy(() => import('@/screens/subscription'));
 const ExportScreen = React.lazy(() => import('@/screens/export'));
 const LifeInsightsScreen = React.lazy(() => import('@/screens/life-insights'));
-const SwipeHomeScreen = React.lazy(() => import('@/screens/swipe-home'));
 const LegalScreen = React.lazy(() => import('@/screens/legal'));
 
 import { ErrorBoundary } from '@/components/shared/error-boundary';
@@ -375,11 +369,6 @@ export default function Navigation() {
                 headerTitleStyle: { fontWeight: '600' },
               }}
             />
-            <RootStack.Screen name="Pet" component={PetScreen} />
-            <RootStack.Screen name="Achievements" component={AchievementsScreen} />
-            <RootStack.Screen name="character-select" component={CharacterSelectScreen} />
-            <RootStack.Screen name="Arena" component={ArenaScreen} />
-            <RootStack.Screen name="BattleScreen" component={BattleScreen} options={{ headerShown: false, animation: 'fade' }} />
             <RootStack.Screen name="ScheduleImport" component={ScheduleImportScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="TaskCapture" component={TaskCaptureScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="VoiceConversation" component={VoiceConversationScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
@@ -393,7 +382,6 @@ export default function Navigation() {
             <RootStack.Screen name="Subscription" component={SubscriptionScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="Export" component={ExportScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="LifeInsights" component={LifeInsightsScreen} options={{ headerShown: false }} />
-            <RootStack.Screen name="SwipeHome" component={SwipeHomeScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="Legal" component={LegalScreen} options={{ headerShown: false }} />
           </>
         )}

@@ -26,7 +26,6 @@ const FEATURES: FeatureRow[] = [
   { label: 'Календарь + синхронизация', free: true, pro: true },
   { label: 'Финансовый трекер', free: true, pro: true },
   { label: 'Дневник самочувствия', free: true, pro: true },
-  { label: 'Питомец', free: true, pro: true },
   { label: 'Офлайн-режим', free: true, pro: true },
   { label: 'Голосовые команды', free: '3/день', pro: '∞' },
   { label: 'JARVIS AI-ассистент', free: false, pro: true },
@@ -37,7 +36,6 @@ const FEATURES: FeatureRow[] = [
   { label: 'Расширенная аналитика', free: false, pro: true },
   { label: 'Экспорт PDF/CSV', free: false, pro: true },
   { label: 'Общие пространства', free: 'до 3', pro: 'до 10' },
-  { label: 'Все костюмы питомца', free: false, pro: true },
 ];
 
 export default function SubscriptionScreen() {

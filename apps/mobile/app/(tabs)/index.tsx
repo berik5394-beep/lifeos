@@ -17,7 +17,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ProgressRing } from '@/components/ui';
 import { Heatmap } from '@/components/charts';
-import { Confetti, PetAvatar } from '@/components/shared';
+import { Confetti } from '@/components/shared';
 import { VoiceButton, MorningGreeting, EveningRitual, DictationModal } from '@/components/voice';
 import { useVoice } from '@/hooks/use-voice';
 import { useMorningGreeting } from '@/hooks/use-morning-greeting';
@@ -26,7 +26,6 @@ import { useGoalStore } from '@/stores/goal-store';
 import { useHabitStore } from '@/stores/habit-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { useJournalStore } from '@/stores/journal-store';
-import { usePetStore } from '@/stores/pet-store';
 import { api } from '@/services/api';
 import { getRandomQuote } from '@/utils/quotes';
 import { formatDate, getWeekDays } from '@/utils/dates';
@@ -209,8 +208,6 @@ export default function PlannerScreen() {
   const { habits, logs, fetchHabits, fetchLogs } = useHabitStore();
   const user = useAuthStore((state) => state.user);
   const { todayEntry, fetchEntry: fetchJournalEntry } = useJournalStore();
-  const petData = usePetStore((s) => s.petData);
-  const petReaction = usePetStore((s) => s.lastReaction);
 
   const {
     isRecording,
@@ -271,10 +268,6 @@ export default function PlannerScreen() {
     () => `${formatShortDate(currentMonday)} — ${formatShortDate(sundayDate)}`,
     [currentMonday, sundayDate],
   );
-
-  useEffect(() => {
-    usePetStore.getState().fetchPet();
-  }, []);
 
   useEffect(() => {
     fetchTasks(undefined, weekStartStr);
@@ -354,7 +347,6 @@ export default function PlannerScreen() {
         fetchHabits(),
         fetchLogs(weekStartStr, formatDate(sundayDate)),
         fetchJournalEntry(todayStr),
-        usePetStore.getState().fetchPet(),
       ]);
     } catch {
       // silently fail
@@ -452,11 +444,9 @@ export default function PlannerScreen() {
 
   const handleNavigateJournal = useCallback(() => navigation.navigate('Journal' as never), [navigation]);
   const handleNavigateTaskCapture = useCallback(() => navigation.navigate('TaskCapture' as never), [navigation]);
-  const handleNavigateArena = useCallback(() => navigation.navigate('Arena' as never), [navigation]);
   const handleNavigateFocusMode = useCallback(() => navigation.navigate('FocusMode' as never), [navigation]);
   const handleNavigateKanbanBoard = useCallback(() => navigation.navigate('KanbanBoard' as never), [navigation]);
   const handleNavigateVoiceConversation = useCallback(() => navigation.navigate('VoiceConversation' as never), [navigation]);
-  const handleNavigatePet = useCallback(() => navigation.navigate('Pet' as never), [navigation]);
   const handleNavigateLifeInsights = useCallback(() => navigation.navigate('LifeInsights' as never), [navigation]);
   const handleNavigateCalendar = useCallback(() => navigation.navigate('Calendar' as never), [navigation]);
 
@@ -483,18 +473,6 @@ export default function PlannerScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {petData ? (
-        <View style={styles.petAvatarWrapper}>
-          <PetAvatar
-            petType={petData.pet.type}
-            state={petData.state}
-            costume={petData.pet.costume}
-            size={60}
-            onPress={handleNavigatePet}
-            reaction={petReaction}
-          />
-        </View>
-      ) : null}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -589,13 +567,6 @@ export default function PlannerScreen() {
             activeOpacity={0.7}
           >
             <Text style={styles.quickActionText}>{'\u{1F4F7}'} Камера</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickActionPill}
-            onPress={handleNavigateArena}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.quickActionText}>{'\u2694\uFE0F'} Арена</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.quickActionPill}
@@ -1208,11 +1179,5 @@ function createStyles(c: C) {
       elevation: 8,
     },
     dictationFabEmoji: { fontSize: 22 },
-    petAvatarWrapper: {
-      position: 'absolute',
-      top: 8,
-      right: 16,
-      zIndex: 10,
-    },
   });
 }

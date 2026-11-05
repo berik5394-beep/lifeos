@@ -14,7 +14,6 @@ const FEATURE_LEVELS: Record<string, UIComplexity[]> = {
   tags_filters: ['standard', 'power'],
   focus_mode: ['simple', 'standard', 'power'],
   quick_add: ['simple', 'standard', 'power'],
-  pet_widget: ['standard', 'power'],
   journal: ['standard', 'power'],
   export_reports: ['power'],
   heatmap_year: ['power'],
