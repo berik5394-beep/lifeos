@@ -19,6 +19,7 @@ import { buildConfirmPrompt } from './confirm-prompt.js';
 import { matchesCrisisPhrase, classifyCrisis } from './safety-classifier.js';
 import { buildSafetyResponse } from './safety-response.js';
 import { classifyEmotional } from './emotional-classifier.js';
+import { emotionForTurn, type RobotEmotion, type TurnFacts } from './robot-emotion.js';
 import { isPlannerIntent } from './planner-service.js';
 import { writeMemory, supersedeByTopic } from './episodic-memory.js';
 import { trackInterests } from './interest-service.js';
@@ -106,6 +107,14 @@ export interface JarvisResponse {
    */
   pendingAction?: { action: string; input: Record<string, unknown> } | null;
   confirmationText?: string;
+  /**
+   * Робот-эпик, Часть 2: эмоция робота-аватара на этот ход — считается по
+   * фактам хода (emotionForTurn), без отдельного вызова ИИ. Ставится обёрткой
+   * handleMessage на КАЖДОМ пути.
+   */
+  emotion?: RobotEmotion;
+  /** Внутреннее: факты хода для emotionForTurn (обёртка снимает перед ответом). */
+  turnFacts?: Partial<TurnFacts>;
 }
 
 /**
@@ -441,6 +450,27 @@ export async function handleMessage(
   // дефолт = текст (Telegram/чат не меняются — аддитивно).
   channel?: 'voice' | 'text',
 ): Promise<JarvisResponse> {
+  const res = await handleMessageCore(userId, text, channel);
+  // Робот-эпик, Часть 2: эмоция робота — одной чистой функцией по фактам хода,
+  // чтобы ни один путь (кризис, деньги, инструмент, чат) не остался без неё.
+  const { turnFacts, ...out } = res;
+  const pa = out.pendingAction;
+  const slot = !!pa && (pa.input?.__awaitingCategory === true || pa.input?.__awaitingSource === true);
+  out.emotion = emotionForTurn({
+    userText: text,
+    crisis: out.intent === 'safety_crisis',
+    cancelled: out.intent === 'cancel_pending',
+    pending: pa ? (slot ? 'slot' : 'confirm') : null,
+    ...turnFacts,
+  });
+  return out;
+}
+
+async function handleMessageCore(
+  userId: string,
+  text: string,
+  channel?: 'voice' | 'text',
+): Promise<JarvisResponse> {
   // SSOT Step 7: засекаем начало хода — бейдж считаем из ToolCall,
   // созданных за этот ход (факт), а не из NLP-выдумки.
   const turnStart = new Date();
@@ -505,7 +535,7 @@ export async function handleMessage(
     if (signal === 'confirm') {
       const p = (await takePendingAction(userId))!;
       const reply = await runConfirmedAction(userId, p.action, p.input);
-      return { reply, intent: p.action };
+      return { reply, intent: p.action, turnFacts: { executed: true } };
     }
     if (signal === 'cancel') {
       await takePendingAction(userId);
@@ -773,7 +803,7 @@ export async function handleMessage(
 
     void trackInterests(userId, text);
     await saveTurn(userId, text, reply);
-    return { reply, bookingUrl: url, intent: 'plan_travel' };
+    return { reply, bookingUrl: url, intent: 'plan_travel', turnFacts: { executed: true } };
   }
 
   // ---- Явный диктофон ("запиши / диктофон") -----------------------------
@@ -847,7 +877,7 @@ export async function handleMessage(
             'сбой на моей стороне. Ничего не отправил, попробуй ещё ' +
             'раз через минуту.';
           await saveTurn(userId, text, reply);
-          return { reply, intent: 'send_telegram' };
+          return { reply, intent: 'send_telegram', turnFacts: { failed: true } };
         }
         input.text = body;
       }
@@ -921,7 +951,7 @@ export async function handleMessage(
       );
       void trackInterests(userId, text);
       await saveTurn(userId, text, replyText);
-      return { reply: replyText, intent: intent.action };
+      return { reply: replyText, intent: intent.action, turnFacts: { executed: true } };
     } catch (err) {
       console.warn(
         `[jarvis] runRegistryTool failed user=${userId} intent=${intent.action}:`,
@@ -931,6 +961,7 @@ export async function handleMessage(
       return {
         reply: 'Не получилось выполнить — попробуй сформулировать иначе?',
         intent: intent.action,
+        turnFacts: { failed: true },
       };
     }
   }
@@ -1234,6 +1265,11 @@ export async function handleMessage(
     reply,
     auditedActions: acted,
     intent: intent.action,
+    turnFacts: {
+      emotional: finalTherapeutic,
+      style: gathered?.context.assistantStyle ?? null,
+      executed: acted > 0 && !staged,
+    },
     ...(staged
       ? {
           pendingAction: { action: staged.action, input: staged.input },

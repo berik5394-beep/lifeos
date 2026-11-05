@@ -219,6 +219,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         // отдельные actions не нужны.
         actions: [],
         suggestions: [],
+        emotion: jarvis.emotion ?? 'neutral',
       });
     } catch (err) {
       app.log.error(err);
@@ -254,6 +255,7 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         response,
         actions: [],
         suggestions: [],
+        emotion: jarvis.emotion ?? 'neutral',
       });
     } catch (err) {
       app.log.error(err);

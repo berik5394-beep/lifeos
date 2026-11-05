@@ -54,6 +54,7 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         // Фаза 1.2: если денежное действие ждёт подтверждения —
         // приложение показывает кнопки «Подтвердить / Отмена».
         pendingAction: res.pendingAction ?? null,
+        emotion: res.emotion ?? 'neutral',
       });
     } catch (err) {
       app.log.error(err);
@@ -71,17 +72,18 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     const { confirm } = request.body as z.infer<typeof confirmSchema>;
     if (!confirm) {
       await takePendingAction(request.userId);
-      return reply.send({ message: 'Окей, отменил — ничего не записал.', done: true });
+      return reply.send({ message: 'Окей, отменил — ничего не записал.', done: true, emotion: 'neutral' });
     }
     const p = await takePendingAction(request.userId);
     if (!p) {
       return reply.status(409).send({
         message: 'Нечего подтверждать — предложение устарело. Повтори запрос.',
         done: false,
+        emotion: 'worried',
       });
     }
     const msg = await runConfirmedAction(request.userId, p.action, p.input);
-    return reply.send({ message: msg, intent: p.action, done: true });
+    return reply.send({ message: msg, intent: p.action, done: true, emotion: 'happy' });
   });
 
   // --- Есть ли ожидающее подтверждения действие (для восстановления UI) ---

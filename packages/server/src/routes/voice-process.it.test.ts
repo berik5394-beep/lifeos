@@ -82,4 +82,36 @@ describe('/voice/process → единый мозг', () => {
     // Кризисный ход помечен crisis=true (изоляция от LLM-контекста, retention).
     expect(await prisma.chatMessage.count({ where: { userId, crisis: true } })).toBeGreaterThan(0);
   });
+
+  describe('эмоция робота в ответе (Часть 2)', () => {
+    it('расход ждёт подтверждения → thinking; «да» (confirm-action) → happy', async () => {
+      const { headers } = await authed('emo-exp');
+      const res = await say(headers, 'Потратил 3000 на еду');
+      expect((res.json() as { emotion: string }).emotion).toBe('thinking');
+      const ok = await app.inject({ method: 'POST', url: '/voice/confirm-action', headers, payload: { confirm: true } });
+      expect((ok.json() as { emotion: string }).emotion).toBe('happy');
+    });
+    it('задача создана → happy', async () => {
+      const { headers } = await authed('emo-task');
+      const res = await say(headers, 'Создай задачу купить хлеб завтра');
+      expect((res.json() as { emotion: string }).emotion).toBe('happy');
+    });
+    it('кризис → caring', async () => {
+      const { headers } = await authed('emo-crisis');
+      const res = await say(headers, 'Не хочу больше жить');
+      expect((res.json() as { emotion: string }).emotion).toBe('caring');
+    });
+    it('слот-вопрос («потратил 3000» без категории) → confused; «отмена» → neutral', async () => {
+      const { headers } = await authed('emo-slot');
+      const res = await say(headers, 'Потратил 3000');
+      expect((res.json() as { emotion: string }).emotion).toBe('confused');
+      const cancel = await say(headers, 'отмена');
+      expect((cancel.json() as { emotion: string }).emotion).toBe('neutral');
+    });
+    it('/voice/chat тоже отдаёт эмоцию', async () => {
+      const { headers } = await authed('emo-chat');
+      const res = await app.inject({ method: 'POST', url: '/voice/chat', headers, payload: { text: 'Создай задачу полить цветы' } });
+      expect((res.json() as { emotion: string }).emotion).toBe('happy');
+    });
+  });
 });

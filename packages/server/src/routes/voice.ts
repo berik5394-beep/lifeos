@@ -75,6 +75,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
         response,
         pendingAction: jarvis.pendingAction ?? null,
         confirmationText: jarvis.confirmationText ?? null,
+        emotion: jarvis.emotion ?? 'neutral',
       });
     } catch (err) {
       app.log.error(err);
