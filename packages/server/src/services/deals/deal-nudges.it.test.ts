@@ -51,3 +51,27 @@ describe('нуджи сделок', () => {
     expect(s.filter((x) => x.startsWith('deal_') || x === 'sales_plan_behind')).toEqual([]);
   });
 });
+
+describe('каденс sales_plan_behind (ревью I1)', () => {
+  it('реальная доставка: 20-е → нудж, 24-е → нет (даже после dismiss), 28-е (≥7 дн) → снова', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-20T09:00:00Z'));
+    const userId = await user('cadence');
+    await setSalesPlan(userId, 10_000_000);
+    const engine = new V2ProactivityEngine();
+    const planRows = () => prisma.insight.count({ where: { userId, scopeKey: { startsWith: 'sales_plan_behind:' } } });
+
+    await engine.runForUser(userId);
+    expect(await planRows()).toBe(1);
+    // Юзер смахнул нудж — каденс всё равно держится.
+    await prisma.insight.updateMany({ where: { userId }, data: { dismissed: true } });
+
+    vi.setSystemTime(new Date('2026-11-24T09:00:00Z'));
+    await engine.runForUser(userId);
+    expect(await planRows()).toBe(1);
+
+    vi.setSystemTime(new Date('2026-11-28T09:00:00Z'));
+    await engine.runForUser(userId);
+    expect(await planRows()).toBe(2);
+  });
+});

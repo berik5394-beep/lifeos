@@ -1174,7 +1174,24 @@ async function detectDealStale(userId: string): Promise<NudgeCandidate[]> {
   }
 }
 
-// План продаж: отстаём (с 7-го дня). Кулдаун — существующие гейты движка по source.
+/** Ключ ряда Insight, который пишет runForUser для доставленного нуджа (SSOT). */
+export function nudgeScopeKey(c: Pick<NudgeCandidate, 'source' | 'entityId' | 'patternId'>): string {
+  return `${c.source}:${c.entityId ?? c.patternId ?? 'global'}`;
+}
+
+/** Был ли нудж с этим ключом за последние `days` дней. Считаем ЛЮБОЙ ряд —
+ *  смахнутый/вытесненный тоже (смахнул ≠ «напоминай чаще»). */
+async function nudgedWithin(userId: string, scopeKey: string, days: number, now: Date): Promise<boolean> {
+  const row = await prisma.insight.findFirst({
+    where: { userId, source: 'v2-proactivity', kind: 'v2_nudge', scopeKey, createdAt: { gte: new Date(now.getTime() - days * DAY_MS) } },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
+// План продаж: отстаём (с 7-го дня). Не чаще раза в 7 дней — каденс держим
+// ЗДЕСЬ (ревью I1): gate4_Dedup ничего не матчит (см. TODO(gate4)), а R10-кулдаун
+// стора — 3 дня и не видит смахнутых.
 async function detectSalesPlanBehind(userId: string): Promise<NudgeCandidate[]> {
   try {
     const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
@@ -1186,11 +1203,12 @@ async function detectSalesPlanBehind(userId: string): Promise<NudgeCandidate[]> 
     const now = new Date();
     const s = await salesPlanStatus(userId, now);
     if (!s || !s.pace.behind) return [];
+    const entityId = `sales_plan:${localDateStr(await getUserTimezone(userId), now).slice(0, 7)}`;
+    if (await nudgedWithin(userId, nudgeScopeKey({ source: 'sales_plan_behind', entityId }), 7, now)) return [];
     const cand: NudgeCandidate = {
       source: 'sales_plan_behind',
       significance: 0,
-      // Ключ месяца в entityId → gate4_Dedup (7 дней по entityId) даёт недельный ритм.
-      entityId: `sales_plan:${localDateStr(await getUserTimezone(userId), now).slice(0, 7)}`,
+      entityId,
       payload: {
         planText: describePlan({ plan: s.plan, won: s.won, open: s.open, behind: true, covering: s.covering, noAmount: s.noAmount }),
       },
@@ -1302,6 +1320,11 @@ async function gate4_Dedup(
   now: Date,
 ): Promise<boolean> {
   if (!candidate.entityId) return true;
+  // TODO(gate4): известная дыра, не чиним глобально — runForUser/persistCandidates
+  // пишут scope = { key, kind } (+ scopeKey `<source>:<entityId>`), а здесь ищем
+  // scope.entityId → матча нет НИКОГДА, гейт пропускает всех. Починка поменяет
+  // каденс всех источников — отдельная задача. Кому нужен ритм — держит его в
+  // детекторе (см. nudgedWithin / detectSalesPlanBehind).
   try {
     const cutoff = new Date(now.getTime() - 7 * DAY_MS);
     const recent = await prisma.insight.findFirst({
@@ -1403,8 +1426,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
     passed.sort((a, b) => b.significance - a.significance);
     const top = passed[0];
     const message = await this.generateNudge(userId, top);
-    const scope =
-      `${top.source}:${top.entityId ?? top.patternId ?? 'global'}`;
+    const scope = nudgeScopeKey(top);
     const candidate: InsightCandidate = {
       kind: 'v2_nudge',
       scope,
