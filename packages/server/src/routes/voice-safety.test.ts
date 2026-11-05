@@ -40,7 +40,7 @@ describe('voice-safety — /voice/process ПРОХОДИТ через safety-gat
     );
     // Гейт стоит ДО processVoiceCommand (иначе голос обходит safety).
     const gateIdx = block.indexOf('matchesCrisisPhrase(text)');
-    const oldPathIdx = block.indexOf('processVoiceCommand(text)');
+    const oldPathIdx = block.indexOf('processVoiceCommand(text');
     expect(gateIdx).toBeGreaterThan(-1);
     expect(oldPathIdx).toBeGreaterThan(-1);
     expect(gateIdx).toBeLessThan(oldPathIdx);

@@ -185,3 +185,33 @@ describe('parseIntent — C1 LLM-failure guard (AUDIT-2026-06)', () => {
     expect(SRC.slice(idx)).toMatch(/return \{ action: 'unknown', text \}/);
   });
 });
+
+/**
+ * intent-TZ фикс (аудит brain-hands 2026-06-11, HIGH): «сегодня/завтра» считались
+ * по UTC сервера. Алматы 00:30 (19:30Z накануне) → задача «на сегодня» уезжала
+ * во вчера. Теперь дата = календарь юзера (tz + now инжектятся).
+ */
+describe('deterministicIntent — даты в поясе юзера (00:30 Алматы)', () => {
+  const lateNightAlmaty = new Date('2026-05-16T19:30:00Z'); // = 17.05 00:30 Алматы
+  it('"сегодня" → локальное 17-е, не серверное 16-е', () => {
+    const r = deterministicIntent('Создай задачу позвонить маме сегодня', 'Asia/Almaty', lateNightAlmaty);
+    expect(r?.action).toBe('create_task');
+    expect(r?.date).toBe('2026-05-17');
+  });
+  it('без слова-даты → тоже локальное сегодня', () => {
+    const r = deterministicIntent('Добавь задачу купить молоко', 'Asia/Almaty', lateNightAlmaty);
+    expect(r?.date).toBe('2026-05-17');
+  });
+  it('"завтра" → 18-е', () => {
+    const r = deterministicIntent('Напомни купить хлеб завтра', 'Asia/Almaty', lateNightAlmaty);
+    expect(r?.date).toBe('2026-05-18');
+  });
+  it('"послезавтра" → 19-е', () => {
+    const r = deterministicIntent('Создай задачу позвонить маме послезавтра', 'Asia/Almaty', lateNightAlmaty);
+    expect(r?.date).toBe('2026-05-19');
+  });
+  it('Claude-промпт парсера тоже берёт даты из civilDayRefs, не из серверного Date', () => {
+    expect(SRC).not.toMatch(/toISOString\(\)\.split\('T'\)\[0\]/);
+    expect(SRC).toMatch(/civilDayRefs\(/);
+  });
+});

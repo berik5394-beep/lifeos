@@ -49,6 +49,7 @@ import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 import { isV2HermesEnabled } from '../lib/feature-flags.js';
 import { isV2RealtimeEnabled } from '../lib/feature-flags.js';
 import { getUserTimezone } from '../lib/user-context.js';
+import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
 import {
   isV2InlineNudgeEnabled,
   isV2SavingsCoachEnabled,
@@ -166,9 +167,12 @@ async function captureInBackground(
       where: { id: userId },
       select: { name: true },
     });
+    // intent-TZ фикс: «сегодня/завтра» в извлечённых задачах = календарь юзера.
+    const tz = await getUserTimezone(userId);
+    const todayCivil = civilDayRefs(tz).today;
     const extracted = isV2MemQualityEnabled(userId)
-      ? await extractFromChat(text, user?.name || 'друг', { detectSupersede: isV2SupersedeEnabled(userId) })
-      : await extractFromTranscript(text, user?.name || 'друг');
+      ? await extractFromChat(text, user?.name || 'друг', { detectSupersede: isV2SupersedeEnabled(userId), tz })
+      : await extractFromTranscript(text, user?.name || 'друг', tz);
     let tasks = 0;
     let memories = 0;
     if (extracted.tasks.length > 0) {
@@ -181,7 +185,7 @@ async function captureInBackground(
               category: (t.category || 'personal').slice(0, 32),
               priority: (t.priority || 'medium').slice(0, 32),
               date: new Date(
-                (t.date || new Date().toISOString().slice(0, 10)) + 'T00:00:00Z',
+                (t.date || todayCivil) + 'T00:00:00Z',
               ),
               time: t.time?.slice(0, 8) ?? null,
               notes: t.notes?.slice(0, 2000) ?? null,
@@ -513,11 +517,14 @@ export async function handleMessage(
     await clearPendingAction(userId);
   }
 
-  const intent = await parseIntent(text);
+  // intent-TZ фикс (аудит brain-hands 2026-06-11): «сегодня/завтра» в
+  // интентах/брони = календарь ЮЗЕРА, не UTC сервера (Алматы 00–05 → вчера).
+  const userTz = await getUserTimezone(userId);
+  const intent = await parseIntent(text, userTz);
 
   // ---- Booking: агентный flow -------------------------------------------
   if (intent.action === 'plan_travel') {
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayIso = civilDayRefs(userTz).today;
     const bIntent = await parseBookingIntent(text, todayIso);
     const url = buildBookingUrl(bIntent);
     const targetDate = bIntent.departDate || bIntent.checkIn || todayIso;
@@ -585,9 +592,7 @@ export async function handleMessage(
       const destName = (bIntent.toCity || bIntent.city || 'поездка').slice(0, 128);
       const depUTC = new Date(dateFrom + 'T00:00:00Z');
       const retUTC = dateToStr ? new Date(dateToStr + 'T00:00:00Z') : null;
-      const todayUTC = new Date(
-        new Date().toISOString().slice(0, 10) + 'T00:00:00Z',
-      );
+      const todayUTC = dateOnlyUTC(todayIso);
       try {
         // Анти-дубль: уже есть planning-план в это окно на это направление?
         const existingPlan = await prisma.travelPlan.findFirst({
@@ -1001,10 +1006,9 @@ export async function handleMessage(
   }
 
   // Real-Time Foundation: пояс юзера в промпт ТОЛЬКО при флаге (best-effort,
-  // off → undefined → байт-идентично). getUserTimezone сам падает в 'UTC'.
-  const realtimeTz = isV2RealtimeEnabled(userId)
-    ? await getUserTimezone(userId)
-    : undefined;
+  // off → undefined → байт-идентично). userTz уже резолвнут выше (тот же
+  // getUserTimezone, падает в 'UTC') — без второго запроса.
+  const realtimeTz = isV2RealtimeEnabled(userId) ? userTz : undefined;
   let system = gathered
     ? buildJarvisPrompt(gathered.context, {
         ...ritualOptsFor(intent, gathered.dayCompletionPercent),

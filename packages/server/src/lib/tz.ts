@@ -149,6 +149,27 @@ export function localDateOnlyUTC(tz: string, at: Date = new Date()): Date {
   return new Date(localDateStr(safeTz(tz), at) + 'T00:00:00Z');
 }
 
+/** Календарная дата + n дней (чистая civil-арифметика, без tz/DST). */
+export function addCivilDays(civilDate: string, n: number): string {
+  const d = new Date(civilDate + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * «сегодня/завтра/послезавтра» в КАЛЕНДАРЕ юзера ('YYYY-MM-DD'). Единый
+ * источник для intent-слоя и экстракторов (промпты Claude + детерминированный
+ * префильтр). Раньше там стоял `new Date().toISOString()` = UTC сервера →
+ * Алматы 00:00–05:00 «сегодня» уезжало во вчера. tz='UTC' = прежнее поведение.
+ */
+export function civilDayRefs(
+  tz: string,
+  at: Date = new Date(),
+): { today: string; tomorrow: string; dayAfter: string } {
+  const today = localDateStr(safeTz(tz), at);
+  return { today, tomorrow: addCivilDays(today, 1), dayAfter: addCivilDays(today, 2) };
+}
+
 /** @db.Date-значение из УЖЕ календарной строки 'YYYY-MM-DD' (без tz-round-trip). */
 export function dateOnlyUTC(civilDate: string): Date {
   return new Date(civilDate + 'T00:00:00Z');

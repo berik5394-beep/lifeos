@@ -1,5 +1,6 @@
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
+import { civilDayRefs } from '../lib/tz.js';
 
 const anthropic = createAnthropic();
 
@@ -106,7 +107,15 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
   return null;
 }
 
-export function deterministicIntent(text: string): VoiceIntent | null {
+/**
+ * tz/now — пояс юзера и «сейчас» (инжект для тестов). «сегодня/завтра»
+ * считаются в КАЛЕНДАРЕ юзера (civilDayRefs). Дефолт 'UTC' = прежнее поведение.
+ */
+export function deterministicIntent(
+  text: string,
+  tz: string = 'UTC',
+  now: Date = new Date(),
+): VoiceIntent | null {
   const lower = text.toLowerCase();
 
   for (const re of DICTATION_TRIGGERS) {
@@ -231,21 +240,17 @@ export function deterministicIntent(text: string): VoiceIntent | null {
   }
   if (m) {
     const title = m[1].trim();
-    const today = new Date();
-    let date = today.toISOString().split('T')[0];
+    const days = civilDayRefs(tz, now);
+    let date = days.today;
     let cleanTitle = title;
     // НЕ \b — Cyrillic word boundary в JS не работает (\w = [A-Za-z0-9_]).
     // Слова достаточно характерные, ловим без границы.
     // послезавтра проверяем ПЕРВЫМ — оно содержит подстроку "завтра".
     if (/послезавтра/i.test(title)) {
-      const tm = new Date(today);
-      tm.setDate(tm.getDate() + 2);
-      date = tm.toISOString().split('T')[0];
+      date = days.dayAfter;
       cleanTitle = title.replace(/\s*послезавтра\s*/i, ' ').trim();
     } else if (/завтра/i.test(title)) {
-      const tm = new Date(today);
-      tm.setDate(tm.getDate() + 1);
-      date = tm.toISOString().split('T')[0];
+      date = days.tomorrow;
       cleanTitle = title.replace(/\s*завтра\s*/i, ' ').trim();
     } else if (/сегодня/i.test(title)) {
       cleanTitle = title.replace(/\s*сегодня\s*/i, ' ').trim();
@@ -262,18 +267,17 @@ export function deterministicIntent(text: string): VoiceIntent | null {
   return null;
 }
 
-export async function parseIntent(text: string): Promise<VoiceIntent> {
+export async function parseIntent(
+  text: string,
+  tz: string = 'UTC',
+  now: Date = new Date(),
+): Promise<VoiceIntent> {
   // Fast path: детерминированные интенты без вызова Claude.
-  const det = deterministicIntent(text);
+  const det = deterministicIntent(text, tz, now);
   if (det) return det;
 
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const dayAfter = new Date(today);
-  dayAfter.setDate(dayAfter.getDate() + 2);
-
-  const formatDate = (d: Date) => d.toISOString().split('T')[0];
+  // Даты для Claude — в календаре юзера (intent-TZ фикс), не UTC сервера.
+  const days = civilDayRefs(tz, now);
 
   const systemPrompt = `Ты — парсер голосовых команд приложения LifeOS. Пользователь дал команду голосом. Определи намерение и верни ТОЛЬКО валидный JSON.
 
@@ -311,7 +315,7 @@ export async function parseIntent(text: string): Promise<VoiceIntent> {
 - unknown: { "action": "unknown", "text": string }
 - (plan_travel / search_memory / start_dictation — см. ШАГИ 1-3 выше, не сюда)
 
-Текущая дата: ${formatDate(today)}. "завтра" = ${formatDate(tomorrow)}, "послезавтра" = ${formatDate(dayAfter)}.
+Текущая дата: ${days.today}. "завтра" = ${days.tomorrow}, "послезавтра" = ${days.dayAfter}.
 Категории задач: work, personal, health, finance, education, home.
 Приоритеты: low, medium, high, critical.
 Категории расходов: food (еда), transport (транспорт), entertainment (развлечения), clothing (одежда), health (здоровье), home (дом), other (другое).

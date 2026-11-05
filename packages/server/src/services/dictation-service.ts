@@ -9,6 +9,8 @@ import { prisma } from '../lib/prisma.js';
 import { AiModelError } from '../lib/errors.js';
 import { writeMemory } from './episodic-memory.js';
 import { isV2MemQualityEnabled } from '../lib/feature-flags.js';
+import { civilDayRefs } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 
 /**
  * Переиспользуемый пайплайн диктофона: audio → Whisper (Groq) → Claude
@@ -86,9 +88,11 @@ export async function transcribeAudio(audioB64: string, format: string): Promise
 export async function extractFromTranscript(
   transcript: string,
   userName: string,
+  /** Пояс юзера (intent-TZ фикс). Дефолт 'UTC' = прежнее поведение. */
+  tz: string = 'UTC',
 ): Promise<DictationExtraction> {
-  const today = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().split('T')[0];
+  // intent-TZ фикс: даты в календаре юзера, не UTC сервера.
+  const { today, tomorrow } = civilDayRefs(tz);
 
   const systemPrompt = `Ты — JARVIS-помощник пользователя ${userName}. Юзер только что наговорил тебе свободную речь через диктофон. Твоя задача — извлечь оттуда самое важное и вернуть структурированный JSON.
 
@@ -151,10 +155,11 @@ export async function extractFromTranscript(
 export async function extractFromChat(
   text: string,
   userName: string,
-  opts?: { detectSupersede?: boolean },
+  opts?: { detectSupersede?: boolean; tz?: string },
 ): Promise<Pick<DictationExtraction, 'tasks' | 'memories'>> {
-  const today = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().split('T')[0];
+  const tz = opts?.tz ?? 'UTC';
+  // intent-TZ фикс: даты в календаре юзера, не UTC сервера.
+  const { today, tomorrow } = civilDayRefs(tz);
 
   const systemPrompt = `Ты — фоновый экстрактор памяти ассистента ${userName}. Пользователь написал тебе сообщение в ЧАТЕ (обычная переписка, не диктофон, не монолог). Извлеки ТОЛЬКО то, что действительно стоит запомнить надолго, и верни строгий JSON.
 
@@ -253,7 +258,9 @@ export async function processDictation(
     select: { name: true },
   });
 
-  const extracted = await extractFromTranscript(transcript, user?.name || 'друг');
+  const tz = await getUserTimezone(userId);
+  const todayCivil = civilDayRefs(tz).today; // фоллбэк-дата задач = тот же «сегодня», что в промпте
+  const extracted = await extractFromTranscript(transcript, user?.name || 'друг', tz);
 
   if (isV2MemQualityEnabled(userId)) {
     // T3: сессия+задачи в tx (атомарно); память — ВНЕ tx через writeMemory (дедуп+embed+TTL).
@@ -278,7 +285,7 @@ export async function processDictation(
               category: (t.category || 'personal').slice(0, 32),
               priority: (t.priority || 'medium').slice(0, 32),
               date: new Date(
-                (t.date || new Date().toISOString().slice(0, 10)) + 'T00:00:00Z',
+                (t.date || todayCivil) + 'T00:00:00Z',
               ),
               time: t.time?.slice(0, 8) ?? null,
               notes: t.notes?.slice(0, 2000) ?? null,
@@ -350,7 +357,7 @@ export async function processDictation(
             category: (t.category || 'personal').slice(0, 32),
             priority: (t.priority || 'medium').slice(0, 32),
             date: new Date(
-              (t.date || new Date().toISOString().slice(0, 10)) + 'T00:00:00Z',
+              (t.date || todayCivil) + 'T00:00:00Z',
             ),
             time: t.time?.slice(0, 8) ?? null,
             notes: t.notes?.slice(0, 2000) ?? null,

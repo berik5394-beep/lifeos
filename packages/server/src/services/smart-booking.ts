@@ -23,6 +23,7 @@ export const VERIFIED_PARTNERS = [
   'inDrive (такси) — indrive.com',
 ].join('; ');
 import { AiModelError } from '../lib/errors.js';
+import { addCivilDays } from '../lib/tz.js';
 
 /**
  * Smart Booking — JARVIS-style: юзер говорит "забронируй рейс в Астану на
@@ -101,8 +102,10 @@ export async function parseBookingIntent(
   text: string,
   todayIso: string,
 ): Promise<BookingIntent> {
-  const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-  const dayAfter = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+  // intent-TZ фикс: «завтра/послезавтра» от todayIso (календарь юзера, его
+  // резолвит вызывающий), а не от часов сервера — иначе промпт сам себе врёт.
+  const tomorrow = addCivilDays(todayIso, 1);
+  const dayAfter = addCivilDays(todayIso, 2);
 
   const systemPrompt = `Ты — парсер запросов на бронирование (рейсы / такси / отели) для приложения LifeOS. Юзер говорит на русском. Извлеки структурированные параметры и верни ТОЛЬКО валидный JSON.
 

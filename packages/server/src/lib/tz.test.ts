@@ -10,6 +10,7 @@ import {
   localNowString,
   localWeekStartUTC,
   daysUntilMonthEnd,
+  civilDayRefs,
 } from './tz.js';
 
 /**
@@ -238,5 +239,30 @@ describe('daysUntilMonthEnd — дней до конца месяца в tz юз
     expect(daysUntilMonthEnd('Asia/Almaty', new Date('2026-06-30T20:00:00Z'))).toBe(30);
     // тот же инстант в UTC = ещё 30 июня → 0
     expect(daysUntilMonthEnd('UTC', new Date('2026-06-30T20:00:00Z'))).toBe(0);
+  });
+});
+
+describe('civilDayRefs — сегодня/завтра/послезавтра в КАЛЕНДАРЕ юзера (intent-TZ фикс)', () => {
+  it('00:30 Алматы (19:30Z накануне): сегодня = локальное 17-е, не серверное 16-е', () => {
+    expect(civilDayRefs('Asia/Almaty', lateNightAlmaty)).toEqual({
+      today: '2026-05-17',
+      tomorrow: '2026-05-18',
+      dayAfter: '2026-05-19',
+    });
+  });
+  it('переход месяца/года в календаре юзера', () => {
+    // 2026-12-31T20:00Z = 01:00 1 января 2027 в Алматы
+    expect(civilDayRefs('Asia/Almaty', new Date('2026-12-31T20:00:00Z'))).toEqual({
+      today: '2027-01-01',
+      tomorrow: '2027-01-02',
+      dayAfter: '2027-01-03',
+    });
+  });
+  it('UTC-пояс = прежнее серверное поведение (обратная совместимость)', () => {
+    expect(civilDayRefs('UTC', lateNightAlmaty)).toEqual({
+      today: '2026-05-16',
+      tomorrow: '2026-05-17',
+      dayAfter: '2026-05-18',
+    });
   });
 });

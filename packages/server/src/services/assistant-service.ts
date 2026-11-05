@@ -143,7 +143,7 @@ export async function gatherAssistantContext(
       },
     }),
     getRelevantMemories(userId, text, 20),
-    knownIntent ? Promise.resolve(knownIntent) : parseIntent(text),
+    knownIntent ? Promise.resolve(knownIntent) : parseIntent(text, tz),
     // meta#9: план на эту неделю (WeeklyGoal, weekStart = понедельник)
     (() => {
       // Понедельник недели юзера (weekStart @db.Date). SSOT-хелпер —

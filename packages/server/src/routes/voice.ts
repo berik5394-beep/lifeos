@@ -20,6 +20,7 @@ import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 // Теперь ответ идёт через единый оркестратор. Контракт ответа
 // ({response, reply, context}) сохранён — старое приложение не ломается.
 import { handleMessage } from '../services/jarvis-orchestrator.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { matchesCrisisPhrase } from '../services/safety-classifier.js';
 
 // Voice assistant/transcribe are expensive (Groq Whisper + Claude API) — cap per IP
@@ -79,7 +80,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
           response: jarvis.reply,
         });
       }
-      const result = await processVoiceCommand(text);
+      const result = await processVoiceCommand(text, await getUserTimezone(userId));
       return reply.send(result);
     } catch (err) {
       app.log.error(err);

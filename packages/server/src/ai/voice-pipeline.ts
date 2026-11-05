@@ -1,4 +1,5 @@
 import { parseIntent } from './intent-parser.js';
+import { civilDayRefs } from '../lib/tz.js';
 
 interface VoiceResult {
   intent: {
@@ -53,9 +54,13 @@ function looksLikeQuestion(text: string): boolean {
   return QUESTION_MARKERS.includes(firstWord);
 }
 
-export async function processVoiceCommand(transcribedText: string): Promise<VoiceResult> {
+export async function processVoiceCommand(
+  transcribedText: string,
+  /** Пояс юзера: «сегодня/завтра» = его календарь (intent-TZ фикс). */
+  tz: string = 'UTC',
+): Promise<VoiceResult> {
   const raw = transcribedText.trim();
-  let intent = await parseIntent(raw);
+  let intent = await parseIntent(raw, tz);
 
   // Fallback: Claude said "unknown" but we still have a transcript.
   // Route it to the assistant (question) or create a task (statement).
@@ -63,7 +68,7 @@ export async function processVoiceCommand(transcribedText: string): Promise<Voic
     if (looksLikeQuestion(raw)) {
       intent = { action: 'ask_assistant', question: raw };
     } else if (raw.length > 0) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = civilDayRefs(tz).today;
       intent = {
         action: 'create_task',
         title: raw,
