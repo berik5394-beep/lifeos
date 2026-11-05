@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { forwardRef, useCallback, useState, useMemo } from 'react';
 import {
   View,
   TextInput,
@@ -16,13 +16,27 @@ interface InputProps extends Omit<TextInputProps, 'style'> {
   style?: ViewStyle;
 }
 
-export const Input = React.memo(function Input({
+type FocusEvent = Parameters<NonNullable<TextInputProps['onFocus']>>[0];
+type BlurEvent = Parameters<NonNullable<TextInputProps['onBlur']>>[0];
+
+export const Input = React.memo(forwardRef<TextInput, InputProps>(function Input({
   label,
   error,
   style,
+  onFocus,
+  onBlur,
   ...props
-}: InputProps) {
+}, ref) {
   const [focused, setFocused] = useState(false);
+  // Свои onFocus/onBlur родителя не должны ломать подсветку поля (раньше перетирали её спредом).
+  const handleFocus = useCallback((e: FocusEvent) => {
+    setFocused(true);
+    onFocus?.(e);
+  }, [onFocus]);
+  const handleBlur = useCallback((e: BlurEvent) => {
+    setFocused(false);
+    onBlur?.(e);
+  }, [onBlur]);
   const c = useColors();
   const styles = useMemo(() => StyleSheet.create({
     container: {
@@ -59,14 +73,15 @@ export const Input = React.memo(function Input({
     <View style={[styles.container, style]}>
       {label && <Text style={styles.label}>{label}</Text>}
       <TextInput
+        ref={ref}
         style={[
           styles.input,
           focused && styles.inputFocused,
           error && styles.inputError,
         ]}
         placeholderTextColor={c.textSecondary}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
         accessibilityLabel={label || props.placeholder}
         accessibilityHint={error ? `Ошибка: ${error}` : undefined}
         {...props}
@@ -74,4 +89,4 @@ export const Input = React.memo(function Input({
       {error && <Text style={styles.error}>{error}</Text>}
     </View>
   );
-});
+}));

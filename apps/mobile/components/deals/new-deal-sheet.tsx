@@ -2,7 +2,7 @@ import React, { memo, useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { Input } from '@/components/ui';
 import { FormSheet } from '@/components/deals/form-sheet';
-import { parseMoneyInput } from '@/services/deals-view';
+import { useMoneyField } from '@/hooks/use-money-field';
 import { dealErrorText } from '@/hooks/use-deal-income';
 import { useDealStore } from '@/stores/deal-store';
 
@@ -11,21 +11,22 @@ export const NewDealSheet = memo(function NewDealSheet({ visible, onClose }: { v
   const create = useDealStore((s) => s.create);
   const [personName, setPersonName] = useState('');
   const [title, setTitle] = useState('');
-  const [amount, setAmount] = useState('');
+  const amount = useMoneyField();
+  const { parsed, validate, reset: resetAmount } = amount;
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     setPersonName('');
     setTitle('');
-    setAmount('');
-  }, [visible]);
+    resetAmount('');
+  }, [visible, resetAmount]);
 
-  const parsed = parseMoneyInput(amount);
-  const canSave = personName.trim().length > 0 && parsed.ok;
+  const canSave = personName.trim().length > 0;
 
   const onSave = useCallback(async () => {
-    if (!canSave || !parsed.ok) return;
+    // Ошибку суммы показываем по «Добавить», а не пока печатают.
+    if (!canSave || !validate() || !parsed.ok) return;
     setSaving(true);
     try {
       await create({ personName, title, amount: parsed.value });
@@ -35,7 +36,7 @@ export const NewDealSheet = memo(function NewDealSheet({ visible, onClose }: { v
     } finally {
       setSaving(false);
     }
-  }, [canSave, parsed, create, personName, title, onClose]);
+  }, [canSave, validate, parsed, create, personName, title, onClose]);
 
   return (
     <FormSheet
@@ -60,10 +61,11 @@ export const NewDealSheet = memo(function NewDealSheet({ visible, onClose }: { v
       <Input
         label="Сумма, ₸"
         placeholder="2 000 000"
-        value={amount}
-        onChangeText={setAmount}
+        value={amount.text}
+        onChangeText={amount.setText}
+        onBlur={amount.onBlur}
         keyboardType="numeric"
-        error={parsed.ok ? undefined : 'Сумма — число, например 2 000 000'}
+        error={amount.error}
       />
     </FormSheet>
   );

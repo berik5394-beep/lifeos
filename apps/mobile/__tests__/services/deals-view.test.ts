@@ -95,9 +95,30 @@ describe('панель сделок — что показываем', () => {
     expect(parseMoneyInput('2,5 млн')).toEqual({ ok: true, value: 2_500_000 });
     expect(parseMoneyInput('500к')).toEqual({ ok: true, value: 500_000 });
     expect(parseMoneyInput('  ')).toEqual({ ok: true, value: null });
-    expect(parseMoneyInput('много')).toEqual({ ok: false });
-    expect(parseMoneyInput('0')).toEqual({ ok: false });
-    expect(parseMoneyInput('2000000000')).toEqual({ ok: false });
+    expect(parseMoneyInput('много')).toMatchObject({ ok: false });
+    expect(parseMoneyInput('0')).toMatchObject({ ok: false });
+    expect(parseMoneyInput('2000000000')).toMatchObject({ ok: false });
+  });
+  it('ввод суммы без суффикса: «,»/«.» + ровно 3 цифры — разделитель тысяч, не дробь', () => {
+    expect(parseMoneyInput('350,000')).toEqual({ ok: true, value: 350_000 });
+    expect(parseMoneyInput('2.000.000')).toEqual({ ok: true, value: 2_000_000 });
+    expect(parseMoneyInput('1,500')).toEqual({ ok: true, value: 1_500 });
+    expect(parseMoneyInput('2,000,000 ₸')).toEqual({ ok: true, value: 2_000_000 });
+  });
+  it('ввод суммы с суффиксом: дробь можно', () => {
+    expect(parseMoneyInput('1,5к')).toEqual({ ok: true, value: 1_500 });
+    expect(parseMoneyInput('2,5 млн')).toEqual({ ok: true, value: 2_500_000 });
+    expect(parseMoneyInput('1.5 тыс')).toEqual({ ok: true, value: 1_500 });
+  });
+  it('дробь без суффикса — ошибка «Сумма — целое число»; смешанные разделители — ошибка', () => {
+    expect(parseMoneyInput('12,5')).toEqual({ ok: false, error: 'Сумма — целое число' });
+    expect(parseMoneyInput('1500.50')).toEqual({ ok: false, error: 'Сумма — целое число' });
+    expect(parseMoneyInput('1,000.000')).toMatchObject({ ok: false });
+  });
+  it('ошибки ввода суммы — с понятным текстом', () => {
+    expect(parseMoneyInput('много')).toEqual({ ok: false, error: 'Сумма — число, например 2 000 000' });
+    expect(parseMoneyInput('0')).toEqual({ ok: false, error: 'Сумма должна быть больше нуля' });
+    expect(parseMoneyInput('2000000000')).toEqual({ ok: false, error: 'Слишком большая сумма — максимум 1 млрд ₸' });
   });
   it('сегодня — локальная civil-дата устройства', () => {
     expect(civilToday(new Date(2026, 10, 5, 23, 30))).toBe('2026-11-05');

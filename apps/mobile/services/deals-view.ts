@@ -117,18 +117,41 @@ export function reopenStage(d: Deal, events: readonly DealEvent[]): OpenStage {
   return closing?.from && isOpenStage(closing.from) ? closing.from : 'talks';
 }
 
-const MONEY_INPUT = /^(\d+(?:[.,]\d+)?)(млн|м|к|тыс)?$/;
+/** Целое без суффикса; «,»/«.» + ровно 3 цифры — разделитель тысяч («350,000», «2.000.000»). */
+const MONEY_PLAIN = /^\d+(?:([.,])\d{3}(?:\1\d{3})*)?$/;
+/** С суффиксом дробь можно: «1,5к», «2,5 млн». */
+const MONEY_SUFFIXED = /^(\d+(?:[.,]\d+)?)(млн|м|к|тыс)$/;
+const MONEY_FRACTION = /^\d+[.,]\d+$/;
 
-/** Сумма из поля ввода: «2 000 000», «2,5 млн», «500к». Пусто — null (сумма не названа). */
-export function parseMoneyInput(raw: string): { ok: true; value: number | null } | { ok: false } {
-  const s = raw.toLowerCase().replace(/[\s ₸]/g, '').replace(/(тг|тенге)$/, '');
+export type MoneyParse = { ok: true; value: number | null } | { ok: false; error: string };
+
+export const MONEY_ERROR = {
+  format: 'Сумма — число, например 2 000 000',
+  fraction: 'Сумма — целое число',
+  zero: 'Сумма должна быть больше нуля',
+  tooBig: 'Слишком большая сумма — максимум 1 млрд ₸',
+} as const;
+
+/**
+ * Сумма из поля ввода: «2 000 000», «350,000», «2,5 млн», «500к». Пусто — null (сумма не названа).
+ * Без суффикса «,»/«.» перед 3 цифрами — тысячи (так пишут суммы), прочая дробь — ошибка.
+ */
+export function parseMoneyInput(raw: string): MoneyParse {
+  const s = raw.toLowerCase().replace(/[\s ₸]/g, '').replace(/(тг|тенге)$/, '');
   if (!s) return { ok: true, value: null };
-  const m = s.match(MONEY_INPUT);
-  if (!m) return { ok: false };
-  const base = Number(m[1].replace(',', '.'));
-  const mult = m[2] === 'млн' || m[2] === 'м' ? 1_000_000 : m[2] === 'к' || m[2] === 'тыс' ? 1_000 : 1;
-  const value = Math.round(base * mult);
-  if (!Number.isFinite(value) || value <= 0 || value > MAX_MONEY) return { ok: false };
+  let value: number;
+  const plain = s.match(MONEY_PLAIN);
+  if (plain) {
+    value = Number(s.replace(/[.,]/g, ''));
+  } else {
+    const m = s.match(MONEY_SUFFIXED);
+    if (!m) return { ok: false, error: MONEY_FRACTION.test(s) ? MONEY_ERROR.fraction : MONEY_ERROR.format };
+    const mult = m[2] === 'млн' || m[2] === 'м' ? 1_000_000 : 1_000;
+    value = Math.round(Number(m[1].replace(',', '.')) * mult);
+  }
+  if (!Number.isFinite(value)) return { ok: false, error: MONEY_ERROR.format };
+  if (value <= 0) return { ok: false, error: MONEY_ERROR.zero };
+  if (value > MAX_MONEY) return { ok: false, error: MONEY_ERROR.tooBig };
   return { ok: true, value };
 }
 
