@@ -2,7 +2,7 @@ import React, { memo, type ReactNode } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { COMIC } from '@/constants/comic';
 
-export type ComicTail = 'bottom-left' | 'left' | 'none';
+export type ComicTail = 'bottom-left' | 'left' | 'right' | 'none';
 
 /**
  * Облачко реплики в стиле комикса: белая «бумага», жирный чёрный контур,
@@ -11,26 +11,35 @@ export type ComicTail = 'bottom-left' | 'left' | 'none';
 export const ComicBubble = memo(function ComicBubble({
   children,
   tail = 'bottom-left',
+  paper = COMIC.paper,
   style,
 }: {
   children: ReactNode;
   tail?: ComicTail;
+  /** Цвет «бумаги»: у робота белый, у юзера — свой (COMIC.userPaper). */
+  paper?: string;
   style?: StyleProp<ViewStyle>;
 }) {
   return (
     <View style={[styles.wrap, style]}>
       <View style={styles.shadow} />
-      <View style={styles.paper}>{children}</View>
+      <View style={[styles.paper, { backgroundColor: paper }]}>{children}</View>
       {tail === 'bottom-left' && (
         <>
           <View style={[styles.tailDownOuter]} />
-          <View style={[styles.tailDownInner]} />
+          <View style={[styles.tailDownInner, { borderTopColor: paper }]} />
         </>
       )}
       {tail === 'left' && (
         <>
           <View style={[styles.tailLeftOuter]} />
-          <View style={[styles.tailLeftInner]} />
+          <View style={[styles.tailLeftInner, { borderRightColor: paper }]} />
+        </>
+      )}
+      {tail === 'right' && (
+        <>
+          <View style={styles.tailRightOuter} />
+          <View style={[styles.tailRightInner, { borderLeftColor: paper }]} />
         </>
       )}
     </View>
@@ -108,5 +117,28 @@ const styles = StyleSheet.create({
     borderRightWidth: L - o - 2,
     borderBottomColor: 'transparent',
     borderRightColor: COMIC.paper,
+  },
+  // Хвостик вправо (к юзеру, к краю экрана).
+  tailRightOuter: {
+    position: 'absolute',
+    right: -L + 1,
+    top: 14,
+    width: 0,
+    height: 0,
+    borderBottomWidth: T,
+    borderLeftWidth: L,
+    borderBottomColor: 'transparent',
+    borderLeftColor: COMIC.ink,
+  },
+  tailRightInner: {
+    position: 'absolute',
+    right: -L + 1 + o + 2,
+    top: 14 + o,
+    width: 0,
+    height: 0,
+    borderBottomWidth: T - o - 2,
+    borderLeftWidth: L - o - 2,
+    borderBottomColor: 'transparent',
+    borderLeftColor: COMIC.paper,
   },
 });

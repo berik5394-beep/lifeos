@@ -1,7 +1,5 @@
-import { useState, useRef, useEffect, useCallback, memo, useMemo, type ReactNode } from 'react';
+import { useState, useRef, useEffect, useCallback, memo, useMemo } from 'react';
 import {
-  type StyleProp,
-  type ViewStyle,
   View,
   Text,
   FlatList,
@@ -25,6 +23,7 @@ import { RobotAvatar } from '@/components/robot/robot-avatar';
 import { panelRoute, visiblePanels } from '@/services/panels';
 import { ComicBubble } from '@/components/robot/comic-bubble';
 import { ComicText } from '@/components/robot/comic-text';
+import { COMIC } from '@/constants/comic';
 import { useUIStore } from '@/stores/ui-store';
 import { useColors } from '@/hooks/use-colors';
 import { hapticLight } from '@/services/haptics';
@@ -62,13 +61,13 @@ const ChatBubble = memo(function ChatBubble({ message, onAction, onConfirm, type
           <Feather name="cpu" size={16} color={c.primary} />
         </View>
       )}
-      <BubbleFrame isUser={isUser} style={isUser ? [styles.bubble, styles.bubbleUser] : styles.comicBubble}>
-        {isUser ? (
-          <Text style={[styles.bubbleText, styles.bubbleTextUser]}>{message.content}</Text>
-        ) : (
-          // Реплики робота — комиксовое облачко (робот-эпик).
-          <ComicText text={message.content} typewrite={typewrite} />
-        )}
+      {/* Диалог как в комиксе: робот слева (белое облачко), юзер справа (сиреневое). */}
+      <ComicBubble
+        tail={isUser ? 'right' : 'left'}
+        paper={isUser ? COMIC.userPaper : COMIC.paper}
+        style={isUser ? styles.comicBubbleUser : styles.comicBubble}
+      >
+        <ComicText text={message.content} typewrite={!isUser && typewrite} />
         <Text style={[styles.timestamp, isUser ? styles.timestampUser : styles.timestampAssistant]}>
           {formatTime(message.createdAt)}
         </Text>
@@ -110,28 +109,10 @@ const ChatBubble = memo(function ChatBubble({ message, onAction, onConfirm, type
             </TouchableOpacity>
           </View>
         )}
-      </BubbleFrame>
+      </ComicBubble>
     </View>
   );
 });
-
-/** Рамка сообщения: у юзера — обычный пузырь, у робота — облачко комикса с хвостиком к аватару. */
-function BubbleFrame({
-  isUser,
-  style,
-  children,
-}: {
-  isUser: boolean;
-  style: StyleProp<ViewStyle>;
-  children: ReactNode;
-}) {
-  if (isUser) return <View style={style}>{children}</View>;
-  return (
-    <ComicBubble tail="left" style={style}>
-      {children}
-    </ComicBubble>
-  );
-}
 
 /** Ответ робота считается «свежим» (печатаем по буквам) первые секунды после прихода. */
 const FRESH_REPLY_MS = 20_000;
@@ -432,6 +413,7 @@ type C = ReturnType<typeof useColors>;
 function createStyles(c: C) {
   return StyleSheet.create({
     comicBubble: { flexShrink: 1, marginLeft: spacing.sm },
+    comicBubbleUser: { flexShrink: 1, marginRight: spacing.md },
     emptyFlip: { transform: [{ scaleY: -1 }] },
     container: {
       flex: 1,
@@ -467,28 +449,12 @@ function createStyles(c: C) {
       marginRight: spacing.sm,
       marginTop: spacing.xs,
     },
-    bubble: {
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
-      flexShrink: 1,
-    },
-    bubbleUser: {
-      backgroundColor: c.primary,
-      borderBottomRightRadius: spacing.xs,
-    },
-    bubbleText: {
-      fontSize: fontSize.md,
-      lineHeight: 22,
-    },
-    bubbleTextUser: {
-      color: c.text,
-    },
     timestamp: {
       fontSize: fontSize.xs,
       marginTop: spacing.xs,
     },
     timestampUser: {
-      color: 'rgba(255,255,255,0.6)',
+      color: 'rgba(20,16,31,0.5)',
       textAlign: 'right',
     },
     timestampAssistant: {

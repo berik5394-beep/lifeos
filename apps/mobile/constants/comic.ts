@@ -7,6 +7,8 @@ import { Platform } from 'react-native';
 export const COMIC = {
   ink: '#14101F',
   paper: '#FFFFFF',
+  /** «Бумага» реплик юзера — отличаем от робота цветом, стиль тот же. */
+  userPaper: '#DCD8FF',
   outline: 3,
   shadow: 4,
   /** iOS: системный Chalkboard (комиксовый); Android: узкий системный. */
