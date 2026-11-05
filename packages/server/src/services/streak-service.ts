@@ -1,4 +1,6 @@
 import { prisma } from '../lib/prisma.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 
 /**
  * Habit completion streak: consecutive days where >50% of the user's active
@@ -11,7 +13,7 @@ import { prisma } from '../lib/prisma.js';
  * Grace: today with zero completions yet doesn't break an existing streak
  * (user may not have checked in).
  */
-export async function calculateStreak(userId: string): Promise<number> {
+export async function calculateStreak(userId: string, tz?: string): Promise<number> {
   const activeHabits = await prisma.habit.count({
     where: { userId, active: true },
   });
@@ -19,11 +21,13 @@ export async function calculateStreak(userId: string): Promise<number> {
 
   const threshold = activeHabits * 0.5;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // habit-day (2026-11-05): «сегодня» = календарная дата ЮЗЕРА (как пишутся
+  // HabitLog), а не полночь сервера — иначе вечером по Алматы сегодняшние
+  // отметки (дата «завтра» для UTC-сервера) не попадали в окно и серия падала.
+  const today = localDateOnlyUTC(tz ?? (await getUserTimezone(userId)));
 
   const from = new Date(today);
-  from.setDate(from.getDate() - 365);
+  from.setUTCDate(from.getUTCDate() - 365);
 
   const logs = await prisma.habitLog.findMany({
     where: {
@@ -44,7 +48,7 @@ export async function calculateStreak(userId: string): Promise<number> {
   let streak = 0;
   for (let i = 0; i < 365; i++) {
     const d = new Date(today);
-    d.setDate(d.getDate() - i);
+    d.setUTCDate(d.getUTCDate() - i);
     const key = d.toISOString().slice(0, 10);
     const count = byDay.get(key) ?? 0;
 

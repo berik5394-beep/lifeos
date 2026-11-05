@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { gatherOpenLoops } from './open-loops.js';
-import { localDateOnlyUTC, localDayStartUTC } from '../lib/tz.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 
 // Pattern from mem-graph.it.test.ts: own PrismaClient, disconnect in afterAll.
 // Каждый it-блок стартует на чистой БД (setup.ts → beforeEach → resetDb).
@@ -11,7 +11,7 @@ afterAll(async () => {
 });
 
 // Asia/Almaty = +5 → convA (localDateOnlyUTC = T00:00Z самой календарной даты)
-// ≠ convB (localDayStartUTC = реальный UTC-инстант локальной полуночи = вчера 19:00Z).
+// habit-day 2026-11-05: и задачи, и HabitLog — convA (календарная дата).
 // Привычка, отмеченная convB (как пишет complete-habit), должна распознаваться
 // как «отмечена сегодня» — иначе TZ-баг.
 const TZ = 'Asia/Almaty';
@@ -31,7 +31,7 @@ async function mkUser(tag: string): Promise<string> {
 const now = new Date();
 const taskToday = localDateOnlyUTC(TZ, now); // @db.Date — задачи (как пишут задачи)
 const taskYesterday = new Date(taskToday.getTime() - 86_400_000); // просрочка (date < taskToday)
-const habitToday = localDayStartUTC(TZ, now); // HabitLog — ровно как пишет complete-habit
+const habitToday = localDateOnlyUTC(TZ, now); // HabitLog — календарная дата (habit-day: так пишут и приложение, и complete-habit)
 
 describe('open-loops gather — реальные счётчики + TZ', () => {
   it('3 просрочки + 4 привычки (2 отмечены сегодня convB) → overdue=3, unchecked=2; отмеченная НЕ в unchecked', async () => {
@@ -62,7 +62,7 @@ describe('open-loops gather — реальные счётчики + TZ', () => {
         }),
       );
     }
-    // 2 отмечены СЕГОДНЯ той же конвенцией, что complete-habit (localDayStartUTC)
+    // 2 отмечены СЕГОДНЯ той же конвенцией, что complete-habit и приложение (convA)
     await prisma.habitLog.create({
       data: { userId: uid, habitId: hs[0].id, date: habitToday, completed: true },
     });

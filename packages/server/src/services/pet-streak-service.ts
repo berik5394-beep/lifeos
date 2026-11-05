@@ -1,4 +1,6 @@
 import { prisma } from '../lib/prisma.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 
 /**
  * A.1 — оживление Pet.streak.
@@ -75,9 +77,12 @@ async function dayCompletion(
  * новый стрик или null если пропущено (нет/мёртв/уже оценён).
  */
 export async function evaluatePetStreak(userId: string): Promise<number | null> {
-  const today = startOfDay(new Date());
+  // habit-day (2026-11-05): «вчера» = календарный день ЮЗЕРА (задачи и
+  // привычки хранятся календарной датой). Полночь сервера (UTC) для зон
+  // со смещением оценивала не тот день — в минусовых зонах ещё незаконченный.
+  const today = localDateOnlyUTC(await getUserTimezone(userId));
   const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
 
   const pet = await prisma.pet.findUnique({
     where: { userId },
@@ -85,7 +90,7 @@ export async function evaluatePetStreak(userId: string): Promise<number | null> 
   });
   if (!pet || !pet.isAlive) return null;
   // Уже зачтено за вчера (или позже) — идемпотентно пропускаем.
-  if (pet.streakDate && startOfDay(pet.streakDate) >= yesterday) return null;
+  if (pet.streakDate && pet.streakDate >= yesterday) return null;
 
   const { pct, hadActivity } = await dayCompletion(userId, yesterday);
   const next = streakDecision(pet.streak, pct, hadActivity);

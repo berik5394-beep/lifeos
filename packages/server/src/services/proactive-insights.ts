@@ -1,4 +1,6 @@
 import { prisma } from '../lib/prisma.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 import { isV2GoalSlotEnabled } from '../lib/feature-flags.js';
 import { persistFlatInsights } from './insight-store.js';
 import { planVsFact } from './plan-vs-fact.js';
@@ -72,7 +74,9 @@ export interface InsightInput {
 }
 
 export async function generateInsights(userId: string): Promise<Insight[]> {
-  const today = startOfDay(new Date());
+  // habit-day (2026-11-05): «сегодня» для @db.Date (задачи, отметки привычек) =
+  // календарная дата юзера, не полночь сервера.
+  const today = localDateOnlyUTC(await getUserTimezone(userId));
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();

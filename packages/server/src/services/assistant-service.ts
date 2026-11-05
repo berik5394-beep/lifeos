@@ -18,7 +18,6 @@ import { calculateStreak, calculateWeekProgress } from './streak-service.js';
 import { getRelevantMemories } from './memory-service.js';
 import { getWeather } from './external-apis.js';
 import {
-  localDayStartUTC,
   localDateOnlyUTC,
   localDateStr,
   localWeekStartUTC,
@@ -76,13 +75,11 @@ export async function gatherAssistantContext(
   });
   if (!user) return null;
 
-  // FIX 2026-06-06 (review-catch d67417d): @db.Date «сегодня» — ДВЕ конвенции.
-  // task/event теперь пишутся convA (UTC-полночь календарной даты) → читаем их
-  // через localDateOnlyUTC. habitLog ещё на старой convB (complete-habit не
-  // мигрирован) → его читаем через localDayStartUTC (write↔read совпадают).
+  // @db.Date «сегодня» — одна конвенция (convA, UTC-полночь календарной даты)
+  // для task/event И habitLog (habit-day 2026-11-05: complete-habit и
+  // приложение пишут календарную дату).
   const tz = user.timezone || 'Asia/Almaty';
-  const today = localDayStartUTC(tz); // convB — ТОЛЬКО для habitLog
-  const todayDateOnly = localDateOnlyUTC(tz); // convA — для task/event
+  const todayDateOnly = localDateOnlyUTC(tz);
   const tomorrowDateOnly = new Date(todayDateOnly.getTime() + 24 * 60 * 60 * 1000);
   const [ly, lm] = localDateStr(tz).split('-').map(Number);
   const monthStart = new Date(Date.UTC(ly, lm - 1, 1));
@@ -113,7 +110,7 @@ export async function gatherAssistantContext(
       select: { id: true, name: true },
     }),
     prisma.habitLog.findMany({
-      where: { userId, date: today, completed: true },
+      where: { userId, date: todayDateOnly, completed: true },
       select: { habitId: true },
     }),
     prisma.calendarEvent.findMany({
@@ -129,7 +126,7 @@ export async function gatherAssistantContext(
       where: { userId, month: lm, year: ly },
       _sum: { monthlyLimit: true },
     }),
-    calculateStreak(userId),
+    calculateStreak(userId, tz),
     calculateWeekProgress(userId, todayDateOnly),
     prisma.yearlyGoal.findMany({
       where: { userId, year: ly },

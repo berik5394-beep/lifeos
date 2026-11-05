@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimiter } from '../middleware/security.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 
 // Брифинг делает 8 параллельных запросов к БД за раз — не AI, но тяжело.
 // Нет смысла вызывать чаще чем раз в 2 секунды (пользователь не обновляет
@@ -30,9 +32,12 @@ function getRandomQuote(): string {
   return MOTIVATIONAL_QUOTES[Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length)];
 }
 
-function getToday(): Date {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+/**
+ * habit-day (2026-11-05): «сегодня» = календарная дата ЮЗЕРА в @db.Date-конвенции
+ * (задачи, события, отметки привычек), не полночь сервера (UTC).
+ */
+async function getToday(userId: string): Promise<Date> {
+  return localDateOnlyUTC(await getUserTimezone(userId));
 }
 
 function getMonthRange(): { start: Date; end: Date } {
@@ -48,7 +53,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
   // GET /briefing/morning — утренний брифинг
   app.get('/briefing/morning', { preHandler: briefingLimiter }, async (request) => {
     const userId = request.userId;
-    const today = getToday();
+    const today = await getToday(userId);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const { start: monthStart, end: monthEnd } = getMonthRange();
@@ -195,7 +200,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
   // GET /briefing/evening — вечерний обзор
   app.get('/briefing/evening', { preHandler: briefingLimiter }, async (request) => {
     const userId = request.userId;
-    const today = getToday();
+    const today = await getToday(userId);
 
     const [tasks, habits, habitLogs, expenses, pet] = await Promise.all([
       prisma.task.findMany({

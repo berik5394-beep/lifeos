@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { matchHabit, buildNotFoundMessage } from './_habit-match.js';
@@ -27,7 +27,10 @@ export const completeHabitTool = defineTool({
     const userId = ctx.userId;
     // R9 TZ-aware: «сегодня» в локальной TZ юзера.
     const tz = await getUserTimezone(userId);
-    const today = localDayStartUTC(tz);
+    // habit-day (2026-11-05): @db.Date = КАЛЕНДАРНАЯ дата юзера (как пишет
+    // приложение POST /habits/:id/log и как задачи/события). Инстант локальной полуночи
+    // давал реальный инстант полуночи → для UTC+ зон в @db.Date это ВЧЕРА.
+    const today = localDateOnlyUTC(tz);
     let habit = input.habitId
       ? await prisma.habit.findFirst({
           where: { id: input.habitId, userId },

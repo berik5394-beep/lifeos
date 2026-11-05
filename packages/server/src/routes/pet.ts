@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { validateUnlock, type ItemSpec } from '../services/items-catalog.js';
@@ -45,8 +47,14 @@ const COSTUME_REQUIREMENTS: Record<string, number> = {
   legendary_aura: 100,
 };
 
-function getStartOfDay(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+/**
+ * habit-day (2026-11-05): «сегодня» = календарная дата ЮЗЕРА в @db.Date-конвенции
+ * (UTC-полночь календарной даты) — так хранятся задачи и отметки привычек.
+ * Раньше была полночь сервера (UTC): вечером по Алматы здоровье питомца
+ * считалось по «вчерашним» задачам/привычкам.
+ */
+async function userToday(userId: string): Promise<Date> {
+  return localDateOnlyUTC(await getUserTimezone(userId));
 }
 
 function determineVisualState(health: number, lastFed: Date): PetVisualState {
@@ -112,7 +120,7 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/pet', async (request) => {
     const userId = request.userId;
-    const today = getStartOfDay(new Date());
+    const today = await userToday(userId);
     const now = new Date();
 
     // Find or create pet
@@ -367,7 +375,7 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     const userId = request.userId;
     const { method } = request.body as z.infer<typeof reviveSchema>;
-    const today = getStartOfDay(new Date());
+    const today = await userToday(userId);
 
     const pet = await prisma.pet.findUnique({ where: { userId } });
     if (!pet) {
@@ -408,9 +416,7 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
     } else if (method === 'three_days') {
       // Check last 3 days each had >=80% tasks+habits
       for (let i = 0; i < 3; i++) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - i);
-        const dayStart = getStartOfDay(date);
+        const dayStart = new Date(today.getTime() - i * 86_400_000);
 
         const [totalTasks, completedTasks, totalHabits, completedHabits] = await Promise.all([
           prisma.task.count({ where: { userId, date: dayStart, cancelled: false } }),
@@ -602,9 +608,9 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
       return { pet: null, history: [] };
     }
 
-    const today = getStartOfDay(new Date());
+    const today = await userToday(request.userId);
     const startDate = new Date(today);
-    startDate.setDate(startDate.getDate() - numDays + 1);
+    startDate.setUTCDate(startDate.getUTCDate() - numDays + 1);
 
     const [habitLogs, tasks] = await Promise.all([
       prisma.habitLog.findMany({
@@ -633,7 +639,7 @@ export async function petRoutes(app: FastifyInstance): Promise<void> {
 
     for (let i = 0; i < numDays; i++) {
       const date = new Date(startDate);
-      date.setDate(date.getDate() + i);
+      date.setUTCDate(date.getUTCDate() + i);
       const dateStr = date.toISOString().split('T')[0];
 
       const dayHabits = habitLogs.filter(

@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { countOverduePending, listOverduePending } from './task-overdue.js';
 import { getUserTimezone } from '../lib/user-context.js';
-import { localDateOnlyUTC, localDayStartUTC } from '../lib/tz.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 
 export interface OpenLoops {
   overdueCount: number;
@@ -16,13 +16,13 @@ export interface OpenLoops {
  * READ-ONLY снимок открытых петель. Сам резолвит таймзону юзера и применяет
  * ПРАВИЛЬНУЮ дату-конвенцию к каждому домену (TZ-баг 2026-06-06):
  *  - задачи (Task.date @db.Date) → localDateOnlyUTC (как 3 прод-вызова countOverduePending);
- *  - привычки (HabitLog.date) → localDayStartUTC — ТОЧНО как пишет complete-habit,
+ *  - привычки (HabitLog.date) → та же календарная дата (habit-day 2026-11-05: complete-habit и приложение пишут convA),
  *    иначе в зонах со смещением «привычка не отмечена» врёт.
  */
 export async function gatherOpenLoops(userId: string, now: Date = new Date()): Promise<OpenLoops> {
   const tz = await getUserTimezone(userId);
   const taskToday = localDateOnlyUTC(tz, now); // @db.Date convA — задачи
-  const habitToday = localDayStartUTC(tz, now); // зеркало complete-habit — привычки
+  const habitToday = taskToday; // habit-day: HabitLog.date — та же календарная дата (convA)
   const [overdueCount, overdueSample, habits, todayLogs, pending] = await Promise.all([
     countOverduePending(userId, taskToday),
     listOverduePending(userId, taskToday, 3),

@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { generateProactiveNotifications } from '../services/proactive-notifications.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 
 const registerTokenSchema = z.object({
   // Expo push token: ExponentPushToken[...] / ExpoPushToken[...]
@@ -16,9 +18,12 @@ const registerTokenSchema = z.object({
 // ---------------------------------------------------------------------------
 // Helper: today's date (midnight, no time component)
 // ---------------------------------------------------------------------------
-function getToday(): Date {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+/**
+ * habit-day (2026-11-05): «сегодня» = календарная дата ЮЗЕРА в @db.Date-конвенции
+ * (задачи, события, отметки привычек), не полночь сервера (UTC).
+ */
+async function getToday(userId: string): Promise<Date> {
+  return localDateOnlyUTC(await getUserTimezone(userId));
 }
 
 function getMonthRange(): { start: Date; end: Date } {
@@ -70,7 +75,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
    */
   app.get('/notifications/briefing', async (request) => {
     const userId = request.userId;
-    const today = getToday();
+    const today = await getToday(userId);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const { start: monthStart, end: monthEnd } = getMonthRange();

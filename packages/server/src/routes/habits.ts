@@ -198,6 +198,31 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(log);
   });
 
+  // habit-day (2026-11-05): приложение подтягивает отметки с сервера, а не только
+  // из локального стора — иначе голосовые/чатовые отметки (через мозг) и отметки
+  // с другого устройства не видны, а после переустановки история пропадает.
+  // date = календарная дата юзера 'YYYY-MM-DD' (та же конвенция, что пишет POST /log).
+  app.get('/habits/logs', async (request, reply) => {
+    const parsed = z
+      .object({ from: isoDate, to: isoDate })
+      .safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({ message: 'from/to — даты в формате YYYY-MM-DD' });
+    }
+    const from = new Date(parsed.data.from + 'T00:00:00Z');
+    const to = new Date(parsed.data.to + 'T00:00:00Z');
+    const days = (to.getTime() - from.getTime()) / 86_400_000;
+    if (!Number.isFinite(days) || days < 0 || days > 62) {
+      return reply.status(400).send({ message: 'Диапазон — от 0 до 62 дней' });
+    }
+    const logs = await prisma.habitLog.findMany({
+      where: { userId: request.userId, date: { gte: from, lte: to } },
+      select: { id: true, habitId: true, date: true, completed: true },
+      orderBy: { date: 'asc' },
+    });
+    return logs.map((l) => ({ ...l, date: l.date.toISOString().slice(0, 10) }));
+  });
+
   app.get('/habits/stats/:month', async (request, reply) => {
     const { month } = request.params as { month: string };
     const range = parseMonth(month);

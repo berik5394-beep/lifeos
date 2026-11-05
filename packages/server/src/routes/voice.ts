@@ -19,6 +19,8 @@ import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 // Теперь ответ идёт через единый оркестратор. Контракт ответа
 // ({response, reply, context}) сохранён — старое приложение не ломается.
 import { handleMessage } from '../services/jarvis-orchestrator.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 
 // Voice assistant/transcribe are expensive (Groq Whisper + Claude API) — cap per IP
 const assistantRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'voice-assistant' });
@@ -105,9 +107,10 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(404).send({ message: 'Пользователь не найден' });
       }
 
-      // 2. Get today's tasks
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // 2. Get today's tasks. habit-day (2026-11-05): «сегодня» = календарная
+      // дата юзера (@db.Date задач и отметок привычек), не полночь сервера —
+      // вечерний ритуал по Алматы иначе считал итог «вчерашнего» дня.
+      const today = localDateOnlyUTC(await getUserTimezone(userId));
 
       const todayTasks = await prisma.task.findMany({
         where: {

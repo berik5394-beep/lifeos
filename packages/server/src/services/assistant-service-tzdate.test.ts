@@ -13,16 +13,17 @@ const SRC = readFileSync(join(__dirname, 'assistant-service.ts'), 'utf8');
  * (behavioral путь зовёт внешние API → флак без ключей).
  */
 describe('assistant-service: @db.Date конвенции (review-catch d67417d)', () => {
-  it('task/event читаются через convA (localDateOnlyUTC), habitLog — через convB (today)', () => {
+  it('task/event И habitLog читаются через convA (localDateOnlyUTC) — habit-day 2026-11-05', () => {
     // convA для task/event
     expect(SRC).toContain('localDateOnlyUTC');
     expect(SRC).toContain('todayDateOnly = localDateOnlyUTC');
     expect(SRC).toContain('date: todayDateOnly, cancelled');
     expect(SRC).toContain('gte: todayDateOnly, lt: tomorrowDateOnly');
     expect(SRC).toContain('calculateWeekProgress(userId, todayDateOnly)');
-    // convB сохранён ТОЛЬКО для habitLog (привычки не мигрированы)
-    expect(SRC).toContain('const today = localDayStartUTC(tz)');
-    expect(SRC).toContain('date: today, completed: true');
+    // habit-day: привычки пишутся календарной датой (complete-habit и приложение)
+    // → читаются той же convA; старая convB (localDayStartUTC) не должна вернуться.
+    expect(SRC).toContain('date: todayDateOnly, completed: true');
+    expect(SRC).not.toContain('localDayStartUTC');
   });
 
   it('старый tomorrow-через-localDayStartUTCOffset для event-окна убран', () => {

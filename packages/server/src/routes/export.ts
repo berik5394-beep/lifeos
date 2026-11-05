@@ -6,6 +6,8 @@ import { validate } from '../middleware/validate.js';
 import { calculateStreak } from '../services/streak-service.js';
 import PDFDocument from 'pdfkit';
 import { join } from 'node:path';
+import { localDateOnlyUTC } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 
 // A.6: реальный экспорт. Раньше /export/pdf и /export/story
 // возвращали JSON («success»), а файла не было — обман. Теперь —
@@ -355,19 +357,18 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
   app.post('/export/story', async (request, reply) => {
     const userId = request.userId;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // habit-day (2026-11-05): календарный день юзера (@db.Date), не полночь сервера.
+    const today = localDateOnlyUTC(await getUserTimezone(userId));
 
     const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
-    const dayOfWeek = today.getDay();
+    const dayOfWeek = today.getUTCDay();
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() + mondayOffset);
-    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setUTCDate(today.getUTCDate() + mondayOffset);
     const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 7);
+    weekEnd.setUTCDate(weekStart.getUTCDate() + 7);
 
     const [
       todayTasks,
