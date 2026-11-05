@@ -10,6 +10,7 @@
  * prompt diff stays predictable turn-to-turn.
  */
 
+import { roomContextLine } from './room-context.js';
 import { prisma } from '../lib/prisma.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { getProceduralMemory } from './procedural-memory.singleton.js';
@@ -107,6 +108,8 @@ export type V2EnrichmentData = {
   scheduleConflict: string | null;
   /** Открытые петли (open-loops): «Открыто сейчас: …» или null. */
   openLoops: string | null;
+  /** Комната робота (Часть 4): «Комната робота: диван, лампа» или null. */
+  room?: string | null;
 };
 
 /** Недавняя активность — pure render. Empty → ''. */
@@ -171,6 +174,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (data.scheduleConflict) lines.push(data.scheduleConflict);
   if (data.recentActivity) lines.push(data.recentActivity);
   if (data.openLoops) lines.push(data.openLoops);
+  if (data.room) lines.push(data.room);
   return lines.join('\n');
 }
 
@@ -340,6 +344,16 @@ export async function fetchV2EnrichmentData(
       : Promise.resolve(null);
 
     const nowDate = new Date();
+    // Комната робота (Часть 4): READ-ONLY, чтобы на «как тебе комната?» робот
+    // отвечал по факту, а не выдумывал. Сбой → null → строки нет.
+    const roomPromise = withTimeout(
+      prisma.roomItem
+        .findMany({ where: { userId }, orderBy: { createdAt: 'asc' }, select: { itemKey: true } })
+        .then((rows) => roomContextLine(rows.map((r) => r.itemKey)))
+        .catch(() => null),
+      BASE_MEMBER_BUDGET_MS,
+      null,
+    );
     const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity, scheduleConflict, personTypes, personMeetings, openLoops] = await Promise.all([
       withTimeout(
         getBotIdentityService()
@@ -493,6 +507,7 @@ export async function fetchV2EnrichmentData(
           'меньше требований и критики, не наваливай задачи и цели. ' +
           'Это перекрывает выбранный стиль (даже strict/toxic).'
         : null;
+    const room = await roomPromise;
     const now = Date.now();
     return {
       identity: identity
@@ -544,6 +559,7 @@ export async function fetchV2EnrichmentData(
       personTypes,
       personMeetings,
       openLoops,
+      room,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);

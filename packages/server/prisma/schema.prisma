@@ -103,6 +103,7 @@ model User {
   obligations            Obligation[]
   // Привязка Telegram по одноразовому коду (2026-11-05)
   telegramLinkCodes      TelegramLinkCode[]
+  roomItems              RoomItem[]
 }
 
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
@@ -266,13 +267,13 @@ model MonthlyGoal {
 }
 
 model WeeklyGoal {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  weekStart DateTime @db.Date
-  goalText  String
-  completed Boolean  @default(false)
-  order     Int      @default(0)
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id])
+  weekStart        DateTime @db.Date
+  goalText         String
+  completed        Boolean  @default(false)
+  order            Int      @default(0)
   // Движок пересечения (срез МЕСЯЦ): ИИ-оценка усилия, минуты/нед.
   estimatedMinutes Int?
 
@@ -312,7 +313,7 @@ model YearlyGoal {
   // если понадобится — мигрируем из JSON одной командой).
   target     Float?
   targetDate DateTime? // срок фин-цели для коуча; null → адаптер берёт 31 дек
-  pacingMode String @default("uniform")
+  pacingMode String    @default("uniform")
   pacingPlan Json?
 
   // Phase 5 P1 — корень дерева обычно (planParentId=null,
@@ -485,14 +486,14 @@ model ChatMessage {
 /// авторизованному юзеру приложения; чат доказывает владение, присылая код
 /// боту ИЗ себя. Раньше /telegram/connect принимал любой chatId (дыра).
 model TelegramLinkCode {
-  code      String   @id
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime
+  code          String   @id
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt     DateTime
   /// Чат, в котором код проверили (бот показал «Привязать к «X»?»). «Да»
   /// принимается ТОЛЬКО из этого чата — подделанный callback из другого не пройдёт.
   confirmChatId String?
-  createdAt DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   @@index([userId])
 }
@@ -834,9 +835,9 @@ model Entity {
   createdAt    DateTime                    @default(now())
   updatedAt    DateTime                    @updatedAt
 
-  relsFrom EntityRelationship[] @relation("FromEntity")
-  relsTo   EntityRelationship[] @relation("ToEntity")
-  obligations Obligation[]      @relation("EntityObligations")
+  relsFrom    EntityRelationship[] @relation("FromEntity")
+  relsTo      EntityRelationship[] @relation("ToEntity")
+  obligations Obligation[]         @relation("EntityObligations")
 
   @@unique([userId, type, name])
   @@index([userId, type])
@@ -1025,9 +1026,9 @@ model CorrectionLog {
   userMsgId      String?
   botExcerpt     String
   userExcerpt    String
-  signalType     String   // 'explicit' | 'mood_drop' | 're_ask'
-  valence        String   // 'positive' | 'negative' | 'neutral'
-  dimension      String   // 'tone' | 'content' | 'understanding' | 'style'
+  signalType     String // 'explicit' | 'mood_drop' | 're_ask'
+  valence        String // 'positive' | 'negative' | 'neutral'
+  dimension      String // 'tone' | 'content' | 'understanding' | 'style'
   appliedSignals Json
   styleNote      String?
   moodDelta      Float?
@@ -1048,7 +1049,7 @@ model SkillDefinition {
   plan        Json
   embedding   Json?
   synthesis   String
-  source      String    // 'proactive' | 'explicit'
+  source      String // 'proactive' | 'explicit'
   active      Boolean   @default(true)
   useCount    Int       @default(0)
   lastUsedAt  DateTime?
@@ -1083,4 +1084,18 @@ model Obligation {
 
   @@index([userId, status, dueDate])
   @@index([userId, personEntityId])
+}
+
+/// Робот-эпик, Часть 4: мебель в комнате робота (бесплатный набор, ключи —
+/// services/room-context.ts). x/y — доли комнаты 0..1. PUT /room заменяет целиком.
+model RoomItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemKey   String
+  x         Float
+  y         Float
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

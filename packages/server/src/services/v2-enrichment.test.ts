@@ -197,3 +197,12 @@ describe('v2-enrichment — tone section wiring (D1)', () => {
     expect(s).toMatch(/formatToneSection\(/);
   });
 });
+
+describe('комната робота в контексте мозга (Часть 4)', () => {
+  it('строка комнаты попадает в блок; нет комнаты — нет строки', () => {
+    expect(buildV2EnrichmentBlock({ ...FULL, room: 'Комната робота: диван, лампа' })).toContain(
+      'Комната робота: диван, лампа',
+    );
+    expect(buildV2EnrichmentBlock({ ...FULL, room: null })).not.toContain('Комната робота');
+  });
+});
