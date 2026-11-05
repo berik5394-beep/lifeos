@@ -476,3 +476,12 @@ export function isV2GoalSlotEnabled(userId: string): boolean {
 export function isV2MoodToneEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_MOOD_TONE, userId);
 }
+
+/**
+ * Перегруз дня → робот предлагает сдвинуть график одним касанием + предупреждение
+ * о целях недели/месяца/года (спека 2026-11-05-day-overload-reschedule). Off →
+ * create_task / POST /tasks / PUT /tasks байт-идентичны прежним.
+ */
+export function isV2RescheduleEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_RESCHEDULE, userId);
+}

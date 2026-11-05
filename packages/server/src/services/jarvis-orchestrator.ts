@@ -43,6 +43,7 @@ import {
   fetchV2EnrichmentData,
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
+import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js';
@@ -427,6 +428,15 @@ export async function runConfirmedAction(
         userId,
         input as unknown as CommitGoalInput,
       );
+      await saveTurn(userId, '(подтверждено)', message);
+      return message;
+    }
+
+    // Перегруз дня: «Подтвердить» на предложение сдвинуть график. НЕ tool
+    // реестра (как commit_goal): переносы готовит только движок proposeReschedule,
+    // модель их не сочиняет; applyReschedule двигает лишь свои задачи на fromDate.
+    if (action === RESCHEDULE_ACTION) {
+      const message = await applyReschedule(userId, input);
       await saveTurn(userId, '(подтверждено)', message);
       return message;
     }
@@ -973,6 +983,20 @@ async function handleMessageCore(
       );
       void trackInterests(userId, text);
       await saveTurn(userId, text, replyText);
+      // Перегруз дня: create_task положил предложение переноса в pending →
+      // отдаём его, чтобы под облачком были «Подтвердить / Отмена».
+      const staged = (out as { rescheduleStaged?: boolean }).rescheduleStaged
+        ? await pendingStagedSince(userId, turnStart)
+        : null;
+      if (staged) {
+        return {
+          reply: replyText,
+          intent: intent.action,
+          turnFacts: { executed: true },
+          pendingAction: { action: staged.action, input: staged.input },
+          confirmationText: staged.confirmationText,
+        };
+      }
       return { reply: replyText, intent: intent.action, turnFacts: { executed: true } };
     } catch (err) {
       console.warn(

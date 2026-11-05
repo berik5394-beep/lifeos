@@ -9,6 +9,8 @@ import {
 } from '../services/day-load.js';
 import { maybeWeekLoadLine } from '../services/week-load.js';
 import { maybeMonthLoadLine } from '../services/month-load.js';
+import { proposeReschedule } from '../services/reschedule.js';
+import { isV2RescheduleEnabled } from '../lib/feature-flags.js';
 
 /**
  * SSOT Step 5 — write-tool. Логика 1:1 с legacy action-executor
@@ -66,11 +68,17 @@ export const createTaskTool = defineTool({
       input.category ?? null,
       ctx.userId,
     );
+    // Перегруз дня (флаг): проверяем ДЕНЬ ЗАДАЧИ (не «сегодня» — прежний баг)
+    // и предлагаем сдвинуть график одним касанием + цели. Есть предложение →
+    // оно вместо каскада строк ниже; нет (флаг выкл./влезает) → как раньше.
+    const reschedule = await proposeReschedule(ctx.userId, input.date, task.id);
     // #engine: каскад горизонтов — показываем самый ближний перегруженный.
-    const dayLoad = await maybeDayLoadLine(ctx.userId, new Date());
-    const weekLoad = dayLoad ? null : await maybeWeekLoadLine(ctx.userId, new Date());
-    const monthLoad = dayLoad || weekLoad ? null : await maybeMonthLoadLine(ctx.userId, new Date());
-    const extra = dayLoad ?? weekLoad ?? monthLoad;
+    // Флаг вкл. → день задачи уже проверил движок выше; старую строку про
+    // СЕГОДНЯ не показываем (для задачи на завтра она говорила не о том дне).
+    const dayLoad = reschedule || isV2RescheduleEnabled(ctx.userId) ? null : await maybeDayLoadLine(ctx.userId, new Date());
+    const weekLoad = reschedule || dayLoad ? null : await maybeWeekLoadLine(ctx.userId, new Date());
+    const monthLoad = reschedule || dayLoad || weekLoad ? null : await maybeMonthLoadLine(ctx.userId, new Date());
+    const extra = reschedule?.text ?? dayLoad ?? weekLoad ?? monthLoad;
     // Проактивный конфликт ПРИ СОЗДАНИИ (флаг): timed-задача наложилась на
     // встречу/задачу того же дня → «не успеешь» прямо в ответе. Best-effort.
     let conflictWarn = '';
@@ -90,6 +98,7 @@ export const createTaskTool = defineTool({
     return {
       message: (extra ? `${message}\n\n${extra}` : message) + conflictWarn,
       taskId: task.id,
+      ...(reschedule?.staged ? { rescheduleStaged: true } : {}),
     };
   },
 });

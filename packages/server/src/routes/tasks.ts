@@ -6,6 +6,7 @@ import { validate, parseDate, parseMonth, invalidDateReply } from '../middleware
 import { NotFoundError } from '../lib/errors.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { onTaskCompleted } from '../services/coins.js';
+import { proposeReschedule } from '../services/reschedule.js';
 
 // Максимум задач на один запрос — защита от OOM на клиенте у power users
 const MAX_TASKS_PER_REQUEST = 500;
@@ -145,6 +146,10 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       type: 'task_created',
       content: `Создал задачу «${task.title}» на ${data.date}`,
     });
+    // Перегруз дня (флаг): робот предлагает сдвинуть график одним касанием.
+    // Предложение уже в PendingAction; мобилка показывает его облачком.
+    const proposal = await proposeReschedule(request.userId, data.date, task.id, new Date(), { fromCard: true });
+    if (proposal) return reply.status(201).send({ ...task, proposal: { text: proposal.text, staged: proposal.staged } });
     return reply.status(201).send(task);
   });
 
@@ -156,11 +161,13 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
 
     // Атомарно: проверяем ownership и обновляем внутри одной транзакции.
     // Postgres MVCC гарантирует что никто не удалит/изменит задачу между findFirst и update.
+    let previousDate: Date | null = null;
     const updated = await prisma.$transaction(async (tx) => {
       const task = await tx.task.findFirst({
         where: { id, userId: request.userId },
       });
       if (!task) return null;
+      previousDate = task.date;
       return tx.task.update({
         where: { id },
         data: {
@@ -180,6 +187,12 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       type: 'task_updated',
       content: `Изменил задачу «${updated.title}»`,
     });
+    // Перегруз дня (флаг): задачу перенесли на другой день → проверяем новый день.
+    const moved = !!data.date && previousDate !== null && (previousDate as Date).toISOString().slice(0, 10) !== data.date;
+    if (moved && !updated.completed && !updated.cancelled) {
+      const proposal = await proposeReschedule(request.userId, data.date as string, updated.id, new Date(), { fromCard: true });
+      if (proposal) return reply.send({ ...updated, proposal: { text: proposal.text, staged: proposal.staged } });
+    }
     return reply.send(updated);
   });
 

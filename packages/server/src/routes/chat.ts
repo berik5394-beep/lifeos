@@ -66,11 +66,24 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
   // --- Подтверждение/отмена денежного действия (Фаза 1.2) ---
   // Приложение шлёт сюда по нажатию кнопки. Pending хранится на сервере
   // (in-memory, TTL 5 мин) — клиенту не нужно гонять туда-сюда payload.
-  const confirmSchema = z.object({ confirm: z.boolean() });
+  // action (опц.) — что именно подтверждает кнопка. Не совпало с ожидающим
+  // (его успели заменить, напр. карточка «Задачи» предложила перенос) → 409,
+  // ничего не исполняем и не съедаем. Без action — как раньше.
+  const confirmSchema = z.object({ confirm: z.boolean(), action: z.string().max(60).optional() });
   app.post('/voice/confirm-action', {
     preHandler: [chatRateLimit, validate(confirmSchema)],
   }, async (request, reply) => {
-    const { confirm } = request.body as z.infer<typeof confirmSchema>;
+    const { confirm, action } = request.body as z.infer<typeof confirmSchema>;
+    if (action) {
+      const cur = await peekPendingAction(request.userId);
+      if (cur && cur.action !== action) {
+        return reply.status(409).send({
+          message: 'Это предложение уже заменено новым — посмотри последнее сообщение.',
+          done: false,
+          emotion: 'worried',
+        });
+      }
+    }
     if (!confirm) {
       await takePendingAction(request.userId);
       return reply.send({ message: 'Окей, отменил — ничего не записал.', done: true, emotion: 'neutral' });
