@@ -10,13 +10,20 @@ interface Integration {
   createdAt: string;
 }
 
+export interface TelegramLink {
+  code: string;
+  deepLink: string;
+  expiresAt: string;
+}
+
 interface IntegrationState {
   integrations: Integration[];
   isLoading: boolean;
   fetchIntegrations: () => Promise<void>;
   getGoogleAuthUrl: () => Promise<string | null>;
   syncGoogleCalendar: () => Promise<void>;
-  connectTelegram: (chatId: string, username?: string) => Promise<void>;
+  /** Одноразовый код привязки + deep-link в бота (чат доказывает владение сам). */
+  requestTelegramLink: () => Promise<TelegramLink | null>;
   disconnect: (provider: string) => Promise<void>;
   isConnected: (provider: string) => boolean;
 }
@@ -71,26 +78,12 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
     }
   },
 
-  connectTelegram: async (chatId: string, username?: string) => {
+  requestTelegramLink: async () => {
     const token = useAuthStore.getState().token;
-    if (!token) return;
-
-    set({ isLoading: true });
-    try {
-      const integration = await api.post<Integration>(
-        '/integrations/telegram/connect',
-        { chatId, username },
-        token,
-      );
-      set((state) => ({
-        integrations: [...state.integrations, integration],
-        isLoading: false,
-      }));
-    } catch (err) {
-      console.error('Ошибка подключения Telegram:', err);
-      set({ isLoading: false });
-      throw err;
-    }
+    if (!token) return null;
+    // Привязка по коду: сервер выдаёт код, бот получает его ИЗ чата
+    // (/start link_<код>) — подделать чужой чат нельзя. Ручной Chat ID отключён.
+    return api.post<TelegramLink>('/integrations/telegram/link-code', {}, token);
   },
 
   disconnect: async (provider: string) => {

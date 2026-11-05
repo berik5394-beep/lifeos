@@ -7,9 +7,9 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
-  TextInput,
   Share,
   Linking,
+  AppState,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as WebBrowser from 'expo-web-browser';
@@ -475,25 +475,62 @@ function createCalendarStyles(c: ReturnType<typeof useColors>) {
 function TelegramSection() {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
-  const { isConnected, connectTelegram, disconnect, isLoading } = useIntegrationStore();
+  const { isConnected, requestTelegramLink, fetchIntegrations, disconnect, isLoading, integrations } =
+    useIntegrationStore();
   const connected = isConnected('telegram');
-  const [chatId, setChatId] = useState('');
+  const linkedUsername = useMemo(() => {
+    const tg = integrations.find((i) => i.provider === 'telegram' && i.active);
+    const u = tg?.settings?.username;
+    return typeof u === 'string' && u ? u : null;
+  }, [integrations]);
+  const [linkCode, setLinkCode] = useState<string | null>(null);
+  const [botName, setBotName] = useState<string | null>(null);
+  const [requesting, setRequesting] = useState(false);
 
   const handleConnect = useCallback(async () => {
-    const trimmed = chatId.trim();
-    if (!trimmed) {
-      Alert.alert('Ошибка', 'Введите Chat ID');
-      return;
-    }
-
+    // Двойной тап выдал бы второй код и погасил первый (ссылка из первого
+    // упала бы в «код не подошёл» и в анти-перебор) — блокируем.
+    if (requesting) return;
+    setRequesting(true);
     try {
-      await connectTelegram(trimmed);
-      Alert.alert('Готово', 'Telegram подключён');
-      setChatId('');
+      const link = await requestTelegramLink();
+      if (!link) return;
+      setLinkCode(link.code);
+      // Имя бота — из ссылки сервера (сервер знает настоящее, не хардкодим).
+      setBotName(link.deepLink.match(/t\.me\/([^?]+)/)?.[1] ?? null);
+      await Linking.openURL(link.deepLink);
     } catch {
-      Alert.alert('Ошибка', 'Не удалось подключить Telegram');
+      Alert.alert('Ошибка', 'Не удалось получить код привязки. Попробуй ещё раз.');
+    } finally {
+      setRequesting(false);
     }
-  }, [chatId, connectTelegram]);
+  }, [requesting, requestTelegramLink]);
+
+  const checkLinked = useCallback(async (): Promise<boolean> => {
+    await fetchIntegrations();
+    const ok = useIntegrationStore.getState().isConnected('telegram');
+    if (ok) setLinkCode(null);
+    return ok;
+  }, [fetchIntegrations]);
+
+  const handleCheck = useCallback(async () => {
+    const ok = await checkLinked();
+    if (!ok) {
+      Alert.alert(
+        'Пока не привязано',
+        'В боте нажмите «Start», затем «Да, привязать». Если кнопок нет — отправьте боту код.',
+      );
+    }
+  }, [checkLinked]);
+
+  // Вернулись из Telegram в приложение — тихо проверяем привязку.
+  useEffect(() => {
+    if (!linkCode) return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void checkLinked();
+    });
+    return () => sub.remove();
+  }, [linkCode, checkLinked]);
 
   const handleDisconnect = useCallback(async () => {
     Alert.alert('Отключить Telegram?', 'Уведомления больше не будут отправляться.', [
@@ -519,43 +556,47 @@ function TelegramSection() {
         {connected && <ConnectedBadge />}
       </View>
       {connected ? (
-        <View style={styles.cardActions}>
-          <Button
-            title="Отключить"
-            onPress={handleDisconnect}
-            variant="danger"
-            style={styles.actionButton}
-          />
-        </View>
+        <>
+          {linkedUsername && (
+            <Text style={styles.cardDescription}>
+              Привязан чат @{linkedUsername}. Если это не вы — отключите.
+            </Text>
+          )}
+          <View style={styles.cardActions}>
+            <Button
+              title="Отключить"
+              onPress={handleDisconnect}
+              variant="danger"
+              style={styles.actionButton}
+            />
+          </View>
+        </>
       ) : (
         <>
           <Text style={styles.cardDescription}>
-            1. Откройте Telegram и найдите @LifeOS_bot{'\n'}
-            2. Нажмите /start — бот пришлёт ваш Chat ID{'\n'}
-            3. Вставьте его ниже
+            Нажмите «Подключить» — откроется наш бот с одноразовым кодом.{'\n'}
+            В боте нажмите «Start», затем «Да, привязать».
           </Text>
-          <AnimatedPress
-            onPress={() => Linking.openURL('https://t.me/LifeOS_bot')}
-          >
-            <Text style={[styles.cardDescription, { color: c.primary, fontWeight: '600' }]}>
-              Открыть @LifeOS_bot в Telegram {'\u2192'}
+          {linkCode && (
+            <Text style={styles.cardDescription}>
+              Если бот не открылся, найдите в Telegram {botName ? `@${botName}` : 'бота LifeOS'} и отправьте: /link {linkCode}{'\n'}
+              Код действует 10 минут.
             </Text>
-          </AnimatedPress>
-          <TextInput
-            style={styles.input}
-            placeholder="Вставьте Chat ID"
-            placeholderTextColor={c.textSecondary}
-            value={chatId}
-            onChangeText={setChatId}
-            keyboardType="number-pad"
-            autoCorrect={false}
-          />
+          )}
           <Button
-            title="Подключить"
+            title={linkCode ? 'Открыть бота ещё раз' : 'Подключить'}
             onPress={handleConnect}
-            disabled={isLoading || !chatId.trim()}
+            disabled={isLoading || requesting}
             style={styles.connectButton}
           />
+          {linkCode && (
+            <Button
+              title="Я привязал — проверить"
+              onPress={handleCheck}
+              variant="secondary"
+              style={styles.connectButton}
+            />
+          )}
         </>
       )}
     </Card>
@@ -844,16 +885,6 @@ function createStyles(c: ReturnType<typeof useColors>) {
     fontSize: fontSize.xs,
     color: c.success,
     fontWeight: '600',
-  },
-  input: {
-    backgroundColor: c.surface,
-    borderWidth: 1,
-    borderColor: c.border,
-    borderRadius: 12,
-    padding: spacing.md,
-    fontSize: fontSize.md,
-    color: c.text,
-    marginBottom: spacing.sm,
   },
   loader: {
     marginVertical: spacing.md,

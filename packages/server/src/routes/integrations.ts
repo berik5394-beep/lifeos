@@ -1,8 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { validate } from '../middleware/validate.js';
+import { createLinkCode, telegramBotUsername } from '../services/telegram-link.js';
 import { encrypt, decrypt } from '../lib/crypto.js';
 import {
   exchangeCode,
@@ -70,11 +69,6 @@ function googleErrorReply(
   }
   throw err;
 }
-
-const telegramConnectSchema = z.object({
-  chatId: z.string().min(1, 'Chat ID обязателен'),
-  username: z.string().optional(),
-});
 
 export async function integrationRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -249,63 +243,27 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // --- Telegram: Connect ---
+  // --- Telegram: привязка по одноразовому коду ---
+  //
+  // Дыра (2026-11-05): старый /telegram/connect принимал ЛЮБОЙ chatId без
+  // доказательства владения → можно было привязать чужой чат, и бот
+  // отправлял жертву в чужой аккаунт. Теперь приложение берёт код, а чат
+  // доказывает владение сам — шлёт код боту (/start link_<код> или /link).
+  // Сама привязка — в telegram-bot.ts → services/telegram-link.ts.
 
-  app.post('/integrations/telegram/connect', {
-    preHandler: validate(telegramConnectSchema),
-  }, async (request, reply) => {
-    const data = request.body as z.infer<typeof telegramConnectSchema>;
-
-    // B.3 (IDOR): раньше можно было подсунуть ЧУЖОЙ chatId — и пуши
-    // этого аккаунта уходили бы в чужой чат (или перехват привязки).
-    // Полноценный flow с кодом от бота — отдельная задача (3.10);
-    // здесь минимальная защита: один chatId не привязывается к
-    // разным аккаунтам.
-    const chatOwner = await prisma.integration.findFirst({
-      where: {
-        provider: 'telegram',
-        settings: { path: ['chatId'], equals: data.chatId },
-        userId: { not: request.userId },
-      },
-      select: { id: true },
+  app.post('/integrations/telegram/connect', async (_request, reply) => {
+    return reply.status(410).send({
+      message:
+        'Привязка по Chat ID отключена. Нажми «Подключить» в приложении — откроется бот с кодом.',
     });
-    if (chatOwner) {
-      return reply.status(409).send({
-        message: 'Этот Telegram уже привязан к другому аккаунту',
-      });
-    }
+  });
 
-    const settings: Record<string, string> = {
-      chatId: data.chatId,
-    };
-    if (data.username) {
-      settings.username = data.username;
-    }
-
-    const integration = await prisma.integration.upsert({
-      where: {
-        userId_provider: {
-          userId: request.userId,
-          provider: 'telegram',
-        },
-      },
-      update: {
-        settings: JSON.parse(JSON.stringify(settings)),
-        active: true,
-      },
-      create: {
-        userId: request.userId,
-        provider: 'telegram',
-        settings: JSON.parse(JSON.stringify(settings)),
-        active: true,
-      },
-    });
-
-    return reply.status(201).send({
-      id: integration.id,
-      provider: integration.provider,
-      active: integration.active,
-      message: 'Telegram подключён',
+  app.post('/integrations/telegram/link-code', async (request, reply) => {
+    const { code, expiresAt } = await createLinkCode(request.userId);
+    return reply.send({
+      code,
+      expiresAt: expiresAt.toISOString(),
+      deepLink: `https://t.me/${telegramBotUsername()}?start=link_${code}`,
     });
   });
 

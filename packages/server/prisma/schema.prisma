@@ -104,6 +104,8 @@ model User {
   skills                 SkillDefinition[]
   // Obligations — память отношений+обещаний
   obligations            Obligation[]
+  // Привязка Telegram по одноразовому коду (2026-11-05)
+  telegramLinkCodes      TelegramLinkCode[]
 }
 
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
@@ -480,6 +482,22 @@ model ChatMessage {
   @@index([userId, createdAt])
   // Purge-cron (retention 30д кризисных) + analytics-exclusion фильтр.
   @@index([crisis, createdAt])
+}
+
+/// Одноразовый код привязки Telegram-чата к аккаунту (2026-11-05). Выдаётся
+/// авторизованному юзеру приложения; чат доказывает владение, присылая код
+/// боту ИЗ себя. Раньше /telegram/connect принимал любой chatId (дыра).
+model TelegramLinkCode {
+  code      String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  /// Чат, в котором код проверили (бот показал «Привязать к «X»?»). «Да»
+  /// принимается ТОЛЬКО из этого чата — подделанный callback из другого не пройдёт.
+  confirmChatId String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Integration {

@@ -242,7 +242,7 @@ export async function sendTelegramMessage(userId: string, text: string): Promise
 
     const settings = integration.settings as unknown as { chatId: string };
     if (!settings.chatId) {
-      return 'Telegram chatId не найден. Напиши /start боту @LifeOS_bot.';
+      return 'Telegram не привязан. Нажми «Подключить» в Настройки → Интеграции → Telegram.';
     }
 
     const url = `https://api.telegram.org/bot${token}/sendMessage`;

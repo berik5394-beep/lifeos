@@ -1,4 +1,4 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, Markup } from 'telegraf';
 import type { Context } from 'telegraf';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
@@ -18,6 +18,12 @@ import { listObligations } from './obligations/index.js';
 import { getHermesStore } from './hermes/index.js';
 import { analyzeFinancePhoto, buildFinancePending } from './finance-vision.js';
 import { setPendingAction } from './pending-actions.js';
+import {
+  handleLinkRequest,
+  confirmLinkRequest,
+  lockTelegramChat,
+  setTelegramBotUsername,
+} from './telegram-link.js';
 
 /**
  * LifeOS Telegram Bot — полноценный JARVIS в Telegram.
@@ -38,31 +44,24 @@ import { setPendingAction } from './pending-actions.js';
  *  - Быстрые команды: задачи / привычки / брифинг
  */
 
-interface TelegramSettings {
-  chatId: string;
-  telegramId: number;
-  username?: string;
-}
-
 /**
  * Находит или создаёт LifeOS-юзера для Telegram chatId.
  * Идемпотентно: повторный /start того же юзера вернёт существующий аккаунт.
  */
-async function findOrCreateUser(
+export async function findOrCreateUser(
   chatId: string,
   telegramId: number,
   firstName: string,
   username?: string,
 ): Promise<string> {
-  // Ищем существующую привязку
-  const integrations = await prisma.integration.findMany({
-    where: { provider: 'telegram', active: true },
-    select: { userId: true, settings: true },
+  // Ищем существующую привязку (адресно по chatId; самая свежая — на случай
+  // исторических дублей). Раньше грузили ВСЕ telegram-привязки и шли циклом.
+  const bound = await prisma.integration.findFirst({
+    where: { provider: 'telegram', active: true, settings: { path: ['chatId'], equals: chatId } },
+    orderBy: { createdAt: 'desc' },
+    select: { userId: true },
   });
-  for (const integ of integrations) {
-    const s = integ.settings as unknown as TelegramSettings;
-    if (s.chatId === chatId) return integ.userId;
-  }
+  if (bound) return bound.userId;
 
   // Создаём нового юзера + привязку атомарно
   const syntheticEmail = `tg${telegramId}@telegram.lifeos`;
@@ -70,6 +69,14 @@ async function findOrCreateUser(
   const passwordHash = await bcrypt.hash(randomPassword, 10);
 
   const user = await prisma.$transaction(async (tx) => {
+    // Сериализуем с привязкой по коду (consumeLink): без лока параллельные
+    // «сообщение + /link» из нового чата давали две активные привязки.
+    await lockTelegramChat(tx, chatId);
+    const raced = await tx.integration.findFirst({
+      where: { provider: 'telegram', active: true, settings: { path: ['chatId'], equals: chatId } },
+      select: { userId: true },
+    });
+    if (raced) return { id: raced.userId };
     // Защита от гонки: вдруг параллельный /start уже создал юзера
     const existing = await tx.user.findUnique({
       where: { email: syntheticEmail },
@@ -162,10 +169,91 @@ export function createTelegramBot(): Telegraf {
 
   const bot = new Telegraf(token);
 
-  bot.start(async (ctx: Context) => {
+  // Глобальная страховка: по умолчанию Telegraf 4 пробрасывает ошибку
+  // обработчика → polling падает → рестарт с бэкоффом. Логируем и живём дальше.
+  bot.catch((err, ctx) => {
+    console.error('[tg] handler error', ctx.updateType, err);
+  });
+
+  // Имя бота для deep-link привязки — у самого бота (не хардкод: ссылка на
+  // чужого бота отдала бы одноразовые коды его владельцу).
+  void bot.telegram
+    .getMe()
+    .then((me) => setTelegramBotUsername(me.username))
+    .catch((err) => console.warn('[tg] getMe failed, deep-link на дефолтное имя:', err));
+
+  // Привязка к аккаунту приложения по одноразовому коду (deep-link
+  // t.me/<bot>?start=link_<код> или /link <код>). chatId — из апдейта
+  // Telegram (доказательство владения), НЕ из ввода.
+  async function replyToLinkCode(ctx: Context, code: string): Promise<void> {
+    const chatId = String(ctx.chat?.id);
+    const from = ctx.from;
+    if (!ctx.chat || !from) return;
+    try {
+      const r = await handleLinkRequest(code, chatId, from.id, ctx.chat.type);
+      if (r.confirmCode) {
+        await ctx.reply(
+          r.text,
+          Markup.inlineKeyboard([
+            Markup.button.callback('Да, привязать', `tglink:y:${r.confirmCode}`),
+            Markup.button.callback('Отмена', 'tglink:n'),
+          ]),
+        );
+      } else {
+        await ctx.reply(r.text);
+      }
+    } catch (err) {
+      console.error('TG link error:', err);
+      await ctx.reply('Не получилось привязать — сбой на моей стороне. Попробуй через минуту.');
+    }
+  }
+
+  bot.action(/^tglink:y:([A-HJ-NP-Z2-9]{8})$/, async (ctx) => {
+    const from = ctx.from;
+    if (!ctx.chat || !from) return;
+    // «query is too old» после простоя не должен ронять обработку.
+    await ctx.answerCbQuery().catch(() => undefined);
+    try {
+      const text = await confirmLinkRequest(
+        ctx.match[1],
+        String(ctx.chat.id),
+        from.id,
+        ctx.chat.type,
+        from.username,
+      );
+      await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
+      await ctx.reply(text);
+    } catch (err) {
+      console.error('TG link confirm error:', err);
+      await ctx.reply('Не получилось привязать — сбой на моей стороне. Попробуй через минуту.');
+    }
+  });
+
+  bot.action('tglink:n', async (ctx) => {
+    await ctx.answerCbQuery().catch(() => undefined);
+    await ctx.editMessageReplyMarkup(undefined).catch(() => undefined);
+    await ctx.reply('Ок, оставил как было — чат работает со старым аккаунтом.');
+  });
+
+  bot.command('link', async (ctx) => {
+    const code = ctx.payload.trim().split(/\s+/)[0] ?? '';
+    if (!code) {
+      await ctx.reply('Пришли код из приложения: /link ABCD2345');
+      return;
+    }
+    await replyToLinkCode(ctx, code);
+  });
+
+  bot.start(async (ctx) => {
     const chatId = String(ctx.chat?.id);
     const from = ctx.from;
     if (!chatId || !from) return;
+    // Deep-link из приложения: /start link_<код> → привязка, а не новый бот-аккаунт.
+    const payload = typeof ctx.payload === 'string' ? ctx.payload : '';
+    if (payload.startsWith('link_')) {
+      await replyToLinkCode(ctx, payload.slice('link_'.length));
+      return;
+    }
     try {
       await findOrCreateUser(
         chatId,
