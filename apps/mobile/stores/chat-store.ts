@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { confirmPendingVoiceAction, isConfirmable, type PendingActionInfo } from '@/services/voice-followup';
 
 export interface ChatAction {
   type: string;
@@ -12,6 +13,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   actions?: ChatAction[];
+  /** Деньги/необратимое: мозг ждёт подтверждения → под сообщением кнопки «Записать / Отмена». */
+  pendingAction?: PendingActionInfo | null;
   createdAt: string;
 }
 
@@ -32,6 +35,7 @@ interface ChatState {
   fetchHistory: (offset?: number) => Promise<void>;
   clearHistory: () => Promise<void>;
   executeAction: (action: ChatAction) => Promise<void>;
+  confirmPendingAction: (messageId: string, confirm: boolean) => Promise<void>;
 }
 
 let _msgSeq = 0;
@@ -61,7 +65,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
 
     try {
-      const data = await api.post<{ message: string; actions?: ChatAction[] }>(
+      const data = await api.post<{ message: string; actions?: ChatAction[]; pendingAction?: PendingActionInfo | null }>(
         '/voice/chat',
         { text, webSearch: webSearch ?? false },
         token,
@@ -72,6 +76,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         role: 'assistant',
         content: data.message,
         actions: data.actions,
+        // Слот-вопрос «На что потратил?» — без кнопок: юзер отвечает текстом.
+        pendingAction: isConfirmable(data.pendingAction) ? data.pendingAction : null,
         createdAt: new Date().toISOString(),
       };
 
@@ -141,6 +147,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (err) {
       console.warn('Failed to clear chat history on server:', err);
       // UI already cleared — user sees empty chat regardless
+    }
+  },
+
+  confirmPendingAction: async (messageId: string, confirm: boolean) => {
+    try {
+      const res = await confirmPendingVoiceAction(confirm);
+      const reply: ChatMessage = {
+        id: uniqueId('assistant'),
+        role: 'assistant',
+        content: res.message,
+        createdAt: new Date().toISOString(),
+      };
+      set((state) => ({
+        messages: [
+          reply,
+          ...state.messages.map((m) => (m.id === messageId ? { ...m, pendingAction: null } : m)),
+        ],
+      }));
+    } catch {
+      const errorMessage: ChatMessage = {
+        id: uniqueId('error'),
+        role: 'assistant',
+        content: 'Не получилось подтвердить — попробуй ещё раз или напиши «да».',
+        createdAt: new Date().toISOString(),
+      };
+      set((state) => ({ messages: [errorMessage, ...state.messages] }));
     }
   },
 

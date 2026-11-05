@@ -35,9 +35,10 @@ function formatTime(dateString: string): string {
 interface ChatBubbleProps {
   message: ChatMessage;
   onAction: (action: ChatAction) => void;
+  onConfirm: (messageId: string, confirm: boolean) => void;
 }
 
-const ChatBubble = memo(function ChatBubble({ message, onAction }: ChatBubbleProps) {
+const ChatBubble = memo(function ChatBubble({ message, onAction, onConfirm }: ChatBubbleProps) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
   const isUser = message.role === 'user';
@@ -74,6 +75,24 @@ const ChatBubble = memo(function ChatBubble({ message, onAction }: ChatBubblePro
                 </TouchableOpacity>
               );
             })}
+          </View>
+        )}
+        {!isUser && message.pendingAction && (
+          <View style={styles.actionsContainer}>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => onConfirm(message.id, true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.actionButtonText}>✅ Записать</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={() => onConfirm(message.id, false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.actionButtonText}>✖️ Отмена</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -124,7 +143,7 @@ export default function ChatScreen() {
   const styles = useMemo(() => createStyles(c), [c]);
   const [inputText, setInputText] = useState('');
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
-  const { messages, isLoading, hasMore, sendMessage, fetchHistory, executeAction, clearHistory } = useChatStore();
+  const { messages, isLoading, hasMore, sendMessage, fetchHistory, executeAction, clearHistory, confirmPendingAction } = useChatStore();
   // transcribeOnly: чат сам шлёт текст в мозг (/voice/chat) — без двойного исполнения.
   const { isRecording, isProcessing, lastResult, startRecording, stopRecording, amplitude } = useVoice({ transcribeOnly: true });
 
@@ -157,6 +176,12 @@ export default function ChatScreen() {
     executeAction(action);
   }, [executeAction, navigation]);
 
+  // Деньги/необратимое: «Записать / Отмена» → мозг исполняет отложенное действие.
+  const handleConfirm = useCallback((messageId: string, confirm: boolean) => {
+    hapticLight();
+    void confirmPendingAction(messageId, confirm);
+  }, [confirmPendingAction]);
+
   const handleLoadMore = useCallback(() => {
     if (!isLoading && hasMore) {
       fetchHistory();
@@ -164,8 +189,8 @@ export default function ChatScreen() {
   }, [isLoading, hasMore, fetchHistory]);
 
   const renderItem = useCallback(({ item }: ListRenderItemInfo<ChatMessage>) => (
-    <ChatBubble message={item} onAction={handleAction} />
-  ), [handleAction]);
+    <ChatBubble message={item} onAction={handleAction} onConfirm={handleConfirm} />
+  ), [handleAction, handleConfirm]);
 
   const keyExtractor = useCallback((item: ChatMessage, index: number) => `${item.id}-${index}`, []);
 
