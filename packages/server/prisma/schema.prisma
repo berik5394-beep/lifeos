@@ -105,6 +105,8 @@ model User {
   telegramLinkCodes      TelegramLinkCode[]
   roomItems              RoomItem[]
   coinTransactions       CoinTransaction[]
+  deals                  Deal[]
+  salesPlans             SalesPlan[]
 }
 
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
@@ -839,6 +841,7 @@ model Entity {
   relsFrom    EntityRelationship[] @relation("FromEntity")
   relsTo      EntityRelationship[] @relation("ToEntity")
   obligations Obligation[]         @relation("EntityObligations")
+  deals       Deal[]               @relation("EntityDeals")
 
   @@unique([userId, type, name])
   @@index([userId, type])
@@ -1121,4 +1124,54 @@ model CoinTransaction {
 
   @@unique([userId, refKey])
   @@index([userId, createdAt])
+}
+
+// Сделки (спека 2026-11-05-deals): личная воронка продаж.
+model Deal {
+  id             String      @id @default(cuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  personEntityId String?
+  person         Entity?     @relation("EntityDeals", fields: [personEntityId], references: [id], onDelete: SetNull)
+  personName     String
+  title          String
+  amount         Float?
+  currency       String      @default("₸")
+  stage          String      @default("new") // new | talks | proposal | contract | won | lost
+  stageChangedAt DateTime    @default(now())
+  nextStepAt     DateTime?   @db.Date
+  nextStepText   String?
+  lastActivityAt DateTime    @default(now())
+  closedAt       DateTime?
+  lostReason     String?
+  wonIncomeId    String?     @unique
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  events         DealEvent[]
+
+  @@index([userId, stage])
+  @@index([userId, nextStepAt])
+}
+
+model DealEvent {
+  id     String   @id @default(cuid())
+  dealId String
+  deal   Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  kind   String // created | stage | amount | next_step | note
+  from   String?
+  to     String?
+  text   String?
+  at     DateTime @default(now())
+
+  @@index([dealId, at])
+}
+
+model SalesPlan {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  monthStart DateTime @db.Date
+  amount     Float
+
+  @@unique([userId, monthStart])
 }
