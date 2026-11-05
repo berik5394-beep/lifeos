@@ -25,6 +25,7 @@ export const RoomBottomBar = memo(function RoomBottomBar({
   onMicIn,
   onMicOut,
   onTyping,
+  highlight = null,
 }: {
   tools: PanelDef[];
   onTool: (key: string) => void;
@@ -37,6 +38,8 @@ export const RoomBottomBar = memo(function RoomBottomBar({
   onMicOut: () => void;
   /** Юзер пишет — робот «слушает». */
   onTyping?: (typing: boolean) => void;
+  /** Знакомство: подсветить кнопку/строку, о которой говорит робот. */
+  highlight?: 'input' | 'tools' | 'furnish' | null;
 }) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
@@ -56,7 +59,7 @@ export const RoomBottomBar = memo(function RoomBottomBar({
     <View style={styles.wrap}>
       <View style={styles.toggles}>
         <Pressable
-          style={[styles.toggle, shelf === 'tools' && styles.toggleOn]}
+          style={[styles.toggle, shelf === 'tools' && styles.toggleOn, highlight === 'tools' && styles.glow]}
           onPress={() => toggle('tools')}
           accessibilityRole="button"
           accessibilityLabel="Инструменты"
@@ -65,7 +68,7 @@ export const RoomBottomBar = memo(function RoomBottomBar({
           <Text style={styles.toggleText}>Инструменты</Text>
         </Pressable>
         <Pressable
-          style={[styles.toggle, shelf === 'furnish' && styles.toggleOn]}
+          style={[styles.toggle, shelf === 'furnish' && styles.toggleOn, highlight === 'furnish' && styles.glow]}
           onPress={() => toggle('furnish')}
           accessibilityRole="button"
           accessibilityLabel="Обставить комнату"
@@ -115,7 +118,7 @@ export const RoomBottomBar = memo(function RoomBottomBar({
           )}
         </Pressable>
         <TextInput
-          style={styles.input}
+          style={[styles.input, highlight === 'input' && styles.glow]}
           value={text}
           onChangeText={(t) => {
             setText(t);
@@ -154,6 +157,8 @@ function createStyles(c: ReturnType<typeof useColors>) {
       backgroundColor: c.surface,
     },
     toggleOn: { backgroundColor: c.surfaceLight },
+    // Подсветка на знакомстве — яркая рамка, как маркер в комиксе.
+    glow: { borderWidth: 3, borderColor: c.warning },
     toggleText: { fontSize: fontSize.sm, color: c.text, fontWeight: '600' },
     shelf: { gap: spacing.sm, paddingHorizontal: spacing.md },
     shelfFurnish: {},

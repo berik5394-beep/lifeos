@@ -19,6 +19,7 @@ import { RobotSpeechBubble } from '@/components/robot/robot-speech-bubble';
 import { ChatReplyBubble } from '@/components/room/chat-reply-bubble';
 import { RoomBottomBar } from '@/components/room/room-bottom-bar';
 import { ToolCard } from '@/components/room/tool-card';
+import { RoomIntro } from '@/components/room/room-intro';
 import { useColors } from '@/hooks/use-colors';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
 import { useVoice } from '@/hooks/use-voice';
@@ -38,6 +39,7 @@ import { isToolKey, toolSource, toolsInItem, type ToolKey } from '@/services/roo
 import { ROBOT_STRIP_H, robotShift, robotStandPoint, toolOrigin } from '@/services/tool-scene';
 import { TOOL_TITLE } from '@/components/room/tool-card';
 import { hapticLight } from '@/services/haptics';
+import { INTRO_STEPS, furnitureBadge, isIntroDone, markIntroDone } from '@/services/room-intro';
 import { spacing, borderRadius } from '@/constants';
 
 /**
@@ -94,6 +96,8 @@ export const RoomPage = memo(function RoomPage() {
   const [mirror, setMirror] = useState(false);
   const [typing, setTyping] = useState(false);
   const [dismissedReply, setDismissedReply] = useState<string | null>(null);
+  // Знакомство после установки: робот показывает, что где. null — тур не идёт.
+  const [introStep, setIntroStep] = useState<number | null>(() => (isIntroDone() ? null : 0));
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const userName = useAuthStore((s) => s.user?.name ?? null);
@@ -109,6 +113,7 @@ export const RoomPage = memo(function RoomPage() {
   const confirmPendingAction = useChatStore((s) => s.confirmPendingAction);
   const isFeatureVisible = useUIStore((s) => s.isFeatureVisible);
   const tools = useMemo(() => visiblePanels(isFeatureVisible), [isFeatureVisible]);
+  const visibleToolKeys = useMemo(() => tools.map((t) => t.key), [tools]);
   const toolSeq = useRoomToolStore((s) => s.seq);
   const { isRecording, isProcessing, lastResult, startRecording, stopRecording } = useVoice({ transcribeOnly: true });
 
@@ -416,6 +421,14 @@ export const RoomPage = memo(function RoomPage() {
   );
 
   const onTool = useCallback((key: string) => isToolKey(key) && openToolScene(key), [openToolScene]);
+  const introTarget = introStep == null ? null : INTRO_STEPS[introStep].target;
+  const finishIntro = useCallback(() => {
+    markIntroDone();
+    setIntroStep(null);
+  }, []);
+  const nextIntro = useCallback(() => {
+    setIntroStep((s) => (s == null || s >= INTRO_STEPS.length - 1 ? (markIntroDone(), null) : s + 1));
+  }, []);
   const onSend = useCallback((text: string) => void sendMessage(text, true), [sendMessage]);
   const onConfirm = useCallback(
     (yes: boolean) => {
@@ -425,7 +438,8 @@ export const RoomPage = memo(function RoomPage() {
   );
 
   const pointing = zoomed || scene?.phase === 'fetching' || scene?.phase === 'open';
-  const showReply = !scene && !zoomed && (chatLoading || (reply && dismissedReply !== reply.id));
+  const showReply =
+    introStep == null && !scene && !zoomed && (chatLoading || (reply && dismissedReply !== reply.id));
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -459,6 +473,8 @@ export const RoomPage = memo(function RoomPage() {
                       onRemove={onRemove}
                       onTap={onItemTap}
                       highlight={item.id === newItemId}
+                      badge={furnitureBadge(item.itemKey, visibleToolKeys)}
+                      pulseBadge={introTarget === 'furniture'}
                     />
                   ))}
               </Animated.View>
@@ -518,6 +534,15 @@ export const RoomPage = memo(function RoomPage() {
             </View>
           )}
 
+          {introStep != null && (
+            <RoomIntro
+              step={introStep}
+              bubbleBottom={size.h * 0.04 + ROBOT_SIZE + 6}
+              onNext={nextIntro}
+              onSkip={finishIntro}
+            />
+          )}
+
           <Animated.View style={[styles.robot, robotStyle]} pointerEvents="none">
             <View style={mirror ? styles.mirror : undefined}>
               <RobotAvatar
@@ -548,6 +573,14 @@ export const RoomPage = memo(function RoomPage() {
             >
               <Feather name="settings" size={18} color="#FFFFFF" />
             </Pressable>
+            <Pressable
+              style={styles.iconBtn}
+              onPress={() => setIntroStep(0)}
+              accessibilityRole="button"
+              accessibilityLabel="Показать подсказки ещё раз"
+            >
+              <Feather name="help-circle" size={18} color="#FFFFFF" />
+            </Pressable>
           </View>
           )}
           {zoomed && !scene && (
@@ -574,6 +607,7 @@ export const RoomPage = memo(function RoomPage() {
         onMicIn={() => void startRecording()}
         onMicOut={() => void stopRecording()}
         onTyping={setTyping}
+        highlight={introTarget === 'input' || introTarget === 'tools' || introTarget === 'furnish' ? introTarget : null}
       />
     </SafeAreaView>
   );

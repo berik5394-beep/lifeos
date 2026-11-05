@@ -6,7 +6,9 @@ import Animated, {
   type SharedValue,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
+  withTiming,
   withSpring,
 } from 'react-native-reanimated';
 import { RENDER_SCALE as R, itemDepthScale } from '@/services/room-geometry';
@@ -32,6 +34,10 @@ interface RoomFurnitureItemProps {
   highlight?: boolean;
   /** Тап по предмету (Часть 5: мебель с инструментом — робот достаёт его). */
   onTap?: (id: string) => void;
+  /** Маленький значок: что лежит внутри (📅🎯…). Пусто — без значка. */
+  badge?: string;
+  /** Знакомство: значок пульсирует, привлекая внимание. */
+  pulseBadge?: boolean;
 }
 
 /**
@@ -49,7 +55,16 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   onRemove,
   highlight = false,
   onTap,
+  badge = '',
+  pulseBadge = false,
 }: RoomFurnitureItemProps) {
+  const badgeScale = useSharedValue(1);
+  useEffect(() => {
+    badgeScale.value = pulseBadge
+      ? withRepeat(withSequence(withTiming(1.35, { duration: 420 }), withTiming(1, { duration: 420 })), -1)
+      : withTiming(1, { duration: 150 });
+  }, [pulseBadge, badgeScale]);
+  const badgeStyle = useAnimatedStyle(() => ({ transform: [{ scale: badgeScale.value }] }));
   const px = useSharedValue(item.x * roomWidth);
   const py = useSharedValue(item.y * roomHeight);
   const dx = useSharedValue(0);
@@ -120,6 +135,11 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
     <GestureDetector gesture={Gesture.Race(pan, longPress, tap)}>
       <Animated.View style={[styles.item, style]} accessibilityLabel={`Предмет: ${item.itemKey}`}>
         <Text style={styles.emoji}>{roomItemEmoji(item.itemKey)}</Text>
+        {badge ? (
+          <Animated.View style={[styles.badge, badgeStyle]} pointerEvents="none">
+            <Text style={styles.badgeText}>{badge}</Text>
+          </Animated.View>
+        ) : null}
       </Animated.View>
     </GestureDetector>
   );
@@ -136,4 +156,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emoji: { fontSize: 40 * R },
+  // Значок «что внутри» — в правом верхнем углу предмета.
+  badge: {
+    position: 'absolute',
+    top: -6 * R,
+    right: -10 * R,
+    paddingHorizontal: 3 * R,
+    paddingVertical: 1 * R,
+    borderRadius: 10 * R,
+    borderWidth: 1.5 * R,
+    borderColor: '#14101F',
+    backgroundColor: '#FFFFFF',
+  },
+  badgeText: { fontSize: 10 * R },
 });
