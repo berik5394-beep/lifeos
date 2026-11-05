@@ -5,7 +5,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { handleMessage, runConfirmedAction } from '../services/jarvis-orchestrator.js';
-import { takePendingAction, peekPendingAction } from '../services/pending-actions.js';
+import { takePendingAction, peekPendingAction, pendingStagedSince } from '../services/pending-actions.js';
 
 // AI chat is expensive (Claude API + web search) — limit per minute and per hour
 const chatRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'ai-chat' });
@@ -96,7 +96,21 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
         emotion: 'worried',
       });
     }
+    const confirmStart = new Date();
     const msg = await runConfirmedAction(request.userId, p.action, p.input);
+    // Подтверждение поставило новый вопрос (напр. «доход уже записан — ещё раз?») →
+    // отдаём его с кнопками, а не «готово».
+    const restaged = await pendingStagedSince(request.userId, confirmStart);
+    if (restaged) {
+      return reply.send({
+        message: msg,
+        intent: p.action,
+        done: false,
+        pendingAction: { action: restaged.action, input: restaged.input },
+        confirmationText: restaged.confirmationText,
+        emotion: 'neutral',
+      });
+    }
     return reply.send({ message: msg, intent: p.action, done: true, emotion: 'happy' });
   });
 

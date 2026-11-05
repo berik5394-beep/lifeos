@@ -672,7 +672,19 @@ async function handleMessageCore(
     }
     if (signal === 'confirm') {
       const p = (await takePendingAction(userId))!;
+      const confirmStart = new Date();
       const reply = await runConfirmedAction(userId, p.action, p.input);
+      // Ревью I-c: подтверждение могло поставить НОВЫЙ вопрос («Похоже, уже
+      // записан… Записать ещё раз?») — отдаём его, чтобы были кнопки.
+      const restaged = await pendingStagedSince(userId, confirmStart);
+      if (restaged) {
+        return {
+          reply,
+          intent: p.action,
+          pendingAction: { action: restaged.action, input: restaged.input },
+          confirmationText: restaged.confirmationText,
+        };
+      }
       return { reply, intent: p.action, turnFacts: { executed: true } };
     }
     if (signal === 'cancel') {
