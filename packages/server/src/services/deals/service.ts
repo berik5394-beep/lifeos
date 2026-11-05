@@ -93,8 +93,8 @@ export async function createDeal(
       },
     },
   });
-  // Монеты за выигрыш — в сервисе, чтобы любой путь (чат/REST/доход) их давал.
-  if (stage === 'won') await onDealWon(userId, deal.id, `${deal.personName} — ${deal.title}`, now);
+  // Монеты за выигрыш — только за переход из открытой стадии (updateDeal); созданная
+  // сразу выигранной — без монет, иначе их можно «нафармить» созданием.
   return { deal, taggedClient: tagged, step, incomeOffer: stage === 'won' && deal.amount != null };
 }
 
@@ -205,10 +205,22 @@ export async function updateDeal(
     await prisma.entity.update({ where: { id: deal.personEntityId }, data: { lastSeenAt: now } }).catch(() => {});
   }
   // Монеты за выигрыш: идемпотентно по сделке (вернули в работу и снова выиграли — без новых).
-  if (stageChanged && deal.stage === 'won') await onDealWon(userId, deal.id, `${deal.personName} — ${deal.title}`, now);
+  // Только за переход из ОТКРЫТОЙ стадии в «выиграна» и при сумме (сумму могли досказать позже).
+  if (deal.stage === 'won' && deal.amount != null && (stageChanged || amountChanged) && (await wonFromOpenStage(deal.id))) {
+    await onDealWon(userId, deal.id, `${deal.personName} — ${deal.title}`, now);
+  }
   // Ревью I3: «выиграна» без суммы → назвали сумму позже → тоже предлагаем доход.
   const incomeOffer = deal.stage === 'won' && deal.amount != null && !deal.wonIncomeId && (stageChanged || amountChanged);
   return { deal, step, stageChanged, incomeOffer };
+}
+
+/** Была ли у сделки смена стадии из открытой в «выиграна» (а не «создана выигранной»/«проигранная → выиграна»). */
+async function wonFromOpenStage(dealId: string): Promise<boolean> {
+  const ev = await prisma.dealEvent.findFirst({
+    where: { dealId, kind: 'stage', to: 'won', from: { in: [...OPEN_STAGES] } },
+    select: { id: true },
+  });
+  return ev !== null;
 }
 
 export type IncomeResult =

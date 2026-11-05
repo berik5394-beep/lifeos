@@ -26,10 +26,28 @@ describe('монеты за выигранную сделку', () => {
     expect(await coins(userId)).toEqual([{ refKey: `deal:${deal.id}`, amount: 50 }]);
   });
 
-  it('создана сразу выигранной → +50', async () => {
+  it('нит: создана сразу выигранной → без монет (не фармим созданием)', async () => {
     const userId = await user('created');
-    const { deal } = await createDeal(userId, { personName: 'Серик', title: 'склад', stage: 'won' }, NOW);
+    await createDeal(userId, { personName: 'Серик', title: 'склад', stage: 'won', amount: 1_000_000 }, NOW);
+    expect(await coins(userId)).toEqual([]);
+  });
+
+  it('нит: выиграна без суммы → без монет; сумму досказали → +50 один раз', async () => {
+    const userId = await user('noamount');
+    const { deal } = await createDeal(userId, { personName: 'Дана', title: 'склад' }, NOW);
+    await updateDeal(userId, deal.id, { stage: 'won' }, NOW);
+    expect(await coins(userId)).toEqual([]);
+    await updateDeal(userId, deal.id, { amount: 700_000 }, NOW);
     expect(await coins(userId)).toEqual([{ refKey: `deal:${deal.id}`, amount: 50 }]);
+    await updateDeal(userId, deal.id, { amount: 800_000 }, NOW);
+    expect(await coins(userId)).toEqual([{ refKey: `deal:${deal.id}`, amount: 50 }]);
+  });
+
+  it('нит: проигранную сразу в «выиграна» — без монет (только из открытой стадии)', async () => {
+    const userId = await user('lostwon');
+    const { deal } = await createDeal(userId, { personName: 'Аля', title: 'z', amount: 100_000, stage: 'lost' }, NOW);
+    await updateDeal(userId, deal.id, { stage: 'won' }, NOW);
+    expect(await coins(userId)).toEqual([]);
   });
 
   it('проиграна / открыта — монет нет', async () => {
