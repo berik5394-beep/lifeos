@@ -9,6 +9,7 @@ import { Radiator } from './radiator';
 import { WoodFloor } from './wood-floor';
 import { CeilingLamp } from './ceiling-lamp';
 import { ROOM_PALETTE, RENDER_SCALE as R } from './room-palette';
+import type { RoomTier } from '@/services/room-catalog';
 
 /** Глубина комнаты в «пикселях текстуры» боковых стен, пола и потолка. */
 const DEPTH = 260 * R;
@@ -22,10 +23,15 @@ export const RoomDiorama = memo(function RoomDiorama({
   width,
   height,
   hour,
+  wallsTier = null,
+  floorTier = null,
 }: {
   width: number;
   height: number;
   hour: number;
+  /** Часть 6: купленная отделка стен/пола (null — исходная комната). */
+  wallsTier?: RoomTier | null;
+  floorTier?: RoomTier | null;
 }) {
   const faces = useMemo(() => roomFaces(width, height), [width, height]);
   if (width === 0 || height === 0) return null;
@@ -40,16 +46,16 @@ export const RoomDiorama = memo(function RoomDiorama({
         <View style={styles.ceiling} />
       </RoomFace>
       <RoomFace width={DEPTH} height={bh} quad={faces.left} shade={0.2}>
-        <Wallpaper width={DEPTH} />
+        <Wallpaper width={DEPTH} tier={wallsTier} />
       </RoomFace>
       <RoomFace width={DEPTH} height={bh} quad={faces.right} shade={0.14}>
-        <Wallpaper width={DEPTH} />
+        <Wallpaper width={DEPTH} tier={wallsTier} />
       </RoomFace>
       <RoomFace width={bw} height={DEPTH} quad={faces.floor}>
-        <WoodFloor width={bw} height={DEPTH} />
+        <WoodFloor width={bw} height={DEPTH} tier={floorTier} />
       </RoomFace>
       <RoomFace width={bw} height={bh} quad={faces.back}>
-        <Wallpaper width={bw} />
+        <Wallpaper width={bw} tier={wallsTier} />
         <View style={[styles.abs, { left: bw * 0.06, top: bh * 0.16 }]}>
           <WallCarpet width={bw * 0.42} height={bh * 0.5} />
         </View>

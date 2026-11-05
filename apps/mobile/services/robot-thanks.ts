@@ -1,4 +1,4 @@
-import type { RoomItemKey } from '@/services/room-catalog';
+import { roomItemAcc, type RoomItemKey, type RoomVariantTier } from '@/services/room-catalog';
 
 /**
  * Робот-эпик: робот благодарит за новый предмет в комнате — тепло, с лестью,
@@ -6,22 +6,6 @@ import type { RoomItemKey } from '@/services/room-catalog';
  * Тон — по выбранному стилю ассистента (настройки/онбординг).
  */
 export type AssistantStyle = 'friendly' | 'strict' | 'calm' | 'toxic';
-
-/** Название предмета в винительном падеже: «спасибо за диван / картину». */
-const ITEM_ACC: Record<RoomItemKey, string> = {
-  plant: 'растение',
-  sofa: 'диван',
-  picture: 'картину',
-  lamp: 'лампу',
-  books: 'книги',
-  clock: 'часы',
-  rug: 'ковёр',
-  plush: 'игрушку',
-  wardrobe: 'шкаф',
-  desk: 'стол',
-  nightstand: 'тумбочку',
-  dresser: 'комод',
-};
 
 type Line = (item: string, hey: string) => string;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -50,16 +34,29 @@ export function normalizeStyle(style: string | null | undefined): AssistantStyle
   return style === 'strict' || style === 'calm' || style === 'toxic' ? style : 'friendly';
 }
 
+/**
+ * Часть 6: тон зависит от класса ремонта — за премиум и люкс робот восхищается
+ * сильнее (по стилю ассистента). Бюджет и декор — без добавки.
+ */
+const TIER_WOW: Record<AssistantStyle, Partial<Record<RoomVariantTier, string>>> = {
+  friendly: { mid: ' Стало заметно уютнее!', premium: ' Это же премиум — я чувствую себя особенным!', luxury: ' Люкс?! Я живу как во дворце — ты лучший!' },
+  strict: { premium: ' Премиум — заработано делами. Уважаю.', luxury: ' Люкс. Это результат дисциплины. Так держать.' },
+  calm: { premium: ' Благородные материалы — в доме стало тише и светлее.', luxury: ' Настоящая роскошь. Спасибо, что так обо мне думаешь.' },
+  toxic: { premium: ' Премиум? Ладно, признаю — вкус у тебя есть.', luxury: ' ЛЮКС?! Кого ты пытаешься впечатлить… ладно, меня. Получилось.' },
+};
+
 /** Фраза благодарности. `rnd` — для тестов (по умолчанию случайная фраза). */
 export function thanksFor(
   key: RoomItemKey,
   style: string | null | undefined,
   name?: string | null,
   rnd: () => number = Math.random,
+  tier?: RoomVariantTier | null,
 ): string {
-  const lines = LINES[normalizeStyle(style)];
+  const st = normalizeStyle(style);
+  const lines = LINES[st];
   const line = lines[Math.min(lines.length - 1, Math.floor(rnd() * lines.length))];
   const first = name?.trim().split(/\s+/)[0];
-  const text = line(ITEM_ACC[key], first ? `${first}, ` : '');
+  const text = line(roomItemAcc(key), first ? `${first}, ` : '') + ((tier && TIER_WOW[st][tier]) ?? '');
   return cap(text);
 }

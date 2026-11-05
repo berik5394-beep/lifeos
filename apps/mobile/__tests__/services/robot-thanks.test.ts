@@ -30,4 +30,10 @@ describe('robot-thanks — робот благодарит за новый пр�
       }
     }
   });
+  it('Часть 6: тон по классу — люкс восхищает сильнее, бюджет без добавки; новые виды (стены, пол)', () => {
+    expect(thanksFor('sofa', 'friendly', null, () => 0, 'luxury')).toMatch(/дворце/);
+    expect(thanksFor('sofa', 'friendly', null, () => 0, 'budget')).not.toMatch(/дворце|премиум/);
+    expect(thanksFor('walls', 'calm', null, () => 0, 'premium')).toContain('новые стены');
+    expect(thanksFor('floor', 'toxic', null, () => 0, 'luxury')).toMatch(/ЛЮКС/);
+  });
 });

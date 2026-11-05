@@ -19,6 +19,10 @@ import { RobotSpeechBubble } from '@/components/robot/robot-speech-bubble';
 import { ChatReplyBubble } from '@/components/room/chat-reply-bubble';
 import { RoomBottomBar } from '@/components/room/room-bottom-bar';
 import { ToolCard } from '@/components/room/tool-card';
+import { RoomShop } from '@/components/room/room-shop';
+import { SlotGrid } from '@/components/room/slot-grid';
+import { CoinCounter } from '@/components/room/coin-counter';
+import { useScheduleStore } from '@/stores/schedule-store';
 import { RoomIntro } from '@/components/room/room-intro';
 import { useColors } from '@/hooks/use-colors';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
@@ -33,7 +37,7 @@ import { storage } from '@/services/storage';
 import { thanksFor } from '@/services/robot-thanks';
 import { visiblePanels } from '@/services/panels';
 import { ROBOT_SIDE_W, planPurchaseView, type SpeechLayout } from '@/services/speech-layout';
-import { ROOM_MAX_ITEMS, type RoomItemKey } from '@/services/room-catalog';
+import { SLOT_POS, finishTier, isPlaceSlot, spotOf, type RoomSpot, type RoomVariant } from '@/services/room-catalog';
 import { RENDER_SCALE as R, ZOOM_IN, clampPan, zoomOffset } from '@/services/room-geometry';
 import { isToolKey, toolSource, toolsInItem, type ToolKey } from '@/services/room-tools';
 import { ROBOT_STRIP_H, robotShift, robotStandPoint, toolOrigin } from '@/services/tool-scene';
@@ -63,6 +67,8 @@ function timeTint(hour: number): string {
 const PARALLAX_PX = 6;
 const ZOOM_MS = 380;
 const THANKS_MS = 8000;
+/** Робот, пока открыт магазин (комната короче). */
+const FURNISH_ROBOT_SCALE = 0.6;
 const ROBOT_SIZE = 150;
 const ROBOT_SIDE_SCALE = 0.68;
 const ROBOT_CORNER_SCALE = 0.55;
@@ -105,10 +111,25 @@ export const RoomPage = memo(function RoomPage() {
   const userName = useAuthStore((s) => s.user?.name ?? null);
   const token = useAuthStore((s) => s.token);
   const items = useRoomStore((s) => s.items);
+  const owned = useRoomStore((s) => s.owned);
+  const catalog = useRoomStore((s) => s.catalog);
+  const coins = useRoomStore((s) => s.coins);
+  const coinGain = useRoomStore((s) => s.coinGain);
   const fetchRoom = useRoomStore((s) => s.fetchRoom);
-  const addItem = useRoomStore((s) => s.addItem);
+  const fetchCatalog = useRoomStore((s) => s.fetchCatalog);
+  const fetchCoins = useRoomStore((s) => s.fetchCoins);
+  const buy = useRoomStore((s) => s.buy);
   const moveItem = useRoomStore((s) => s.moveItem);
-  const removeItem = useRoomStore((s) => s.removeItem);
+  const storeItem = useRoomStore((s) => s.storeItem);
+  const placeFromStorage = useRoomStore((s) => s.placeFromStorage);
+  const scheduleRevision = useScheduleStore((s) => s.revision);
+  // Часть 6: ячейки видны, пока обставляешь или тащишь предмет.
+  const [furnishing, setFurnishing] = useState(false);
+  const [dragSpot, setDragSpot] = useState<RoomSpot | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [buying, setBuying] = useState<string | null>(null);
+  const wallsTier = useMemo(() => finishTier(owned, 'walls'), [owned]);
+  const floorTier = useMemo(() => finishTier(owned, 'floor'), [owned]);
   const messages = useChatStore((s) => s.messages);
   const chatLoading = useChatStore((s) => s.isLoading);
   const sendMessage = useChatStore((s) => s.sendMessage);
@@ -146,7 +167,15 @@ export const RoomPage = memo(function RoomPage() {
 
   useEffect(() => {
     fetchRoom();
-  }, [fetchRoom]);
+    fetchCatalog();
+  }, [fetchRoom, fetchCatalog]);
+
+  // Монеты: при входе, после ответа робота (мог закрыть дело голосом), после
+  // сдвига графика и закрытия инструмента (ниже) — заработанное всплывает «+N».
+  const latestId = messages[0]?.id;
+  useEffect(() => {
+    fetchCoins();
+  }, [fetchCoins, latestId, scheduleRevision]);
 
   useEffect(
     () => () => {
@@ -306,7 +335,8 @@ export const RoomPage = memo(function RoomPage() {
   const onToolClosed = useCallback(() => {
     setScene(null);
     robotToRest();
-  }, [robotToRest]);
+    void fetchCoins(); // в инструменте могли закрыть задачи/привычки
+  }, [robotToRest, fetchCoins]);
 
   // Запросы «достань инструмент» из пушей/голоса/дашборда.
   // Забираем запрос, только когда комната уже знает свой размер — иначе пуш на
@@ -380,12 +410,28 @@ export const RoomPage = memo(function RoomPage() {
 
   const onRemove = useCallback(
     (id: string) => {
-      Alert.alert('Убрать предмет?', undefined, [
+      Alert.alert('Убрать в кладовку?', 'Предмет остаётся твоим — поставить обратно бесплатно («Обставить» → «Кладовка»).', [
         { text: 'Отмена', style: 'cancel' },
-        { text: 'Убрать', style: 'destructive', onPress: () => removeItem(id) },
+        { text: 'В кладовку', onPress: () => storeItem(id) },
       ]);
     },
-    [removeItem],
+    [storeItem],
+  );
+
+  const onDragState = useCallback(
+    (id: string, on: boolean) => {
+      setDragging(on);
+      const it = useRoomStore.getState().owned.find((o) => o.id === id);
+      setDragSpot(on && it ? spotOf(it.itemKey) : null);
+    },
+    [],
+  );
+
+  const onPlace = useCallback(
+    (id: string) => {
+      if (!placeFromStorage(id)) Alert.alert('Места нет', 'Все подходящие ячейки заняты — убери что-нибудь долгим нажатием.');
+    },
+    [placeFromStorage],
   );
 
   // Тап по мебели с инструментом — робот достаёт его (два в предмете — спрашиваем какой).
@@ -405,27 +451,54 @@ export const RoomPage = memo(function RoomPage() {
     [tools, openToolScene],
   );
 
-  const onPick = useCallback(
-    (key: RoomItemKey) => {
+  const onBuy = useCallback(
+    async (v: RoomVariant) => {
       if (scene) closeTool();
-      if (!addItem(key)) {
-        Alert.alert('Комната заполнена', `Помещается до ${ROOM_MAX_ITEMS} предметов — убери что-нибудь долгим нажатием.`);
+      setBuying(v.key);
+      const res = await buy(v.key);
+      setBuying(null);
+      if (!res.ok) {
+        Alert.alert('Не получилось', res.error);
         return;
       }
       setReactionKey(String(Date.now()));
-      const added = useRoomStore.getState().items.at(-1);
-      if (added && size.w > 0) {
-        // Робот «понимает» экран: где окажется предмет и где свободно для реплики.
-        const text = thanksFor(key, storage.getString('assistantStyle'), userName);
-        const layout = planPurchaseView(added.x, added.y, size.w, size.h, text);
-        zoomWithOffset(layout.offset);
-        robotToSide(layout.robotSide);
-        setPlan(layout);
-        setNewItemId(added.id);
-        setThanks(text);
+      const slot = res.item.slot;
+      if (!slot) {
+        Alert.alert('Куплено — в кладовке', 'Подходящие ячейки заняты. Освободи место долгим нажатием и поставь из «Кладовки».');
+        return;
+      }
+      if (size.w === 0) return;
+      // Робот «понимает» экран: где окажется предмет и где свободно для реплики.
+      // Отделка — смотрим на стену/пол; мебель — на её ячейку.
+      const at = isPlaceSlot(slot) ? SLOT_POS[slot] : slot === 'finish-walls' ? { x: 0.5, y: 0.4 } : { x: 0.5, y: 0.78 };
+      const text = thanksFor(v.kind, storage.getString('assistantStyle'), userName, Math.random, v.tier);
+      const layout = planPurchaseView(at.x, at.y, size.w, size.h, text);
+      zoomWithOffset(layout.offset);
+      robotToSide(layout.robotSide);
+      setPlan(layout);
+      setNewItemId(isPlaceSlot(slot) ? res.item.id : null);
+      setThanks(text);
+    },
+    [scene, closeTool, buy, zoomWithOffset, robotToSide, size, userName],
+  );
+
+  // Обставляем: комната короче (магазин снизу) — робот уменьшается, чтобы не
+  // закрывать задние ячейки; ноги остаются на полу.
+  useEffect(() => {
+    if (zoomed || scene) return;
+    if (furnishing) moveRobot(0, (ROBOT_SIZE * (1 - FURNISH_ROBOT_SCALE)) / 2, FURNISH_ROBOT_SCALE);
+    else robotToRest();
+  }, [furnishing, zoomed, scene, moveRobot, robotToRest]);
+
+  const onShelfChange = useCallback(
+    (shelf: 'tools' | 'furnish' | null) => {
+      setFurnishing(shelf === 'furnish');
+      if (shelf === 'furnish') {
+        fetchCatalog();
+        fetchCoins();
       }
     },
-    [scene, closeTool, addItem, zoomWithOffset, robotToSide, size, userName],
+    [fetchCatalog, fetchCoins],
   );
 
   const onTool = useCallback((key: string) => isToolKey(key) && openToolScene(key), [openToolScene]);
@@ -476,8 +549,11 @@ export const RoomPage = memo(function RoomPage() {
                 sceneStyle,
               ]}
             >
-              <RoomDiorama width={size.w * R} height={size.h * R} hour={hour} />
+              <RoomDiorama width={size.w * R} height={size.h * R} hour={hour} wallsTier={wallsTier} floorTier={floorTier} />
               <Animated.View style={[StyleSheet.absoluteFill, furnitureStyle]} pointerEvents="box-none">
+                {size.w > 0 && (furnishing || dragging) && !scene && (
+                  <SlotGrid width={size.w * R} height={size.h * R} owned={owned} dragSpot={dragSpot} />
+                )}
                 {size.w > 0 &&
                   items.map((item) => (
                     <RoomFurnitureItem
@@ -493,6 +569,7 @@ export const RoomPage = memo(function RoomPage() {
                       highlight={item.id === newItemId}
                       badge={furnitureBadge(item.itemKey, visibleToolKeys)}
                       pulseBadge={introTarget === 'furniture'}
+                      onDragState={(on) => onDragState(item.id, on)}
                     />
                   ))}
               </Animated.View>
@@ -613,6 +690,11 @@ export const RoomPage = memo(function RoomPage() {
             </Pressable>
           </View>
           )}
+          {!zoomed && !scene && (
+            <View style={styles.topRight} pointerEvents="none">
+              <CoinCounter coins={coins} gain={coinGain} />
+            </View>
+          )}
           {zoomed && !scene && (
             <Pressable
               onPress={zoomOut}
@@ -629,7 +711,17 @@ export const RoomPage = memo(function RoomPage() {
       <RoomBottomBar
         tools={tools}
         onTool={onTool}
-        onFurnish={onPick}
+        shop={
+          <RoomShop
+            catalog={catalog}
+            owned={owned}
+            coins={coins}
+            busy={buying}
+            onBuy={(v) => void onBuy(v)}
+            onPlace={onPlace}
+          />
+        }
+        onShelfChange={onShelfChange}
         onSend={onSend}
         sending={chatLoading}
         isRecording={isRecording}

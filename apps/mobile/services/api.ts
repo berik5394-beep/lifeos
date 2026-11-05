@@ -49,6 +49,9 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   token?: string;
+  /** false — без сети НЕ ставить в офлайн-очередь, а бросить ошибку (покупки:
+   *  повтор «потом» без ведома юзера недопустим). По умолчанию true. */
+  queueOffline?: boolean;
 }
 
 export class ApiError extends Error {
@@ -109,7 +112,7 @@ function parseJsonSafe<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, token } = options;
+  const { method = 'GET', body, token, queueOffline = true } = options;
   const om = getOfflineManager();
 
   // ── Offline handling ──────────────────────────────────────────────────
@@ -120,6 +123,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       if (cached !== null) return cached;
       throw new ApiError(0, 'Нет интернета. Данные недоступны.');
     }
+    if (!queueOffline) throw new ApiError(0, 'Нет интернета — попробуй, когда появится связь.');
 
     // For mutations (POST/PUT/PATCH/DELETE) — queue for later sync
     await om.offlineQueue.enqueue({
@@ -165,6 +169,8 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       // Fall back to cache
       const cached = await om.getCachedData<T>(endpoint);
       if (cached !== null) return cached;
+    } else if (!queueOffline) {
+      throw new ApiError(0, 'Нет интернета — попробуй, когда появится связь.');
     } else {
       // Queue mutation for later
       await om.offlineQueue.enqueue({
@@ -219,11 +225,11 @@ export const api = {
   get: <T>(endpoint: string, token?: MaybeToken) =>
     request<T>(endpoint, { token: token ?? undefined }),
 
-  post: <T>(endpoint: string, body: unknown, token?: MaybeToken) =>
-    request<T>(endpoint, { method: 'POST', body, token: token ?? undefined }),
+  post: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean }) =>
+    request<T>(endpoint, { method: 'POST', body, token: token ?? undefined, ...opts }),
 
-  put: <T>(endpoint: string, body: unknown, token?: MaybeToken) =>
-    request<T>(endpoint, { method: 'PUT', body, token: token ?? undefined }),
+  put: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean }) =>
+    request<T>(endpoint, { method: 'PUT', body, token: token ?? undefined, ...opts }),
 
   patch: <T>(endpoint: string, body: unknown, token?: MaybeToken) =>
     request<T>(endpoint, { method: 'PATCH', body, token: token ?? undefined }),

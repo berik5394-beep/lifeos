@@ -1,10 +1,8 @@
-import React, { memo, useCallback, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize, borderRadius } from '@/constants';
-import { RoomCatalogBar } from '@/components/robot/room-catalog-bar';
-import type { RoomItemKey } from '@/services/room-catalog';
 import type { PanelDef } from '@/services/panels';
 
 type Shelf = 'tools' | 'furnish' | null;
@@ -17,7 +15,8 @@ type Shelf = 'tools' | 'furnish' | null;
 export const RoomBottomBar = memo(function RoomBottomBar({
   tools,
   onTool,
-  onFurnish,
+  shop,
+  onShelfChange,
   onSend,
   sending,
   isRecording,
@@ -29,7 +28,10 @@ export const RoomBottomBar = memo(function RoomBottomBar({
 }: {
   tools: PanelDef[];
   onTool: (key: string) => void;
-  onFurnish: (key: RoomItemKey) => void;
+  /** Часть 6: магазин ремонта (полка «Обставить»). */
+  shop: ReactNode;
+  /** Открыли/закрыли полку — комната подсвечивает ячейки, грузит каталог. */
+  onShelfChange?: (shelf: 'tools' | 'furnish' | null) => void;
   onSend: (text: string) => void;
   sending: boolean;
   isRecording: boolean;
@@ -47,6 +49,7 @@ export const RoomBottomBar = memo(function RoomBottomBar({
   const [text, setText] = useState('');
 
   const toggle = useCallback((s: Exclude<Shelf, null>) => setShelf((cur) => (cur === s ? null : s)), []);
+  useEffect(() => onShelfChange?.(shelf), [shelf, onShelfChange]);
   const send = useCallback(() => {
     const t = text.trim();
     if (!t || sending) return;
@@ -98,9 +101,7 @@ export const RoomBottomBar = memo(function RoomBottomBar({
         </ScrollView>
       )}
       {shelf === 'furnish' && (
-        <View style={styles.shelfFurnish}>
-          <RoomCatalogBar onPick={onFurnish} />
-        </View>
+        <View style={styles.shelfFurnish}>{shop}</View>
       )}
 
       <View style={styles.inputRow}>
