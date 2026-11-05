@@ -20,6 +20,14 @@ describe('стадии сделки', () => {
   ])('%s → %s', (raw, stage) => {
     expect(parseStage(raw)).toBe(stage);
   });
+  it.each(['не оплатил', 'ещё не заплатил', 'пока не купил', 'договорились о встрече'])(
+    'нит: «%s» — не выиграна и не договор (null)',
+    (raw) => expect(parseStage(raw)).toBeNull(),
+  );
+  it('договор без «-ились» — всё ещё договор', () => {
+    expect(parseStage('договор подписали')).toBe('contract');
+    expect(parseStage('отправил договор')).toBe('contract');
+  });
   it('непонятное → null', () => {
     expect(parseStage('погода')).toBeNull();
     expect(parseStage('')).toBeNull();

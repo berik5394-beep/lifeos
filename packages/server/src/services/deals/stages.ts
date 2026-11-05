@@ -34,17 +34,21 @@ export function isOpenStage(s: string): s is OpenStage {
 const SYNONYMS: Array<[RegExp, DealStage]> = [
   [/(проигр|отказ|слил|не\s+будет|^lost$)/, 'lost'],
   [/(выигр|оплатил|заплатил|купил|^won$)/, 'won'],
-  [/(договор|сч[её]т|оплат|^contract$)/, 'contract'],
+  [/(договор(?!ил)|сч[её]т|оплат|^contract$)/, 'contract'],
   [/(^|\s)кп($|\s)|коммерческ|предложени|^proposal$/, 'proposal'],
   [/(перегов|обсужда|общаем|^talks$)/, 'talks'],
   [/(нов|заявк|лид|^new$)/, 'new'],
 ];
+
+const NEGATED_WON = /(^|\s)не\s+(выигр|оплатил|заплатил|купил)/;
 
 /** Стадия из ключа или русской фразы; не поняли — null (не угадываем). */
 export function parseStage(raw: string): DealStage | null {
   const s = raw.trim().toLowerCase().replace(/ё/g, 'е');
   if (!s) return null;
   if (isDealStage(s)) return s;
+  // «не оплатил / не купил» — не выиграна (и не «оплат»→договор): не угадываем.
+  if (NEGATED_WON.test(s)) return null;
   for (const [re, stage] of SYNONYMS) if (re.test(s)) return stage;
   return null;
 }
