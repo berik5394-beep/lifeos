@@ -14,6 +14,8 @@ import {
   reopenStage,
   parseMoneyInput,
   civilToday,
+  stepDateChoices,
+  fmtAmountInput,
   LOST_REASONS,
 } from '@/services/deals-view';
 import type { Deal, DealEvent, PlanStatus } from '@/services/deals';
@@ -126,5 +128,18 @@ describe('панель сделок — что показываем', () => {
   });
   it('причины проигрыша', () => {
     expect(LOST_REASONS).toEqual(['дорого', 'выбрал другого', 'не актуально']);
+  });
+  it('шаг: быстрые даты по часам устройства — сегодня, завтра, через 3 дня, через неделю (через конец месяца)', () => {
+    expect(stepDateChoices(new Date(2026, 10, 28, 23, 50))).toEqual([
+      { label: 'Сегодня', date: '2026-11-28' },
+      { label: 'Завтра', date: '2026-11-29' },
+      { label: 'Через 3 дня', date: '2026-12-01' },
+      { label: 'Через неделю', date: '2026-12-05' },
+    ]);
+  });
+  it('сумма в поле — с пробелами по тысячам; нет суммы — пусто', () => {
+    expect(fmtAmountInput(10_000_000)).toBe('10 000 000');
+    expect(fmtAmountInput(2_345_678.4)).toBe('2 345 678');
+    expect(fmtAmountInput(null)).toBe('');
   });
 });

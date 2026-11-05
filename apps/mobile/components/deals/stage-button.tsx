@@ -1,27 +1,33 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import { Pressable, StyleSheet, Text } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { borderRadius, fontSize, spacing } from '@/constants';
 
 export type StageButtonTone = 'plain' | 'success' | 'danger' | 'primary';
 
-/** Кнопка в карточке сделки: соседняя стадия, «Выиграна», «Проиграна», «Записать доход». */
+/**
+ * Кнопка в карточке сделки: соседняя стадия, «Выиграна», «Проиграна», «Записать доход».
+ * value уходит в onPress — один стабильный обработчик на список кнопок (не ломает memo).
+ */
 export const StageButton = memo(function StageButton({
   label,
   onPress,
+  value,
   tone = 'plain',
   disabled = false,
 }: {
   label: string;
-  onPress: () => void;
+  onPress: (value: string | undefined) => void;
+  value?: string;
   tone?: StageButtonTone;
   disabled?: boolean;
 }) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
+  const press = useCallback(() => onPress(value), [onPress, value]);
   return (
     <Pressable
-      onPress={onPress}
+      onPress={press}
       disabled={disabled}
       style={[styles.btn, styles[tone], disabled && styles.disabled]}
       accessibilityRole="button"

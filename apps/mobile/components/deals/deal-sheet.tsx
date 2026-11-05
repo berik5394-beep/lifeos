@@ -8,6 +8,8 @@ import { LOST_REASONS, canRecordIncome, dealHead, eventLine, reopenStage, stepLi
 import { dealErrorText, useDealIncome } from '@/hooks/use-deal-income';
 import { useDealStore } from '@/stores/deal-store';
 import { StageButton } from '@/components/deals/stage-button';
+import { AmountSheet } from '@/components/deals/amount-sheet';
+import { StepSheet } from '@/components/deals/step-sheet';
 
 /**
  * Карточка сделки: стадия (кнопки соседних), «Выиграна» → «Записать доход N ₸?»,
@@ -28,6 +30,8 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
   const [askReason, setAskReason] = useState(false);
   // «Вернуть в работу», а из какой стадии закрыли — не знаем: спрашиваем кнопками стадий.
   const [pickStage, setPickStage] = useState(false);
+  // Правка суммы / шага — формой поверх карточки (внутри её модалки: так iOS покажет вторую).
+  const [editing, setEditing] = useState<'amount' | 'step' | null>(null);
 
   const dealId = deal?.id ?? null;
   const updatedAt = deal?.updatedAt ?? null;
@@ -35,6 +39,7 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
   useEffect(() => {
     inFlight.current = false;
     setBusy(false);
+    setEditing(null);
   }, [dealId]);
 
   // История: старую держим на экране, пока не придёт новая (без мигания пустотой).
@@ -100,6 +105,18 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
   const onLost = useCallback(() => setAskReason(true), []);
   const cancelLost = useCallback(() => setAskReason(false), []);
   const cancelPick = useCallback(() => setPickStage(false), []);
+  const editAmount = useCallback(() => setEditing('amount'), []);
+  const editStep = useCallback(() => setEditing('step'), []);
+  const closeEditor = useCallback(() => setEditing(null), []);
+  // Сумма у выигранной сделки появилась/поменялась — сервер предлагает записать доход:
+  // спрашиваем поверх ещё открытой формы, закрываем её после ответа.
+  const onAmountSaved = useCallback(
+    (r: { deal: Deal; incomeOffer: boolean }) => {
+      if (r.incomeOffer && r.deal.amount != null) offer(r.deal, closeEditor);
+      else closeEditor();
+    },
+    [offer, closeEditor],
+  );
   const back = deal && !isOpenStage(deal.stage) && historyReady && !historyFailed ? reopenStage(deal, events) : null;
   const onReopen = useCallback(() => {
     if (back) void onMove(back);
@@ -185,6 +202,13 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
           </View>
         )}
 
+        {deal.stage !== 'lost' ? (
+          <View style={styles.row}>
+            <StageButton label="Изменить сумму" disabled={busy} onPress={editAmount} />
+            {open ? <StageButton label="Изменить шаг" disabled={busy} onPress={editStep} /> : null}
+          </View>
+        ) : null}
+
         <ScrollView style={styles.history}>
           {events.map((e) => (
             <Text key={e.id} style={styles.event}>
@@ -193,6 +217,8 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
           ))}
         </ScrollView>
       </View>
+      <AmountSheet deal={editing === 'amount' ? deal : null} onClose={closeEditor} onSaved={onAmountSaved} />
+      <StepSheet deal={editing === 'step' ? deal : null} onClose={closeEditor} />
     </Modal>
   );
 });

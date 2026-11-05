@@ -347,4 +347,20 @@ describe('deal-store', () => {
       expect(useDealStore.getState().closed.map((d) => d.id)).toEqual(['d1']);
     });
   });
+
+  it('правка суммы/шага: PUT онлайн, ответ сервера (incomeOffer) — наверх, сделка обновлена', async () => {
+    const won: Deal = { ...deal, stage: 'won', amount: null };
+    useDealStore.setState({ closed: [won] });
+    mocked.put.mockResolvedValueOnce({ deal: { ...won, amount: 2_000_000 }, step: null, incomeOffer: true } as never);
+    mocked.get.mockResolvedValueOnce({ plan } as never);
+    const r = await useDealStore.getState().update('d1', { amount: 2_000_000 });
+    expect(mocked.put).toHaveBeenCalledWith('/deals/d1', { amount: 2_000_000 }, 'test-token-123', { queueOffline: false });
+    expect(r.incomeOffer).toBe(true);
+    expect(useDealStore.getState().closed[0].amount).toBe(2_000_000);
+    mocked.put.mockResolvedValueOnce({ deal: { ...deal, nextStepAt: '2026-11-09T00:00:00.000Z', nextStepText: 'позвонить' }, step: null, incomeOffer: false } as never);
+    useDealStore.setState({ deals: [deal] });
+    await useDealStore.getState().update('d1', { nextStepDate: '2026-11-09', nextStepText: 'позвонить' });
+    expect(mocked.put).toHaveBeenLastCalledWith('/deals/d1', { nextStepDate: '2026-11-09', nextStepText: 'позвонить' }, 'test-token-123', { queueOffline: false });
+    expect(useDealStore.getState().deals[0].nextStepText).toBe('позвонить');
+  });
 });

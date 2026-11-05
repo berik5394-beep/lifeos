@@ -162,3 +162,19 @@ export function parseMoneyInput(raw: string): MoneyParse {
 export function civilToday(now: Date = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
+
+/** Быстрые даты шага (без нативного календаря): civil-даты по часам устройства. */
+export function stepDateChoices(now: Date = new Date()): { label: string; date: string }[] {
+  const day = (n: number) => civilToday(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n));
+  return [
+    { label: 'Сегодня', date: day(0) },
+    { label: 'Завтра', date: day(1) },
+    { label: 'Через 3 дня', date: day(3) },
+    { label: 'Через неделю', date: day(7) },
+  ];
+}
+
+/** Сумма для поля ввода: «10 000 000» (parseMoneyInput читает обратно); нет суммы — пусто. */
+export function fmtAmountInput(n: number | null): string {
+  return n == null ? '' : Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
