@@ -98,7 +98,8 @@
           "calendarPermission": "LifeOS синхронизирует события с вашим календарём для умных напоминаний"
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      "./plugins/with-pods-min-ios"
     ],
     "extra": {
       "eas": {
