@@ -137,9 +137,9 @@ describe('план продаж ↔ денежная цель', () => {
   });
   it('секция: строка цели — после плана; без неё — байт-в-байт как раньше', () => {
     const base2 = { openCount: 1, openSum: 0, clients: ['Ахмет'], dueToday: [], overdue: [], plan: 'План.' };
-    expect(formatDealsSection(base2)).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План..');
-    expect(formatDealsSection({ ...base2, savings: null })).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План..');
-    expect(formatDealsSection({ ...base2, savings: 'Цель.' })).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План.; Цель..');
+    expect(formatDealsSection(base2)).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План.');
+    expect(formatDealsSection({ ...base2, savings: null })).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План.');
+    expect(formatDealsSection({ ...base2, savings: 'Цель.' })).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План; Цель.');
   });
 });
 

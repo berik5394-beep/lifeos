@@ -155,7 +155,8 @@ export function formatDealsSection(s: {
   if (s.overdue.length) parts.push(`просрочен шаг: ${s.overdue.join(', ')}`);
   if (s.plan) parts.push(s.plan);
   if (s.savings) parts.push(s.savings);
-  return parts.join('; ') + '.';
+  // Части плана/цели сами кончаются точкой — не даём «..» на стыке и в конце.
+  return parts.map((p) => p.replace(/\.$/, '')).join('; ') + '.';
 }
 
 /**
