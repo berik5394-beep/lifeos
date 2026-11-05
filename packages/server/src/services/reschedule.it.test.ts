@@ -348,6 +348,7 @@ describe('шаги по сделкам × перегруз дня', () => {
     expect(p?.text).toContain('дел на ~1,5 ч');
     expect(p?.moves).toEqual([{ taskId: mail.id, title: 'Почта', fromDate: tomorrow, toDate: dayAfter }]);
     expect(p?.text).not.toContain('Ахмет');
+    expect(p?.text).toContain('Звонки/шаги по сделкам (1) не двигаю');
     const pending = await prisma.pendingAction.findUnique({ where: { userId } });
     expect(JSON.stringify(pending?.inputJson)).not.toContain('deal:');
   });

@@ -186,6 +186,20 @@ describe('describeProposal', () => {
   });
 });
 
+describe('describeProposal — шаги по сделкам (нит ревью)', () => {
+  const base = { overloaded: true, demand: 420, capacity: 300, stuck: [], after: 240 };
+  const moves = [{ taskId: 'a', title: 'Почта', fromDate: '2026-11-12', toDate: '2026-11-13' }];
+  it('шаги по сделкам в дне → честно: их не двигаю', () => {
+    const text = describeProposal({ plan: { ...base, moves }, day: '2026-11-12', today: '2026-11-12', warnings: [], dealSteps: 2 });
+    expect(text).toContain('Звонки/шаги по сделкам (2) не двигаю — это обещания клиентам.');
+    expect(text.endsWith('Подтвердить перенос?')).toBe(true);
+  });
+  it('без шагов — строки нет', () => {
+    const text = describeProposal({ plan: { ...base, moves }, day: '2026-11-12', today: '2026-11-12', warnings: [] });
+    expect(text).not.toContain('по сделкам');
+  });
+});
+
 describe('fmtMinutes / parseMoves', () => {
   it('минуты по-человечески', () => {
     expect(fmtMinutes(40)).toBe('40 мин');

@@ -212,8 +212,10 @@ export function describeProposal(args: {
   day: string;
   today: string;
   warnings: string[];
+  /** Сколько шагов по сделкам в этом дне (они в нагрузке, но не двигаются). */
+  dealSteps?: number;
 }): string {
-  const { plan, day, today, warnings } = args;
+  const { plan, day, today, warnings, dealSteps = 0 } = args;
   const head = dayPhrase(day, today);
   const lines = [
     `${head[0].toUpperCase()}${head.slice(1)} день перегружен: дел на ~${fmtMinutes(plan.demand)}, ` +
@@ -233,6 +235,7 @@ export function describeProposal(args: {
   } else if (plan.moves.length === 0) {
     lines.push('Сдвигать нечего: остальное — со временем или критичное. Что-то отменить?');
   }
+  if (dealSteps > 0) lines.push(`Звонки/шаги по сделкам (${dealSteps}) не двигаю — это обещания клиентам.`);
   lines.push(...warnings);
   if (plan.moves.length > 0) lines.push('Подтвердить перенос?');
   return lines.join('\n');
@@ -425,7 +428,8 @@ export async function proposeReschedule(
     const { weekly, yearly } = await loadGoalRefs(userId, parents, now);
     const warnings = [...goalWarnings(plan.moves, parents, weekly, yearly), ...(await horizonLines(userId, day, tz, now))];
 
-    let text = describeProposal({ plan, day, today, warnings });
+    const dealSteps = days[0].tasks.filter((t) => t.id.startsWith(DEAL_STEP_ID_PREFIX)).length;
+    let text = describeProposal({ plan, day, today, warnings, dealSteps });
     let staged = plan.moves.length > 0;
     if (staged && opts.fromCard) {
       const other = await peekPendingAction(userId);
