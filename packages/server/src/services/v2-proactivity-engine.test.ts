@@ -276,6 +276,9 @@ describe('TEMPLATES — table', () => {
         'person_meeting',
         'weekly_goal_stall',
         'open_loop_pileup',
+        'deal_next_step_due',
+        'deal_stale',
+        'sales_plan_behind',
       ].sort(),
     );
   });

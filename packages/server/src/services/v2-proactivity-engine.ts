@@ -37,7 +37,10 @@ export type NudgeSource =
   | 'monthly_goal_stall'
   | 'neglected_key_person'
   | 'person_meeting'
-  | 'open_loop_pileup';
+  | 'open_loop_pileup'
+  | 'deal_next_step_due'
+  | 'deal_stale'
+  | 'sales_plan_behind';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -173,6 +176,12 @@ export function scoreSignificance(c: NudgeCandidate): number {
       // Завал открытых петель — стабильно значимо (≥0.6 floor gate3).
       return 0.6;
     }
+    case 'deal_next_step_due':
+    case 'deal_stale':
+      // Как obligation_due: стабильно значимо, проходит gate3 (>= 0.6).
+      return 0.6;
+    case 'sales_plan_behind':
+      return 0.65;
   }
 }
 
@@ -277,6 +286,15 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
   person_meeting: {
     curious: '{{insightText}}',
     gentle: '{{insightText}}',
+  },
+  deal_next_step_due: {
+    gentle: 'По сделкам пора шаг: {{list}}. Сделаешь сегодня?',
+  },
+  deal_stale: {
+    gentle: 'Сделка «{{title}}» с {{personInstr}} затихла — {{days}} дн ни слова. Напомнить о себе?',
+  },
+  sales_plan_behind: {
+    gentle: '{{planText}}',
   },
   mood_shift: {
     supportive:
@@ -1082,6 +1100,105 @@ async function detectPersonMeeting(userId: string): Promise<NudgeCandidate[]> {
   }
 }
 
+// Сделки: шаг сегодня/просрочен — до 3 сделок в одном нудже (обещание клиенту).
+async function detectDealNextStepDue(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2DealsEnabled(userId)) return [];
+    const { prisma } = await import('../lib/prisma.js');
+    const { getUserTimezone } = await import('../lib/user-context.js');
+    const { localDateOnlyUTC } = await import('../lib/tz.js');
+    const { OPEN_STAGES } = await import('./deals/stages.js');
+    const today = localDateOnlyUTC(await getUserTimezone(userId));
+    const rows = await prisma.deal.findMany({
+      where: { userId, stage: { in: [...OPEN_STAGES] }, nextStepAt: { lte: today } },
+      orderBy: { nextStepAt: 'asc' },
+      take: 3,
+      select: { id: true, personName: true, nextStepText: true },
+    });
+    if (rows.length === 0) return [];
+    const cand: NudgeCandidate = {
+      source: 'deal_next_step_due',
+      significance: 0,
+      entityId: rows[0].id,
+      payload: { list: rows.map((r) => `${r.personName} — ${r.nextStepText ?? 'шаг'}`).join('; ') },
+      toneHint: 'gentle',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectDealNextStepDue failed:', err);
+    return [];
+  }
+}
+
+// Сделки: открытая, 7+ дней без активности и без будущего шага.
+async function detectDealStale(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2DealsEnabled(userId)) return [];
+    const { prisma } = await import('../lib/prisma.js');
+    const { getUserTimezone } = await import('../lib/user-context.js');
+    const { localDateOnlyUTC } = await import('../lib/tz.js');
+    const { OPEN_STAGES } = await import('./deals/stages.js');
+    const { instrumental } = await import('./deals/format.js');
+    const today = localDateOnlyUTC(await getUserTimezone(userId));
+    const cutoff = new Date(Date.now() - 7 * DAY_MS);
+    const row = await prisma.deal.findFirst({
+      where: {
+        userId,
+        stage: { in: [...OPEN_STAGES] },
+        lastActivityAt: { lte: cutoff },
+        OR: [{ nextStepAt: null }, { nextStepAt: { lt: today } }],
+      },
+      orderBy: [{ amount: { sort: 'desc', nulls: 'last' } }, { lastActivityAt: 'asc' }],
+      select: { id: true, personName: true, title: true, lastActivityAt: true },
+    });
+    if (!row) return [];
+    const cand: NudgeCandidate = {
+      source: 'deal_stale',
+      significance: 0,
+      entityId: row.id,
+      payload: {
+        title: row.title,
+        personInstr: instrumental(row.personName),
+        days: Math.floor((Date.now() - row.lastActivityAt.getTime()) / DAY_MS),
+      },
+      toneHint: 'gentle',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectDealStale failed:', err);
+    return [];
+  }
+}
+
+// План продаж: отстаём (с 7-го дня). Кулдаун — существующие гейты движка по source.
+async function detectSalesPlanBehind(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2DealsEnabled(userId)) return [];
+    const { salesPlanStatus } = await import('./deals/service.js');
+    const { describePlan } = await import('./deals/format.js');
+    const s = await salesPlanStatus(userId);
+    if (!s || !s.pace.behind) return [];
+    const cand: NudgeCandidate = {
+      source: 'sales_plan_behind',
+      significance: 0,
+      payload: {
+        planText: describePlan({ plan: s.plan, won: s.won, open: s.open, behind: true, covering: s.covering, noAmount: s.noAmount }),
+      },
+      toneHint: 'gentle',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectSalesPlanBehind failed:', err);
+    return [];
+  }
+}
+
 /**
  * v2 Phase B4 — propose a skill when the user repeatedly invokes the same
  * cluster of tools. Reads ToolCall history: groups same-day tool sets,
@@ -1201,7 +1318,8 @@ async function gate4_Dedup(
 /** Нуджи-«давление» — глушатся в эмоциональном спаде (mood-tone, Berik-approved).
  *  Остаются: поддержка (mood_shift), время-критичное (person_meeting, commitment_due,
  *  obligation_due, birthday/memorial), деньги-защита (runway_low), decision_review,
- *  stale_entity/neglected_key_person (связь с людьми — не давление), identity_growth. */
+ *  stale_entity/neglected_key_person (связь с людьми — не давление), identity_growth,
+ *  deal_next_step_due (обещание клиенту — не давление). */
 export const PRESSURE_SOURCES: ReadonlySet<NudgeSource> = new Set<NudgeSource>([
   'goal_no_progress',
   'streak_break',
@@ -1213,6 +1331,8 @@ export const PRESSURE_SOURCES: ReadonlySet<NudgeSource> = new Set<NudgeSource>([
   'skill_suggestion',
   'energy_link',
   'relationship_link',
+  'deal_stale',
+  'sales_plan_behind',
 ]);
 
 /** Чистый фильтр (mood-tone Part 2): при сдвиге-вниз убирает PRESSURE-кандидатов. */
@@ -1248,6 +1368,9 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectMonthlyGoalStall(userId),
       detectNeglectedKeyPerson(userId),
       detectPersonMeeting(userId),
+      detectDealNextStepDue(userId),
+      detectDealStale(userId),
+      detectSalesPlanBehind(userId),
       detectIdentityGrowth(userId),
       detectSkillOpportunity(userId),
     ]);
