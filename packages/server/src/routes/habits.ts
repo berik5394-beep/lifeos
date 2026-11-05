@@ -6,6 +6,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 import { rateLimiter } from '../middleware/security.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
+import { onHabitDone } from '../services/coins.js';
 
 // POST /habits/:id/log. Нормальный юзер за минуту отмечает максимум 10-20
 // привычек, даже на полном свайп-списке.
@@ -154,6 +155,7 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
       update: { completed },
     });
 
+    if (completed) void onHabitDone(request.userId, id, date, habit.name);
     captureActivity(request.userId, {
       type: 'habit_logged',
       content: completed

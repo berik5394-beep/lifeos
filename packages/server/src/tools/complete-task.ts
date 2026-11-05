@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { matchOpenTask } from '../services/task-title.js';
 import { defineTool } from './_types.js';
+import { onTaskCompleted } from '../services/coins.js';
 
 /** SSOT Step 5 — write-tool. 1:1 с legacy complete_task. */
 export const completeTaskTool = defineTool({
@@ -40,6 +41,8 @@ export const completeTaskTool = defineTool({
       where: { id: task.id },
       data: { completed: true },
     });
+    // Часть 6: монеты за дело — так же, как из приложения.
+    await onTaskCompleted(userId, task.id, task.title);
     return { message: `Задача "${task.title}" выполнена ✅`, taskId: task.id };
   },
 });

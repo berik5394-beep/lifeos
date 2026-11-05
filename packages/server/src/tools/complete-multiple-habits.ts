@@ -4,6 +4,7 @@ import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { matchHabit, buildNotFoundMessage } from './_habit-match.js';
+import { onHabitDone } from '../services/coins.js';
 
 /**
  * SSOT Step 5 — write-tool. Консолидирует прежний loop из
@@ -85,6 +86,10 @@ export const completeMultipleHabitsTool = defineTool({
     const succeededIds: string[] = [];
     // Чужие/несуществующие id — сразу провал (ничего не записано).
     const failedIds: string[] = [...unownedIds];
+    // Часть 6: монеты за каждую отмеченную привычку (последовательно — общий дневной лимит).
+    for (const r of results) {
+      if (r.status === 'fulfilled') await onHabitDone(userId, r.value, today.toISOString().slice(0, 10), 'привычка');
+    }
     results.forEach((r, idx) => {
       if (r.status === 'fulfilled') succeededIds.push(r.value);
       else {

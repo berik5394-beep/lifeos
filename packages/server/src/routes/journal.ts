@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
+import { onJournalWritten } from '../services/coins.js';
 
 const journalSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD'),
@@ -84,6 +85,7 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
         notes: data.notes ?? undefined,
       },
     });
+    void onJournalWritten(request.userId);
 
     const journalParts = [
       data.sleepHours != null ? `сон ${data.sleepHours}ч` : null,

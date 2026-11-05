@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
+import { onJournalWritten } from '../services/coins.js';
 
 /** SSOT Step 5 — write-tool. 1:1 с legacy journal_entry (upsert на сегодня). */
 export const journalEntryTool = defineTool({
@@ -26,9 +27,10 @@ export const journalEntryTool = defineTool({
   examples: ['спал 7 часов, настроение 8', 'запиши в дневник: устал'],
   handler: async (input, ctx) => {
     const userId = ctx.userId;
-    // R9 TZ-aware: «сегодня» в локальной TZ юзера.
+    // R9 TZ-aware: «сегодня» в локальной TZ юзера. @db.Date → календарная дата
+    // (localDateOnlyUTC), не момент начала дня: иначе в UTC+ запись уезжала во вчера.
     const tz = await getUserTimezone(userId);
-    const today = localDayStartUTC(tz);
+    const today = localDateOnlyUTC(tz);
     const entry = await prisma.journalEntry.upsert({
       where: { userId_date: { userId, date: today } },
       update: {
@@ -46,6 +48,8 @@ export const journalEntryTool = defineTool({
         notes: input.notes ?? null,
       },
     });
+    // Часть 6: монеты за запись в дневнике (раз в день).
+    await onJournalWritten(userId);
     return { message: 'Дневник обновлён', entryId: entry.id };
   },
 });

@@ -104,6 +104,7 @@ model User {
   // Привязка Telegram по одноразовому коду (2026-11-05)
   telegramLinkCodes      TelegramLinkCode[]
   roomItems              RoomItem[]
+  coinTransactions       CoinTransaction[]
 }
 
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
@@ -1098,4 +1099,20 @@ model RoomItem {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+/// Робот-эпик, Часть 6: монеты за дела (ремонт комнаты). Баланс = сумма.
+/// refKey — идемпотентность: «task:<id>», «habit:<id>:<дата>», «journal:<дата>»,
+/// «day100:<дата>», «start», «buy:<id>». Одно дело — одно начисление.
+model CoinTransaction {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount    Int
+  reason    String
+  refKey    String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, refKey])
+  @@index([userId, createdAt])
 }

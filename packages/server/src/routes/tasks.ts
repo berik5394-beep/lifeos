@@ -5,6 +5,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 import { NotFoundError } from '../lib/errors.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
+import { onTaskCompleted } from '../services/coins.js';
 
 // Максимум задач на один запрос — защита от OOM на клиенте у power users
 const MAX_TASKS_PER_REQUEST = 500;
@@ -173,6 +174,8 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       });
     });
     if (!updated) throw new NotFoundError('Задача');
+    // Часть 6: монеты за выполненную задачу (идемпотентно, не ломает ответ).
+    if (data.completed === true && updated.completed) void onTaskCompleted(request.userId, updated.id, updated.title);
     captureActivity(request.userId, {
       type: 'task_updated',
       content: `Изменил задачу «${updated.title}»`,
@@ -219,6 +222,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return updated;
     });
     if (!result) throw new NotFoundError('Задача');
+    if (result.completed) void onTaskCompleted(request.userId, result.id, result.title);
     captureActivity(request.userId, {
       type: result.completed ? 'task_completed' : 'task_reopened',
       content: result.completed
@@ -257,6 +261,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return updated;
     });
     if (!result) throw new NotFoundError('Задача');
+    if (status === 'done') void onTaskCompleted(request.userId, result.id, result.title);
     captureActivity(request.userId, {
       type: 'task_kanban_moved',
       content: `Передвинул задачу «${result.title}» → ${status}`,

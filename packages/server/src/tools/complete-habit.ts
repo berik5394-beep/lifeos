@@ -4,6 +4,7 @@ import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { matchHabit, buildNotFoundMessage } from './_habit-match.js';
+import { onHabitDone } from '../services/coins.js';
 
 /** SSOT Step 5 — write-tool. 1:1 с legacy complete_habit. */
 export const completeHabitTool = defineTool({
@@ -58,6 +59,7 @@ export const completeHabitTool = defineTool({
       update: { completed: true },
       create: { habitId: habit.id, userId, date: today, completed: true },
     });
+    await onHabitDone(userId, habit.id, today.toISOString().slice(0, 10), habit.name);
     let suffix = '';
     try {
       const { isV2GoalHabitsEnabled } = await import('../lib/feature-flags.js');
