@@ -138,5 +138,25 @@ describe('сервис сделок', () => {
     await updateDeal(userId, deal.id, { stage: 'won' }, NOW);
     expect((await salesPlanStatus(userId, NOW, '2026-12'))?.won).toBe(0);
   });
+  it('ревью: окно месяца — до 1-го СЛЕДУЮЩЕГО месяца (не +31 день)', async () => {
+    // Февраль: выигранная 2 марта в февраль не идёт.
+    const userId = await user('febwin');
+    await setSalesPlan(userId, 5_000_000, NOW, '2027-02');
+    const feb = await createDeal(userId, { personName: 'Ахмет', title: 'a', amount: 1_000_000, stage: 'won' }, NOW);
+    await prisma.deal.update({ where: { id: feb.deal.id }, data: { closedAt: new Date('2027-02-20T09:00:00Z') } });
+    const mar = await createDeal(userId, { personName: 'Серик', title: 'b', amount: 2_000_000, stage: 'won' }, NOW);
+    await prisma.deal.update({ where: { id: mar.deal.id }, data: { closedAt: new Date('2027-03-02T09:00:00Z') } });
+    expect((await salesPlanStatus(userId, new Date('2027-03-05T09:00:00Z'), '2027-02'))?.won).toBe(1_000_000);
+
+    // Январь, «сейчас» = 31-е: +31 день давал окно до 1 марта и тянул февральские выигрыши.
+    const u2 = await user('janwin');
+    const jan31 = new Date('2027-01-31T12:00:00Z');
+    await setSalesPlan(u2, 5_000_000, jan31);
+    const j = await createDeal(u2, { personName: 'Ахмет', title: 'a', amount: 1_000_000, stage: 'won' }, jan31);
+    await prisma.deal.update({ where: { id: j.deal.id }, data: { closedAt: new Date('2027-01-10T09:00:00Z') } });
+    const f = await createDeal(u2, { personName: 'Серик', title: 'b', amount: 2_000_000, stage: 'won' }, jan31);
+    await prisma.deal.update({ where: { id: f.deal.id }, data: { closedAt: new Date('2027-02-02T09:00:00Z') } });
+    expect((await salesPlanStatus(u2, jan31))?.won).toBe(1_000_000);
+  });
 });
 

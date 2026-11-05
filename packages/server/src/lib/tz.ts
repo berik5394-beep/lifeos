@@ -194,6 +194,19 @@ export function localMonthStartUTC(tz: string, at: Date = new Date()): Date {
 }
 
 /**
+ * UTC-инстант 00:00 ЛОКАЛЬНОГО 1-го числа СЛЕДУЮЩЕГО месяца после того, в
+ * который попадает `at` (исключающая граница месяца). Не «+31 день»: от 31
+ * января тот перескакивал через февраль. Зеркало localMonthStartUTC.
+ */
+export function localNextMonthStartUTC(tz: string, at: Date = new Date()): Date {
+  const zone = safeTz(tz);
+  const [y, m] = localDateStr(zone, at).split('-').map(Number);
+  const guessUTC = Date.UTC(y, m, 1, 0, 0, 0); // m 1-based → следующий месяц
+  const off = tzOffsetMs(zone, new Date(guessUTC));
+  return new Date(guessUTC - off);
+}
+
+/**
  * Сколько ЦЕЛЫХ дней осталось до конца КАЛЕНДАРНОГО месяца юзера (0 = сегодня
  * последний день месяца). В tz юзера, не сервера. Чисто/детерминированно
  * (день — из `at`). Для детектора «конец месяца, цель не закрыта».

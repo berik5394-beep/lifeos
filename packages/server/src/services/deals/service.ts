@@ -1,7 +1,7 @@
 import type { Deal, Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { getUserTimezone } from '../../lib/user-context.js';
-import { localDateStr, localDateOnlyUTC, dateOnlyUTC, localMonthOnlyUTC, localMonthStartUTC } from '../../lib/tz.js';
+import { localDateStr, localDateOnlyUTC, dateOnlyUTC, localMonthOnlyUTC, localMonthStartUTC, localNextMonthStartUTC } from '../../lib/tz.js';
 import { getEntityGraph } from '../entity-graph/index.js';
 import { defaultNextStep, isOpenStage, OPEN_STAGES, type DealStage } from './stages.js';
 import { salesPace, coveringDeals, type Pace } from './pace.js';
@@ -351,7 +351,7 @@ export async function salesPlanStatus(userId: string, now: Date = new Date(), mo
   const plan = await prisma.salesPlan.findUnique({ where: { userId_monthStart: { userId, monthStart } } });
   if (!plan) return null;
   const monthStartInstant = localMonthStartUTC(tz, anchor);
-  const nextMonthInstant = localMonthStartUTC(tz, new Date(anchor.getTime() + 31 * 86_400_000));
+  const nextMonthInstant = localNextMonthStartUTC(tz, anchor);
   const [wonRows, openRows] = await Promise.all([
     prisma.deal.findMany({
       where: { userId, stage: 'won', closedAt: { gte: monthStartInstant, lt: nextMonthInstant } },

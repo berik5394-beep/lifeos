@@ -3,6 +3,7 @@ import {
   localDateStr,
   localDayStartUTC,
   localMonthStartUTC,
+  localNextMonthStartUTC,
   localDayStartUTCOffset,
   localTimeStr,
   isInQuietHours,
@@ -222,6 +223,24 @@ describe('localMonthStartUTC — начало локального месяца 
   it('невалидная tz → не падает (фолбэк UTC, 1-е 00:00 UTC)', () => {
     const r = localMonthStartUTC('Garbage/Zone', new Date('2026-05-16T10:00:00Z'));
     expect(r.toISOString()).toBe('2026-05-01T00:00:00.000Z');
+  });
+});
+
+describe('localNextMonthStartUTC — начало СЛЕДУЮЩЕГО локального месяца как UTC', () => {
+  it('31 января → 1 февраля (не 1 марта: +31 день перескакивал февраль)', () => {
+    const r = localNextMonthStartUTC('Asia/Almaty', new Date('2027-01-31T10:00:00Z'));
+    expect(r.toISOString()).toBe('2027-01-31T19:00:00.000Z');
+  });
+  it('февраль → 1 марта', () => {
+    const r = localNextMonthStartUTC('Asia/Almaty', new Date('2027-02-15T12:00:00Z'));
+    expect(r.toISOString()).toBe('2027-02-28T19:00:00.000Z');
+  });
+  it('декабрь → 1 января следующего года', () => {
+    const r = localNextMonthStartUTC('Asia/Almaty', new Date('2026-12-31T10:00:00Z'));
+    expect(r.toISOString()).toBe('2026-12-31T19:00:00.000Z');
+  });
+  it('UTC: 31 октября → 1 ноября', () => {
+    expect(localNextMonthStartUTC('UTC', new Date('2026-10-31T23:00:00Z')).toISOString()).toBe('2026-11-01T00:00:00.000Z');
   });
 });
 
