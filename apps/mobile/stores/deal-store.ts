@@ -40,6 +40,14 @@ interface DealState {
    */
   available: boolean | null;
   isLoading: boolean;
+  /** Открытые сделки хоть раз загрузились (до этого пустой список — не «сделок нет»). */
+  loaded: boolean;
+  /** Последняя загрузка открытых упала (сеть/сервер) — панель честно говорит и даёт «Повторить». */
+  loadError: boolean;
+  closedLoaded: boolean;
+  closedError: boolean;
+  /** Сервер ответил про план (plan:null = не задан). false — не знаем, «Задать план» не предлагаем. */
+  planKnown: boolean;
   /**
    * Растёт на каждой правке сделок/плана из приложения (стадия, сумма, шаг, новая сделка,
    * план, записанный доход). Комната по нему прячет устаревшее объяснение робота.
@@ -92,7 +100,7 @@ export const useDealStore = create<DealState>((set, get) => {
   const refreshPlan = async () => {
     try {
       const { plan } = await api.get<{ plan: PlanStatus | null }>('/sales-plan', token());
-      set({ plan });
+      set({ plan: plan ?? null, planKnown: true });
     } catch {
       // план — вторичен: оставляем прежний
     }
@@ -104,6 +112,11 @@ export const useDealStore = create<DealState>((set, get) => {
     plan: null,
     isLoading: false,
     revision: 0,
+    loaded: false,
+    loadError: false,
+    closedLoaded: false,
+    closedError: false,
+    planKnown: false,
   };
 
   return {
@@ -118,10 +131,11 @@ export const useDealStore = create<DealState>((set, get) => {
         api.get<{ deals: Deal[] }>('/deals?status=open', token()),
         api.get<{ plan: PlanStatus | null }>('/sales-plan', token()),
       ]);
+      const planPart = planRes.status === 'fulfilled' ? { plan: planRes.value.plan ?? null, planKnown: true } : {};
       if (dealsRes.status === 'rejected') {
         const off = is404(dealsRes.reason);
         if (off) rememberAvailable(false);
-        set({ isLoading: false, ...(off ? { available: false } : {}) });
+        set({ isLoading: false, ...(off ? { available: false } : { loadError: true, ...planPart }) });
         return;
       }
       rememberAvailable(true);
@@ -129,18 +143,22 @@ export const useDealStore = create<DealState>((set, get) => {
         deals: dealsRes.value.deals ?? [],
         available: true,
         isLoading: false,
-        ...(planRes.status === 'fulfilled' ? { plan: planRes.value.plan ?? null } : {}),
+        loaded: true,
+        loadError: false,
+        ...planPart,
       });
     },
 
     fetchClosed: async () => {
       try {
         const { deals } = await api.get<{ deals: Deal[] }>('/deals?status=closed', token());
-        set({ closed: deals ?? [] });
+        set({ closed: deals ?? [], closedLoaded: true, closedError: false });
       } catch (err) {
         if (is404(err)) {
           rememberAvailable(false);
           set({ available: false });
+        } else {
+          set({ closedError: true });
         }
       }
     },
@@ -213,7 +231,7 @@ export const useDealStore = create<DealState>((set, get) => {
 
     setPlan: async (amount) => {
       const { plan } = await api.put<{ plan: PlanStatus | null }>('/sales-plan', { amount }, token(), ONLINE);
-      set((s) => ({ plan, revision: s.revision + 1 }));
+      set((s) => ({ plan, planKnown: true, revision: s.revision + 1 }));
     },
 
     reset: () => {

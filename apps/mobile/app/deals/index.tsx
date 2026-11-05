@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { borderRadius, fontSize, spacing } from '@/constants';
 import { useDealStore } from '@/stores/deal-store';
@@ -23,6 +23,12 @@ export default function DealsScreen() {
   const deals = useDealStore((s) => s.deals);
   const closed = useDealStore((s) => s.closed);
   const plan = useDealStore((s) => s.plan);
+  const planKnown = useDealStore((s) => s.planKnown);
+  const loaded = useDealStore((s) => s.loaded);
+  const loadError = useDealStore((s) => s.loadError);
+  const isLoading = useDealStore((s) => s.isLoading);
+  const closedLoaded = useDealStore((s) => s.closedLoaded);
+  const closedError = useDealStore((s) => s.closedError);
   const fetch = useDealStore((s) => s.fetch);
   const fetchClosed = useDealStore((s) => s.fetchClosed);
   const latestReplyId = useChatStore((s) => s.messages[0]?.id);
@@ -54,12 +60,25 @@ export default function DealsScreen() {
   const closeAdd = useCallback(() => setAdding(false), []);
   const openPlan = useCallback(() => setEditingPlan(true), []);
   const closePlan = useCallback(() => setEditingPlan(false), []);
+  const retry = useCallback(() => void fetch(), [fetch]);
+  const retryClosed = useCallback(() => void fetchClosed(), [fetchClosed]);
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <PlanBar plan={plan} onPress={openPlan} />
-        {groups.length === 0 ? (
+        <PlanBar plan={plan} planKnown={planKnown} onPress={openPlan} />
+        {loadError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>Не удалось загрузить сделки — проверь интернет</Text>
+            <Pressable onPress={retry} disabled={isLoading} style={styles.retry} accessibilityRole="button">
+              <Text style={styles.retryText}>{isLoading ? 'Загружаю…' : 'Повторить'}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {!loaded ? (
+          // Первая загрузка: пустой список — ещё не «сделок нет».
+          loadError ? null : <ActivityIndicator style={styles.spinner} color={c.primary} />
+        ) : groups.length === 0 ? (
           <Text style={styles.empty}>Открытых сделок нет. Скажи роботу «Ахмет хочет оборудование на 2 млн» — заведу. Или нажми «+».</Text>
         ) : (
           groups.map((g) => (
@@ -74,11 +93,21 @@ export default function DealsScreen() {
         <Pressable onPress={toggleClosed} style={styles.closedToggle} accessibilityRole="button">
           <Text style={styles.groupTitle}>{`${showClosed ? '▾' : '▸'} Закрытые`}</Text>
         </Pressable>
-        {showClosed
-          ? closed.length === 0
-            ? <Text style={styles.closedEmpty}>За 90 дней закрытых сделок нет.</Text>
-            : closed.map((d) => <DealRow key={d.id} deal={d} today={today} onPress={setOpenId} />)
-          : null}
+        {showClosed && closedError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>Не удалось загрузить закрытые — проверь интернет</Text>
+            <Pressable onPress={retryClosed} style={styles.retry} accessibilityRole="button">
+              <Text style={styles.retryText}>Повторить</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {!showClosed ? null : !closedLoaded ? (
+          closedError ? null : <ActivityIndicator style={styles.spinner} color={c.primary} />
+        ) : closed.length === 0 ? (
+          <Text style={styles.closedEmpty}>За 90 дней закрытых сделок нет.</Text>
+        ) : (
+          closed.map((d) => <DealRow key={d.id} deal={d} today={today} onPress={setOpenId} />)
+        )}
       </ScrollView>
       {/* «+» слева: справа/внизу живёт микрофон. */}
       <Pressable onPress={openAdd} style={styles.fab} accessibilityRole="button" accessibilityLabel="Добавить сделку">
@@ -100,6 +129,11 @@ function createStyles(c: ReturnType<typeof useColors>) {
     groupTitle: { color: c.textSecondary, fontSize: fontSize.sm, fontWeight: '600', marginBottom: spacing.sm },
     closedToggle: { paddingVertical: spacing.sm },
     closedEmpty: { color: c.textSecondary, fontSize: fontSize.sm },
+    spinner: { marginVertical: spacing.xl },
+    errorBox: { padding: spacing.md, borderRadius: borderRadius.md, marginBottom: spacing.md, backgroundColor: c.surface },
+    errorText: { color: c.danger, fontSize: fontSize.sm, textAlign: 'center' },
+    retry: { alignSelf: 'center', marginTop: spacing.sm, paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
+    retryText: { color: c.primary, fontSize: fontSize.md, fontWeight: '600' },
     fab: {
       position: 'absolute',
       left: spacing.lg,

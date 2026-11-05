@@ -5,12 +5,24 @@ import { borderRadius, fontSize, spacing } from '@/constants';
 import type { PlanStatus } from '@/services/deals';
 import { planHint, planLine, planProgress } from '@/services/deals-view';
 
-/** Полоска плана месяца; отстаёшь по темпу — жёлтая. Тап — задать/изменить план. */
-export const PlanBar = memo(function PlanBar({ plan, onPress }: { plan: PlanStatus | null; onPress: () => void }) {
+/**
+ * Полоска плана месяца; отстаёшь по темпу — жёлтая. Тап — задать/изменить план.
+ * «Задать план» — только когда сервер сказал «плана нет»; не знаем (запрос упал) — молчим.
+ */
+export const PlanBar = memo(function PlanBar({
+  plan,
+  planKnown,
+  onPress,
+}: {
+  plan: PlanStatus | null;
+  planKnown: boolean;
+  onPress: () => void;
+}) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
 
   if (!plan) {
+    if (!planKnown) return null;
     return (
       <Pressable onPress={onPress} style={styles.box} accessibilityRole="button">
         <Text style={styles.empty}>Задать план продаж на месяц</Text>

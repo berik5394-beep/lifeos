@@ -38,7 +38,10 @@ beforeEach(() => {
   jest.resetAllMocks();
   // resetAllMocks обнуляет и глобальный мок auth-store — возвращаем токен.
   (useAuthStore.getState as jest.Mock).mockReturnValue({ token: 'test-token-123' });
-  useDealStore.setState({ deals: [], closed: [], plan: null, available: true, isLoading: false, revision: 0 });
+  useDealStore.setState({
+    deals: [], closed: [], plan: null, available: true, isLoading: false, revision: 0,
+    loaded: false, loadError: false, closedLoaded: false, closedError: false, planKnown: false,
+  });
   storage.remove('deals_available');
 });
 
@@ -231,6 +234,56 @@ describe('deal-store', () => {
       expect(st.plan).toBeNull();
       expect(st.available).toBeNull();
       expect(storage.getString('deals_available')).toBeUndefined();
+    });
+  });
+
+  describe('честные состояния загрузки', () => {
+    it('сеть упала → loadError; потом удалось → loaded, ошибки нет', async () => {
+      mocked.get.mockRejectedValue(new ApiError(0, 'Нет интернета'));
+      await useDealStore.getState().fetch();
+      expect(useDealStore.getState().loadError).toBe(true);
+      expect(useDealStore.getState().loaded).toBe(false);
+      mocked.get.mockImplementation(async (url: string) => (url.startsWith('/deals') ? { deals: [deal] } : { plan: null }) as never);
+      await useDealStore.getState().fetch();
+      expect(useDealStore.getState().loadError).toBe(false);
+      expect(useDealStore.getState().loaded).toBe(true);
+    });
+
+    it('план: «не задан» (plan:null с сервера) ≠ «не знаем» (запрос упал)', async () => {
+      mocked.get.mockImplementation(async (url: string) => {
+        if (url.startsWith('/deals')) return { deals: [] } as never;
+        throw new ApiError(0, 'сеть');
+      });
+      await useDealStore.getState().fetch();
+      expect(useDealStore.getState().planKnown).toBe(false);
+      mocked.get.mockImplementation(async (url: string) => (url.startsWith('/deals') ? { deals: [] } : { plan: null }) as never);
+      await useDealStore.getState().fetch();
+      expect(useDealStore.getState().planKnown).toBe(true);
+      expect(useDealStore.getState().plan).toBeNull();
+    });
+
+    it('закрытые: ошибка → closedError (не «за 90 дней нет»); успех → closedLoaded', async () => {
+      mocked.get.mockRejectedValueOnce(new ApiError(0, 'сеть'));
+      await useDealStore.getState().fetchClosed();
+      expect(useDealStore.getState().closedError).toBe(true);
+      expect(useDealStore.getState().closedLoaded).toBe(false);
+      mocked.get.mockResolvedValueOnce({ deals: [] } as never);
+      await useDealStore.getState().fetchClosed();
+      expect(useDealStore.getState().closedError).toBe(false);
+      expect(useDealStore.getState().closedLoaded).toBe(true);
+    });
+
+    it('задал план руками → план известен', async () => {
+      mocked.put.mockResolvedValueOnce({ plan } as never);
+      await useDealStore.getState().setPlan(10_000_000);
+      expect(useDealStore.getState().planKnown).toBe(true);
+    });
+
+    it('reset сбрасывает и состояния загрузки', () => {
+      useDealStore.setState({ loaded: true, loadError: true, closedLoaded: true, closedError: true, planKnown: true });
+      useDealStore.getState().reset();
+      const st = useDealStore.getState();
+      expect([st.loaded, st.loadError, st.closedLoaded, st.closedError, st.planKnown]).toEqual([false, false, false, false, false]);
     });
   });
 });
