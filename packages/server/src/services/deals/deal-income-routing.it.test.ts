@@ -258,3 +258,46 @@ describe('ревью-3 I1: слот источника помнит «аванс
     expect((await prisma.dealEvent.findFirst({ where: { dealId: deal.id, kind: 'note' } }))?.text).toBe('аванс 2 000 000 ₸');
   });
 });
+
+describe('ревью-3 I2: казахские имена', () => {
+  it('B2: «получил 2 млн от Нұрлана» → через сделку, доход ровно один (повтор «выиграна» — без второго)', async () => {
+    const userId = await user('kz');
+    const { deal } = await createDeal(userId, { personName: 'Нұрлан', title: 'склад', stage: 'contract' });
+    const r = await handleMessage(userId, 'получил 2 млн от Нұрлана');
+    expect(r.pendingAction).toEqual({ action: DEAL_INCOME_ACTION, input: { dealId: deal.id, markWon: true, amount: 2_000_000 } });
+    await handleMessage(userId, 'да');
+    expect(await prisma.income.count({ where: { userId } })).toBe(1);
+    // второй путь (панель/«выиграна» ещё раз) — no-op
+    expect(await recordDealIncome(userId, deal.id)).toMatchObject({ ok: true, already: true });
+    expect(await prisma.income.count({ where: { userId } })).toBe(1);
+  });
+
+  it('B2-страховка: доход «от Нұрлана» записан руками → выигрыш сделки не пишет молча второй', async () => {
+    const userId = await user('kz-dup');
+    await prisma.income.create({ data: { userId, date: new Date(), source: 'от Нұрлана', amount: 700_000 } });
+    const { deal } = await createDeal(userId, { personName: 'Нұрлан', title: 'склад', amount: 700_000 });
+    await updateDeal(userId, deal.id, { stage: 'won' });
+    expect(await recordDealIncome(userId, deal.id)).toMatchObject({ ok: false, reason: 'possible_duplicate' });
+    expect(await prisma.income.count({ where: { userId } })).toBe(1);
+  });
+
+  it('«получил 2 млн от Лии» при сделке с Әлией → обычный доход, сделку не трогаем', async () => {
+    const userId = await user('kz-lia');
+    await createDeal(userId, { personName: 'Әлия', title: 'склад', stage: 'contract' });
+    const r = await handleMessage(userId, 'получил 2 млн от Лии');
+    expect(r.pendingAction?.action).toBe('add_income');
+  });
+});
+
+describe('ревью-3 N9: матч среди >50 открытых сделок', () => {
+  it('старая по созданию, но живая сделка находится (порядок по активности, потолок 200)', async () => {
+    const userId = await user('many');
+    const { deal } = await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', stage: 'contract' });
+    const old = new Date(Date.now() - 30 * 86_400_000);
+    await prisma.deal.createMany({
+      data: Array.from({ length: 60 }, (_, i) => ({ userId, personName: `Клиент${i}`, title: 't', stage: 'new', lastActivityAt: old })),
+    });
+    const r = await handleMessage(userId, 'получил 2 млн от Ахмета');
+    expect(r.pendingAction).toEqual({ action: DEAL_INCOME_ACTION, input: { dealId: deal.id, markWon: true, amount: 2_000_000 } });
+  });
+});

@@ -100,8 +100,15 @@ export async function createDeal(
 }
 
 const norm = (t: string): string => t.trim().toLowerCase().replace(/ё/g, 'е');
+/**
+ * Слова — любые буквы/цифры (ревью-3 I2): `[а-я]` резал казахские ә, ғ, қ, ң, ө, ұ, ү, һ, і
+ * («Нұрлана» → «н» + «рлана», «Әлия» → «лия» — и «Лии» совпадала с «Әлией»).
+ */
+const WORD_SPLIT = /[^\p{L}\p{N}]+/u;
+/** Конечная гласная/знак — отрезаем для основы имени (рус. + каз.: ә, і, ө, ұ, ү). */
+const NAME_END_VOWEL = /[аәеёиіоөуұүыэюяьй]$/;
 const stems = (t: string): Set<string> =>
-  new Set(norm(t).split(/[^а-яa-z0-9]+/).filter((w) => w.length >= 5).map((w) => w.slice(0, 5)));
+  new Set(norm(t).split(WORD_SPLIT).filter((w) => w.length >= 5).map((w) => w.slice(0, 5)));
 
 /** Похоже ли название сделки на сказанное: вхождение в любую сторону или общий корень ≥5 букв. */
 export function titleMatches(dealTitle: string, said: string): boolean {
@@ -232,7 +239,7 @@ export type IncomeResult =
 /** «Ахмет»→«ахмет», «Дана»→«дан»: основа имени для поиска в свободном тексте источника дохода. */
 function nameStem(name: string): string {
   const n = name.trim().toLowerCase();
-  return n.length > 3 ? n.replace(/[аяеиоуыьй]$/, '') : n;
+  return n.length > 3 ? n.replace(NAME_END_VOWEL, '') : n;
 }
 
 /**
@@ -289,7 +296,7 @@ const MENTION_FILLER = new Set([
   'фирмы', 'фирма', 'тоо', 'ип', 'ооо', 'ао', 'сделке', 'сделка', 'сделки',
 ]);
 
-const words = (t: string): string[] => norm(t).split(/[^а-яa-z0-9]+/).filter((w) => w && !MENTION_FILLER.has(w));
+const words = (t: string): string[] => norm(t).split(WORD_SPLIT).filter((w) => w && !MENTION_FILLER.has(w));
 
 /**
  * Основа имени клиента для сравнения по словам: первое значимое слово без конечной
@@ -298,14 +305,14 @@ const words = (t: string): string[] => norm(t).split(/[^а-яa-z0-9]+/).filter((
 function nameKey(personName: string): string | null {
   const w = words(personName)[0];
   if (!w || w.length < 2) return null;
-  const cut = w.replace(/[аяеиоуыьй]$/, '');
+  const cut = w.replace(NAME_END_VOWEL, '');
   return cut.length >= 3 ? cut : w;
 }
 
 /** Слово — падежная форма имени: «Ахмета/Ахмету/Ахметом» ↔ «ахмет», «Даны/Даной» ↔ «дан», «Али» ↔ «аля». */
 function wordIsName(word: string, key: string): boolean {
   if (word.startsWith(key) && word.length - key.length <= 2) return true;
-  return key.length <= 3 && word.length === key.length && word.slice(0, -1) === key.slice(0, -1) && /[аяеиоуыьй]$/.test(word);
+  return key.length <= 3 && word.length === key.length && word.slice(0, -1) === key.slice(0, -1) && NAME_END_VOWEL.test(word);
 }
 
 /**
@@ -330,9 +337,16 @@ export function textMentionsClient(personNames: readonly string[], text: string)
   });
 }
 
-/** Открытые сделки юзера — один небольшой запрос (для маршрутизации дохода и подсказки инструментов). */
+/** Потолок открытых сделок для матча по имени (ревью-3 N9: 50 по дате создания теряли старую живую). */
+export const OPEN_DEALS_MATCH_CAP = 200;
+
+/** Открытые сделки юзера — один запрос (для маршрутизации дохода и подсказки инструментов), свежие по активности. */
 export function openDealsForMatching(userId: string): Promise<Deal[]> {
-  return prisma.deal.findMany({ where: { userId, stage: { in: [...OPEN_STAGES] } }, orderBy: { createdAt: 'desc' }, take: 50 });
+  return prisma.deal.findMany({
+    where: { userId, stage: { in: [...OPEN_STAGES] } },
+    orderBy: { lastActivityAt: 'desc' },
+    take: OPEN_DEALS_MATCH_CAP,
+  });
 }
 
 export { MAX_MONEY_AMOUNT };
