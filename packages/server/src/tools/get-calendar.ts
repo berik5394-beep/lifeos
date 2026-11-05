@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { dateOnlyUTC } from '../lib/tz.js';
+import { addCivilDays, dateOnlyUTC } from '../lib/tz.js';
+import { listDealSteps } from '../services/deals/service.js';
+import { dealStepLabel } from '../services/deals/format.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -54,9 +56,23 @@ export const getCalendarTool = defineTool({
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
       take: 100,
     });
-    return events.map((e) => ({
+    const out = events.map((e) => ({
       ...e,
       date: e.date.toISOString().slice(0, 10),
     }));
+    // Шаги по сделкам — тоже занятость дня (не CalendarEvent; флаг выкл. → []).
+    const steps = await listDealSteps(ctx.userId, gte, dateOnlyUTC(addCivilDays(input.to, 1)));
+    if (steps.length === 0) return out;
+    return [
+      ...out,
+      ...steps.map((st) => ({
+        title: `Сделка: ${dealStepLabel(st)}`,
+        date: st.date,
+        startTime: null,
+        endTime: null,
+        location: null,
+        kind: 'deal_step' as const,
+      })),
+    ];
   },
 });

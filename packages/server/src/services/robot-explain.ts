@@ -112,16 +112,26 @@ export async function gatherPanelFacts(
     }
   };
 
+  // Шаги по сделкам на ближайшие дни (флаг выкл. → [] → факта нет).
+  const dealStepFacts = async (days: number) => {
+    const { listDealSteps, describeDealStepsFact } = await import('./deals/index.js');
+    const steps = await listDealSteps(userId, today, dateOnlyUTC(addCivilDays(todayStr, days)));
+    const line = describeDealStepsFact(steps, todayStr);
+    if (line) facts.push(line);
+  };
+
   switch (panel) {
     case 'tasks':
       await taskFacts();
       break;
     case 'calendar':
       await eventFacts(3);
+      await dealStepFacts(3);
       break;
     case 'today': {
       await taskFacts();
       await eventFacts(1);
+      await dealStepFacts(1);
       const [habits, done] = await Promise.all([
         prisma.habit.count({ where: { userId, active: true } }),
         prisma.habitLog.count({ where: { userId, date: today, completed: true } }),
@@ -192,7 +202,7 @@ export async function gatherPanelFacts(
     }
     case 'deals': {
       const { gatherDealsSection } = await import('./deals/service.js');
-      const s = await gatherDealsSection(userId);
+      const s = await gatherDealsSection(userId, now);
       if (s) facts.push(s);
       break;
     }

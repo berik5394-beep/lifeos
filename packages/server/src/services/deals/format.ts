@@ -196,6 +196,15 @@ export function dealStepLabel(d: { personName: string; nextStepText: string | nu
   return `${d.personName} — ${d.nextStepText ?? 'шаг по сделке'}`;
 }
 
+/** «Шаги по сделкам: сегодня Ахмет — связаться; завтра Серик — …» (до 4). Пусто → null. */
+export function describeDealStepsFact(
+  steps: ReadonlyArray<{ personName: string; nextStepText: string | null; date: string }>,
+  today: string,
+): string | null {
+  if (steps.length === 0) return null;
+  return `Шаги по сделкам: ${steps.slice(0, 4).map((s) => `${whenPhrase(s.date, today)} ${dealStepLabel(s)}`).join('; ')}.`;
+}
+
 /** Творительный «с Ахметом / с Даной / с Алей». */
 export function instrumental(name: string): string {
   if (/а$/i.test(name)) return name.slice(0, -1) + 'ой';

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   fmtMoney, fmtMoneyExact, whenPhrase, describeCreated, describeUpdated, describeList,
   formatDealsSection, dealBriefLine, describePlan, instrumental, genitive, accusative, describeWhichDeal,
-  dealStepLabel, describeSalesVsSavings,
+  dealStepLabel, describeSalesVsSavings, describeDealStepsFact,
 } from './format.js';
 
 const base = { personName: 'Ахмет', title: 'оборудование', amount: 2_000_000 as number | null };
@@ -140,5 +140,16 @@ describe('план продаж ↔ денежная цель', () => {
     expect(formatDealsSection(base2)).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План..');
     expect(formatDealsSection({ ...base2, savings: null })).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План..');
     expect(formatDealsSection({ ...base2, savings: 'Цель.' })).toBe('Сделки: открыто 1; клиенты в работе: Ахмет; План.; Цель..');
+  });
+});
+
+describe('факт «шаги по сделкам» для пояснения робота', () => {
+  it('сегодня/завтра/день недели; пусто → null; не больше 4', () => {
+    const st = (personName: string, date: string) => ({ personName, nextStepText: 'связаться', date });
+    expect(describeDealStepsFact([st('Ахмет', '2026-03-10'), st('Серик', '2026-03-11')], '2026-03-10'))
+      .toBe('Шаги по сделкам: сегодня Ахмет — связаться; завтра Серик — связаться.');
+    expect(describeDealStepsFact([], '2026-03-10')).toBeNull();
+    const five = ['А', 'Б', 'В', 'Г', 'Д'].map((n) => st(n, '2026-03-10'));
+    expect(describeDealStepsFact(five, '2026-03-10')).not.toContain('Д —');
   });
 });
