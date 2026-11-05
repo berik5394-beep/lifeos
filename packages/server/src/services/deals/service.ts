@@ -6,7 +6,6 @@ import { getEntityGraph } from '../entity-graph/index.js';
 import { defaultNextStep, isOpenStage, OPEN_STAGES, type DealStage } from './stages.js';
 import { salesPace, coveringDeals, type Pace } from './pace.js';
 import { formatDealsSection, describePlan, describeUpdated, describeWhichDeal, fmtMoneyExact, dealStepLabel, describeSalesVsSavings } from './format.js';
-import { gatherReflectorFacts } from '../reflector-service.js';
 import { computePortfolioPace } from '../savings-pace.js';
 import { withTimeout } from '../../lib/with-timeout.js';
 import { isV2DealsEnabled } from '../../lib/feature-flags.js';
@@ -420,6 +419,9 @@ const SAVINGS_LINE_BUDGET_MS = 700;
  */
 async function salesVsSavingsLine(userId: string, planAmount: number, now: Date): Promise<string | null> {
   try {
+    // Ленивый импорт: reflector-service → insight-store → push → … → оркестратор
+    // → deals/* — статический импорт замыкал цикл (недогруженный модуль).
+    const { gatherReflectorFacts } = await import('../reflector-service.js');
     const facts = await gatherReflectorFacts(userId, now);
     if (facts.financeGoals.length === 0) return null;
     const pf = computePortfolioPace({ goals: facts.financeGoals, capacity: facts.monthlyIncome - facts.monthlyBurn, now });
