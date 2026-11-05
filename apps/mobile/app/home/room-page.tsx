@@ -224,7 +224,9 @@ export const RoomPage = memo(function RoomPage({
       // Новый предмет — приближаем его, робот показывает на него и благодарит.
       const added = useRoomStore.getState().items.at(-1);
       if (added) {
-        zoomTo(added.x * size.w, added.y * size.h);
+        // Центрируем чуть ниже предмета — сам он окажется в верхней трети экрана,
+        // над облачком с благодарностью и роботом.
+        zoomTo(added.x * size.w, added.y * size.h + (size.h * 0.18) / ZOOM_IN);
         setNewItemId(added.id);
         setThanks(thanksFor(key, storage.getString('assistantStyle'), userName));
       }
@@ -317,7 +319,8 @@ function createStyles(c: ReturnType<typeof useColors>) {
     },
     scene: { position: 'absolute' },
     robot: { position: 'absolute', left: 0, right: 0, bottom: '4%', alignItems: 'center' },
-    bubble: { position: 'absolute', left: spacing.sm, right: '22%', bottom: ROBOT_SIZE * ROBOT_SIDE_SCALE + 40 },
+    // Облачко справа от робота, хвостиком к нему — верх экрана остаётся предмету.
+    bubble: { position: 'absolute', left: ROBOT_SIZE * ROBOT_SIDE_SCALE - 10, right: -6, bottom: 4 },
     zoomOut: {
       position: 'absolute',
       top: spacing.sm,

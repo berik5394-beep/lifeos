@@ -412,8 +412,8 @@ type C = ReturnType<typeof useColors>;
 
 function createStyles(c: C) {
   return StyleSheet.create({
-    comicBubble: { flexShrink: 1, marginLeft: spacing.sm },
-    comicBubbleUser: { flexShrink: 1, marginRight: spacing.md },
+    comicBubble: { flexShrink: 1 },
+    comicBubbleUser: { flexShrink: 1 },
     emptyFlip: { transform: [{ scaleY: -1 }] },
     container: {
       flex: 1,

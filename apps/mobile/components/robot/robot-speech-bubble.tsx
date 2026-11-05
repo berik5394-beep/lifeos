@@ -20,7 +20,7 @@ export const RobotSpeechBubble = memo(function RobotSpeechBubble({ text }: { tex
 
   return (
     <Animated.View style={style} pointerEvents="none" accessibilityLiveRegion="polite">
-      <ComicBubble tail="bottom-left">
+      <ComicBubble tail="left">
         <ComicText text={text} typewrite />
       </ComicBubble>
     </Animated.View>

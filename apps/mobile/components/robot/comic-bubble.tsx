@@ -1,12 +1,15 @@
-import React, { memo, type ReactNode } from 'react';
-import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import React, { memo, useCallback, useMemo, useState, type ReactNode } from 'react';
+import { type LayoutChangeEvent, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { COMIC } from '@/constants/comic';
+import { BALLOON_MARGIN, balloonPath, type BalloonTail } from '@/services/comic-balloon';
 
-export type ComicTail = 'bottom-left' | 'left' | 'right' | 'none';
+export type ComicTail = BalloonTail;
 
 /**
- * Облачко реплики в стиле комикса: белая «бумага», жирный чёрный контур,
- * жёсткая тень-подложка и хвостик с контуром, указывающий на говорящего.
+ * Облачко реплики как в комиксе: «пухлый» контур с неровностью от руки,
+ * хвостик вырастает из самого облачка и указывает на говорящего, жёсткая
+ * тень той же формы. Форма — services/comic-balloon (SVG path), под размер текста.
  */
 export const ComicBubble = memo(function ComicBubble({
   children,
@@ -20,125 +23,42 @@ export const ComicBubble = memo(function ComicBubble({
   paper?: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setSize((prev) => (prev && prev.w === width && prev.h === height ? prev : { w: width, h: height }));
+  }, []);
+
+  // Seed от размера: у каждого облачка своя неровность, но стабильная между рендерами.
+  const d = useMemo(
+    () => (size ? balloonPath(size.w, size.h, tail, { seed: Math.round(size.w + size.h) }) : null),
+    [size, tail],
+  );
+
   return (
     <View style={[styles.wrap, style]}>
-      <View style={styles.shadow} />
-      <View style={[styles.paper, { backgroundColor: paper }]}>{children}</View>
-      {tail === 'bottom-left' && (
-        <>
-          <View style={[styles.tailDownOuter]} />
-          <View style={[styles.tailDownInner, { borderTopColor: paper }]} />
-        </>
+      {size && d && (
+        <Svg
+          pointerEvents="none"
+          style={styles.canvas}
+          width={size.w + BALLOON_MARGIN * 2}
+          height={size.h + BALLOON_MARGIN * 2}
+        >
+          <Path d={d} fill={COMIC.ink} transform={`translate(${COMIC.shadow} ${COMIC.shadow})`} />
+          <Path d={d} fill={paper} stroke={COMIC.ink} strokeWidth={COMIC.outline} strokeLinejoin="round" />
+        </Svg>
       )}
-      {tail === 'left' && (
-        <>
-          <View style={[styles.tailLeftOuter]} />
-          <View style={[styles.tailLeftInner, { borderRightColor: paper }]} />
-        </>
-      )}
-      {tail === 'right' && (
-        <>
-          <View style={styles.tailRightOuter} />
-          <View style={[styles.tailRightInner, { borderLeftColor: paper }]} />
-        </>
-      )}
+      <View onLayout={onLayout} style={styles.content}>
+        {children}
+      </View>
     </View>
   );
 });
 
-const T = 14; // половина ширины основания хвостика
-const L = 18; // длина хвостика
-const o = COMIC.outline;
-
 const styles = StyleSheet.create({
-  wrap: { position: 'relative' },
-  shadow: {
-    ...StyleSheet.absoluteFillObject,
-    top: COMIC.shadow,
-    left: COMIC.shadow,
-    right: -COMIC.shadow,
-    bottom: -COMIC.shadow,
-    borderRadius: 26,
-    backgroundColor: COMIC.ink,
-  },
-  paper: {
-    backgroundColor: COMIC.paper,
-    borderWidth: o,
-    borderColor: COMIC.ink,
-    borderRadius: 26,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  // Хвостик вниз: чёрный треугольник + белый поверх, перекрывающий линию контура.
-  tailDownOuter: {
-    position: 'absolute',
-    left: 30,
-    bottom: -L + 1,
-    width: 0,
-    height: 0,
-    borderLeftWidth: T,
-    borderRightWidth: 0,
-    borderTopWidth: L,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: COMIC.ink,
-  },
-  tailDownInner: {
-    position: 'absolute',
-    left: 30 + o + 1,
-    bottom: -L + 1 + o + 2,
-    width: 0,
-    height: 0,
-    borderLeftWidth: T - o - 2,
-    borderTopWidth: L - o - 2,
-    borderLeftColor: 'transparent',
-    borderTopColor: COMIC.paper,
-  },
-  // Хвостик влево (к аватару в чате).
-  tailLeftOuter: {
-    position: 'absolute',
-    left: -L + 1,
-    top: 14,
-    width: 0,
-    height: 0,
-    borderTopWidth: 0,
-    borderBottomWidth: T,
-    borderRightWidth: L,
-    borderBottomColor: 'transparent',
-    borderRightColor: COMIC.ink,
-  },
-  tailLeftInner: {
-    position: 'absolute',
-    left: -L + 1 + o + 2,
-    top: 14 + o,
-    width: 0,
-    height: 0,
-    borderBottomWidth: T - o - 2,
-    borderRightWidth: L - o - 2,
-    borderBottomColor: 'transparent',
-    borderRightColor: COMIC.paper,
-  },
-  // Хвостик вправо (к юзеру, к краю экрана).
-  tailRightOuter: {
-    position: 'absolute',
-    right: -L + 1,
-    top: 14,
-    width: 0,
-    height: 0,
-    borderBottomWidth: T,
-    borderLeftWidth: L,
-    borderBottomColor: 'transparent',
-    borderLeftColor: COMIC.ink,
-  },
-  tailRightInner: {
-    position: 'absolute',
-    right: -L + 1 + o + 2,
-    top: 14 + o,
-    width: 0,
-    height: 0,
-    borderBottomWidth: T - o - 2,
-    borderLeftWidth: L - o - 2,
-    borderBottomColor: 'transparent',
-    borderLeftColor: COMIC.paper,
-  },
+  // Поля под выступающий контур облачка (сам контур рисуется за пределами текста).
+  wrap: { marginHorizontal: 30, marginVertical: 14 },
+  canvas: { position: 'absolute', left: -BALLOON_MARGIN, top: -BALLOON_MARGIN },
+  content: { paddingHorizontal: 2, paddingVertical: 2 },
 });
