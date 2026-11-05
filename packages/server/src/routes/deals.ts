@@ -10,24 +10,27 @@ import {
 } from '../services/deals/index.js';
 
 const civil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
+const monthStr = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM');
+const money = z.number().positive().max(1_000_000_000);
 const stage = z.string().refine((s) => isDealStage(s), 'неизвестная стадия');
 const createSchema = z.object({
   personName: z.string().min(1).max(120),
   title: z.string().max(200).nullable().optional(),
-  amount: z.number().positive().nullable().optional(),
+  amount: money.nullable().optional(),
   stage: stage.optional(),
   nextStepDate: civil.nullable().optional(),
   nextStepText: z.string().max(200).nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
 });
 const updateSchema = z.object({
   stage: stage.optional(),
-  amount: z.number().positive().nullable().optional(),
+  amount: money.nullable().optional(),
   nextStepDate: civil.nullable().optional(),
   nextStepText: z.string().max(200).nullable().optional(),
   note: z.string().max(500).nullable().optional(),
   lostReason: z.string().max(300).nullable().optional(),
 });
-const planSchema = z.object({ amount: z.number().positive() });
+const planSchema = z.object({ amount: money, month: monthStr.optional() });
 
 /** Флаг выключен → 404: мобилка прячет инструмент «Сделки». */
 async function dealsGate(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply | void> {
@@ -86,11 +89,17 @@ export async function dealRoutes(app: FastifyInstance): Promise<void> {
     return r;
   });
 
-  app.get('/sales-plan', async (request) => ({ plan: await salesPlanStatus(request.userId) }));
+  app.get('/sales-plan', async (request, reply) => {
+    const { month } = request.query as { month?: string };
+    if (month !== undefined && !monthStr.safeParse(month).success) {
+      return reply.status(400).send({ message: 'month — в формате YYYY-MM' });
+    }
+    return { plan: await salesPlanStatus(request.userId, new Date(), month) };
+  });
 
   app.put('/sales-plan', { preHandler: validate(planSchema) }, async (request) => {
-    const { amount } = request.body as z.infer<typeof planSchema>;
-    await setSalesPlan(request.userId, amount);
-    return { plan: await salesPlanStatus(request.userId) };
+    const { amount, month } = request.body as z.infer<typeof planSchema>;
+    await setSalesPlan(request.userId, amount, new Date(), month);
+    return { plan: await salesPlanStatus(request.userId, new Date(), month) };
   });
 }

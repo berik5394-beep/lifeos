@@ -120,6 +120,14 @@ describe('инструменты сделок', () => {
     expect(out.message).toContain('План месяца 10 млн ₸');
   });
 
+  it('нит: set_sales_plan на конкретный месяц', async () => {
+    const userId = await user('planm');
+    const out = (await runRegistryTool('set_sales_plan', { amount: 10_000_000, month: '2026-12' }, { userId })) as Out;
+    expect(out.message).toBe('План продаж на декабрь 2026: 10 млн ₸. Буду считать темп.');
+    const row = await prisma.salesPlan.findFirstOrThrow({ where: { userId } });
+    expect(row.monthStart.toISOString().slice(0, 10)).toBe('2026-12-01');
+  });
+
   it.each([
     ['create_deal', { personName: 'Ахмет' }],
     ['update_deal', { personName: 'Ахмет', nextStepDate: '2026-11-10' }],

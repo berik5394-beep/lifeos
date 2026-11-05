@@ -313,9 +313,20 @@ export async function listDeals(userId: string, status: 'open' | 'closed', now: 
   return prisma.deal.findMany({ where: { userId, stage: { in: ['won', 'lost'] }, closedAt: { gte: since } }, orderBy: { closedAt: 'desc' } });
 }
 
-export async function setSalesPlan(userId: string, amount: number, now: Date = new Date()): Promise<{ monthStart: Date; amount: number }> {
+/** «YYYY-MM» → якорь-инстант внутри месяца (15-е, полдень UTC — тот же месяц в любом поясе). */
+function monthAnchor(month: string | undefined, now: Date): Date {
+  return month ? new Date(`${month}-15T12:00:00Z`) : now;
+}
+
+/** План продаж на месяц (по умолчанию — текущий месяц юзера; month — «YYYY-MM»). */
+export async function setSalesPlan(
+  userId: string,
+  amount: number,
+  now: Date = new Date(),
+  month?: string,
+): Promise<{ monthStart: Date; amount: number }> {
   const tz = await getUserTimezone(userId);
-  const monthStart = localMonthOnlyUTC(tz, now);
+  const monthStart = localMonthOnlyUTC(tz, monthAnchor(month, now));
   await prisma.salesPlan.upsert({
     where: { userId_monthStart: { userId, monthStart } },
     create: { userId, monthStart, amount },
@@ -333,22 +344,31 @@ export interface PlanStatus {
   covering: string[];
 }
 
-export async function salesPlanStatus(userId: string, now: Date = new Date()): Promise<PlanStatus | null> {
+export async function salesPlanStatus(userId: string, now: Date = new Date(), month?: string): Promise<PlanStatus | null> {
   const tz = await getUserTimezone(userId);
-  const monthStart = localMonthOnlyUTC(tz, now);
+  const anchor = monthAnchor(month, now);
+  const monthStart = localMonthOnlyUTC(tz, anchor);
   const plan = await prisma.salesPlan.findUnique({ where: { userId_monthStart: { userId, monthStart } } });
   if (!plan) return null;
-  const monthStartInstant = localMonthStartUTC(tz, now);
+  const monthStartInstant = localMonthStartUTC(tz, anchor);
+  const nextMonthInstant = localMonthStartUTC(tz, new Date(anchor.getTime() + 31 * 86_400_000));
   const [wonRows, openRows] = await Promise.all([
-    prisma.deal.findMany({ where: { userId, stage: 'won', closedAt: { gte: monthStartInstant } }, select: { amount: true } }),
+    prisma.deal.findMany({
+      where: { userId, stage: 'won', closedAt: { gte: monthStartInstant, lt: nextMonthInstant } },
+      select: { amount: true },
+    }),
     prisma.deal.findMany({ where: { userId, stage: { in: [...OPEN_STAGES] } }, select: { personName: true, amount: true } }),
   ]);
   const won = wonRows.reduce((s, d) => s + (d.amount ?? 0), 0);
   const open = openRows.reduce((s, d) => s + (d.amount ?? 0), 0);
   const todayCivil = localDateStr(tz, now);
-  const [y, m, d] = todayCivil.split('-').map(Number);
+  const planMonth = monthStart.toISOString().slice(0, 7);
+  const [y, m] = planMonth.split('-').map(Number);
   const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-  const pace = salesPace({ plan: plan.amount, won, open, dayOfMonth: d, daysInMonth });
+  // Темп: текущий месяц — по сегодняшнему дню; прошедший — весь; будущий — ещё не начался.
+  const cur = todayCivil.slice(0, 7);
+  const dayOfMonth = planMonth === cur ? Number(todayCivil.slice(8, 10)) : planMonth < cur ? daysInMonth : 0;
+  const pace = salesPace({ plan: plan.amount, won, open, dayOfMonth, daysInMonth });
   return {
     plan: plan.amount,
     won,

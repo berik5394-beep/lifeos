@@ -17,7 +17,7 @@ export const createDealTool = defineTool({
   schema: z.object({
     personName: z.string().min(1).max(120),
     title: z.string().max(200).nullable().optional(),
-    amount: z.coerce.number().positive().nullable().optional(),
+    amount: z.coerce.number().positive().max(1_000_000_000).nullable().optional(),
     stage: z.string().max(60).nullable().optional(),
     nextStepDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD').nullable().optional(),
     nextStepText: z.string().max(200).nullable().optional(),

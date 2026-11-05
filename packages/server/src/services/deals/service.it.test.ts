@@ -125,4 +125,18 @@ describe('сервис сделок', () => {
     expect(s?.pace.behind).toBe(true);
     expect(s?.covering).toEqual(['Серик']);
   });
+
+  it('нит: план на другой месяц (YYYY-MM)', async () => {
+    const userId = await user('planm');
+    await setSalesPlan(userId, 5_000_000, NOW, '2026-12');
+    expect(await salesPlanStatus(userId, NOW)).toBeNull();
+    const dec = await salesPlanStatus(userId, NOW, '2026-12');
+    expect(dec).toMatchObject({ plan: 5_000_000, won: 0 });
+    expect(dec?.pace.behind).toBe(false);
+    // выигранная в ноябре не считается в декабрь
+    const { deal } = await createDeal(userId, { personName: 'Ахмет', title: 'x', amount: 1_000_000 }, NOW);
+    await updateDeal(userId, deal.id, { stage: 'won' }, NOW);
+    expect((await salesPlanStatus(userId, NOW, '2026-12'))?.won).toBe(0);
+  });
 });
+

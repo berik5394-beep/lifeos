@@ -65,6 +65,23 @@ describe('REST /deals', () => {
     expect(await prisma.income.count({ where: { userId } })).toBe(2);
   });
 
+  it('нит: суммы ограничены, note при создании, план на месяц ?month=', async () => {
+    const { userId, headers } = await user('nits');
+    expect((await app.inject({ method: 'POST', url: '/deals', headers, payload: { personName: 'А', amount: 2_000_000_000 } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'PUT', url: '/sales-plan', headers, payload: { amount: 2_000_000_000 } })).statusCode).toBe(400);
+    const c = await app.inject({ method: 'POST', url: '/deals', headers, payload: { personName: 'Ахмет', note: 'с выставки' } });
+    expect(c.statusCode).toBe(201);
+    const ev = await prisma.dealEvent.findFirstOrThrow({ where: { dealId: c.json().deal.id, kind: 'created' } });
+    expect(ev.text).toBe('с выставки');
+    const id = c.json().deal.id as string;
+    expect((await app.inject({ method: 'PUT', url: `/deals/${id}`, headers, payload: { amount: 2_000_000_000 } })).statusCode).toBe(400);
+    await app.inject({ method: 'PUT', url: '/sales-plan', headers, payload: { amount: 7000000, month: '2027-01' } });
+    expect((await app.inject({ method: 'GET', url: '/sales-plan?month=2027-01', headers })).json().plan).toMatchObject({ plan: 7000000 });
+    expect((await app.inject({ method: 'GET', url: '/sales-plan', headers })).json()).toEqual({ plan: null });
+    expect((await app.inject({ method: 'GET', url: '/sales-plan?month=2027-13', headers })).statusCode).toBe(400);
+    expect(await prisma.salesPlan.count({ where: { userId } })).toBe(1);
+  });
+
   it('флаг off → 404', async () => {
     process.env.FEATURE_V2_DEALS = '';
     const { headers } = await user('off');
