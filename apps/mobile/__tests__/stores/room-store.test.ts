@@ -22,13 +22,13 @@ describe('useRoomStore — расстановка мебели', () => {
     expect(useRoomStore.getState().items).toEqual([{ id: 'a', itemKey: 'sofa', x: 0.2, y: 0.7 }]);
   });
 
-  it('addItem ставит предмет около центра и сохраняет с задержкой', async () => {
+  it('addItem ставит мебель на пол около центра и сохраняет с задержкой', async () => {
     mockedApi.put.mockResolvedValue({ items: [] });
     expect(useRoomStore.getState().addItem('plant')).toBe(true);
     const it0 = useRoomStore.getState().items[0];
     expect(it0.itemKey).toBe('plant');
     expect(Math.abs(it0.x - 0.5)).toBeLessThanOrEqual(0.1);
-    expect(Math.abs(it0.y - 0.5)).toBeLessThanOrEqual(0.1);
+    expect(Math.abs(it0.y - 0.78)).toBeLessThanOrEqual(0.05);
     expect(mockedApi.put).not.toHaveBeenCalled();
     await jest.advanceTimersByTimeAsync(ROOM_SAVE_DELAY_MS);
     expect(mockedApi.put).toHaveBeenCalledTimes(1);

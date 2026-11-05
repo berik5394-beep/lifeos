@@ -1,11 +1,18 @@
 import React, { memo, useEffect } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  runOnJS,
+  type SharedValue,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+import { RENDER_SCALE as R, itemDepthScale } from '@/services/room-geometry';
 import { roomItemEmoji, type RoomItem } from '@/services/room-catalog';
 import { hapticLight, hapticMedium } from '@/services/haptics';
 
-const SIZE = 56;
+const SIZE = 56 * R;
 const SPRING = { damping: 16, stiffness: 180 };
 
 type BlockTarget = Parameters<GestureType['blocksExternalGesture']>[0];
@@ -14,8 +21,10 @@ interface RoomFurnitureItemProps {
   item: RoomItem;
   roomWidth: number;
   roomHeight: number;
-  /** Жест пейджера: пока тащим предмет, страница не листается. */
-  blockGesture?: BlockTarget;
+  /** Жесты, которые не должны срабатывать, пока тащим предмет (листание страниц, панорама). */
+  blockGestures?: BlockTarget[];
+  /** Текущее приближение комнаты: палец двигается по экрану, предмет — по комнате. */
+  zoom: SharedValue<number>;
   onMove: (id: string, x: number, y: number) => void;
   onRemove: (id: string) => void;
 }
@@ -29,7 +38,8 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   item,
   roomWidth,
   roomHeight,
-  blockGesture,
+  blockGestures,
+  zoom,
   onMove,
   onRemove,
 }: RoomFurnitureItemProps) {
@@ -52,8 +62,8 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
       runOnJS(hapticLight)();
     })
     .onUpdate((e) => {
-      dx.value = e.translationX;
-      dy.value = e.translationY;
+      dx.value = e.translationX / zoom.value;
+      dy.value = e.translationY / zoom.value;
     })
     .onEnd(() => {
       const nx = Math.min(roomWidth, Math.max(0, px.value + dx.value));
@@ -69,7 +79,7 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
       dy.value = 0;
       lift.value = withSpring(1, SPRING);
     });
-  if (blockGesture) pan = pan.blocksExternalGesture(blockGesture);
+  if (blockGestures && blockGestures.length > 0) pan = pan.blocksExternalGesture(...blockGestures);
 
   const longPress = Gesture.LongPress()
     .minDuration(600)
@@ -82,7 +92,8 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
     transform: [
       { translateX: px.value + dx.value - SIZE / 2 },
       { translateY: py.value + dy.value - SIZE / 2 },
-      { scale: lift.value },
+      // Дальше от зрителя — мельче (перспектива комнаты).
+      { scale: lift.value * itemDepthScale(roomHeight > 0 ? (py.value + dy.value) / roomHeight : 0.5) },
     ],
   }));
 
@@ -105,5 +116,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emoji: { fontSize: 40 },
+  emoji: { fontSize: 40 * R },
 });

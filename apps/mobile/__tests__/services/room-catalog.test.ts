@@ -1,4 +1,4 @@
-import { ROOM_CATALOG, ROOM_MAX_ITEMS, clampToRoom, isRoomItemKey, roomItemEmoji } from '@/services/room-catalog';
+import { ROOM_CATALOG, ROOM_MAX_ITEMS, clampToRoom, defaultSpot, isRoomItemKey, roomItemEmoji } from '@/services/room-catalog';
 
 describe('room-catalog — бесплатная мебель комнаты робота', () => {
   it('8 предметов, ключи совпадают с серверным каталогом', () => {
@@ -12,6 +12,11 @@ describe('room-catalog — бесплатная мебель комнаты ро
   it('clampToRoom держит предмет внутри комнаты 0..1', () => {
     expect(clampToRoom(-0.2, 1.4)).toEqual({ x: 0, y: 1 });
     expect(clampToRoom(0.3, 0.6)).toEqual({ x: 0.3, y: 0.6 });
+  });
+  it('картины и часы — на стену, мебель — на пол', () => {
+    expect(defaultSpot('picture').y).toBeLessThan(0.6);
+    expect(defaultSpot('clock').y).toBeLessThan(0.6);
+    expect(defaultSpot('sofa').y).toBeGreaterThan(0.6);
   });
   it('roomItemEmoji: неизвестный ключ → пусто', () => {
     expect(roomItemEmoji('lamp')).toBe('💡');

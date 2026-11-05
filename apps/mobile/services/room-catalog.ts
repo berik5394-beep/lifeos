@@ -3,14 +3,14 @@
  * с серверным каталогом (packages/server/src/services/room-context.ts).
  */
 export const ROOM_CATALOG = [
-  { key: 'plant', emoji: '🪴', label: 'Растение' },
-  { key: 'sofa', emoji: '🛋️', label: 'Диван' },
-  { key: 'picture', emoji: '🖼️', label: 'Картина' },
-  { key: 'lamp', emoji: '💡', label: 'Лампа' },
-  { key: 'books', emoji: '📚', label: 'Книги' },
-  { key: 'clock', emoji: '🕰️', label: 'Часы' },
-  { key: 'rug', emoji: '🟫', label: 'Ковёр' },
-  { key: 'plush', emoji: '🧸', label: 'Игрушка' },
+  { key: 'plant', emoji: '🪴', label: 'Растение', spot: 'floor' },
+  { key: 'sofa', emoji: '🛋️', label: 'Диван', spot: 'floor' },
+  { key: 'picture', emoji: '🖼️', label: 'Картина', spot: 'wall' },
+  { key: 'lamp', emoji: '💡', label: 'Лампа', spot: 'floor' },
+  { key: 'books', emoji: '📚', label: 'Книги', spot: 'floor' },
+  { key: 'clock', emoji: '🕰️', label: 'Часы', spot: 'wall' },
+  { key: 'rug', emoji: '🟫', label: 'Ковёр', spot: 'floor' },
+  { key: 'plush', emoji: '🧸', label: 'Игрушка', spot: 'floor' },
 ] as const;
 
 export type RoomItemKey = (typeof ROOM_CATALOG)[number]['key'];
@@ -36,6 +36,15 @@ export function roomItemEmoji(key: string): string {
 }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+/**
+ * Куда ставить новый предмет (доли сцены): картины и часы — на заднюю стену,
+ * мебель — на пол (3D-комната: стена 0.2..0.6, пол ниже).
+ */
+export function defaultSpot(key: RoomItemKey): { x: number; y: number } {
+  const spot = ROOM_CATALOG.find((i) => i.key === key)?.spot ?? 'floor';
+  return spot === 'wall' ? { x: 0.5, y: 0.38 } : { x: 0.5, y: 0.78 };
+}
 
 export function clampToRoom(x: number, y: number): { x: number; y: number } {
   return { x: clamp01(x), y: clamp01(y) };

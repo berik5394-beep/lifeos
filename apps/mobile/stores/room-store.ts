@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import {
   ROOM_MAX_ITEMS,
   clampToRoom,
+  defaultSpot,
   isRoomItemKey,
   type RoomItem,
   type RoomItemKey,
@@ -97,7 +98,8 @@ export const useRoomStore = create<RoomState>((set, get) => {
       localSeq += 1;
       // Чуть в стороне от центра, чтобы новые предметы не ложились стопкой.
       const jitter = () => (Math.random() - 0.5) * 0.2;
-      const pos = clampToRoom(0.5 + jitter(), 0.5 + jitter());
+      const base = defaultSpot(key);
+      const pos = clampToRoom(base.x + jitter(), base.y + jitter() / 2);
       change([...items, { id: `local-${Date.now()}-${localSeq}`, itemKey: key, ...pos }]);
       return true;
     },
