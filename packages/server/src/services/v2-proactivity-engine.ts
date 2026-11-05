@@ -1181,11 +1181,16 @@ async function detectSalesPlanBehind(userId: string): Promise<NudgeCandidate[]> 
     if (!isV2DealsEnabled(userId)) return [];
     const { salesPlanStatus } = await import('./deals/service.js');
     const { describePlan } = await import('./deals/format.js');
-    const s = await salesPlanStatus(userId);
+    const { getUserTimezone } = await import('../lib/user-context.js');
+    const { localDateStr } = await import('../lib/tz.js');
+    const now = new Date();
+    const s = await salesPlanStatus(userId, now);
     if (!s || !s.pace.behind) return [];
     const cand: NudgeCandidate = {
       source: 'sales_plan_behind',
       significance: 0,
+      // Ключ месяца в entityId → gate4_Dedup (7 дней по entityId) даёт недельный ритм.
+      entityId: `sales_plan:${localDateStr(await getUserTimezone(userId), now).slice(0, 7)}`,
       payload: {
         planText: describePlan({ plan: s.plan, won: s.won, open: s.open, behind: true, covering: s.covering, noAmount: s.noAmount }),
       },

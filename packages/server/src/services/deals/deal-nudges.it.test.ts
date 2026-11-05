@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { V2ProactivityEngine } from '../v2-proactivity-engine.js';
 import { createDeal, setSalesPlan } from './service.js';
@@ -6,6 +6,7 @@ import { createDeal, setSalesPlan } from './service.js';
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
 beforeEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
+afterEach(() => { vi.useRealTimers(); });
 
 async function user(tag: string) {
   return (await prisma.user.create({ data: { email: `dn-${tag}-${Date.now()}@a.test`, name: 'D', passwordHash: 'x', timezone: 'UTC' } })).id;
@@ -25,13 +26,21 @@ describe('нуджи сделок', () => {
     await prisma.deal.update({ where: { id: deal.id }, data: { nextStepAt: null, lastActivityAt: new Date(Date.now() - 8 * 86_400_000) } });
     expect(await sources(userId)).toContain('deal_stale');
   });
-  it('план есть, отстаём → sales_plan_behind (только с 7-го дня)', async () => {
+  it('план есть, отстаём, 20-е число → sales_plan_behind с ключом месяца', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-20T09:00:00Z'));
     const userId = await user('plan');
     await setSalesPlan(userId, 10_000_000);
-    const day = new Date().getUTCDate();
-    const s = await sources(userId);
-    if (day >= 7) expect(s).toContain('sales_plan_behind');
-    else expect(s).not.toContain('sales_plan_behind');
+    const c = (await new V2ProactivityEngine().detectCandidates(userId)).find((x) => x.source === 'sales_plan_behind');
+    expect(c).toBeDefined();
+    expect(c?.entityId).toBe('sales_plan:2026-11');
+  });
+  it('5-е число (до 7-го дня) → sales_plan_behind нет', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-05T09:00:00Z'));
+    const userId = await user('plan-early');
+    await setSalesPlan(userId, 10_000_000);
+    expect(await sources(userId)).not.toContain('sales_plan_behind');
   });
   it('флаг off → ни одного нуджа сделок', async () => {
     const userId = await user('off');
