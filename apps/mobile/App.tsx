@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -10,28 +10,18 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
   const statusBarStyle = useThemeStore((s) => s.theme.statusBar);
-  const [appReady, setAppReady] = useState(false);
-
-  // Navigation component signals ready via onReady callback on NavigationContainer,
-  // but our init logic lives inside Navigation. We hide splash after a short delay
-  // to ensure the first frame is painted.
+  // Прячем заставку после первого кадра. Раньше это висело на onLayout корня:
+  // onLayout срабатывает один раз — ДО того, как appReady стал true, — и
+  // hideAsync не вызывался никогда (заставка зависала). Теперь — эффект.
   useEffect(() => {
-    // Navigation handles storage/auth loading internally.
-    // We give it a moment then hide splash.
     const timer = setTimeout(() => {
-      setAppReady(true);
+      SplashScreen.hideAsync().catch(() => {});
     }, 100);
     return () => clearTimeout(timer);
   }, []);
 
-  const onLayoutRootView = useCallback(async () => {
-    if (appReady) {
-      await SplashScreen.hideAsync();
-    }
-  }, [appReady]);
-
   return (
-    <GestureHandlerRootView style={{ flex: 1 }} onLayout={onLayoutRootView}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style={statusBarStyle} />
       <Navigation />
     </GestureHandlerRootView>

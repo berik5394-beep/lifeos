@@ -126,7 +126,8 @@
         }
       ],
       "expo-localization",
-      "./plugins/with-pods-min-ios"
+      "./plugins/with-pods-min-ios",
+      "./plugins/with-scene-lifecycle"
     ],
     "extra": {
       "eas": {
