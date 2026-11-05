@@ -57,3 +57,14 @@ describe('confirmPendingVoiceAction', () => {
     await expect(confirmPendingVoiceAction(false)).rejects.toThrow('network');
   });
 });
+
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+describe('экраны не исполняют голос сами (voice-one-brain)', () => {
+  it.each(['index.tsx', 'tasks.tsx', 'habits.tsx'])('%s: нет handleVoiceAction', (f) => {
+    const src = readFileSync(join(__dirname, '../../app/(tabs)', f), 'utf-8');
+    expect(src).not.toMatch(/handleVoiceAction/);
+    expect(src).not.toMatch(/Auto-execute voice actions/);
+  });
+});

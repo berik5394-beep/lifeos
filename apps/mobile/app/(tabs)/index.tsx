@@ -8,7 +8,6 @@ import {
   RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -27,7 +26,6 @@ import { useGoalStore } from '@/stores/goal-store';
 import { useHabitStore } from '@/stores/habit-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { useJournalStore } from '@/stores/journal-store';
-import { useFinanceStore } from '@/stores/finance-store';
 import { usePetStore } from '@/stores/pet-store';
 import { api } from '@/services/api';
 import { getRandomQuote } from '@/utils/quotes';
@@ -361,6 +359,12 @@ export default function PlannerScreen() {
     setRefreshing(false);
   }, [weekStartStr, todayStr, fetchTasks, fetchWeeklyGoals, fetchHabits, fetchJournalEntry]);
 
+  // voice-one-brain: голосовую команду исполнил СЕРВЕР (единый мозг) —
+  // экран только подтягивает свой срез данных. Никакого локального исполнения.
+  useEffect(() => {
+    if (lastResult) void handleRefresh();
+  }, [lastResult]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handlePrevWeek = useCallback(() => {
     hapticSelection();
     setWeekOffset((prev) => prev - 1);
@@ -415,73 +419,6 @@ export default function PlannerScreen() {
     }
   }, [isRecording, startRecording, stopRecording]);
 
-  // Auto-execute voice actions when result arrives (replaces modal)
-  useEffect(() => {
-    if (lastResult && lastResult.intent && lastResult.intent.action !== 'unknown') {
-      handleVoiceAction(lastResult.intent.action, lastResult.intent);
-    }
-  }, [lastResult]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleVoiceAction = useCallback(async (action: string, params: Record<string, unknown>) => {
-    try {
-      switch (action) {
-        case 'create_task':
-          await useTaskStore.getState().createTask({
-            title: params.title as string,
-            category: (params.category as string) || 'personal',
-            priority: (params.priority as string) || 'medium',
-            date: (params.date as string) || formatDate(new Date()),
-          });
-          Alert.alert('Готово', 'Задача создана!');
-          break;
-        case 'complete_task': {
-          const allTasks = useTaskStore.getState().tasks;
-          const found = allTasks.find(
-            (t) => t.title.toLowerCase().includes((params.taskTitle as string || '').toLowerCase()),
-          );
-          if (found) {
-            await useTaskStore.getState().toggleComplete(found.id);
-            Alert.alert('Готово', 'Задача завершена!');
-          } else {
-            Alert.alert('Не найдено', 'Задача не найдена');
-          }
-          break;
-        }
-        case 'complete_habit': {
-          const allHabits = useHabitStore.getState().habits;
-          const habit = allHabits.find(
-            (h) => h.name.toLowerCase().includes((params.habitName as string || '').toLowerCase()),
-          );
-          if (habit) {
-            await useHabitStore.getState().toggleHabitLog(habit.id, formatDate(new Date()), true);
-            Alert.alert('Готово', 'Привычка отмечена!');
-          } else {
-            Alert.alert('Не найдено', 'Привычка не найдена');
-          }
-          break;
-        }
-        case 'add_expense':
-          await useFinanceStore.getState().createExpense({
-            amount: params.amount as number,
-            category: (params.category as string) || 'other',
-            description: (params.description as string) || '',
-            date: formatDate(new Date()),
-          });
-          Alert.alert('Готово', 'Расход записан!');
-          break;
-        case 'add_income':
-          await useFinanceStore.getState().createIncome({
-            amount: params.amount as number,
-            source: (params.source as string) || '',
-            date: formatDate(new Date()),
-          });
-          Alert.alert('Готово', 'Доход записан!');
-          break;
-      }
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось выполнить команду');
-    }
-  }, []);
 
   const token = useAuthStore((state) => state.token);
 
