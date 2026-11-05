@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { daySlot } from './proactive-notifications.js';
 
 /**
@@ -20,7 +20,13 @@ describe('daySlot — TZ-aware стабильный слот дня', () => {
     expect(daySlot(14, 'UTC').getTime()).toBe(expected);
   });
 
+  afterEach(() => vi.useRealTimers());
+
   it('Asia/Almaty (UTC+5): 14:00 локально = 09:00 UTC', () => {
+    // Фиксируем «сейчас» днём: после 19:00 UTC в Алматы уже следующие сутки,
+    // и слоты двух поясов попадали в разные даты (тест краснел по вечерам).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-05T12:00:00Z'));
     // 14:00 Almaty = 09:00 UTC. Разница со UTC слотом 14:00 = 5h
     const utcSlot = daySlot(14, 'UTC').getTime();
     const almatySlot = daySlot(14, 'Asia/Almaty').getTime();
