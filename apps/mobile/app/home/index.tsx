@@ -2,11 +2,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
-  ScrollView,
   StyleSheet,
   View,
   useWindowDimensions,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useColors } from '@/hooks/use-colors';
 import ChatScreen from '@/screens/chat';
@@ -16,7 +16,8 @@ import { RoomPage } from './room-page';
  * Робот-эпик, Часть 3: дом приложения — два экрана со свайпом между ними
  * (схема Berik): «Комната» (слева) ↔ «Рабочий» (робот + чат, по умолчанию).
  * Инструменты — панели-шторки поверх (navigation: presentation 'modal').
- * Горизонтальный ScrollView с pagingEnabled — без новых нативных зависимостей.
+ * Горизонтальный ScrollView (из gesture-handler — чтобы перетаскивание мебели
+ * в комнате блокировало листание) с pagingEnabled.
  */
 const WORK_PAGE = 1;
 
@@ -27,6 +28,9 @@ export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const pager = useRef<ScrollView>(null);
   const [page, setPage] = useState(WORK_PAGE);
+  // RNGH принимает ref нативного ScrollView как цель blocksExternalGesture;
+  // типы RNGH не знают про `| null` у useRef — приводим один раз здесь.
+  const pagerGesture = pager as unknown as React.RefObject<React.ComponentType>;
 
   // Стартуем на «Рабочем» и держим страницу при повороте/смене ширины.
   useEffect(() => {
@@ -53,7 +57,7 @@ export default function HomeScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={{ width }}>
-          <RoomPage active={page === 0} />
+          <RoomPage active={page === 0} pagerGesture={pagerGesture} />
         </View>
         <View style={{ width }}>
           <ChatScreen />
