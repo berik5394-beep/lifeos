@@ -7,8 +7,8 @@ import { validate, parseMonth, invalidDateReply } from '../middleware/validate.j
 import { rateLimiter } from '../middleware/security.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 
-// POST /habits/:id/log. Нормальный
-// юзер за минуту отмечает максимум 10-20 привычек, даже на полном свайп-списке.
+// POST /habits/:id/log. Нормальный юзер за минуту отмечает максимум 10-20
+// привычек, даже на полном свайп-списке.
 // 60/мин оставляем запас на мульти-отметки и голосовые команды «отметь всё».
 const logLimiter = rateLimiter({ max: 60, windowMs: 60_000, keyPrefix: 'habits:log' });
 

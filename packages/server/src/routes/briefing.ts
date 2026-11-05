@@ -33,13 +33,6 @@ function getRandomQuote(): string {
   return MOTIVATIONAL_QUOTES[Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length)];
 }
 
-/**
- * habit-day (2026-11-05): «сегодня» = календарная дата ЮЗЕРА в @db.Date-конвенции
- * (задачи, события, отметки привычек), не полночь сервера (UTC).
- */
-async function getToday(userId: string): Promise<Date> {
-  return localDateOnlyUTC(await getUserTimezone(userId));
-}
 
 function getMonthRange(): { start: Date; end: Date } {
   const now = new Date();
@@ -54,7 +47,8 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
   // GET /briefing/morning — утренний брифинг
   app.get('/briefing/morning', { preHandler: briefingLimiter }, async (request) => {
     const userId = request.userId;
-    const today = await getToday(userId);
+    const tz = await getUserTimezone(userId);
+    const today = localDateOnlyUTC(tz);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
     const { start: monthStart, end: monthEnd } = getMonthRange();
@@ -114,7 +108,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
           select: { category: true, monthlyLimit: true },
         }),
         // Серия привычек (питомец удалён 2026-11-05 — серия теперь своя)
-        calculateStreak(userId),
+        calculateStreak(userId, tz),
         // Шаги за сегодня
         prisma.stepLog.findFirst({
           where: { userId, date: today },
@@ -190,7 +184,8 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
   // GET /briefing/evening — вечерний обзор
   app.get('/briefing/evening', { preHandler: briefingLimiter }, async (request) => {
     const userId = request.userId;
-    const today = await getToday(userId);
+    const tz = await getUserTimezone(userId);
+    const today = localDateOnlyUTC(tz);
 
     const [tasks, habits, habitLogs, expenses, habitStreak] = await Promise.all([
       prisma.task.findMany({
@@ -209,7 +204,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
         where: { userId, date: today },
         select: { amount: true, category: true, description: true },
       }),
-      calculateStreak(userId),
+      calculateStreak(userId, tz),
     ]);
 
     const completedHabitIds = new Set(habitLogs.map((l) => l.habitId));

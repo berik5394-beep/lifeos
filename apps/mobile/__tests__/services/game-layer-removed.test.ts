@@ -37,7 +37,7 @@ describe('игровой слой удалён (питомец, Арена, ач
 
   it('в коде приложения нет ссылок на слой', () => {
     const offenders: string[] = [];
-    const pattern = /usePetStore|useAchievementStore|PetAvatar|['"]\/(pet|arena|challenge|achievements|themes)\b|navigate\(['"](Pet|Arena|Achievements|BattleScreen|SwipeHome|character-select)['"]/;
+    const pattern = /usePetStore|useAchievementStore|PetAvatar|['"`]\/(pet|arena|challenge|achievements|themes)\b|navigate\(['"](Pet|Arena|Achievements|BattleScreen|SwipeHome|character-select)['"]/;
     for (const f of sourceFiles(ROOT)) {
       if (pattern.test(readFileSync(f, 'utf-8'))) offenders.push(f.replace(ROOT + '/', ''));
     }

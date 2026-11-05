@@ -32,7 +32,9 @@ describe('игровой слой удалён с сервера', () => {
 
   it('в коде нет обращений к слою', () => {
     const pattern = /prisma\.(pet|petItem|achievement|arenaProfile|battle|challenge)\b|tx\.(pet|petItem|achievement|arenaProfile|battle|challenge)\b|\baddXP\b|runPetStreakSweep|verify-exercise/;
-    const offenders = files(SRC).filter((f) => pattern.test(readFileSync(f, 'utf-8'))).map((f) => f.replace(SRC + '/', ''));
+    const scripts = join(process.cwd(), 'scripts');
+    const all = [...files(SRC), ...(existsSync(scripts) ? files(scripts) : [])];
+    const offenders = all.filter((f) => pattern.test(readFileSync(f, 'utf-8'))).map((f) => f.replace(SRC + '/', ''));
     expect(offenders).toEqual([]);
   });
 
