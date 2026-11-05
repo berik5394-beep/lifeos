@@ -1,10 +1,17 @@
 import React, { memo, useEffect } from 'react';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
-import { ComicBubble } from './comic-bubble';
+import { ComicBubble, type ComicTail } from './comic-bubble';
 import { ComicText } from './comic-text';
 
 /** Реплика робота в комнате (благодарность за предмет): комиксовое облачко, текст печатается. */
-export const RobotSpeechBubble = memo(function RobotSpeechBubble({ text }: { text: string }) {
+export const RobotSpeechBubble = memo(function RobotSpeechBubble({
+  text,
+  tail = 'left',
+}: {
+  text: string;
+  /** Куда смотрит хвостик — на робота (выбирает speech-layout). */
+  tail?: ComicTail;
+}) {
   const appear = useSharedValue(0);
 
   useEffect(() => {
@@ -20,7 +27,7 @@ export const RobotSpeechBubble = memo(function RobotSpeechBubble({ text }: { tex
 
   return (
     <Animated.View style={style} pointerEvents="none" accessibilityLiveRegion="polite">
-      <ComicBubble tail="left">
+      <ComicBubble tail={tail}>
         <ComicText text={text} typewrite />
       </ComicBubble>
     </Animated.View>

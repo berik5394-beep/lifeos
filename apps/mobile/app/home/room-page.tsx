@@ -22,6 +22,7 @@ import { useRoomStore } from '@/stores/room-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { storage } from '@/services/storage';
 import { thanksFor } from '@/services/robot-thanks';
+import { ROBOT_SIDE_W, planPurchaseView, type SpeechLayout } from '@/services/speech-layout';
 import { ROOM_MAX_ITEMS, type RoomItemKey } from '@/services/room-catalog';
 import { RENDER_SCALE as R, ZOOM_IN, clampPan, zoomOffset } from '@/services/room-geometry';
 import { spacing, fontSize, borderRadius } from '@/constants';
@@ -66,6 +67,8 @@ export const RoomPage = memo(function RoomPage({
   const [zoomed, setZoomed] = useState(false);
   const [reactionKey, setReactionKey] = useState<string | null>(null);
   const [thanks, setThanks] = useState<string | null>(null);
+  // Раскладка «предмет / робот / облачко» при покупке — чтобы реплика не закрывала предмет.
+  const [plan, setPlan] = useState<SpeechLayout | null>(null);
   const [newItemId, setNewItemId] = useState<string | null>(null);
   const userName = useAuthStore((s) => s.user?.name ?? null);
   const emotion = useRobotReaction('happy', reactionKey);
@@ -84,6 +87,8 @@ export const RoomPage = memo(function RoomPage({
   const panStartX = useSharedValue(0);
   const panStartY = useSharedValue(0);
   const robotSide = useSharedValue(0);
+  /** −1 — робот уходит влево, +1 — вправо (на сторону, противоположную предмету). */
+  const robotSign = useSharedValue(-1);
   // Сцена нарисована в R раз крупнее и уменьшена: издалека масштаб 1/R, вблизи — 1 (чётко).
   const sceneScale = useDerivedValue(() => zoom.value / R);
 
@@ -122,17 +127,25 @@ export const RoomPage = memo(function RoomPage({
     shift.value = withSpring(-headTurn * PARALLAX_PX * R, { damping: 18, stiffness: 90 });
   }, [headTurn, shift]);
 
-  /** Приблизить точку комнаты (в координатах комнаты без приближения). */
-  const zoomTo = useCallback(
-    (x: number, y: number) => {
-      if (size.w === 0) return;
-      const off = zoomOffset({ x, y }, size.w, size.h, ZOOM_IN);
+  /** Приблизить с заданным сдвигом панорамы. */
+  const zoomWithOffset = useCallback(
+    (off: { x: number; y: number }) => {
       zoom.value = withTiming(ZOOM_IN, { duration: ZOOM_MS });
       tx.value = withTiming(off.x, { duration: ZOOM_MS });
       ty.value = withTiming(off.y, { duration: ZOOM_MS });
       setZoomed(true);
     },
-    [size, zoom, tx, ty],
+    [zoom, tx, ty],
+  );
+
+  /** Приблизить точку комнаты (в координатах комнаты без приближения). */
+  const zoomTo = useCallback(
+    (x: number, y: number) => {
+      if (size.w === 0) return;
+      robotSign.value = -1;
+      zoomWithOffset(zoomOffset({ x, y }, size.w, size.h, ZOOM_IN));
+    },
+    [size, zoomWithOffset, robotSign],
   );
 
   const zoomOut = useCallback(() => {
@@ -142,6 +155,7 @@ export const RoomPage = memo(function RoomPage({
     setZoomed(false);
     setThanks(null);
     setNewItemId(null);
+    setPlan(null);
   }, [zoom, tx, ty]);
 
   // Двойное нажатие: издалека → приблизить это место; вблизи → отдалить.
@@ -192,7 +206,7 @@ export const RoomPage = memo(function RoomPage({
   const furnitureStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shift.value }] }));
   const robotStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateX: -robotSide.value * (size.w / 2 - (ROBOT_SIZE * ROBOT_SIDE_SCALE) / 2 - 8) },
+      { translateX: robotSign.value * robotSide.value * (size.w / 2 - (ROBOT_SIZE * ROBOT_SIDE_SCALE) / 2 - 8) },
       { translateY: (robotSide.value * ROBOT_SIZE * (1 - ROBOT_SIDE_SCALE)) / 2 },
       { scale: 1 - robotSide.value * (1 - ROBOT_SIDE_SCALE) },
     ],
@@ -223,15 +237,18 @@ export const RoomPage = memo(function RoomPage({
       setReactionKey(String(Date.now()));
       // Новый предмет — приближаем его, робот показывает на него и благодарит.
       const added = useRoomStore.getState().items.at(-1);
-      if (added) {
-        // Центрируем чуть ниже предмета — сам он окажется в верхней трети экрана,
-        // над облачком с благодарностью и роботом.
-        zoomTo(added.x * size.w, added.y * size.h + (size.h * 0.18) / ZOOM_IN);
+      if (added && size.w > 0) {
+        // Робот «понимает» экран: где окажется предмет и где свободно для реплики.
+        const text = thanksFor(key, storage.getString('assistantStyle'), userName);
+        const layout = planPurchaseView(added.x, added.y, size.w, size.h, text);
+        robotSign.value = layout.robotSide === 'right' ? 1 : -1;
+        zoomWithOffset(layout.offset);
+        setPlan(layout);
         setNewItemId(added.id);
-        setThanks(thanksFor(key, storage.getString('assistantStyle'), userName));
+        setThanks(text);
       }
     },
-    [addItem, zoomTo, size, userName],
+    [addItem, zoomWithOffset, size, userName, robotSign],
   );
 
   const hint = zoomed
@@ -275,19 +292,32 @@ export const RoomPage = memo(function RoomPage({
             </Animated.View>
           </Animated.View>
           <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} pointerEvents="none" />
-          <Animated.View style={[styles.robot, robotStyle]} pointerEvents="none">
-            <RobotAvatar
-              emotion={emotion}
-              size={ROBOT_SIZE}
-              headTurn={zoomed ? 1 : headTurn}
-              pointing={zoomed}
-            />
-          </Animated.View>
-          {zoomed && thanks && (
-            <View style={styles.bubble} pointerEvents="none">
-              <RobotSpeechBubble text={thanks} />
+          {/* Облачко под роботом: поднятая рука робота поверх реплики. */}
+          {zoomed && thanks && plan && (
+            <View
+              style={
+                plan.zone === 'top'
+                  ? styles.bubbleTop
+                  : plan.robotSide === 'left'
+                    ? styles.bubbleBottomRight
+                    : styles.bubbleBottomLeft
+              }
+              pointerEvents="none"
+            >
+              <RobotSpeechBubble text={thanks} tail={plan.tail} />
             </View>
           )}
+          <Animated.View style={[styles.robot, robotStyle]} pointerEvents="none">
+            {/* Справа робот зеркалится — рука и взгляд смотрят влево, на предмет. */}
+            <View style={zoomed && plan?.robotSide === 'right' ? styles.mirror : undefined}>
+              <RobotAvatar
+                emotion={emotion}
+                size={ROBOT_SIZE}
+                headTurn={zoomed ? 1 : headTurn}
+                pointing={zoomed}
+              />
+            </View>
+          </Animated.View>
           {zoomed && (
             <Pressable
               onPress={zoomOut}
@@ -320,7 +350,11 @@ function createStyles(c: ReturnType<typeof useColors>) {
     scene: { position: 'absolute' },
     robot: { position: 'absolute', left: 0, right: 0, bottom: '4%', alignItems: 'center' },
     // Облачко справа от робота, хвостиком к нему — верх экрана остаётся предмету.
-    bubble: { position: 'absolute', left: ROBOT_SIZE * ROBOT_SIDE_SCALE - 10, right: -6, bottom: 4 },
+    // Облачко там, где свободно (services/speech-layout): рядом с роботом внизу или наверху.
+    bubbleBottomRight: { position: 'absolute', left: ROBOT_SIDE_W - 8, right: -6, bottom: 4 },
+    bubbleBottomLeft: { position: 'absolute', left: -6, right: ROBOT_SIDE_W - 8, bottom: 4 },
+    bubbleTop: { position: 'absolute', left: -4, right: -4, top: 4 },
+    mirror: { transform: [{ scaleX: -1 }] },
     zoomOut: {
       position: 'absolute',
       top: spacing.sm,

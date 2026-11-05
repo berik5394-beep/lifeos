@@ -12,7 +12,7 @@ describe('comic-balloon — облачко реплики как в комикс
   });
 
   it('хвостик вырастает из контура: кончик есть в пути ровно как точка L', () => {
-    for (const tail of ['left', 'right', 'bottom-left'] as const) {
+    for (const tail of ['left', 'right', 'bottom-left', 'bottom-right'] as const) {
       const tip = tailTip(200, 60, tail)!;
       const d = balloonPath(200, 60, tail);
       expect(d).toContain(`L ${(tip.x + BALLOON_MARGIN).toFixed(1)} ${(tip.y + BALLOON_MARGIN).toFixed(1)}`);
