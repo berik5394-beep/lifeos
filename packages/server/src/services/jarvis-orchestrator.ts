@@ -44,7 +44,7 @@ import {
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
-import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate } from './deals/index.js';
+import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance } from './deals/index.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
@@ -394,6 +394,71 @@ function confirmationText(action: string, input: Record<string, unknown>): strin
 }
 
 /**
+ * Доход от клиента с открытой сделкой (ревью B2/X1). Ничего не пишет — только
+ * готовит ответ хода: переспрос, предложение «закрыть и записать доход» или
+ * обычный доход с пометкой «аванс». null — сделки нет, дальше обычный add_income.
+ */
+async function routeDealIncome(
+  userId: string,
+  amount: number,
+  source: string,
+  text: string,
+): Promise<JarvisResponse | null> {
+  const routed = await routeIncomeToDeal(userId, amount, source, { text });
+  if (routed.kind === 'none') return null;
+  if (routed.kind === 'ask') return { reply: routed.message, intent: 'update_deal' };
+  if (routed.kind === 'advance') {
+    const input: Record<string, unknown> = { amount, source, ...(routed.dealId ? { __advanceDealId: routed.dealId } : {}) };
+    const base = confirmationText('add_income', { amount, source });
+    const ctext = routed.dealHead ? `${base} Сделку ${routed.dealHead} не закрываю — отмечу в ней аванс.` : base;
+    await setPendingAction(userId, 'add_income', input, ctext);
+    return { reply: ctext, pendingAction: { action: 'add_income', input }, confirmationText: ctext, intent: 'add_income' };
+  }
+  const pa = { action: DEAL_INCOME_ACTION, input: { dealId: routed.dealId, markWon: true, amount: routed.amount } };
+  await setPendingAction(userId, pa.action, pa.input, routed.message);
+  return { reply: routed.message, pendingAction: pa, confirmationText: routed.message, intent: 'update_deal' };
+}
+
+/**
+ * «Подтвердить» на доход по сделке. markWon (из маршрутизации дохода) — сначала
+ * ставим «выиграна» (+ сумма, если её не было; монеты — внутри updateDeal), потом
+ * доход. Сумму дохода берём из сделки в БД, доход пишется ровно один раз.
+ */
+async function confirmDealIncome(userId: string, input: Record<string, unknown>): Promise<string> {
+  const dealId = String(input.dealId ?? '');
+  const force = input.force === true;
+  const lines: string[] = [];
+  if (input.markWon === true) {
+    const cur = await prisma.deal.findFirst({ where: { id: dealId, userId } });
+    if (!cur) return 'Сделку не нашёл — ничего не записал.';
+    if (cur.stage !== 'won') {
+      const amount = typeof input.amount === 'number' && cur.amount == null ? input.amount : undefined;
+      await updateDeal(userId, dealId, { stage: 'won', ...(amount != null ? { amount } : {}) });
+      lines.push(`Сделка ${cur.personName} — ${cur.title}: выиграна.`);
+    }
+  }
+  const r = await recordDealIncome(userId, dealId, new Date(), { force });
+  if (!r.ok && r.reason === 'possible_duplicate') {
+    // Страховка B2: такой доход уже есть — не пишем молча; «да» → повтор с force.
+    const q = describePossibleDuplicate(r.amount, r.personName, r.existingDate);
+    await setPendingAction(userId, DEAL_INCOME_ACTION, { dealId, force: true }, q);
+    lines.push(q);
+  } else if (r.ok && !r.already) {
+    const d = await prisma.deal.findFirst({ where: { id: dealId, userId }, select: { personName: true, title: true } });
+    lines.push(`Записал доход ${fmtMoneyExact(r.amount)} — сделка ${d?.personName ?? ''} — ${d?.title ?? ''}.`);
+  } else if (r.ok) {
+    lines.push('Доход по этой сделке уже записан.');
+  } else {
+    lines.push(
+      r.reason === 'no_amount' ? 'У сделки нет суммы — скажи сумму, запишу доход.'
+        : r.reason === 'not_won' ? 'Сделка ещё не выиграна — доход не записал.'
+          : 'Сделку не нашёл — доход не записал.',
+    );
+  }
+  return lines.join(' ');
+}
+
+/**
  * Выполняет ранее предложенное (и подтверждённое) действие. Используется
  * и из естественного «да» в оркестраторе, и из /voice/confirm-action.
  */
@@ -451,25 +516,7 @@ export async function runConfirmedAction(
     // Сделки: «Подтвердить» на «Записать доход … ?». НЕ tool реестра: сумму берём
     // из сделки в БД (модель её не передаёт), доход пишется ровно один раз.
     if (action === DEAL_INCOME_ACTION) {
-      const dealId = String((input as { dealId?: unknown }).dealId ?? '');
-      const force = (input as { force?: unknown }).force === true;
-      const r = await recordDealIncome(userId, dealId, new Date(), { force });
-      let message: string;
-      if (!r.ok && r.reason === 'possible_duplicate') {
-        // Страховка B2: такой доход уже есть — не пишем молча; «да» → повтор с force.
-        message = describePossibleDuplicate(r.amount, r.personName, r.existingDate);
-        await setPendingAction(userId, DEAL_INCOME_ACTION, { dealId, force: true }, message);
-      } else if (r.ok && !r.already) {
-        const d = await prisma.deal.findFirst({ where: { id: dealId, userId }, select: { personName: true, title: true } });
-        message = `Записал доход ${fmtMoneyExact(r.amount)} — сделка ${d?.personName ?? ''} — ${d?.title ?? ''}.`;
-      } else if (r.ok) {
-        message = 'Доход по этой сделке уже записан.';
-      } else {
-        message =
-          r.reason === 'no_amount' ? 'У сделки нет суммы — скажи сумму, запишу доход.'
-            : r.reason === 'not_won' ? 'Сделка ещё не выиграна — доход не записал.'
-              : 'Сделку не нашёл — доход не записал.';
-      }
+      const message = await confirmDealIncome(userId, input);
       await saveTurn(userId, '(подтверждено)', message);
       return message;
     }
@@ -477,10 +524,20 @@ export async function runConfirmedAction(
     // SSOT 9B.2: ВСЁ подтверждённое исполняется через РЕЕСТР
     // (аудит ToolCall + zod). legacy action-executor удалён —
     // send_telegram теперь тоже tool реестра (needsConfirm:true).
-    const out = (await runRegistryTool(action, input, { userId })) as {
+    // Аванс по сделке (X1a): обычный доход + заметка в сделку — только после «да».
+    const advanceDealId = typeof input.__advanceDealId === 'string' ? input.__advanceDealId : null;
+    const toolInput = advanceDealId ? { ...input } : input;
+    if (advanceDealId) delete toolInput.__advanceDealId;
+    const out = (await runRegistryTool(action, toolInput, { userId })) as {
       message?: string;
+      error?: unknown;
     };
     let message = out.message ?? 'Готово.';
+    if (advanceDealId && action === 'add_income' && out.error == null) {
+      await noteDealAdvance(userId, advanceDealId, Number(input.amount)).catch((err: unknown) => {
+        console.warn('[deals] advance note skipped:', err instanceof Error ? err.message : err);
+      });
+    }
     // Коуч по накоплениям: после подтверждённого расхода — дописать
     // строку, если трата бьёт по фин-цели (гейт+флаг внутри хука).
     if (action === 'add_expense') {
@@ -947,19 +1004,14 @@ async function handleMessageCore(
         input.text = body;
       }
     }
-    // Ревью сделок B2: «получил 2 млн от Ахмета» при открытой сделке с Ахметом —
+    // Ревью сделок B2/X1: «получил 2 млн от Ахмета» при открытой сделке с Ахметом —
     // оплата сделки, а не голый доход (иначе Income задвоится при «выиграна»).
+    // Маршрутизация НИЧЕГО не пишет: сделка закрывается только на «Подтвердить».
     if (intent.action === 'add_income' && input.source != null && isV2DealsEnabled(userId)) {
-      const routed = await routeIncomeToDeal(userId, Number(input.amount), String(input.source));
-      if (routed.kind === 'ask') {
-        await saveTurn(userId, text, routed.message);
-        return { reply: routed.message, intent: 'update_deal' };
-      }
-      if (routed.kind === 'won') {
-        const pa = { action: DEAL_INCOME_ACTION, input: { dealId: routed.dealId } };
-        await setPendingAction(userId, pa.action, pa.input, routed.message);
-        await saveTurn(userId, text, routed.message);
-        return { reply: routed.message, pendingAction: pa, confirmationText: routed.message, intent: 'update_deal', turnFacts: { executed: true } };
+      const routed = await routeDealIncome(userId, Number(input.amount), String(input.source), text);
+      if (routed) {
+        await saveTurn(userId, text, routed.reply);
+        return routed;
       }
     }
     // #189 деньги без слота → детерминированно доспрашиваем категорию/

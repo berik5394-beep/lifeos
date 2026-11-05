@@ -3,9 +3,9 @@ import { prisma } from '../../lib/prisma.js';
 import { getUserTimezone } from '../../lib/user-context.js';
 import { localDateStr, localDateOnlyUTC, dateOnlyUTC, localMonthOnlyUTC, localMonthStartUTC, localNextMonthStartUTC } from '../../lib/tz.js';
 import { getEntityGraph } from '../entity-graph/index.js';
-import { defaultNextStep, isOpenStage, OPEN_STAGES, type DealStage } from './stages.js';
+import { defaultNextStep, isOpenStage, OPEN_STAGES, STAGE_LABEL, type DealStage } from './stages.js';
 import { salesPace, coveringDeals, type Pace } from './pace.js';
-import { formatDealsSection, describePlan, describeUpdated, describeWhichDeal, fmtMoneyExact, dealStepLabel, describeSalesVsSavings } from './format.js';
+import { formatDealsSection, describePlan, describeWhichDeal, fmtMoneyExact, dealStepLabel, describeSalesVsSavings, genitive } from './format.js';
 import { computePortfolioPace } from '../savings-pace.js';
 import { withTimeout } from '../../lib/with-timeout.js';
 import { isV2DealsEnabled } from '../../lib/feature-flags.js';
@@ -264,42 +264,92 @@ export async function recordDealIncome(
   return { ok: true, already: false, amount };
 }
 
-/** «Ахмета за оборудование» → варианты имени: «Ахмета», «Ахмет» (род. → им.: -а, -ы→-а, -и→-я/-а, -я→-й/-ь). */
-function mentionCandidates(mention: string): string[] {
-  const w = mention.trim().replace(/^от\s+/i, '').split(/[\s,.;:!?—-]+/)[0] ?? '';
-  if (w.length < 2) return [];
-  const out = [w];
-  if (/[бвгджзклмнпрстфхцчшщ]а$/i.test(w)) out.push(w.slice(0, -1));
-  if (/ы$/i.test(w)) out.push(w.slice(0, -1) + 'а');
-  if (/и$/i.test(w)) out.push(w.slice(0, -1) + 'я', w.slice(0, -1) + 'а');
-  if (/я$/i.test(w)) out.push(w.slice(0, -1) + 'й', w.slice(0, -1) + 'ь');
-  return out;
+/** Служебные слова перед/вокруг имени в источнике: «от клиента Даны», «от ТОО Альфа». */
+const MENTION_FILLER = new Set([
+  'от', 'у', 'с', 'со', 'за', 'по', 'клиент', 'клиента', 'клиентки', 'клиентка', 'компании', 'компания',
+  'фирмы', 'фирма', 'тоо', 'ип', 'ооо', 'ао', 'сделке', 'сделка', 'сделки',
+]);
+
+const words = (t: string): string[] => norm(t).split(/[^а-яa-z0-9]+/).filter((w) => w && !MENTION_FILLER.has(w));
+
+/**
+ * Основа имени клиента для сравнения по словам: первое значимое слово без конечной
+ * гласной («Ахмет»→«ахмет», «Дана»→«дан», «ТОО Альфа»→«альф»); короткие («Аля») — целиком.
+ */
+function nameKey(personName: string): string | null {
+  const w = words(personName)[0];
+  if (!w || w.length < 2) return null;
+  const cut = w.replace(/[аяеиоуыьй]$/, '');
+  return cut.length >= 3 ? cut : w;
 }
+
+/** Слово — падежная форма имени: «Ахмета/Ахмету/Ахметом» ↔ «ахмет», «Даны/Даной» ↔ «дан», «Али» ↔ «аля». */
+function wordIsName(word: string, key: string): boolean {
+  if (word.startsWith(key) && word.length - key.length <= 2) return true;
+  return key.length <= 3 && word.length === key.length && word.slice(0, -1) === key.slice(0, -1) && /[аяеиоуыьй]$/.test(word);
+}
+
+/**
+ * Высокоточный матч (ревью X1c): сделки, чьё имя клиента стоит в первых 3 значимых
+ * словах упоминания. БЕЗ эмбеддингов — «Ахмед» не станет «Ахметом».
+ */
+export function matchDealsByMention<T extends { personName: string }>(deals: readonly T[], mention: string): T[] {
+  const ws = words(mention).slice(0, 3);
+  return deals.filter((d) => {
+    const k = nameKey(d.personName);
+    return k != null && ws.some((w) => wordIsName(w, k));
+  });
+}
+
+/** Упомянут ли в тексте клиент открытой сделки (любое слово, имя ≥ 4 букв) — для включения инструментов. */
+export function textMentionsClient(personNames: readonly string[], text: string): boolean {
+  const ws = words(text);
+  return personNames.some((n) => {
+    const first = words(n)[0];
+    const k = nameKey(n);
+    return first != null && first.length >= 4 && k != null && ws.some((w) => wordIsName(w, k));
+  });
+}
+
+/** Открытые сделки юзера — один небольшой запрос (для маршрутизации дохода и подсказки инструментов). */
+export function openDealsForMatching(userId: string): Promise<Deal[]> {
+  return prisma.deal.findMany({ where: { userId, stage: { in: [...OPEN_STAGES] } }, orderBy: { createdAt: 'desc' }, take: 50 });
+}
+
+/** Частичная оплата — не повод закрывать сделку («аванс», «предоплата», «первую часть»). */
+const PARTIAL_PAYMENT = /(предоплат|аванс|частич|(?:^|[^а-я])част(?:ь|ью)(?=$|[^а-я])|перв(?:ый|ого) плат[её]ж|первую часть)/i;
+
+/** Потолок суммы (как zod у add_income/update_deal). Больше — не деньги. */
+export const MAX_MONEY_AMOUNT = 1_000_000_000;
 
 export type IncomeRouting =
   | { kind: 'none' }
   | { kind: 'ask'; message: string }
-  | { kind: 'won'; message: string; dealId: string };
+  | { kind: 'advance'; dealId: string | null; dealHead: string | null }
+  | { kind: 'won'; message: string; dealId: string; amount: number; incomeOffer: boolean };
 
 /**
- * Ревью B2: «получил 2 млн от Ахмета» при ОДНОЙ открытой сделке с Ахметом — это оплата
- * сделки: ставим «выиграна» (сумму берём из сообщения, если у сделки её нет) и предлагаем
- * доход через сделку (одно подтверждение, без второго Income). Несколько сделок или другая
- * сумма — переспрос, ничего не ставим. Нет сделки — none (обычный add_income).
+ * «получил 2 млн от Ахмета» при открытой сделке с Ахметом. Ревью X1: маршрутизация
+ * НИЧЕГО не пишет — только решает, что предложить:
+ *  - аванс/предоплата → обычный доход (+ заметка в сделку после «да»), сделку не закрываем;
+ *  - одна сделка, стадия «договор» ИЛИ сумма совпала → won: предложение «закрыть и записать
+ *    доход» (запись — в runConfirmedAction на «Подтвердить»);
+ *  - несколько сделок / другая сумма / ранняя стадия без суммы → ask (переспрос);
+ *  - нет сделки → none (обычный add_income).
  */
 export async function routeIncomeToDeal(
   userId: string,
   amount: number,
   source: string,
-  now: Date = new Date(),
+  opts: { text?: string } = {},
 ): Promise<IncomeRouting> {
-  const seen = new Map<string, Deal>();
-  for (const c of mentionCandidates(source)) {
-    for (const d of await findOpenDeals(userId, c)) seen.set(d.id, d);
-    if (seen.size) break;
-  }
-  const deals = [...seen.values()];
+  if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_MONEY_AMOUNT) return { kind: 'none' };
+  const deals = matchDealsByMention(await openDealsForMatching(userId), source);
   if (deals.length === 0) return { kind: 'none' };
+  if (PARTIAL_PAYMENT.test(norm(opts.text ?? source))) {
+    const one = deals.length === 1 ? deals[0] : null;
+    return { kind: 'advance', dealId: one?.id ?? null, dealHead: one ? `${one.personName} — ${one.title}` : null };
+  }
   const name = deals[0].personName;
   if (deals.length > 1) return { kind: 'ask', message: describeWhichDeal(name, deals, 'Какая оплачена?') };
   const deal = deals[0];
@@ -309,9 +359,23 @@ export async function routeIncomeToDeal(
       message: `Сделка ${name} — ${deal.title} на ${fmtMoneyExact(deal.amount)}, а пришло ${fmtMoneyExact(amount)}. Это полная оплата по сделке? Скажи «${name} оплатил, сумма ${fmtMoneyExact(amount)}» — закрою.`,
     };
   }
-  const r = await updateDeal(userId, deal.id, { stage: 'won', ...(deal.amount == null ? { amount } : {}) }, now);
-  const { today: t } = await today(userId, now);
-  return { kind: 'won', message: describeUpdated(r.deal, r, t), dealId: deal.id };
+  if (deal.amount == null && deal.stage !== 'contract') {
+    return {
+      kind: 'ask',
+      message: `Сделка ${name} — ${deal.title} ещё на стадии «${STAGE_LABEL[deal.stage as DealStage] ?? deal.stage}», а пришло ${fmtMoneyExact(amount)}. Это оплата по ней целиком? Скажи «${name} оплатил ${fmtMoneyExact(amount)}» — закрою сделку.`,
+    };
+  }
+  // Вернули в работу сделку, доход по которой уже записан, — второго не предлагаем.
+  const incomeOffer = !deal.wonIncomeId;
+  const message = incomeOffer
+    ? `Сделка ${name} — ${deal.title}: закрыть как выигранную и записать доход ${fmtMoneyExact(amount)} от ${genitive(name)}? Подтверди — запишу.`
+    : `Сделка ${name} — ${deal.title}: отметить выигранной? Доход по ней уже записан раньше. Подтверди — отмечу.`;
+  return { kind: 'won', message, dealId: deal.id, amount, incomeOffer };
+}
+
+/** Аванс по сделке — заметкой (после подтверждённого дохода), стадию не трогаем. */
+export async function noteDealAdvance(userId: string, dealId: string, amount: number, now: Date = new Date()): Promise<void> {
+  await updateDeal(userId, dealId, { note: `аванс ${fmtMoneyExact(amount)}` }, now);
 }
 
 export async function listDeals(userId: string, status: 'open' | 'closed', now: Date = new Date()): Promise<Deal[]> {
