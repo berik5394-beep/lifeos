@@ -30,6 +30,8 @@ interface RoomFurnitureItemProps {
   onRemove: (id: string) => void;
   /** Только что купленный предмет: «выпрыгивает» крупнее, пока робот на него показывает. */
   highlight?: boolean;
+  /** Тап по предмету (Часть 5: мебель с инструментом — робот достаёт его). */
+  onTap?: (id: string) => void;
 }
 
 /**
@@ -46,6 +48,7 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   onMove,
   onRemove,
   highlight = false,
+  onTap,
 }: RoomFurnitureItemProps) {
   const px = useSharedValue(item.x * roomWidth);
   const py = useSharedValue(item.y * roomHeight);
@@ -98,6 +101,12 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
       runOnJS(onRemove)(item.id);
     });
 
+  const tap = Gesture.Tap()
+    .maxDistance(8)
+    .onEnd((_e, ok) => {
+      if (ok && onTap) runOnJS(onTap)(item.id);
+    });
+
   const style = useAnimatedStyle(() => ({
     transform: [
       { translateX: px.value + dx.value - SIZE / 2 },
@@ -108,7 +117,7 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   }));
 
   return (
-    <GestureDetector gesture={Gesture.Race(pan, longPress)}>
+    <GestureDetector gesture={Gesture.Race(pan, longPress, tap)}>
       <Animated.View style={[styles.item, style]} accessibilityLabel={`Предмет: ${item.itemKey}`}>
         <Text style={styles.emoji}>{roomItemEmoji(item.itemKey)}</Text>
       </Animated.View>

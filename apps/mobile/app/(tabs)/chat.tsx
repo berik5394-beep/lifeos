@@ -24,6 +24,7 @@ import { panelRoute, visiblePanels } from '@/services/panels';
 import { ComicBubble } from '@/components/robot/comic-bubble';
 import { ComicText } from '@/components/robot/comic-text';
 import { COMIC } from '@/constants/comic';
+import { useRoomToolStore } from '@/stores/room-tool-store';
 import { useUIStore } from '@/stores/ui-store';
 import { useColors } from '@/hooks/use-colors';
 import { hapticLight } from '@/services/haptics';
@@ -262,11 +263,13 @@ export default function ChatScreen() {
   const [toolsOpen, setToolsOpen] = useState(false);
   const isFeatureVisible = useUIStore((st) => st.isFeatureVisible);
   const panels = useMemo(() => visiblePanels(isFeatureVisible), [isFeatureVisible]);
+  // Часть 5: инструменты живут в комнате — закрываем историю, робот достаёт нужный.
   const openPanel = useCallback(
-    (route: string) => {
+    (key: string) => {
       hapticLight();
       setToolsOpen(false);
-      navigation.navigate(route as never);
+      if (navigation.canGoBack()) navigation.goBack();
+      useRoomToolStore.getState().openTool(key);
     },
     [navigation],
   );
@@ -278,8 +281,8 @@ export default function ChatScreen() {
     const route = panelRoute(latestAssistant?.openPanel, isFeatureVisible);
     if (!latestAssistant || !route || openedFor.current === latestAssistant.id) return;
     openedFor.current = latestAssistant.id;
-    navigation.navigate(route as never);
-  }, [latestAssistant, navigation, isFeatureVisible]);
+    openPanel(latestAssistant.openPanel as string);
+  }, [latestAssistant, openPanel, isFeatureVisible]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -321,7 +324,7 @@ export default function ChatScreen() {
         {toolsOpen && (
           <View style={styles.toolsChips}>
             {panels.map((p) => (
-              <TouchableOpacity key={p.key} style={styles.toolChip} onPress={() => openPanel(p.route)} activeOpacity={0.7}>
+              <TouchableOpacity key={p.key} style={styles.toolChip} onPress={() => openPanel(p.key)} activeOpacity={0.7}>
                 <Feather name={p.icon as never} size={14} color={c.primary} />
                 <Text style={styles.toolChipText}>{p.label}</Text>
               </TouchableOpacity>

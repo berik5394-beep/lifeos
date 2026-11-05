@@ -11,6 +11,11 @@ export const ROOM_CATALOG = [
   { key: 'clock', emoji: '🕰️', label: 'Часы', spot: 'wall' },
   { key: 'rug', emoji: '🟫', label: 'Ковёр', spot: 'floor' },
   { key: 'plush', emoji: '🧸', label: 'Игрушка', spot: 'floor' },
+  // Часть 5: мебель, из которой робот достаёт инструменты (пока эмодзи-заглушки).
+  { key: 'wardrobe', emoji: '🗄️', label: 'Шкаф', spot: 'floor' },
+  { key: 'desk', emoji: '🪑', label: 'Стол', spot: 'floor' },
+  { key: 'nightstand', emoji: '🗃️', label: 'Тумбочка', spot: 'floor' },
+  { key: 'dresser', emoji: '🧰', label: 'Комод', spot: 'floor' },
 ] as const;
 
 export type RoomItemKey = (typeof ROOM_CATALOG)[number]['key'];

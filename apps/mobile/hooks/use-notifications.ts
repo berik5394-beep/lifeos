@@ -16,6 +16,7 @@ import { useHabitStore } from '@/stores/habit-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { storage } from '@/services/storage';
 import { api } from '@/services/api';
+import { useRoomToolStore } from '@/stores/room-tool-store';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -137,29 +138,30 @@ export function useNotifications(): UseNotificationsResult {
           | undefined;
 
         if (!data?.type) return;
+        const openRoomTool = (tool: string) => {
+          navigation.navigate('Home' as never);
+          useRoomToolStore.getState().openTool(tool);
+        };
 
         switch (data.type) {
+          // Робот-эпик, Часть 5: всё живёт в комнате — робот достаёт нужный инструмент.
           case 'task':
-            navigation.navigate('Tasks' as never);
+            openRoomTool('tasks');
             break;
           case 'event':
-            // Events are shown inside the dashboard / calendar area
-            navigation.navigate('Tasks' as never);
+            openRoomTool('calendar');
             break;
           case 'morning_briefing':
           case 'evening_review':
-            // Go to dashboard
-            navigation.navigate('Dashboard' as never);
+          case 'weekly_report':
+            openRoomTool('today');
             break;
           case 'streak_reminder':
           case 'streak_celebration':
-            navigation.navigate('Habits' as never);
+            openRoomTool('habits');
             break;
           case 'budget_warning':
-            navigation.navigate('Finance' as never);
-            break;
-          case 'weekly_report':
-            navigation.navigate('Dashboard' as never);
+            openRoomTool('finance');
             break;
           case 'motivation':
             // No special navigation

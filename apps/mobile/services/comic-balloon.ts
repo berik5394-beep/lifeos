@@ -4,7 +4,7 @@
  * хвостиком, который вырастает из самого контура (а не приклеен сбоку).
  * Чистые функции → SVG path; покрыто jest.
  */
-export type BalloonTail = 'bottom-left' | 'bottom-right' | 'left' | 'right' | 'none';
+export type BalloonTail = 'bottom' | 'bottom-left' | 'bottom-right' | 'left' | 'right' | 'none';
 
 interface Node {
   x: number;
@@ -48,6 +48,8 @@ export function balloonShape(w: number, h: number): { rx: number; ry: number; ex
 export function tailTip(w: number, h: number, tail: BalloonTail): { x: number; y: number } | null {
   const y = Math.min(24, h / 2);
   switch (tail) {
+    case 'bottom':
+      return { x: w / 2, y: h + BALLOON_PAD_Y + TAIL_LEN + 4 };
     case 'bottom-left':
       return { x: Math.min(34, w * 0.25), y: h + BALLOON_PAD_Y + TAIL_LEN + 4 };
     case 'bottom-right':

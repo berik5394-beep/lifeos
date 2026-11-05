@@ -17,6 +17,10 @@ const ITEM_ACC: Record<RoomItemKey, string> = {
   clock: 'часы',
   rug: 'ковёр',
   plush: 'игрушку',
+  wardrobe: 'шкаф',
+  desk: 'стол',
+  nightstand: 'тумбочку',
+  dresser: 'комод',
 };
 
 type Line = (item: string, hey: string) => string;

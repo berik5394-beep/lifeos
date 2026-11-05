@@ -1,88 +1,27 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
-  StyleSheet,
-  View,
-  useWindowDimensions,
-} from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import React from 'react';
+import { KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useColors } from '@/hooks/use-colors';
-import ChatScreen from '@/screens/chat';
 import { RoomPage } from './room-page';
 
 /**
- * Робот-эпик, Часть 3: дом приложения — два экрана со свайпом между ними
- * (схема Berik): «Комната» (слева) ↔ «Рабочий» (робот + чат, по умолчанию).
- * Инструменты — панели-шторки поверх (navigation: presentation 'modal').
- * Горизонтальный ScrollView (из gesture-handler — чтобы перетаскивание мебели
- * в комнате блокировало листание) с pagingEnabled.
+ * Робот-эпик, Часть 5: дом приложения — ЕДИНСТВЕННЫЙ экран, комната робота.
+ * Разговор (текст/голос) — внизу комнаты; инструменты робот достаёт из мебели
+ * (карточка поверх отъехавшей комнаты). Пейджера «Комната ↔ Рабочий» больше нет.
  */
-const WORK_PAGE = 1;
-
 export default function HomeScreen() {
   useNotifications();
   const c = useColors();
-  const styles = useMemo(() => createStyles(c), [c]);
-  const { width } = useWindowDimensions();
-  const pager = useRef<ScrollView>(null);
-  const [page, setPage] = useState(WORK_PAGE);
-  // RNGH принимает ref нативного ScrollView как цель blocksExternalGesture;
-  // типы RNGH не знают про `| null` у useRef — приводим один раз здесь.
-  const pagerGesture = pager as unknown as React.RefObject<React.ComponentType>;
-
-  // Стартуем на «Рабочем» и держим страницу при повороте/смене ширины.
-  useEffect(() => {
-    requestAnimationFrame(() => pager.current?.scrollTo({ x: page * width, animated: false }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [width]);
-
-  const onScrollEnd = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      setPage(Math.round(e.nativeEvent.contentOffset.x / width));
-    },
-    [width],
-  );
-
   return (
-    <View style={styles.container}>
-      <ScrollView
-        ref={pager}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onScrollEnd}
-        contentOffset={{ x: WORK_PAGE * width, y: 0 }}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={{ width }}>
-          <RoomPage active={page === 0} pagerGesture={pagerGesture} />
-        </View>
-        <View style={{ width }}>
-          <ChatScreen />
-        </View>
-      </ScrollView>
-      <View style={styles.dots} pointerEvents="none">
-        {[0, 1].map((i) => (
-          <View key={i} style={[styles.dot, page === i && styles.dotActive]} />
-        ))}
-      </View>
-    </View>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: c.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <RoomPage />
+    </KeyboardAvoidingView>
   );
 }
 
-function createStyles(c: ReturnType<typeof useColors>) {
-  return StyleSheet.create({
-    container: { flex: 1, backgroundColor: c.background },
-    dots: {
-      position: 'absolute',
-      top: 52,
-      alignSelf: 'center',
-      flexDirection: 'row',
-      gap: 6,
-    },
-    dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: c.border },
-    dotActive: { backgroundColor: c.primary },
-  });
-}
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+});

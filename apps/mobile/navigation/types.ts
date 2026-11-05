@@ -18,6 +18,7 @@ export type RootStackParamList = {
   FocusMode: { taskId: string; taskTitle: string };
   KanbanBoard: undefined;
   Calendar: undefined;
+  ChatHistory: undefined;
   GanttView: undefined;
   SharedSpaces: undefined;
   SharedSpaceDetail: { spaceId: string; spaceName: string };

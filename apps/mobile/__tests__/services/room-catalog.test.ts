@@ -1,8 +1,11 @@
 import { ROOM_CATALOG, ROOM_MAX_ITEMS, clampToRoom, defaultSpot, isRoomItemKey, roomItemEmoji } from '@/services/room-catalog';
 
 describe('room-catalog — бесплатная мебель комнаты робота', () => {
-  it('8 предметов, ключи совпадают с серверным каталогом', () => {
-    expect(ROOM_CATALOG.map((i) => i.key)).toEqual(['plant', 'sofa', 'picture', 'lamp', 'books', 'clock', 'rug', 'plush']);
+  it('12 предметов, ключи совпадают с серверным каталогом', () => {
+    expect(ROOM_CATALOG.map((i) => i.key)).toEqual([
+      'plant', 'sofa', 'picture', 'lamp', 'books', 'clock', 'rug', 'plush',
+      'wardrobe', 'desk', 'nightstand', 'dresser',
+    ]);
     expect(ROOM_MAX_ITEMS).toBe(30);
   });
   it('isRoomItemKey', () => {

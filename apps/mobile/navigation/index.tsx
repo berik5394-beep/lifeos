@@ -13,6 +13,7 @@ import { setupVoiceAlarmListener } from '@/services/voice-alarm';
 
 // Робот-эпик, Часть 3: дом из двух экранов (Комната ↔ Рабочий) + панели-шторки
 import HomeScreen from '@/screens/home';
+import ChatScreen from '@/screens/chat';
 import DashboardScreen from '@/screens/dashboard';
 import TasksScreen from '@/screens/tasks';
 import HabitsScreen from '@/screens/habits';
@@ -283,6 +284,8 @@ export default function Navigation() {
             <RootStack.Screen name="FocusMode" component={FocusModeScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="KanbanBoard" component={KanbanBoardScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="Calendar" component={CalendarScreen} options={{ presentation: 'modal', headerShown: false }} />
+            {/* История разговора с роботом (Часть 5: чат живёт в комнате, здесь — вся лента). */}
+            <RootStack.Screen name="ChatHistory" component={ChatScreen} options={{ presentation: 'modal', headerShown: false }} />
             <RootStack.Screen name="GanttView" component={GanttViewScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="SharedSpaces" component={SharedSpacesScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="SharedSpaceDetail" component={SharedSpaceDetailScreen} options={{ headerShown: false }} />

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useNavigation } from '@react-navigation/native';
 import { panelRoute } from '@/services/panels';
 import { useUIStore } from '@/stores/ui-store';
+import { useRoomToolStore } from '@/stores/room-tool-store';
 
 /**
  * Робот-эпик, Часть 3: голосом «открой задачи» → сервер присылает openPanel →
@@ -17,6 +18,9 @@ export function useOpenPanel(result: { openPanel?: string | null } | null | unde
     if (!result || handled.current === result) return;
     handled.current = result;
     const route = panelRoute(result.openPanel, isFeatureVisible);
-    if (route) navigation.navigate(route as never);
+    if (!route) return;
+    // Часть 5: инструменты живут в комнате — возвращаемся туда, робот достаёт нужный.
+    navigation.navigate('Home' as never);
+    useRoomToolStore.getState().openTool(result.openPanel);
   }, [result, navigation, isFeatureVisible]);
 }

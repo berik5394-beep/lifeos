@@ -11,6 +11,11 @@ export const ROOM_ITEM_LABELS = {
   clock: 'часы',
   rug: 'ковёр',
   plush: 'игрушка',
+  // Часть 5: мебель, из которой робот достаёт инструменты.
+  wardrobe: 'шкаф',
+  desk: 'стол',
+  nightstand: 'тумбочка',
+  dresser: 'комод',
 } as const;
 
 export type RoomItemKey = keyof typeof ROOM_ITEM_LABELS;
