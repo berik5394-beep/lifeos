@@ -25,3 +25,22 @@ describe('aiDailyLimiter — durable AI budget', () => {
     expect(body).toMatch(/failing open/);
   });
 });
+
+// Друзья-тестеры: «30 сообщений в день» — считаем только обращения к мозгу.
+// Распознавание речи и пояснение панели — дешёвые, отдельный потолок,
+// иначе голосовое сообщение съедало бы 2 из лимита.
+describe('дешёвые AI-вызовы не съедают лимит сообщений', () => {
+  const route = (f: string) => readFileSync(join(__dirname, '..', 'routes', f), 'utf8');
+  it('/voice/transcribe и /robot/explain — на cheapAiDailyLimiter', () => {
+    const voice = route('voice.ts');
+    const transcribe = voice.slice(voice.indexOf("'/voice/transcribe'"), voice.indexOf("'/voice/transcribe'") + 300);
+    expect(transcribe).toMatch(/cheapAiDailyLimiter/);
+    expect(transcribe).not.toMatch(/\baiDailyLimiter\b/);
+    const robot = route('robot.ts');
+    expect(robot).toMatch(/cheapAiDailyLimiter, validate\(explainSchema\)/);
+    expect(robot).not.toMatch(/\baiDailyLimiter\b/);
+  });
+  it('мозг робота (/voice/chat) по-прежнему считается в дневной лимит', () => {
+    expect(route('chat.ts')).toMatch(/chatRateLimit, aiDailyLimiter/);
+  });
+});

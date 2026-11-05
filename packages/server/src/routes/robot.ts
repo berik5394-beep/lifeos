@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
+import { rateLimiter, cheapAiDailyLimiter } from '../middleware/security.js';
 import { EXPLAIN_PANELS, explainPanel } from '../services/robot-explain.js';
 
 /**
@@ -17,7 +17,7 @@ export async function robotRoutes(app: FastifyInstance): Promise<void> {
 
   app.post(
     '/robot/explain',
-    { preHandler: [explainRateLimit, aiDailyLimiter, validate(explainSchema)] },
+    { preHandler: [explainRateLimit, cheapAiDailyLimiter, validate(explainSchema)] },
     async (request) => {
       const { panel } = request.body as z.infer<typeof explainSchema>;
       return explainPanel(request.userId, panel);

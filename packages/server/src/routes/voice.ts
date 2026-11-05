@@ -12,7 +12,7 @@ import {
   calculateStreak,
   calculateWeekProgress,
 } from '../services/streak-service.js';
-import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
+import { rateLimiter, aiDailyLimiter, cheapAiDailyLimiter } from '../middleware/security.js';
 // Phase 1.1 (дозакрытие): /voice/assistant раньше был ВТОРЫМ мозгом —
 // свой контекст, свой промпт (assistant-personality), прямой Claude
 // БЕЗ памяти-дедупа/web_search/инструментов/подтверждений/логов.
@@ -232,7 +232,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/voice/transcribe', {
     bodyLimit: 10 * 1024 * 1024, // 10 MB для голосовых записей в base64
-    preHandler: [transcribeRateLimit, aiDailyLimiter, validate(transcribeSchema)],
+    preHandler: [transcribeRateLimit, cheapAiDailyLimiter, validate(transcribeSchema)],
   }, async (request, reply) => {
     const { audio, format } = request.body as z.infer<typeof transcribeSchema>;
 

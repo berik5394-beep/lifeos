@@ -120,6 +120,18 @@ export function rateLimiter(options: RateLimitOptions): onRequestHookHandler {
   };
 }
 
+/**
+ * Дешёвые AI-вызовы (распознавание речи Groq, пояснение панели Haiku) — НЕ
+ * сообщения роботу и не должны съедать дневной лимит сообщений (голосовое =
+ * распознать + отправить в мозг → считалось бы дважды). Свой суточный
+ * анти-абуз потолок; in-memory (сброс при деплое приемлем — вызовы дешёвые).
+ */
+export const cheapAiDailyLimiter = rateLimiter({
+  max: 300,
+  windowMs: 24 * 60 * 60 * 1000,
+  keyPrefix: 'ai-cheap-daily',
+});
+
 // ============================================================================
 // 2b. Общий дневной потолок AI-вызовов (per-user)
 // ============================================================================
@@ -185,7 +197,9 @@ export const aiDailyLimiter: onRequestHookHandler = async (request, reply) => {
   reply.header('X-RateLimit-Remaining', String(Math.max(0, aiDailyMax - count)));
   if (count > aiDailyMax) {
     return reply.status(429).send({
-      message: 'Дневной лимит AI-запросов исчерпан. Попробуй завтра.',
+      message:
+        `На сегодня я выговорился — ${aiDailyMax} сообщений в день, продолжим завтра. ` +
+        'Задачи, привычки и расходы пока можно отмечать руками в инструментах.',
     });
   }
 };
@@ -215,10 +229,13 @@ export function registerSecurityHeaders(app: FastifyInstance): void {
     // (актуально только если сервер за TLS — Railway даёт TLS автоматически)
     reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     // Минимальный CSP для JSON API: ничего загружать не нужно
-    reply.header(
-      'Content-Security-Policy',
-      "default-src 'none'; frame-ancestors 'none'",
-    );
+    // Публичные HTML-страницы (/privacy) ставят свой CSP — не затираем.
+    if (!reply.hasHeader('Content-Security-Policy')) {
+      reply.header(
+        'Content-Security-Policy',
+        "default-src 'none'; frame-ancestors 'none'",
+      );
+    }
     // Защита от XSS в старых браузерах
     reply.header('X-XSS-Protection', '0');
     return payload;

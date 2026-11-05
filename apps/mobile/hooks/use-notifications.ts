@@ -70,8 +70,11 @@ export function useNotifications(): UseNotificationsResult {
   // Fetch server briefing data
   // -------------------------------------------------------------------------
   const fetchBriefing = useCallback(async () => {
+    // Без токена сервер всегда отвечал 401 — утренняя сводка не приходила.
+    const authToken = useAuthStore.getState().token;
+    if (!authToken) return;
     try {
-      const data = await api.get<BriefingResponse>('/notifications/briefing');
+      const data = await api.get<BriefingResponse>('/notifications/briefing', authToken);
       setBriefing(data);
     } catch {
       // Server unavailable — not critical for local notifications

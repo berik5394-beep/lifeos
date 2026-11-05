@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api } from '@/services/api';
+import { api, ApiError } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { confirmPendingVoiceAction, isConfirmable, type PendingActionInfo } from '@/services/voice-followup';
 import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
@@ -104,10 +104,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         isLoading: false,
       }));
     } catch (err) {
+      // Дневной лимит (429) и «нет интернета» — показываем понятный текст сервера/сети.
+      const known = err instanceof ApiError && (err.status === 429 || err.status === 0);
       const errorMessage: ChatMessage = {
         id: uniqueId('error'),
         role: 'assistant',
-        content: 'Произошла ошибка. Попробуйте ещё раз.',
+        content: known ? err.message : 'Произошла ошибка. Попробуйте ещё раз.',
         createdAt: new Date().toISOString(),
       };
 
