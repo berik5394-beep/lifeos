@@ -105,6 +105,16 @@ export const RoomPage = memo(function RoomPage() {
   /** Когда открыли инструмент: ответы робота ПОСЛЕ этого видны поверх карточки. */
   const sceneOpenedAt = useRef(0);
   const [explain, setExplain] = useState<string | null>(null);
+  /**
+   * Объяснение робота устарело (поправили сделки руками или пришёл новый ответ робота) —
+   * прячем, а не перезапрашиваем (бюджет ИИ). Сброс — при каждом открытии инструмента.
+   */
+  const [explainHidden, setExplainHidden] = useState(false);
+  /** Номер запроса /robot/explain: поздний ответ для закрытого инструмента не попадёт в другой. */
+  const explainSeq = useRef(0);
+  /** На момент открытия: ревизия сделок и последний ответ робота — новее значит «объяснение устарело». */
+  const dealsRevAtOpen = useRef(0);
+  const replyIdAtOpen = useRef<string | undefined>(undefined);
   const [mirror, setMirror] = useState(false);
   const [typing, setTyping] = useState(false);
   const [dismissedReply, setDismissedReply] = useState<string | null>(null);
@@ -323,6 +333,10 @@ export const RoomPage = memo(function RoomPage() {
       if (zoomed) zoomOut();
       setThanks(null);
       setExplain(null);
+      setExplainHidden(false);
+      const seq = ++explainSeq.current;
+      dealsRevAtOpen.current = useDealStore.getState().revision;
+      replyIdAtOpen.current = useChatStore.getState().messages[0]?.id;
 
       const source = toolSource(tool, useRoomStore.getState().items, { x: 0.5, y: 0.96 });
       const from = toolOrigin(source, size.w, size.h);
@@ -356,8 +370,12 @@ export const RoomPage = memo(function RoomPage() {
           setNewItemId(null);
           api
             .post<{ text: string }>('/robot/explain', { panel: tool }, token ?? undefined)
-            .then((r) => setExplain(r.text))
-            .catch(() => setExplain(`Вот ${TOOL_TITLE[tool].toLowerCase()} — смотри!`));
+            .then((r) => {
+              if (seq === explainSeq.current) setExplain(r.text);
+            })
+            .catch(() => {
+              if (seq === explainSeq.current) setExplain(`Вот ${TOOL_TITLE[tool].toLowerCase()} — смотри!`);
+            });
         },
         (source ? WALK_MS : 120) + FETCH_MS,
       );
@@ -368,8 +386,21 @@ export const RoomPage = memo(function RoomPage() {
   const closeTool = useCallback(() => {
     setScene((s) => (s ? { ...s, closing: true } : s));
     recede.value = withTiming(0, { duration: 420 });
+    explainSeq.current += 1;
     setExplain(null);
   }, [recede]);
+
+  // Сделки поправили руками, пока открыт инструмент «Сделки», — цифры в объяснении устарели.
+  const dealsRevision = useDealStore((s) => s.revision);
+  const sceneTool = scene?.tool ?? null;
+  useEffect(() => {
+    if (sceneTool === 'deals' && dealsRevision !== dealsRevAtOpen.current) setExplainHidden(true);
+  }, [sceneTool, dealsRevision]);
+  // Новый ответ робота после открытия (голосом что-то поменяли) — объяснение тоже устарело.
+  const latestAssistantId = messages[0]?.role === 'assistant' ? messages[0].id : undefined;
+  useEffect(() => {
+    if (sceneTool && latestAssistantId && latestAssistantId !== replyIdAtOpen.current) setExplainHidden(true);
+  }, [sceneTool, latestAssistantId]);
 
   const onToolClosed = useCallback(() => {
     setScene(null);
@@ -676,7 +707,8 @@ export const RoomPage = memo(function RoomPage() {
               />
             </View>
           )}
-          {scene?.phase === 'open' && !scene.closing && !showProposal && (
+          {/* Скрытое (устаревшее) объяснение не показываем вовсе — иначе вместо него висело бы «…». */}
+          {scene?.phase === 'open' && !scene.closing && !showProposal && !explainHidden && (
             <View style={styles.bubbleExplain} pointerEvents="none">
               {explain ? <RobotSpeechBubble text={explain} tail="left" /> : <ChatReplyBubble text="" thinking tail="left" />}
             </View>

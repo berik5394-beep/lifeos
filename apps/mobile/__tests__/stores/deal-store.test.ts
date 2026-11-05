@@ -37,7 +37,7 @@ beforeEach(() => {
   jest.resetAllMocks();
   // resetAllMocks обнуляет и глобальный мок auth-store — возвращаем токен.
   (useAuthStore.getState as jest.Mock).mockReturnValue({ token: 'test-token-123' });
-  useDealStore.setState({ deals: [], closed: [], plan: null, available: true, isLoading: false });
+  useDealStore.setState({ deals: [], closed: [], plan: null, available: true, isLoading: false, revision: 0 });
 });
 
 describe('deal-store', () => {
@@ -150,5 +150,49 @@ describe('deal-store', () => {
     await useDealStore.getState().fetchClosed();
     expect(mocked.get).toHaveBeenCalledWith('/deals?status=closed', 'test-token-123');
     expect(useDealStore.getState().closed).toHaveLength(1);
+  });
+
+  describe('revision — сделки поменялись руками (робот-объяснение устарело)', () => {
+    const rev = () => useDealStore.getState().revision;
+
+    it('смена стадии: успех → +1, ошибка (откат) → без изменений', async () => {
+      useDealStore.setState({ deals: [deal] });
+      mocked.put.mockRejectedValueOnce(new ApiError(0, 'сеть'));
+      await expect(useDealStore.getState().moveStage('d1', 'talks')).rejects.toThrow();
+      expect(rev()).toBe(0);
+      mocked.put.mockResolvedValueOnce({ deal: { ...deal, stage: 'won' }, step: null, incomeOffer: true } as never);
+      mocked.get.mockResolvedValueOnce({ plan } as never);
+      await useDealStore.getState().moveStage('d1', 'won');
+      expect(rev()).toBe(1);
+    });
+
+    it('правка суммы/шага, новая сделка, план → +1 на каждую', async () => {
+      useDealStore.setState({ deals: [deal] });
+      mocked.put.mockResolvedValueOnce({ deal: { ...deal, amount: 3_000_000 }, step: null, incomeOffer: false } as never);
+      mocked.get.mockResolvedValue({ plan } as never);
+      await useDealStore.getState().update('d1', { amount: 3_000_000 });
+      expect(rev()).toBe(1);
+      mocked.post.mockResolvedValueOnce({ deal: { ...deal, id: 'd2' }, step: null, taggedClient: true, incomeOffer: false } as never);
+      await useDealStore.getState().create({ personName: 'Серик' });
+      expect(rev()).toBe(2);
+      mocked.put.mockResolvedValueOnce({ plan } as never);
+      await useDealStore.getState().setPlan(10_000_000);
+      expect(rev()).toBe(3);
+    });
+
+    it('доход: записан → +1; переспрос 409 / отказ 422 → без изменений', async () => {
+      mocked.get.mockResolvedValue({ deals: [] } as never);
+      mocked.post.mockRejectedValueOnce(new ApiError(409, 'дубль'));
+      await useDealStore.getState().recordIncome('d1');
+      mocked.post.mockRejectedValueOnce(new ApiError(422, 'нет суммы'));
+      await useDealStore.getState().recordIncome('d1');
+      expect(rev()).toBe(0);
+      mocked.post.mockResolvedValueOnce({ ok: true, already: false, amount: 2_000_000 } as never);
+      await useDealStore.getState().recordIncome('d1', true);
+      expect(rev()).toBe(1);
+      mocked.post.mockResolvedValueOnce({ ok: true, already: true, amount: 2_000_000 } as never);
+      await useDealStore.getState().recordIncome('d1');
+      expect(rev()).toBe(1); // «уже был записан» — ничего не поменялось
+    });
   });
 });

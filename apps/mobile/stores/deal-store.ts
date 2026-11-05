@@ -36,6 +36,11 @@ interface DealState {
   /** false — сервер ответил 404 (функция выключена) → инструмента «Сделки» нет. */
   available: boolean;
   isLoading: boolean;
+  /**
+   * Растёт на каждой правке сделок/плана из приложения (стадия, сумма, шаг, новая сделка,
+   * план, записанный доход). Комната по нему прячет устаревшее объяснение робота.
+   */
+  revision: number;
   fetch: () => Promise<void>;
   fetchClosed: () => Promise<void>;
   fetchOne: (id: string) => Promise<DealWithEvents | null>;
@@ -58,10 +63,16 @@ export const useDealStore = create<DealState>((set, get) => {
     set((s) => {
       const others = s.deals.filter((d) => d.id !== deal.id);
       const closedOthers = s.closed.filter((d) => d.id !== deal.id);
+      const revision = s.revision + 1;
       return isOpenStage(deal.stage)
-        ? { deals: s.deals.some((d) => d.id === deal.id) ? s.deals.map((d) => (d.id === deal.id ? deal : d)) : [deal, ...others], closed: closedOthers }
-        : { deals: others, closed: [deal, ...closedOthers] };
+        ? {
+            deals: s.deals.some((d) => d.id === deal.id) ? s.deals.map((d) => (d.id === deal.id ? deal : d)) : [deal, ...others],
+            closed: closedOthers,
+            revision,
+          }
+        : { deals: others, closed: [deal, ...closedOthers], revision };
     });
+  const bumpRevision = () => set((s) => ({ revision: s.revision + 1 }));
 
   const refreshPlan = async () => {
     try {
@@ -78,6 +89,7 @@ export const useDealStore = create<DealState>((set, get) => {
     plan: null,
     available: true,
     isLoading: false,
+    revision: 0,
 
     fetch: async () => {
       if (!token()) return;
@@ -124,6 +136,7 @@ export const useDealStore = create<DealState>((set, get) => {
         ...(input.amount != null ? { amount: input.amount } : {}),
       };
       const { deal } = await api.post<{ deal: Deal }>('/deals', body, token(), ONLINE);
+      bumpRevision();
       await get().fetch();
       return deal;
     },
@@ -162,6 +175,7 @@ export const useDealStore = create<DealState>((set, get) => {
           ONLINE,
         );
         // wonIncomeId сервер не отдаёт — перечитаем закрытые, чтобы кнопка «Записать доход» ушла.
+        if (!r.already) bumpRevision();
         void get().fetchClosed();
         return { kind: 'recorded', already: r.already, amount: r.amount };
       } catch (err) {
@@ -173,7 +187,7 @@ export const useDealStore = create<DealState>((set, get) => {
 
     setPlan: async (amount) => {
       const { plan } = await api.put<{ plan: PlanStatus | null }>('/sales-plan', { amount }, token(), ONLINE);
-      set({ plan });
+      set((s) => ({ plan, revision: s.revision + 1 }));
     },
   };
 });
