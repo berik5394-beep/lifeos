@@ -39,6 +39,7 @@ export type NudgeSource =
   | 'person_meeting'
   | 'open_loop_pileup'
   | 'deal_next_step_due'
+  | 'deal_step_overdue'
   | 'deal_stale'
   | 'sales_plan_behind';
 
@@ -177,6 +178,7 @@ export function scoreSignificance(c: NudgeCandidate): number {
       return 0.6;
     }
     case 'deal_next_step_due':
+    case 'deal_step_overdue':
     case 'deal_stale':
       // Как obligation_due: стабильно значимо, проходит gate3 (>= 0.6).
       return 0.6;
@@ -289,6 +291,9 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
   },
   deal_next_step_due: {
     gentle: 'По сделкам пора шаг: {{list}}. Сделаешь сегодня?',
+  },
+  deal_step_overdue: {
+    gentle: '{{overdueText}}',
   },
   deal_stale: {
     gentle: '{{staleText}}',
@@ -1100,16 +1105,18 @@ async function detectPersonMeeting(userId: string): Promise<NudgeCandidate[]> {
   }
 }
 
-/** Шаг просрочен на столько дней и больше — это уже «затихла» (раз в неделю), не «пора». */
+/** Шаг просрочен на столько дней и больше — это уже «шаг просрочен» (раз в неделю), не «пора». */
 const DEAL_OVERDUE_STALE_DAYS = 3;
 /** Тишина по сделке без шага — «затихла». */
 const DEAL_SILENT_STALE_DAYS = 7;
-/** Каденс «затихла» на сделку — раз в неделю. */
+/** Каденс «шаг просрочен» / «затихла» на сделку — раз в неделю. */
 const DEAL_STALE_CADENCE_DAYS = 6.5;
+/** Ревью-3 N8: на источник (просрочка / тишина) — не чаще раза в 2 дня, даже по разным сделкам. */
+const DEAL_SOURCE_GAP_DAYS = 2;
 
 // Сделки: шаг сегодня или просрочен < 3 дней — до 3 сделок в одном нудже (обещание
-// клиенту). Ревью I-a: просрочка ≥ 3 дней уходит в deal_stale (раз в неделю), иначе
-// «пора шаг» звучал бы каждый день вечно.
+// клиенту). Ревью I-a: просрочка ≥ 3 дней уходит в deal_step_overdue (раз в неделю),
+// иначе «пора шаг» звучал бы каждый день вечно.
 async function detectDealNextStepDue(userId: string): Promise<NudgeCandidate[]> {
   try {
     const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
@@ -1147,11 +1154,38 @@ async function detectDealNextStepDue(userId: string): Promise<NudgeCandidate[]> 
   }
 }
 
-// Сделки: «затихла» = шаг просрочен ≥ 3 дней ИЛИ 7+ дней тишины и шага нет вовсе.
-// (Просрочка 1–2 дня — это deal_next_step_due; шаг сегодня/впереди — не затихла.)
-// Каденс — неделя на сделку (ключ deal_stale:<dealId>, смахнутые тоже считаем):
-// R10 стора — 3 дня, gate4 не матчит (TODO(gate4)).
-async function detectDealStale(userId: string): Promise<NudgeCandidate[]> {
+type DealNudgeRow = { id: string; personName: string; title: string; lastActivityAt: Date; nextStepAt: Date | null };
+
+/**
+ * Ревью-3 N8: ОДИН кандидат за прогон — первый по порядку запроса (крупнейшая сумма,
+ * потом старейший), ещё не напомненный за неделю. Источник напоминал за 2 дня (любую
+ * сделку) — молчим: три затихших сделки не превращаются в ежедневный поток.
+ */
+async function pickDealNudge(
+  userId: string,
+  source: 'deal_step_overdue' | 'deal_stale',
+  rows: readonly DealNudgeRow[],
+  now: Date,
+  build: (row: DealNudgeRow) => Record<string, unknown>,
+): Promise<NudgeCandidate[]> {
+  if (rows.length === 0) return [];
+  if (await sourceNudgedWithin(userId, source, DEAL_SOURCE_GAP_DAYS, now)) return [];
+  for (const row of rows) {
+    const entityId = row.id;
+    // 6.5 дн, а не 7: прогон в тот же час через неделю не должен упереться в границу окна.
+    if (await nudgedWithin(userId, nudgeScopeKey({ source, entityId }), DEAL_STALE_CADENCE_DAYS, now)) continue;
+    const cand: NudgeCandidate = { source, significance: 0, entityId, payload: build(row), toneHint: 'gentle' };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  }
+  return [];
+}
+
+// Сделки: «шаг просрочен» = шаг просрочен ≥ 3 дней (просрочка 1–2 дня — deal_next_step_due).
+// Ревью-3 N7: это обещание клиенту — НЕ в PRESSURE_SOURCES (переживает спад настроения).
+// Каденс — неделя на сделку (ключ deal_step_overdue:<dealId>, смахнутые тоже считаем) +
+// 2 дня на источник; R10 стора — 3 дня, gate4 не матчит (TODO(gate4)).
+async function detectDealStepOverdue(userId: string): Promise<NudgeCandidate[]> {
   try {
     const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
     if (!isV2DealsEnabled(userId)) return [];
@@ -1163,30 +1197,41 @@ async function detectDealStale(userId: string): Promise<NudgeCandidate[]> {
     const now = new Date();
     const today = localDateOnlyUTC(await getUserTimezone(userId), now);
     const overdueCutoff = new Date(today.getTime() - DEAL_OVERDUE_STALE_DAYS * DAY_MS);
+    const rows = await prisma.deal.findMany({
+      where: { userId, stage: { in: [...OPEN_STAGES] }, nextStepAt: { lte: overdueCutoff } },
+      orderBy: [{ amount: { sort: 'desc', nulls: 'last' } }, { nextStepAt: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, personName: true, title: true, lastActivityAt: true, nextStepAt: true },
+      take: 20,
+    });
+    return pickDealNudge(userId, 'deal_step_overdue', rows, now, (row) => ({
+      overdueText: `Шаг по сделке «${row.title}» с ${instrumental(row.personName)} просрочен на ${Math.round((today.getTime() - (row.nextStepAt ?? today).getTime()) / DAY_MS)} дн — сделаешь или перенесём?`,
+    }));
+  } catch (err) {
+    console.warn('[v2-proactivity] detectDealStepOverdue failed:', err);
+    return [];
+  }
+}
+
+// Сделки: «затихла» = шага нет вовсе и 7+ дней ни слова (шаг сегодня/впереди — не затихла;
+// просроченный шаг — deal_step_overdue). Давление → в PRESSURE_SOURCES. Каденс как выше.
+async function detectDealStale(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
+    if (!isV2DealsEnabled(userId)) return [];
+    const { prisma } = await import('../lib/prisma.js');
+    const { OPEN_STAGES } = await import('./deals/stages.js');
+    const { instrumental } = await import('./deals/format.js');
+    const now = new Date();
     const silentCutoff = new Date(now.getTime() - DEAL_SILENT_STALE_DAYS * DAY_MS);
     const rows = await prisma.deal.findMany({
-      where: {
-        userId,
-        stage: { in: [...OPEN_STAGES] },
-        OR: [{ nextStepAt: { lte: overdueCutoff } }, { nextStepAt: null, lastActivityAt: { lte: silentCutoff } }],
-      },
+      where: { userId, stage: { in: [...OPEN_STAGES] }, nextStepAt: null, lastActivityAt: { lte: silentCutoff } },
       orderBy: [{ amount: { sort: 'desc', nulls: 'last' } }, { lastActivityAt: 'asc' }],
       select: { id: true, personName: true, title: true, lastActivityAt: true, nextStepAt: true },
       take: 20,
     });
-    for (const row of rows) {
-      const entityId = row.id;
-      // 6.5 дн, а не 7: прогон в тот же час через неделю не должен упереться в границу окна.
-      if (await nudgedWithin(userId, nudgeScopeKey({ source: 'deal_stale', entityId }), DEAL_STALE_CADENCE_DAYS, now)) continue;
-      const instr = instrumental(row.personName);
-      const staleText = row.nextStepAt
-        ? `Шаг по сделке «${row.title}» с ${instr} просрочен на ${Math.round((today.getTime() - row.nextStepAt.getTime()) / DAY_MS)} дн — сделаешь или перенесём?`
-        : `Сделка «${row.title}» с ${instr} затихла — ${Math.floor((now.getTime() - row.lastActivityAt.getTime()) / DAY_MS)} дн ни слова. Напомнить о себе?`;
-      const cand: NudgeCandidate = { source: 'deal_stale', significance: 0, entityId, payload: { staleText }, toneHint: 'gentle' };
-      cand.significance = scoreSignificance(cand);
-      return [cand];
-    }
-    return [];
+    return pickDealNudge(userId, 'deal_stale', rows, now, (row) => ({
+      staleText: `Сделка «${row.title}» с ${instrumental(row.personName)} затихла — ${Math.floor((now.getTime() - row.lastActivityAt.getTime()) / DAY_MS)} дн ни слова. Напомнить о себе?`,
+    }));
   } catch (err) {
     console.warn('[v2-proactivity] detectDealStale failed:', err);
     return [];
@@ -1203,6 +1248,21 @@ export function nudgeScopeKey(c: Pick<NudgeCandidate, 'source' | 'entityId' | 'p
 async function nudgedWithin(userId: string, scopeKey: string, days: number, now: Date): Promise<boolean> {
   const row = await prisma.insight.findFirst({
     where: { userId, source: 'v2-proactivity', kind: 'v2_nudge', scopeKey, createdAt: { gte: new Date(now.getTime() - days * DAY_MS) } },
+    select: { id: true },
+  });
+  return row !== null;
+}
+
+/** Был ли нудж этого источника (по любой сущности) за последние `days` дней — тот же счёт, что nudgedWithin. */
+async function sourceNudgedWithin(userId: string, source: NudgeSource, days: number, now: Date): Promise<boolean> {
+  const row = await prisma.insight.findFirst({
+    where: {
+      userId,
+      source: 'v2-proactivity',
+      kind: 'v2_nudge',
+      scopeKey: { startsWith: `${source}:` },
+      createdAt: { gte: new Date(now.getTime() - days * DAY_MS) },
+    },
     select: { id: true },
   });
   return row !== null;
@@ -1366,7 +1426,7 @@ async function gate4_Dedup(
  *  Остаются: поддержка (mood_shift), время-критичное (person_meeting, commitment_due,
  *  obligation_due, birthday/memorial), деньги-защита (runway_low), decision_review,
  *  stale_entity/neglected_key_person (связь с людьми — не давление), identity_growth,
- *  deal_next_step_due (обещание клиенту — не давление). */
+ *  deal_next_step_due / deal_step_overdue (обещание клиенту — не давление; ревью-3 N7). */
 export const PRESSURE_SOURCES: ReadonlySet<NudgeSource> = new Set<NudgeSource>([
   'goal_no_progress',
   'streak_break',
@@ -1416,6 +1476,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectNeglectedKeyPerson(userId),
       detectPersonMeeting(userId),
       detectDealNextStepDue(userId),
+      detectDealStepOverdue(userId),
       detectDealStale(userId),
       detectSalesPlanBehind(userId),
       detectIdentityGrowth(userId),

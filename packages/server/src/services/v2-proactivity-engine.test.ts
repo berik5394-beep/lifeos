@@ -277,6 +277,7 @@ describe('TEMPLATES — table', () => {
         'weekly_goal_stall',
         'open_loop_pileup',
         'deal_next_step_due',
+        'deal_step_overdue',
         'deal_stale',
         'sales_plan_behind',
       ].sort(),

@@ -35,6 +35,7 @@ describe('mood-tone — Part 2 suppressPressureNudges (pure)', () => {
     expect(PRESSURE_SOURCES.has('deal_stale')).toBe(true);
     expect(PRESSURE_SOURCES.has('sales_plan_behind')).toBe(true);
     expect(PRESSURE_SOURCES.has('deal_next_step_due')).toBe(false); // обещание клиенту — не давление
+    expect(PRESSURE_SOURCES.has('deal_step_overdue')).toBe(false); // просроченное обещание клиенту — тоже не давление (ревью-3 N7)
   });
 });
 describe('mood-tone — Part 2 wiring', () => {
