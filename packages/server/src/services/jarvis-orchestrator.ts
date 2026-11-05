@@ -44,7 +44,7 @@ import {
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
-import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance } from './deals/index.js';
+import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, OPEN_STAGES } from './deals/index.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
@@ -313,9 +313,10 @@ async function saveTurn(
 
 // Fix D: эвристика «сообщению нужны локальные инструменты». Без \b —
 // кириллические границы в JS не работают; ловим по подстрокам корней.
-// Сделки (ревью B1): «отправил КП», «оплатил», «отказался», «на 2 млн», «как воронка».
+// Сделки (ревью B1/I-b): «отправил КП», «оплатил», «отказался», «на 2 млн», «как воронка»,
+// «на 500 тысяч», «за 800к», «выставила счёт», «подписал контракт», «перевёл», «передумал».
 const TOOL_HINTS =
-  /(задач|календар|встреч|событи|бюджет|потрат|расход|доход|привычк|напомн|почт|письм|gmail|расписан|план(?!ета)|поездк|цел[ьия]|сколько|что у меня|что сегодня|что по|добав|созда|отмет|перенес|свобод|кто так|телефон|контакт|номер|что я говорил про|помнишь про|погод|надеть|надену|одет|оденусь|выезж|вылет|лечу|бронь|билет|когда у меня|навык|сделк|воронк|продаж|клиент|(?:^|\s)кп(?=\s|$|[,.!?])|оплатил|заплатил|отказал|перегов|договор|перезвон|млн|миллион)/i;
+  /(задач|календар|встреч|событи|бюджет|потрат|расход|доход|привычк|напомн|почт|письм|gmail|расписан|план(?!ета)|поездк|цел[ьия]|сколько|что у меня|что сегодня|что по|добав|созда|отмет|перенес|свобод|кто так|телефон|контакт|номер|что я говорил про|помнишь про|погод|надеть|надену|одет|оденусь|выезж|вылет|лечу|бронь|билет|когда у меня|навык|сделк|воронк|продаж|клиент|(?:^|\s)кп(?=\s|$|[,.!?])|оплатил|заплатил|отказал|перегов|договор|перезвон|млн|миллион|тыс|\d\s*к(?=\s|$|[.,!?])|предложени|сч[её]т|контракт|подписал|согласил|перев[её]л|скинул|передумал)/i;
 
 /**
  * ISSUE-1: честный отказ когда tool-путь упал, а запрос требовал
@@ -329,6 +330,28 @@ export function mayNeedLocalTools(text: string): boolean {
   const t = text.trim();
   if (t.length < 12) return false; // короткие реплики = болтовня
   return TOOL_HINTS.test(t);
+}
+
+/**
+ * Ревью I-b: словаря мало («как там Ахмет по оборудованию?»). При включённых
+ * сделках — если в сообщении имя клиента с открытой сделкой, тоже нужны
+ * инструменты. Один маленький запрос (personName открытых, ≤50); сбой — только словарь.
+ */
+export async function needsLocalTools(userId: string, text: string): Promise<boolean> {
+  if (mayNeedLocalTools(text)) return true;
+  if (text.trim().length < 12 || !isV2DealsEnabled(userId)) return false;
+  try {
+    const open = await prisma.deal.findMany({
+      where: { userId, stage: { in: [...OPEN_STAGES] } },
+      select: { personName: true },
+      orderBy: { lastActivityAt: 'desc' },
+      take: 50,
+    });
+    return textMentionsClient(open.map((d) => d.personName), text);
+  } catch (err) {
+    console.warn('[jarvis] deal-client tools hint skipped:', err instanceof Error ? err.message : err);
+    return false;
+  }
 }
 
 /**
@@ -1271,6 +1294,7 @@ async function handleMessageCore(
   if (skillReply !== null) {
     reply = skillReply;
   } else {
+    const wantTools = hermesForceTools || (await needsLocalTools(userId, text));
     try {
       reply = await runAgent({
         system,
@@ -1283,7 +1307,7 @@ async function handleMessageCore(
         // («расскажи анекдот») они только грузят запрос (7 схем + риск
         // web_search+tools combo) без пользы. Включаем когда сообщение
         // правдоподобно требует данных/действия юзера.
-        localTools: hermesForceTools || mayNeedLocalTools(text),
+        localTools: wantTools,
         userId,
         // Confirm-bridge: confirm-tool (set_balance/clear_overdue/решения…)
         // НЕ исполняется в цикле — стейджим pending + детерминир. текст,
@@ -1313,7 +1337,7 @@ async function handleMessageCore(
       // Это страховка перед 9A.8: при поломке агент-цикла честный
       // отказ, а не тихая фабрикация. Чистая болтовня/инфо (tools не
       // нужны) деградирует как раньше — web_search легитимен.
-      if (mayNeedLocalTools(text) || hermesForceTools) {
+      if (wantTools) {
         // hermesForceTools: навык подсеян в system, но без localTools агент
         // не сможет вызвать его инструменты — честный отказ лучше, чем
         // ответ с «использовал инструмент X», которого в наборе нет.
