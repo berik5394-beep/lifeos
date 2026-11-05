@@ -5,7 +5,9 @@ import { localDateStr, localDateOnlyUTC, dateOnlyUTC, localMonthOnlyUTC, localMo
 import { getEntityGraph } from '../entity-graph/index.js';
 import { defaultNextStep, isOpenStage, OPEN_STAGES, type DealStage } from './stages.js';
 import { salesPace, coveringDeals, type Pace } from './pace.js';
-import { formatDealsSection, describePlan, describeUpdated, describeWhichDeal, fmtMoneyExact } from './format.js';
+import { formatDealsSection, describePlan, describeUpdated, describeWhichDeal, fmtMoneyExact, dealStepLabel } from './format.js';
+import { isV2DealsEnabled } from '../../lib/feature-flags.js';
+import type { CapacityItem } from '../capacity-fit.js';
 
 export const DEAL_INCOME_ACTION = 'record_deal_income';
 
@@ -401,3 +403,44 @@ export async function gatherDealsSection(userId: string, now: Date = new Date())
       : null,
   });
 }
+
+/** Шаг по сделке ест время дня: звонок/письмо/встреча клиенту. */
+export const DEFAULT_DEAL_STEP_MINUTES = 20;
+/** Обещание клиенту — как high-задача: не вылетает из fit, не двигается. */
+export const DEAL_STEP_IMPORTANCE = 3;
+
+export interface DealStep {
+  id: string;
+  personName: string;
+  title: string;
+  nextStepText: string | null;
+  /** Гражданская дата шага 'YYYY-MM-DD'. */
+  date: string;
+}
+
+/**
+ * Открытые сделки с шагом в [from, toExcl) (@db.Date, UTC-полночь гражданских
+ * дат). Флаг выкл. → [] без запроса (всё, что на этом строится, — как раньше).
+ */
+export async function listDealSteps(userId: string, from: Date, toExcl: Date): Promise<DealStep[]> {
+  if (!isV2DealsEnabled(userId)) return [];
+  const rows = await prisma.deal.findMany({
+    where: { userId, stage: { in: [...OPEN_STAGES] }, nextStepAt: { gte: from, lt: toExcl } },
+    select: { id: true, personName: true, title: true, nextStepText: true, nextStepAt: true },
+    orderBy: [{ nextStepAt: 'asc' }, { createdAt: 'asc' }],
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    personName: r.personName,
+    title: r.title,
+    nextStepText: r.nextStepText,
+    date: civil(r.nextStepAt) ?? '',
+  }));
+}
+
+/** Шаги по сделкам как спрос на время (день/неделя/месяц). Флаг выкл. → []. */
+export async function dealStepLoadItems(userId: string, from: Date, toExcl: Date): Promise<CapacityItem[]> {
+  const steps = await listDealSteps(userId, from, toExcl);
+  return steps.map((s) => ({ label: dealStepLabel(s), demand: DEFAULT_DEAL_STEP_MINUTES, importance: DEAL_STEP_IMPORTANCE }));
+}
+

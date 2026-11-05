@@ -12,6 +12,8 @@ import { buildNotFoundMessage } from '../tools/_habit-match.js';
 import { createTaskTool } from '../tools/create-task.js';
 import { civilDayRefs, addCivilDays } from '../lib/tz.js';
 import { setPendingAction } from './pending-actions.js';
+import { proposeReschedule } from './reschedule.js';
+import { createDeal } from './deals/service.js';
 
 /**
  * Перегруз дня → робот предлагает сдвинуть график одним касанием
@@ -327,5 +329,34 @@ describe('этап 2: «сделал X» — привычка или задач�
     const habits = await prisma.habit.findMany({ where: { userId, active: true }, select: { id: true, name: true } });
     await expect(completeHabitTool.handler({ name: 'отчёт' }, { userId })).rejects.toThrow(buildNotFoundMessage('отчёт', habits));
     expect(await prisma.task.count({ where: { userId, completed: true } })).toBe(0);
+  });
+});
+
+describe('шаги по сделкам × перегруз дня', () => {
+  const ORIG_DEALS = process.env.FEATURE_V2_DEALS;
+  afterAll(() => {
+    if (ORIG_DEALS === undefined) delete process.env.FEATURE_V2_DEALS;
+    else process.env.FEATURE_V2_DEALS = ORIG_DEALS;
+  });
+
+  // Завтра: свободно 60 мин, «Почта»+«Банк» = 60 (влезает). Шаг по сделке +20 → 80.
+  it('шаг по сделке грузит день: двигаем только задачи, шаг остаётся', async () => {
+    process.env.FEATURE_V2_DEALS = 'all';
+    const { userId, mail } = await overloadedTomorrow('deal-step');
+    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', nextStepDate: tomorrow, nextStepText: 'связаться' });
+    const p = await proposeReschedule(userId, tomorrow, null);
+    expect(p?.text).toContain('дел на ~1,5 ч');
+    expect(p?.moves).toEqual([{ taskId: mail.id, title: 'Почта', fromDate: tomorrow, toDate: dayAfter }]);
+    expect(p?.text).not.toContain('Ахмет');
+    const pending = await prisma.pendingAction.findUnique({ where: { userId } });
+    expect(JSON.stringify(pending?.inputJson)).not.toContain('deal:');
+  });
+
+  it('флаг сделок выкл. → как раньше: день влезает, предложения нет', async () => {
+    process.env.FEATURE_V2_DEALS = '';
+    const { userId } = await overloadedTomorrow('deal-off');
+    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', nextStepDate: tomorrow, nextStepText: 'связаться' });
+    expect(await proposeReschedule(userId, tomorrow, null)).toBeNull();
+    process.env.FEATURE_V2_DEALS = 'all';
   });
 });

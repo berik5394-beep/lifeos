@@ -5,6 +5,7 @@ import { isV2WeekLoadEnabled } from '../lib/feature-flags.js';
 import { sumWeekCapacity } from '../tools/_slots.js';
 import { computeCapacityFit, type CapacityFit, type CapacityItem } from './capacity-fit.js';
 import { mapPriority, DEFAULT_TASK_MINUTES } from './day-load.js';
+import { dealStepLoadItems } from './deals/service.js';
 
 const DAY_MS = 86_400_000;
 const WEEK_LOAD_SCOPE = 'time:week_load';
@@ -35,7 +36,7 @@ export async function gatherWeekLoad(
   const weekStart = new Date(todayStart.getTime() - daysFromMon * DAY_MS);
   const weekEndExcl = new Date(weekStart.getTime() + 7 * DAY_MS); // next Monday 00:00
 
-  const [tasks, events] = await Promise.all([
+  const [tasks, events, dealSteps] = await Promise.all([
     prisma.task.findMany({
       where: { userId, date: { gte: weekStart, lt: weekEndExcl }, completed: false, cancelled: false },
       select: { title: true, estimatedMinutes: true, importance: true, priority: true },
@@ -44,6 +45,8 @@ export async function gatherWeekLoad(
       where: { userId, date: { gte: todayStart, lt: weekEndExcl } },
       select: { date: true, startTime: true, endTime: true },
     }),
+    // Шаги по сделкам недели (то же окно, что у задач; флаг выкл. → []).
+    dealStepLoadItems(userId, weekStart, weekEndExcl),
   ]);
 
   // События по локальному дню (нормализуем к local-day-start instant — устойчиво
@@ -65,11 +68,14 @@ export async function gatherWeekLoad(
   }
 
   const capacity = sumWeekCapacity(days, localTimeStr(tz, now));
-  const items: CapacityItem[] = tasks.map((t) => ({
-    label: t.title,
-    demand: t.estimatedMinutes ?? DEFAULT_TASK_MINUTES,
-    importance: t.importance ?? mapPriority(t.priority),
-  }));
+  const items: CapacityItem[] = [
+    ...tasks.map((t) => ({
+      label: t.title,
+      demand: t.estimatedMinutes ?? DEFAULT_TASK_MINUTES,
+      importance: t.importance ?? mapPriority(t.priority),
+    })),
+    ...dealSteps,
+  ];
   return { capacity, items };
 }
 

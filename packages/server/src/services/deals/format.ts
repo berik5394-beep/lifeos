@@ -176,6 +176,11 @@ export function dealBriefLine(d: { title: string; amount: number | null; stage: 
   return `Сделка «${d.title}»${amount}, ${stageAge(d.stage, d.daysInStage)}.`;
 }
 
+/** Подпись шага по сделке для нагрузки/календаря/брифа: «Ахмет — связаться». */
+export function dealStepLabel(d: { personName: string; nextStepText: string | null }): string {
+  return `${d.personName} — ${d.nextStepText ?? 'шаг по сделке'}`;
+}
+
 /** Творительный «с Ахметом / с Даной / с Алей». */
 export function instrumental(name: string): string {
   if (/а$/i.test(name)) return name.slice(0, -1) + 'ой';

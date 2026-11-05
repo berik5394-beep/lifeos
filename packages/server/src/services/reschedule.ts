@@ -11,6 +11,8 @@ import { planVsFact } from './plan-vs-fact.js';
 import { peekPendingAction, setPendingAction } from './pending-actions.js';
 import { captureActivity } from './tool-activity-summary.js';
 import { ruDayName } from './goal-slot.js';
+import { listDealSteps, DEFAULT_DEAL_STEP_MINUTES, DEAL_STEP_IMPORTANCE } from './deals/service.js';
+import { dealStepLabel } from './deals/format.js';
 
 /**
  * Перегруз дня → робот ПРЕДЛАГАЕТ сдвинуть график, юзер подтверждает одним
@@ -241,12 +243,14 @@ export function describeProposal(args: {
 // ---------------------------------------------------------------------------
 
 const civil = (d: Date) => d.toISOString().slice(0, 10); // @db.Date → 'YYYY-MM-DD'
+/** id шага по сделке в окне переносов — не задача, никогда не двигается. */
+const DEAL_STEP_ID_PREFIX = 'deal:';
 
 /** День D + следующие LOOKAHEAD_DAYS дней: ёмкость и задачи. */
 async function gatherWindow(userId: string, day: string, today: string, nowHHMM: string) {
   const from = dateOnlyUTC(day);
   const toExcl = dateOnlyUTC(addCivilDays(day, LOOKAHEAD_DAYS + 1));
-  const [tasks, events] = await Promise.all([
+  const [tasks, events, dealSteps] = await Promise.all([
     prisma.task.findMany({
       where: { userId, date: { gte: from, lt: toExcl }, completed: false, cancelled: false },
       select: {
@@ -267,6 +271,8 @@ async function gatherWindow(userId: string, day: string, today: string, nowHHMM:
       where: { userId, date: { gte: from, lt: toExcl } },
       select: { date: true, startTime: true, endTime: true },
     }),
+    // Шаги по сделкам — нагрузка дня, но не двигаем (v1): fixed. Флаг выкл. → [].
+    listDealSteps(userId, from, toExcl),
   ]);
   const days: ShiftDay[] = [];
   for (let i = 0; i <= LOOKAHEAD_DAYS; i++) {
@@ -285,7 +291,20 @@ async function gatherWindow(userId: string, day: string, today: string, nowHHMM:
           priority: t.priority,
           time: t.time,
           fixed: t.parentId !== null,
-        })),
+        }))
+        .concat(
+          dealSteps
+            .filter((st) => st.date === date)
+            .map((st) => ({
+              id: `${DEAL_STEP_ID_PREFIX}${st.id}`,
+              title: dealStepLabel(st),
+              demand: DEFAULT_DEAL_STEP_MINUTES,
+              importance: DEAL_STEP_IMPORTANCE,
+              priority: 'high',
+              time: null,
+              fixed: true,
+            })),
+        ),
     });
   }
   return { days, tasks };
@@ -439,6 +458,7 @@ export function parseMoves(input: Record<string, unknown>): ShiftMove[] {
         !!m &&
         typeof m === 'object' &&
         typeof (m as ShiftMove).taskId === 'string' &&
+        !(m as ShiftMove).taskId.startsWith(DEAL_STEP_ID_PREFIX) && // шаг по сделке — не задача
         typeof (m as ShiftMove).title === 'string' &&
         re.test(String((m as ShiftMove).fromDate)) &&
         re.test(String((m as ShiftMove).toDate)),

@@ -6,6 +6,7 @@ import { sumWeekCapacity } from '../tools/_slots.js';
 import { computeCapacityFit, type CapacityFit, type CapacityItem } from './capacity-fit.js';
 import { mapPriority, DEFAULT_TASK_MINUTES } from './day-load.js';
 import { DEFAULT_GOAL_MINUTES } from './estimate-goal-minutes.js';
+import { dealStepLoadItems } from './deals/service.js';
 
 const DAY_MS = 86_400_000;
 const MONTH_LOAD_SCOPE = 'time:month_load';
@@ -37,7 +38,7 @@ export async function gatherMonthLoad(
   const monthEndExcl = localMonthOnlyUTC(tz, new Date(monthStart.getTime() + 32 * DAY_MS));
   const todayStart = localDateOnlyUTC(tz, now);
 
-  const [tasks, weeklyGoals, events] = await Promise.all([
+  const [tasks, weeklyGoals, events, dealSteps] = await Promise.all([
     prisma.task.findMany({
       where: { userId, date: { gte: monthStart, lt: monthEndExcl }, completed: false, cancelled: false },
       select: { title: true, estimatedMinutes: true, importance: true, priority: true },
@@ -50,6 +51,8 @@ export async function gatherMonthLoad(
       where: { userId, date: { gte: todayStart, lt: monthEndExcl } },
       select: { date: true, startTime: true, endTime: true },
     }),
+    // Шаги по сделкам месяца (то же окно, что у задач; флаг выкл. → []).
+    dealStepLoadItems(userId, monthStart, monthEndExcl),
   ]);
 
   const dayKey = (d: Date) => localDateOnlyUTC(tz, d).getTime();
@@ -80,6 +83,7 @@ export async function gatherMonthLoad(
       demand: g.estimatedMinutes ?? DEFAULT_GOAL_MINUTES,
       importance: GOAL_IMPORTANCE,
     })),
+    ...dealSteps,
   ];
   return { capacity, items };
 }

@@ -192,6 +192,12 @@ describe('fmtMinutes / parseMoves', () => {
     expect(fmtMinutes(90)).toBe('1,5 ч');
     expect(fmtMinutes(420)).toBe('7 ч');
   });
+  it('parseMoves: шаги по сделкам (deal:…) — не задачи, не двигаем', () => {
+    const ok = { taskId: 't1', title: 'Почта', fromDate: '2026-11-06', toDate: '2026-11-07' };
+    expect(
+      parseMoves({ moves: [{ taskId: 'deal:abc', title: 'Ахмет — связаться', fromDate: '2026-11-06', toDate: '2026-11-07' }, ok] }),
+    ).toEqual([ok]);
+  });
   it('parseMoves отбрасывает мусор из JSON', () => {
     expect(
       parseMoves({

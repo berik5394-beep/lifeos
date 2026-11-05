@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   fmtMoney, fmtMoneyExact, whenPhrase, describeCreated, describeUpdated, describeList,
   formatDealsSection, dealBriefLine, describePlan, instrumental, genitive, accusative, describeWhichDeal,
+  dealStepLabel,
 } from './format.js';
 
 const base = { personName: 'Ахмет', title: 'оборудование', amount: 2_000_000 as number | null };
@@ -120,3 +121,9 @@ describe('нит: падежи и число', () => {
   });
 });
 
+describe('шаг по сделке — подпись', () => {
+  it('клиент — шаг; без текста шага — «шаг по сделке»', () => {
+    expect(dealStepLabel({ personName: 'Ахмет', nextStepText: 'связаться' })).toBe('Ахмет — связаться');
+    expect(dealStepLabel({ personName: 'Дана', nextStepText: null })).toBe('Дана — шаг по сделке');
+  });
+});

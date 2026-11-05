@@ -9,6 +9,7 @@ import {
   type CapacityItem,
 } from './capacity-fit.js';
 import { estimateTaskMinutes } from './estimate-task-minutes.js';
+import { dealStepLoadItems } from './deals/service.js';
 
 export const DEFAULT_TASK_MINUTES = 30;
 const DAY_LOAD_SCOPE = 'time:day_load';
@@ -43,7 +44,7 @@ export async function gatherDayLoad(
   const tz = await getUserTimezone(userId);
   // FIX 2026-06-06: @db.Date task/event «сегодня» → UTC-полночь календарной даты.
   const today = localDateOnlyUTC(tz, now);
-  const [tasks, events] = await Promise.all([
+  const [tasks, events, dealSteps] = await Promise.all([
     prisma.task.findMany({
       where: { userId, date: today, completed: false, cancelled: false },
       select: { title: true, estimatedMinutes: true, importance: true, priority: true },
@@ -52,13 +53,18 @@ export async function gatherDayLoad(
       where: { userId, date: today },
       select: { startTime: true, endTime: true },
     }),
+    // Шаги по сделкам на сегодня — тоже время дня (флаг выкл. → []).
+    dealStepLoadItems(userId, today, new Date(today.getTime() + 86_400_000)),
   ]);
   const capacity = availableMinutesToday(events, localTimeStr(tz, now));
-  const items: CapacityItem[] = tasks.map((t) => ({
-    label: t.title,
-    demand: t.estimatedMinutes ?? DEFAULT_TASK_MINUTES,
-    importance: t.importance ?? mapPriority(t.priority),
-  }));
+  const items: CapacityItem[] = [
+    ...tasks.map((t) => ({
+      label: t.title,
+      demand: t.estimatedMinutes ?? DEFAULT_TASK_MINUTES,
+      importance: t.importance ?? mapPriority(t.priority),
+    })),
+    ...dealSteps,
+  ];
   return { capacity, items };
 }
 
