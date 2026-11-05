@@ -67,6 +67,10 @@ export default function DealsScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <PlanBar plan={plan} planKnown={planKnown} onPress={openPlan} />
+        {/* В потоке, а не плавающей кнопкой: плавающая перекрывала нижние сделки. */}
+        <Pressable onPress={openAdd} style={styles.addPill} accessibilityRole="button" accessibilityLabel="Добавить сделку">
+          <Text style={styles.addPillText}>+ Новая сделка</Text>
+        </Pressable>
         {loadError ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>Не удалось загрузить сделки — проверь интернет</Text>
@@ -79,7 +83,7 @@ export default function DealsScreen() {
           // Первая загрузка: пустой список — ещё не «сделок нет».
           loadError ? null : <ActivityIndicator style={styles.spinner} color={c.primary} />
         ) : groups.length === 0 ? (
-          <Text style={styles.empty}>Открытых сделок нет. Скажи роботу «Ахмет хочет оборудование на 2 млн» — заведу. Или нажми «+».</Text>
+          <Text style={styles.empty}>Открытых сделок нет. Скажи роботу «Ахмет хочет оборудование на 2 млн» — заведу. Или нажми «+ Новая сделка».</Text>
         ) : (
           groups.map((g) => (
             <View key={g.stage} style={styles.group}>
@@ -109,10 +113,6 @@ export default function DealsScreen() {
           closed.map((d) => <DealRow key={d.id} deal={d} today={today} onPress={setOpenId} />)
         )}
       </ScrollView>
-      {/* «+» слева: справа/внизу живёт микрофон. */}
-      <Pressable onPress={openAdd} style={styles.fab} accessibilityRole="button" accessibilityLabel="Добавить сделку">
-        <Text style={styles.fabText}>+</Text>
-      </Pressable>
       <DealSheet deal={openDeal} onClose={closeDeal} />
       <NewDealSheet visible={adding} onClose={closeAdd} />
       <PlanSheet visible={editingPlan} current={plan?.plan ?? null} onClose={closePlan} />
@@ -123,7 +123,7 @@ export default function DealsScreen() {
 function createStyles(c: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.background },
-    content: { padding: spacing.md, paddingBottom: spacing.xl * 3 },
+    content: { padding: spacing.md, paddingBottom: spacing.xl },
     empty: { color: c.textSecondary, fontSize: fontSize.md, textAlign: 'center', marginVertical: spacing.xl },
     group: { marginBottom: spacing.lg },
     groupTitle: { color: c.textSecondary, fontSize: fontSize.sm, fontWeight: '600', marginBottom: spacing.sm },
@@ -134,17 +134,14 @@ function createStyles(c: ReturnType<typeof useColors>) {
     errorText: { color: c.danger, fontSize: fontSize.sm, textAlign: 'center' },
     retry: { alignSelf: 'center', marginTop: spacing.sm, paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
     retryText: { color: c.primary, fontSize: fontSize.md, fontWeight: '600' },
-    fab: {
-      position: 'absolute',
-      left: spacing.lg,
-      bottom: spacing.xl,
-      width: 52,
-      height: 52,
-      borderRadius: 26,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: c.primary,
+    addPill: {
+      alignSelf: 'flex-start',
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderRadius: borderRadius.xl,
+      marginBottom: spacing.lg,
+      backgroundColor: c.surface,
     },
-    fabText: { color: '#FFFFFF', fontSize: 28, fontWeight: '700' },
+    addPillText: { color: c.primary, fontSize: fontSize.md, fontWeight: '600' },
   });
 }
