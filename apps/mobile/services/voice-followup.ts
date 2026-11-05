@@ -19,6 +19,8 @@ export interface ProcessResponse {
   confirmationText?: string | null;
   /** Эмоция робота на этот ход (сервер, по фактам). */
   emotion?: string | null;
+  /** «Открой задачи» → ключ панели (робот-эпик Часть 3). */
+  openPanel?: string | null;
 }
 
 export type VoiceFollowUp =

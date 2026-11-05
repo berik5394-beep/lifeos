@@ -64,3 +64,21 @@ describe('/room — расстановка мебели', () => {
     expect(await prisma.roomItem.count({ where: { userId: a.userId } })).toBe(0);
   });
 });
+
+describe('/room — одновременные сохранения', () => {
+  it('два PUT одновременно → в БД ровно один из наборов, без дублей', async () => {
+    const { userId, headers } = await user('race');
+    await put(headers, [{ itemKey: 'clock', x: 0.1, y: 0.1 }]);
+    const a = [{ itemKey: 'sofa', x: 0.2, y: 0.7 }, { itemKey: 'lamp', x: 0.5, y: 0.5 }];
+    const b = [{ itemKey: 'plant', x: 0.8, y: 0.6 }, { itemKey: 'rug', x: 0.4, y: 0.9 }];
+    for (let i = 0; i < 5; i++) {
+      const [ra, rb] = await Promise.all([put(headers, a), put(headers, b)]);
+      expect(ra.statusCode).toBe(200);
+      expect(rb.statusCode).toBe(200);
+      const keys = (await prisma.roomItem.findMany({ where: { userId }, select: { itemKey: true } }))
+        .map((r) => r.itemKey)
+        .sort();
+      expect([['lamp', 'sofa'], ['plant', 'rug']]).toContainEqual(keys);
+    }
+  });
+});

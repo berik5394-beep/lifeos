@@ -252,13 +252,14 @@ export default function ChatScreen() {
   );
 
   // «Открой задачи» → мозг присылает openPanel → открываем шторку (один раз на ответ).
-  const openedFor = useRef<string | null>(null);
+  // Стартуем с текущего ответа: при пересоздании экрана старая панель не открывается заново.
+  const openedFor = useRef<string | null>(latestAssistant?.id ?? null);
   useEffect(() => {
-    const route = panelRoute(latestAssistant?.openPanel);
+    const route = panelRoute(latestAssistant?.openPanel, isFeatureVisible);
     if (!latestAssistant || !route || openedFor.current === latestAssistant.id) return;
     openedFor.current = latestAssistant.id;
     navigation.navigate(route as never);
-  }, [latestAssistant, navigation]);
+  }, [latestAssistant, navigation, isFeatureVisible]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

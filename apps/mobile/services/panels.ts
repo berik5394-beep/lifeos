@@ -23,8 +23,17 @@ export const PANELS: readonly PanelDef[] = [
   { key: 'journal', route: 'Journal', label: 'Дневник', icon: 'book-open' },
 ];
 
-export function panelRoute(key: string | null | undefined): string | null {
-  return PANELS.find((p) => p.key === key)?.route ?? null;
+/**
+ * Маршрут панели по ключу с сервера. Панель, скрытая уровнем интерфейса
+ * (ui-store), не зарегистрирована в навигации → null (не открываем).
+ */
+export function panelRoute(
+  key: string | null | undefined,
+  isFeatureVisible: (feature: string) => boolean = () => true,
+): string | null {
+  const panel = PANELS.find((p) => p.key === key);
+  if (!panel || (panel.feature && !isFeatureVisible(panel.feature))) return null;
+  return panel.route;
 }
 
 export function visiblePanels(isFeatureVisible: (feature: string) => boolean): PanelDef[] {

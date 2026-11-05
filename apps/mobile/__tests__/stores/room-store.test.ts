@@ -22,14 +22,17 @@ describe('useRoomStore — расстановка мебели', () => {
     expect(useRoomStore.getState().items).toEqual([{ id: 'a', itemKey: 'sofa', x: 0.2, y: 0.7 }]);
   });
 
-  it('addItem ставит предмет в центр и сохраняет с задержкой', async () => {
+  it('addItem ставит предмет около центра и сохраняет с задержкой', async () => {
     mockedApi.put.mockResolvedValue({ items: [] });
     expect(useRoomStore.getState().addItem('plant')).toBe(true);
-    expect(useRoomStore.getState().items[0]).toMatchObject({ itemKey: 'plant', x: 0.5, y: 0.5 });
+    const it0 = useRoomStore.getState().items[0];
+    expect(it0.itemKey).toBe('plant');
+    expect(Math.abs(it0.x - 0.5)).toBeLessThanOrEqual(0.1);
+    expect(Math.abs(it0.y - 0.5)).toBeLessThanOrEqual(0.1);
     expect(mockedApi.put).not.toHaveBeenCalled();
     await jest.advanceTimersByTimeAsync(ROOM_SAVE_DELAY_MS);
     expect(mockedApi.put).toHaveBeenCalledTimes(1);
-    expect(putBody()).toEqual([{ itemKey: 'plant', x: 0.5, y: 0.5 }]);
+    expect(putBody()).toEqual([{ itemKey: 'plant', x: it0.x, y: it0.y }]);
   });
 
   it('серия движений → один PUT с последней позицией', async () => {
@@ -64,13 +67,44 @@ describe('useRoomStore — расстановка мебели', () => {
     expect(useRoomStore.getState().items).toHaveLength(30);
   });
 
-  it('сбой сети: изменения остаются локально, fetchRoom их не затирает', async () => {
+  it('сбой сети: правки остаются, fetchRoom их не затирает и досылает', async () => {
     mockedApi.put.mockRejectedValueOnce(new Error('offline'));
     useRoomStore.getState().addItem('clock');
     await jest.advanceTimersByTimeAsync(ROOM_SAVE_DELAY_MS);
     expect(useRoomStore.getState().dirty).toBe(true);
     mockedApi.get.mockResolvedValueOnce({ items: [] });
+    mockedApi.put.mockResolvedValueOnce({ items: [] });
     await useRoomStore.getState().fetchRoom();
     expect(useRoomStore.getState().items).toHaveLength(1);
+    await jest.advanceTimersByTimeAsync(ROOM_SAVE_DELAY_MS);
+    expect(mockedApi.put).toHaveBeenCalledTimes(2);
+    expect(useRoomStore.getState().dirty).toBe(false);
+  });
+
+  it('сохранения по очереди: новое не уходит, пока летит прежнее', async () => {
+    let release: () => void = () => {};
+    mockedApi.put.mockImplementationOnce(() => new Promise((r) => { release = () => r({ items: [] }); }));
+    mockedApi.put.mockResolvedValue({ items: [] });
+    useRoomStore.setState({ items: [{ id: 'a', itemKey: 'sofa', x: 0.2, y: 0.7 }] });
+    useRoomStore.getState().moveItem('a', 0.3, 0.7);
+    await jest.advanceTimersByTimeAsync(ROOM_SAVE_DELAY_MS);
+    expect(mockedApi.put).toHaveBeenCalledTimes(1);
+    useRoomStore.getState().moveItem('a', 0.9, 0.7);
+    await jest.advanceTimersByTimeAsync(ROOM_SAVE_DELAY_MS * 3);
+    expect(mockedApi.put).toHaveBeenCalledTimes(1); // ждёт первый
+    release();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(mockedApi.put).toHaveBeenCalledTimes(2);
+    expect(putBody(1)).toEqual([{ itemKey: 'sofa', x: 0.9, y: 0.7 }]);
+    expect(useRoomStore.getState().dirty).toBe(false);
+  });
+
+  it('reset (выход из аккаунта): комната пустая, отложенное сохранение отменено', async () => {
+    useRoomStore.getState().addItem('lamp');
+    useRoomStore.getState().reset();
+    await jest.advanceTimersByTimeAsync(ROOM_SAVE_DELAY_MS * 2);
+    expect(useRoomStore.getState().items).toEqual([]);
+    expect(useRoomStore.getState().dirty).toBe(false);
+    expect(mockedApi.put).not.toHaveBeenCalled();
   });
 });

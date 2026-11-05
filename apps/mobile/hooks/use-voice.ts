@@ -131,6 +131,8 @@ interface VoiceResult {
   transcript: string;
   /** Эмоция робота на этот ход (сервер, по фактам; робот-эпик Часть 2). */
   emotion: RobotEmotion;
+  /** «Открой задачи» голосом → ключ панели; экран открывает её (useOpenPanel). */
+  openPanel?: string | null;
 }
 
 interface TranscribeResponse {
@@ -522,6 +524,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
             `Я услышал: «${transcript}». Но не понял команду.`,
           transcript,
           emotion: normalizeEmotion(processData.emotion),
+          openPanel: processData.openPanel ?? null,
         };
         if (isMountedRef.current) {
           setLastResult(result);

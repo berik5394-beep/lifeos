@@ -20,6 +20,7 @@ import { Heatmap } from '@/components/charts';
 import { Confetti } from '@/components/shared';
 import { VoiceButton, MorningGreeting, EveningRitual, DictationModal } from '@/components/voice';
 import { useVoice } from '@/hooks/use-voice';
+import { useOpenPanel } from '@/hooks/use-open-panel';
 import { useMorningGreeting } from '@/hooks/use-morning-greeting';
 import { useTaskStore } from '@/stores/task-store';
 import { useGoalStore } from '@/stores/goal-store';
@@ -218,6 +219,7 @@ export default function PlannerScreen() {
     stopRecording,
     amplitude,
   } = useVoice();
+  useOpenPanel(lastResult);
 
   const {
     shouldShowGreeting,

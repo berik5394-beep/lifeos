@@ -28,6 +28,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { VoiceButton } from '@/components/voice';
 import { useVoice } from '@/hooks/use-voice';
+import { useOpenPanel } from '@/hooks/use-open-panel';
 import { spacing, borderRadius, fontSize, taskCategories, priorities } from '@/constants';
 import { useTaskStore } from '@/stores/task-store';
 import { useHabitStore } from '@/stores/habit-store';
@@ -600,6 +601,7 @@ export default function TasksScreen() {
     stopRecording,
     amplitude,
   } = useVoice();
+  useOpenPanel(lastResult);
 
 
   // ─── State ───────────────────────────────────────────────────────────────

@@ -82,6 +82,17 @@ export const RoomPage = memo(function RoomPage({
     setSize({ w: width, h: height });
   }, []);
 
+  // Долгое нажатие легко сделать случайно («взять» предмет) — спрашиваем.
+  const onRemove = useCallback(
+    (id: string) => {
+      Alert.alert('Убрать предмет?', undefined, [
+        { text: 'Отмена', style: 'cancel' },
+        { text: 'Убрать', style: 'destructive', onPress: () => removeItem(id) },
+      ]);
+    },
+    [removeItem],
+  );
+
   const onPick = useCallback(
     (key: RoomItemKey) => {
       if (addItem(key)) {
@@ -108,7 +119,7 @@ export const RoomPage = memo(function RoomPage({
                 roomHeight={size.h}
                 blockGesture={pagerGesture}
                 onMove={moveItem}
-                onRemove={removeItem}
+                onRemove={onRemove}
               />
             ))}
         </Animated.View>

@@ -30,7 +30,7 @@ export async function roomRoutes(app: FastifyInstance): Promise<void> {
   app.get('/room', async (request) => {
     const items = await prisma.roomItem.findMany({
       where: { userId: request.userId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: SELECT,
     });
     return { items };
@@ -41,11 +41,15 @@ export async function roomRoutes(app: FastifyInstance): Promise<void> {
     const { items } = request.body as z.infer<typeof putRoomSchema>;
     const userId = request.userId;
     const saved = await prisma.$transaction(async (tx) => {
+      // Пер-юзерный замок: два одновременных PUT (медленная сеть + новое
+      // движение) иначе оба удаляют «старое» и оба вставляют — в БД остаётся
+      // объединение обоих наборов (дубли мебели). С замком второй ждёт первого.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'room:' + userId}))`;
       await tx.roomItem.deleteMany({ where: { userId } });
       if (items.length > 0) {
         await tx.roomItem.createMany({ data: items.map((i) => ({ ...i, userId })) });
       }
-      return tx.roomItem.findMany({ where: { userId }, orderBy: { createdAt: 'asc' }, select: SELECT });
+      return tx.roomItem.findMany({ where: { userId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: SELECT });
     });
     return { items: saved };
   });

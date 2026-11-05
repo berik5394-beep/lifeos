@@ -31,6 +31,7 @@ import {
 } from '@/components/ui';
 import { VoiceButton } from '@/components/voice';
 import { useVoice } from '@/hooks/use-voice';
+import { useOpenPanel } from '@/hooks/use-open-panel';
 import { spacing, borderRadius, fontSize, habitCategories } from '@/constants';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { hapticLight, hapticSelection } from '@/services/haptics';
@@ -823,6 +824,7 @@ export default function HabitsScreen() {
     stopRecording,
     amplitude,
   } = useVoice();
+  useOpenPanel(lastResult);
 
 
   // ─── State ────────────────────────────────────────────────────────────────

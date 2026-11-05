@@ -89,6 +89,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Clear cached store data so next user starts fresh
     const { clearPersistedStores } = await import('@/services/store-persist');
     await clearPersistedStores();
+    const { useRoomStore } = await import('@/stores/room-store');
+    useRoomStore.getState().reset();
     set({ token: null, refreshToken: null, user: null, error: null });
   },
 

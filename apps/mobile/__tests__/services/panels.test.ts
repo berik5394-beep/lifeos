@@ -18,4 +18,10 @@ describe('panels — инструменты как панели (Часть 3)',
     expect(visiblePanels(hideGoalsFinance).map((p) => p.key)).toEqual(['today', 'tasks', 'habits', 'calendar', 'journal']);
     expect(visiblePanels(() => true)).toHaveLength(7);
   });
+
+  it('panelRoute: панель, скрытая уровнем интерфейса, не открывается (маршрута нет)', () => {
+    const hideFinance = (f: string) => f !== 'finance_tab';
+    expect(panelRoute('finance', hideFinance)).toBeNull();
+    expect(panelRoute('tasks', hideFinance)).toBe('Tasks');
+  });
 });
