@@ -15,9 +15,13 @@ export interface PanelDef {
   serverGated?: boolean;
 }
 
-/** Что сказал сервер о функциях за флагами (deal-store: GET /deals ответил 404 → false). */
+/**
+ * Что сказал сервер о функциях за флагами (deal-store: GET /deals ответил 404 → false,
+ * ещё не знаем → null: панель прячем, чтобы не мигала у тех, у кого функция выключена).
+ * Не передано (undefined) — без серверной проверки.
+ */
 export interface ServerAvailability {
-  dealsAvailable?: boolean;
+  dealsAvailable?: boolean | null;
 }
 
 export const PANELS: readonly PanelDef[] = [
@@ -47,7 +51,7 @@ export function panelRoute(
 
 function isPanelVisible(p: PanelDef, isFeatureVisible: (feature: string) => boolean, server: ServerAvailability): boolean {
   if (p.feature && !isFeatureVisible(p.feature)) return false;
-  return !p.serverGated || server.dealsAvailable !== false;
+  return !p.serverGated || server.dealsAvailable === undefined || server.dealsAvailable === true;
 }
 
 export function visiblePanels(isFeatureVisible: (feature: string) => boolean, server: ServerAvailability = {}): PanelDef[] {

@@ -162,12 +162,13 @@ export const RoomPage = memo(function RoomPage() {
   const sendMessage = useChatStore((s) => s.sendMessage);
   const confirmPendingAction = useChatStore((s) => s.confirmPendingAction);
   const isFeatureVisible = useUIStore((s) => s.isFeatureVisible);
-  // Сделки: сервер ответил 404 (флаг выключен) → инструмента на столе нет.
+  // Сделки: сервер ответил 404 (флаг выключен) или ещё не ответил → инструмента на столе нет.
+  // Смена аккаунта (новый токен) — спрашиваем заново: у другого пользователя флаг может быть другим.
   const dealsAvailable = useDealStore((s) => s.available);
   const fetchDeals = useDealStore((s) => s.fetch);
   useEffect(() => {
     void fetchDeals();
-  }, [fetchDeals]);
+  }, [fetchDeals, token]);
   const tools = useMemo(() => visiblePanels(isFeatureVisible, { dealsAvailable }), [isFeatureVisible, dealsAvailable]);
   const visibleToolKeys = useMemo(() => tools.map((t) => t.key), [tools]);
   const toolSeq = useRoomToolStore((s) => s.seq);

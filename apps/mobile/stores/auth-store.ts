@@ -91,6 +91,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await clearPersistedStores();
     const { useRoomStore } = await import('@/stores/room-store');
     useRoomStore.getState().reset();
+    const { useDealStore } = await import('@/stores/deal-store');
+    useDealStore.getState().reset();
     set({ token: null, refreshToken: null, user: null, error: null });
   },
 
@@ -107,6 +109,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     storage.remove('morning_reminder');
     storage.remove('evening_review');
     storage.remove('task_reminders');
+    // Сделки и запомненная доступность функции — не достаются следующему аккаунту.
+    const { useDealStore } = await import('@/stores/deal-store');
+    useDealStore.getState().reset();
     set({ token: null, refreshToken: null, user: null, error: null });
   },
 

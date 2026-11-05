@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api, ApiError } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { storage } from '@/services/storage';
 import { isOpenStage, type Deal, type DealStage, type DealWithEvents, type PlanStatus } from '@/services/deals';
 
 /**
@@ -33,8 +34,11 @@ interface DealState {
   /** Закрытые за 90 дней (грузятся по раскрытию «Закрытые»). */
   closed: Deal[];
   plan: PlanStatus | null;
-  /** false — сервер ответил 404 (функция выключена) → инструмента «Сделки» нет. */
-  available: boolean;
+  /**
+   * false — сервер ответил 404 (функция выключена) → инструмента «Сделки» нет;
+   * null — ещё не знаем (инструмент тоже прячем: не мигать). Последний ответ запоминаем.
+   */
+  available: boolean | null;
   isLoading: boolean;
   /**
    * Растёт на каждой правке сделок/плана из приложения (стадия, сумма, шаг, новая сделка,
@@ -49,11 +53,22 @@ interface DealState {
   moveStage: (id: string, stage: DealStage, lostReason?: string) => Promise<{ deal: Deal; incomeOffer: boolean }>;
   recordIncome: (id: string, force?: boolean) => Promise<IncomeResult>;
   setPlan: (amount: number) => Promise<void>;
+  /** Выход / удаление аккаунта: следующий пользователь не увидит чужих сделок. */
+  reset: () => void;
 }
 
 const ONLINE = { queueOffline: false } as const;
 const token = () => useAuthStore.getState().token ?? undefined;
 const is404 = (err: unknown) => err instanceof ApiError && err.status === 404;
+
+const AVAILABLE_KEY = 'deals_available';
+function rememberedAvailable(): boolean | null {
+  const v = storage.getString(AVAILABLE_KEY);
+  return v === 'true' ? true : v === 'false' ? false : null;
+}
+function rememberAvailable(v: boolean): void {
+  storage.set(AVAILABLE_KEY, String(v));
+}
 
 type MutationReply = { deal: Deal; incomeOffer: boolean };
 
@@ -83,25 +98,33 @@ export const useDealStore = create<DealState>((set, get) => {
     }
   };
 
-  return {
-    deals: [],
-    closed: [],
+  const initial = {
+    deals: [] as Deal[],
+    closed: [] as Deal[],
     plan: null,
-    available: true,
     isLoading: false,
     revision: 0,
+  };
+
+  return {
+    ...initial,
+    // Хранилище на старте может быть ещё не загружено — fetch досеет запомненное.
+    available: rememberedAvailable(),
 
     fetch: async () => {
       if (!token()) return;
-      set({ isLoading: true });
+      set((s) => ({ isLoading: true, ...(s.available === null ? { available: rememberedAvailable() } : {}) }));
       const [dealsRes, planRes] = await Promise.allSettled([
         api.get<{ deals: Deal[] }>('/deals?status=open', token()),
         api.get<{ plan: PlanStatus | null }>('/sales-plan', token()),
       ]);
       if (dealsRes.status === 'rejected') {
-        set({ isLoading: false, ...(is404(dealsRes.reason) ? { available: false } : {}) });
+        const off = is404(dealsRes.reason);
+        if (off) rememberAvailable(false);
+        set({ isLoading: false, ...(off ? { available: false } : {}) });
         return;
       }
+      rememberAvailable(true);
       set({
         deals: dealsRes.value.deals ?? [],
         available: true,
@@ -115,7 +138,10 @@ export const useDealStore = create<DealState>((set, get) => {
         const { deals } = await api.get<{ deals: Deal[] }>('/deals?status=closed', token());
         set({ closed: deals ?? [] });
       } catch (err) {
-        if (is404(err)) set({ available: false });
+        if (is404(err)) {
+          rememberAvailable(false);
+          set({ available: false });
+        }
       }
     },
 
@@ -188,6 +214,11 @@ export const useDealStore = create<DealState>((set, get) => {
     setPlan: async (amount) => {
       const { plan } = await api.put<{ plan: PlanStatus | null }>('/sales-plan', { amount }, token(), ONLINE);
       set((s) => ({ plan, revision: s.revision + 1 }));
+    },
+
+    reset: () => {
+      storage.remove(AVAILABLE_KEY);
+      set({ ...initial, available: null });
     },
   };
 });

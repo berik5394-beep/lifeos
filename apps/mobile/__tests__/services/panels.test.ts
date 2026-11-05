@@ -33,6 +33,10 @@ describe('сделки — инструмент прячется, когда с�
     expect(visiblePanels(() => true, { dealsAvailable: false })).toHaveLength(7);
     expect(visiblePanels(() => true, { dealsAvailable: true }).map((p) => p.key)).toContain('deals');
   });
+  it('dealsAvailable=null (ещё не знаем) → панели нет, пока сервер не ответил', () => {
+    expect(visiblePanels(() => true, { dealsAvailable: null }).map((p) => p.key)).not.toContain('deals');
+    expect(panelRoute('deals', () => true, { dealsAvailable: null })).toBeNull();
+  });
   it('«покажи сделки» при выключенной функции не открывает панель', () => {
     expect(panelRoute('deals', () => true, { dealsAvailable: false })).toBeNull();
     expect(panelRoute('tasks', () => true, { dealsAvailable: false })).toBe('Tasks');

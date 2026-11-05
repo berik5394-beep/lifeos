@@ -1,6 +1,7 @@
 import { useDealStore } from '@/stores/deal-store';
 import { api, ApiError } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { storage } from '@/services/storage';
 import type { Deal, PlanStatus } from '@/services/deals';
 
 // Глобальный мок api (setup.ts) без ApiError — берём настоящий класс, чтобы проверять 404/409/422.
@@ -38,6 +39,7 @@ beforeEach(() => {
   // resetAllMocks обнуляет и глобальный мок auth-store — возвращаем токен.
   (useAuthStore.getState as jest.Mock).mockReturnValue({ token: 'test-token-123' });
   useDealStore.setState({ deals: [], closed: [], plan: null, available: true, isLoading: false, revision: 0 });
+  storage.remove('deals_available');
 });
 
 describe('deal-store', () => {
@@ -193,6 +195,42 @@ describe('deal-store', () => {
       mocked.post.mockResolvedValueOnce({ ok: true, already: true, amount: 2_000_000 } as never);
       await useDealStore.getState().recordIncome('d1');
       expect(rev()).toBe(1); // «уже был записан» — ничего не поменялось
+    });
+  });
+
+  describe('available — не мигать инструментом и не тащить чужие сделки', () => {
+    it('ответ сервера запоминаем: 200 → true, 404 → false (переживает перезапуск)', async () => {
+      mocked.get.mockResolvedValue({ deals: [], plan: null } as never);
+      await useDealStore.getState().fetch();
+      expect(storage.getString('deals_available')).toBe('true');
+      mocked.get.mockRejectedValue(new ApiError(404, 'Не найдено'));
+      await useDealStore.getState().fetch();
+      expect(storage.getString('deals_available')).toBe('false');
+    });
+
+    it('не знаем (null) → до ответа берём запомненное', async () => {
+      storage.set('deals_available', 'false');
+      useDealStore.setState({ available: null });
+      let release: (v: unknown) => void = () => undefined;
+      const answer = new Promise((r) => { release = r; });
+      mocked.get.mockImplementation(() => answer as never);
+      const p = useDealStore.getState().fetch();
+      expect(useDealStore.getState().available).toBe(false);
+      release({ deals: [], plan: null });
+      await p;
+      expect(useDealStore.getState().available).toBe(true);
+    });
+
+    it('reset (выход/удаление аккаунта): сделки, план и запомненное — прочь, available неизвестно', () => {
+      storage.set('deals_available', 'true');
+      useDealStore.setState({ deals: [deal], closed: [deal], plan, available: true, revision: 5 });
+      useDealStore.getState().reset();
+      const st = useDealStore.getState();
+      expect(st.deals).toEqual([]);
+      expect(st.closed).toEqual([]);
+      expect(st.plan).toBeNull();
+      expect(st.available).toBeNull();
+      expect(storage.getString('deals_available')).toBeUndefined();
     });
   });
 });
