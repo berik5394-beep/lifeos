@@ -79,15 +79,32 @@ export type MoneyIntent =
  *  `[а-яё]` (НЕ \w — кириллица).
  */
 // Сумма + необязательный множитель: «2 млн», «2,5 млн», «3 миллиона», «500 тысяч»,
-// «5 тыс», «500к», «2 000 000». Ревью сделок B2: раньше «2 млн» → сумма 2, а «млн …»
-// уезжал в источник. «к» — только приклеенное к числу («500к»), иначе это предлог.
+// «5 тыс», «500к», «5 к», «2 000 000», «1,000». Ревью сделок B2: раньше «2 млн» → сумма 2,
+// а «млн …» уезжал в источник. «к» приклеенное к числу («500к») — тысяча; отдельное
+// («5 к») — только в конце или перед «на/за/от/тенге» (иначе это предлог: «500 к ужину»).
+// Число, приклеенное к слову («5000кофе», «500р»), — сумма + остаток, как до B2.
 const AMOUNT =
-  String.raw`(\d{1,3}(?:\s\d{3})+|\d+(?:[.,]\d+)?)(?:\s*(млн|миллион[а-яё]*|тыс[а-яё]*\.?)|(к))?(?=\s|$|[,.!?₸]|тг|тенге|руб)`;
+  String.raw`(\d{1,3}(?:\s\d{3})+|\d{1,3}(?:,\d{3})+(?!\d)|\d+(?:[.,]\d+)?)` +
+  String.raw`(?:\s*(млрд|миллиард[а-яё]*|млн|миллион[а-яё]*|тыс[а-яё]*\.?)` +
+  String.raw`|\s+(к)(?=$|[,.!?]|\s+(?:на|за|от|—|-|тенге|тг|₸)(?:\s|$))` +
+  String.raw`|(к)(?=\s|$|[,.!?₸]|тг|тенге|руб))?(?=\s|$|[,.!?₸]|тг|тенге|руб|[а-яёa-z])`;
+
+/** Потолок суммы (как zod у add_income/add_expense): больше — не деньги, а опечатка/шутка. */
+const MAX_MONEY = 1_000_000_000;
 
 function parseAmount(num: string, word: string | undefined, k: string | undefined): number {
-  const base = Number(num.replace(/\s/g, '').replace(',', '.'));
+  const n = num.replace(/\s/g, '');
   const w = (word ?? '').toLowerCase();
-  const mult = w.startsWith('млн') || w.startsWith('миллион') ? 1_000_000 : w.startsWith('тыс') || k ? 1_000 : 1;
+  const hasMult = !!w || !!k;
+  // «1,000» / «1,000,000» без множителя — запятая разделяет тысячи; «2,5 млн» — десятичная.
+  const base = !hasMult && /^\d{1,3}(?:,\d{3})+$/.test(n) ? Number(n.replace(/,/g, '')) : Number(n.replace(',', '.'));
+  const mult = w.startsWith('млрд') || w.startsWith('миллиард')
+    ? 1_000_000_000
+    : w.startsWith('млн') || w.startsWith('миллион')
+      ? 1_000_000
+      : w.startsWith('тыс') || k
+        ? 1_000
+        : 1;
   return Math.round(base * mult);
 }
 
@@ -101,9 +118,10 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
     ),
   );
   if (m) {
-    const amount = parseAmount(m[1], m[2], m[3]);
+    const amount = parseAmount(m[1], m[2], m[3] ?? m[4]);
+    if (amount > MAX_MONEY) return null;
     if (Number.isFinite(amount) && amount > 0) {
-      const source = m[4].trim();
+      const source = m[5].trim();
       return source
         ? { action: 'add_income', amount, source }
         : { action: 'add_income', amount };
@@ -118,9 +136,10 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
     ),
   );
   if (m) {
-    const amount = parseAmount(m[1], m[2], m[3]);
+    const amount = parseAmount(m[1], m[2], m[3] ?? m[4]);
+    if (amount > MAX_MONEY) return null;
     if (Number.isFinite(amount) && amount > 0) {
-      const rest = m[4].trim();
+      const rest = m[5].trim();
       return rest
         ? { action: 'add_expense', amount, category: rest, description: rest }
         : { action: 'add_expense', amount };
@@ -129,6 +148,7 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
   m = text.match(/^(\d[\d\s]{2,})\s*(?:тенге|тг|₸)?\s+на\s+(.+)$/i);
   if (m) {
     const amount = Number(m[1].replace(/\s/g, ''));
+    if (amount > MAX_MONEY) return null;
     if (Number.isFinite(amount) && amount > 0) {
       const rest = m[2].trim();
       return { action: 'add_expense', amount, category: rest, description: rest };
