@@ -1,5 +1,7 @@
-import { useState, useRef, useEffect, useCallback, memo, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, memo, useMemo, type ReactNode } from 'react';
 import {
+  type StyleProp,
+  type ViewStyle,
   View,
   Text,
   FlatList,
@@ -21,6 +23,8 @@ import { useVoice } from '@/hooks/use-voice';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
 import { RobotAvatar } from '@/components/robot/robot-avatar';
 import { panelRoute, visiblePanels } from '@/services/panels';
+import { ComicBubble } from '@/components/robot/comic-bubble';
+import { ComicText } from '@/components/robot/comic-text';
 import { useUIStore } from '@/stores/ui-store';
 import { useColors } from '@/hooks/use-colors';
 import { hapticLight } from '@/services/haptics';
@@ -40,11 +44,13 @@ function formatTime(dateString: string): string {
 
 interface ChatBubbleProps {
   message: ChatMessage;
+  /** Свежий ответ робота — печатается по буквам, как в аниме. */
+  typewrite?: boolean;
   onAction: (action: ChatAction) => void;
   onConfirm: (messageId: string, confirm: boolean) => void;
 }
 
-const ChatBubble = memo(function ChatBubble({ message, onAction, onConfirm }: ChatBubbleProps) {
+const ChatBubble = memo(function ChatBubble({ message, onAction, onConfirm, typewrite = false }: ChatBubbleProps) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
   const isUser = message.role === 'user';
@@ -56,10 +62,13 @@ const ChatBubble = memo(function ChatBubble({ message, onAction, onConfirm }: Ch
           <Feather name="cpu" size={16} color={c.primary} />
         </View>
       )}
-      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
-        <Text style={[styles.bubbleText, isUser ? styles.bubbleTextUser : styles.bubbleTextAssistant]}>
-          {message.content}
-        </Text>
+      <BubbleFrame isUser={isUser} style={isUser ? [styles.bubble, styles.bubbleUser] : styles.comicBubble}>
+        {isUser ? (
+          <Text style={[styles.bubbleText, styles.bubbleTextUser]}>{message.content}</Text>
+        ) : (
+          // Реплики робота — комиксовое облачко (робот-эпик).
+          <ComicText text={message.content} typewrite={typewrite} />
+        )}
         <Text style={[styles.timestamp, isUser ? styles.timestampUser : styles.timestampAssistant]}>
           {formatTime(message.createdAt)}
         </Text>
@@ -101,10 +110,31 @@ const ChatBubble = memo(function ChatBubble({ message, onAction, onConfirm }: Ch
             </TouchableOpacity>
           </View>
         )}
-      </View>
+      </BubbleFrame>
     </View>
   );
 });
+
+/** Рамка сообщения: у юзера — обычный пузырь, у робота — облачко комикса с хвостиком к аватару. */
+function BubbleFrame({
+  isUser,
+  style,
+  children,
+}: {
+  isUser: boolean;
+  style: StyleProp<ViewStyle>;
+  children: ReactNode;
+}) {
+  if (isUser) return <View style={style}>{children}</View>;
+  return (
+    <ComicBubble tail="left" style={style}>
+      {children}
+    </ComicBubble>
+  );
+}
+
+/** Ответ робота считается «свежим» (печатаем по буквам) первые секунды после прихода. */
+const FRESH_REPLY_MS = 20_000;
 
 const SUGGESTIONS = [
   { emoji: '\uD83D\uDCCB', text: 'Какие у меня задачи на сегодня?' },
@@ -194,8 +224,17 @@ export default function ChatScreen() {
     }
   }, [isLoading, hasMore, fetchHistory]);
 
-  const renderItem = useCallback(({ item }: ListRenderItemInfo<ChatMessage>) => (
-    <ChatBubble message={item} onAction={handleAction} onConfirm={handleConfirm} />
+  const renderItem = useCallback(({ item, index }: ListRenderItemInfo<ChatMessage>) => (
+    <ChatBubble
+      message={item}
+      onAction={handleAction}
+      onConfirm={handleConfirm}
+      typewrite={
+        index === 0 &&
+        item.role === 'assistant' &&
+        Date.now() - new Date(item.createdAt).getTime() < FRESH_REPLY_MS
+      }
+    />
   ), [handleAction, handleConfirm]);
 
   const keyExtractor = useCallback((item: ChatMessage, index: number) => `${item.id}-${index}`, []);
@@ -392,6 +431,7 @@ type C = ReturnType<typeof useColors>;
 
 function createStyles(c: C) {
   return StyleSheet.create({
+    comicBubble: { flexShrink: 1, marginLeft: spacing.sm },
     emptyFlip: { transform: [{ scaleY: -1 }] },
     container: {
       flex: 1,
@@ -436,18 +476,11 @@ function createStyles(c: C) {
       backgroundColor: c.primary,
       borderBottomRightRadius: spacing.xs,
     },
-    bubbleAssistant: {
-      backgroundColor: c.surface,
-      borderBottomLeftRadius: spacing.xs,
-    },
     bubbleText: {
       fontSize: fontSize.md,
       lineHeight: 22,
     },
     bubbleTextUser: {
-      color: c.text,
-    },
-    bubbleTextAssistant: {
       color: c.text,
     },
     timestamp: {

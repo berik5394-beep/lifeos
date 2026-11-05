@@ -15,9 +15,13 @@ import { RobotAvatar } from '@/components/robot/robot-avatar';
 import { RoomFurnitureItem } from '@/components/robot/room-furniture-item';
 import { RoomCatalogBar } from '@/components/robot/room-catalog-bar';
 import { RoomDiorama } from '@/components/room/room-diorama';
+import { RobotSpeechBubble } from '@/components/robot/robot-speech-bubble';
 import { useColors } from '@/hooks/use-colors';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
 import { useRoomStore } from '@/stores/room-store';
+import { useAuthStore } from '@/stores/auth-store';
+import { storage } from '@/services/storage';
+import { thanksFor } from '@/services/robot-thanks';
 import { ROOM_MAX_ITEMS, type RoomItemKey } from '@/services/room-catalog';
 import { RENDER_SCALE as R, ZOOM_IN, clampPan, zoomOffset } from '@/services/room-geometry';
 import { spacing, fontSize, borderRadius } from '@/constants';
@@ -28,6 +32,9 @@ import { spacing, fontSize, borderRadius } from '@/constants';
  * приближение к этому участку (панорама: водишь пальцем), повторное двойное
  * нажатие — отдалить. Мебель: тап по предмету внизу — поставить, перетащить —
  * подвинуть, долгое нажатие — убрать. Расстановка — на сервере (room-store).
+ *
+ * Вблизи робот выходит из комнаты на передний план: уменьшается, встаёт
+ * сбоку и показывает рукой на предмет; за покупку — благодарит в облачке.
  */
 function timeTint(hour: number): string {
   if (hour >= 21 || hour < 6) return 'rgba(20,16,40,0.35)'; // ночь (абажур светит)
@@ -38,6 +45,9 @@ function timeTint(hour: number): string {
 
 const PARALLAX_PX = 6;
 const ZOOM_MS = 380;
+const THANKS_MS = 8000;
+const ROBOT_SIZE = 150;
+const ROBOT_SIDE_SCALE = 0.68;
 
 type BlockTarget = Parameters<GestureType['blocksExternalGesture']>[0];
 
@@ -55,6 +65,9 @@ export const RoomPage = memo(function RoomPage({
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [zoomed, setZoomed] = useState(false);
   const [reactionKey, setReactionKey] = useState<string | null>(null);
+  const [thanks, setThanks] = useState<string | null>(null);
+  const [newItemId, setNewItemId] = useState<string | null>(null);
+  const userName = useAuthStore((s) => s.user?.name ?? null);
   const emotion = useRobotReaction('happy', reactionKey);
   const items = useRoomStore((s) => s.items);
   const fetchRoom = useRoomStore((s) => s.fetchRoom);
@@ -70,6 +83,7 @@ export const RoomPage = memo(function RoomPage({
   const ty = useSharedValue(0);
   const panStartX = useSharedValue(0);
   const panStartY = useSharedValue(0);
+  const robotSide = useSharedValue(0);
   // Сцена нарисована в R раз крупнее и уменьшена: издалека масштаб 1/R, вблизи — 1 (чётко).
   const sceneScale = useDerivedValue(() => zoom.value / R);
 
@@ -91,6 +105,18 @@ export const RoomPage = memo(function RoomPage({
       clearTimeout(back);
     };
   }, [active]);
+
+  // Вблизи робот уходит в сторону (передний план), издалека — снова в центре комнаты.
+  useEffect(() => {
+    robotSide.value = withTiming(zoomed ? 1 : 0, { duration: ZOOM_MS });
+  }, [zoomed, robotSide]);
+
+  // Благодарность висит несколько секунд, потом облачко прячется.
+  useEffect(() => {
+    if (!thanks) return;
+    const t = setTimeout(() => setThanks(null), THANKS_MS);
+    return () => clearTimeout(t);
+  }, [thanks]);
 
   useEffect(() => {
     shift.value = withSpring(-headTurn * PARALLAX_PX * R, { damping: 18, stiffness: 90 });
@@ -114,6 +140,8 @@ export const RoomPage = memo(function RoomPage({
     tx.value = withTiming(0, { duration: ZOOM_MS });
     ty.value = withTiming(0, { duration: ZOOM_MS });
     setZoomed(false);
+    setThanks(null);
+    setNewItemId(null);
   }, [zoom, tx, ty]);
 
   // Двойное нажатие: издалека → приблизить это место; вблизи → отдалить.
@@ -162,6 +190,13 @@ export const RoomPage = memo(function RoomPage({
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: sceneScale.value }],
   }));
   const furnitureStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shift.value }] }));
+  const robotStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: -robotSide.value * (size.w / 2 - (ROBOT_SIZE * ROBOT_SIDE_SCALE) / 2 - 8) },
+      { translateY: (robotSide.value * ROBOT_SIZE * (1 - ROBOT_SIDE_SCALE)) / 2 },
+      { scale: 1 - robotSide.value * (1 - ROBOT_SIDE_SCALE) },
+    ],
+  }));
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -186,11 +221,15 @@ export const RoomPage = memo(function RoomPage({
         return;
       }
       setReactionKey(String(Date.now()));
-      // Новый предмет — приближаем его место, чтобы было видно и удобно поставить.
+      // Новый предмет — приближаем его, робот показывает на него и благодарит.
       const added = useRoomStore.getState().items.at(-1);
-      if (added) zoomTo(added.x * size.w, added.y * size.h);
+      if (added) {
+        zoomTo(added.x * size.w, added.y * size.h);
+        setNewItemId(added.id);
+        setThanks(thanksFor(key, storage.getString('assistantStyle'), userName));
+      }
     },
-    [addItem, zoomTo, size],
+    [addItem, zoomTo, size, userName],
   );
 
   const hint = zoomed
@@ -228,14 +267,25 @@ export const RoomPage = memo(function RoomPage({
                     zoom={sceneScale}
                     onMove={moveItem}
                     onRemove={onRemove}
+                    highlight={item.id === newItemId}
                   />
                 ))}
             </Animated.View>
-            <View style={styles.robot} pointerEvents="none">
-              <RobotAvatar emotion={emotion} size={150 * R} headTurn={headTurn} />
-            </View>
           </Animated.View>
           <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} pointerEvents="none" />
+          <Animated.View style={[styles.robot, robotStyle]} pointerEvents="none">
+            <RobotAvatar
+              emotion={emotion}
+              size={ROBOT_SIZE}
+              headTurn={zoomed ? 1 : headTurn}
+              pointing={zoomed}
+            />
+          </Animated.View>
+          {zoomed && thanks && (
+            <View style={styles.bubble} pointerEvents="none">
+              <RobotSpeechBubble text={thanks} />
+            </View>
+          )}
           {zoomed && (
             <Pressable
               onPress={zoomOut}
@@ -267,6 +317,7 @@ function createStyles(c: ReturnType<typeof useColors>) {
     },
     scene: { position: 'absolute' },
     robot: { position: 'absolute', left: 0, right: 0, bottom: '4%', alignItems: 'center' },
+    bubble: { position: 'absolute', left: spacing.sm, right: '22%', bottom: ROBOT_SIZE * ROBOT_SIDE_SCALE + 40 },
     zoomOut: {
       position: 'absolute',
       top: spacing.sm,

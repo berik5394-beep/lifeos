@@ -32,6 +32,8 @@ interface RobotAvatarProps {
   attention?: RobotAttention;
   /** Поворот головы: −1 влево, 0 прямо, +1 вправо (комната, Часть 4). */
   headTurn?: -1 | 0 | 1;
+  /** Показывает правой рукой вверх-вправо (на предмет в комнате). */
+  pointing?: boolean;
 }
 
 const BASE_W = 150;
@@ -96,6 +98,7 @@ export const RobotAvatar = memo(function RobotAvatar({
   size = BASE_H,
   attention = 'idle',
   headTurn = 0,
+  pointing = false,
 }: RobotAvatarProps) {
   const shape = eyeShapeFor(emotion);
   const scale = size / BASE_H;
@@ -108,6 +111,7 @@ export const RobotAvatar = memo(function RobotAvatar({
   const head = useSharedValue(0);
   const wave = useSharedValue(0);
   const pulse = useSharedValue(1);
+  const point = useSharedValue(0);
 
   // Постоянная жизнь: дыхание, пульс антенны, моргание раз в 3–6 с.
   useEffect(() => {
@@ -155,6 +159,18 @@ export const RobotAvatar = memo(function RobotAvatar({
     head.value = withSpring(headTurn * 13, SPRING);
   }, [headTurn, head]);
 
+  // Указывает на предмет: рука поднимается и чуть «тычет», привлекая внимание.
+  useEffect(() => {
+    if (pointing) {
+      point.value = withSequence(
+        withSpring(-95, SPRING),
+        withRepeat(withSequence(withTiming(-84, { duration: 260 }), withTiming(-95, { duration: 260 })), 3, true),
+      );
+    } else {
+      point.value = withSpring(0, SPRING);
+    }
+  }, [pointing, point]);
+
   const rootStyle = useAnimatedStyle(() => ({
     transform: [
       { translateY: breathe.value + (1 - attn.value) * 30 },
@@ -167,7 +183,10 @@ export const RobotAvatar = memo(function RobotAvatar({
   const eyesStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: shape.offsetX }, { translateY: shape.offsetY }, { scale: pulse.value }],
   }));
-  const rightArmStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${-28 + wave.value}deg` }] }));
+  const rightArmStyle = useAnimatedStyle(() => ({
+    // При указании рука вытягивается (до 1.9×) вправо-вверх, мимо головы — жест читается.
+    transform: [{ rotate: `${-28 + wave.value + point.value}deg` }, { scaleY: 1 + Math.min(1, point.value / -95) * 0.9 }],
+  }));
 
   return (
     <View style={{ width: BASE_W * scale, height: BASE_H * scale }} accessibilityLabel="Робот-компаньон">
@@ -181,7 +200,7 @@ export const RobotAvatar = memo(function RobotAvatar({
           <View style={[styles.arm, styles.armLeft]}>
             <View style={styles.hand} />
           </View>
-          <Animated.View style={[styles.arm, styles.armRight, rightArmStyle]}>
+          <Animated.View style={[styles.arm, styles.armRight, pointing && styles.armOnTop, rightArmStyle]}>
             <View style={styles.hand} />
           </Animated.View>
           <Animated.View style={[styles.head, headStyle]}>
@@ -302,6 +321,8 @@ const styles = StyleSheet.create({
   },
   armLeft: { left: 16, transform: [{ rotate: '28deg' }] },
   armRight: { right: 16 },
+  // Указывающая рука — поверх головы, иначе поднятую руку голова закрывает.
+  armOnTop: { zIndex: 6 },
   hand: {
     position: 'absolute',
     bottom: -6,

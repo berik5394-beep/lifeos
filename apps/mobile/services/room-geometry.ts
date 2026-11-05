@@ -95,27 +95,23 @@ export const RENDER_SCALE = 2.2;
 export const ZOOM_IN = RENDER_SCALE;
 
 /**
- * Сдвиг для приближения в `scale` раз так, чтобы точка `p` оказалась в
- * центре сцены — но не дальше краёв (пустоту за комнатой не показываем).
+ * Ограничить сдвиг панорамы при приближении: окно просмотра не выходит за
+ * передний проём комнаты (FRONT) — пустоту за стенами и под полом не видно.
  * Масштаб — относительно центра сцены.
  */
-export function zoomOffset(p: Pt, W: number, H: number, scale: number): Pt {
-  const maxX = ((scale - 1) * W) / 2;
-  const maxY = ((scale - 1) * H) / 2;
-  const clamp = (v: number, m: number) => Math.min(m, Math.max(-m, v));
-  return {
-    x: clamp((W / 2 - p.x) * scale, maxX),
-    y: clamp((H / 2 - p.y) * scale, maxY),
-  };
-}
-
-/** Ограничить сдвиг панорамы при приближении (тот же предел, что в zoomOffset). */
 export function clampPan(t: Pt, W: number, H: number, scale: number): Pt {
   'worklet';
-  const maxX = ((scale - 1) * W) / 2;
-  const maxY = ((scale - 1) * H) / 2;
-  return {
-    x: Math.min(maxX, Math.max(-maxX, t.x)),
-    y: Math.min(maxY, Math.max(-maxY, t.y)),
+  const lim = (v: number, size: number, lo: number, hi: number) => {
+    const max = scale * (size / 2 - lo * size) - size / 2;
+    const min = scale * (size / 2 - hi * size) + size / 2;
+    // Если проём меньше окна (масштаб ~1) — не двигаем.
+    if (min > max) return 0;
+    return Math.min(max, Math.max(min, v));
   };
+  return { x: lim(t.x, W, FRONT.l, FRONT.r), y: lim(t.y, H, FRONT.t, FRONT.b) };
+}
+
+/** Сдвиг для приближения в `scale` раз так, чтобы точка `p` оказалась в центре (в пределах clampPan). */
+export function zoomOffset(p: Pt, W: number, H: number, scale: number): Pt {
+  return clampPan({ x: (W / 2 - p.x) * scale, y: (H / 2 - p.y) * scale }, W, H, scale);
 }

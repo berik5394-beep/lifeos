@@ -6,6 +6,7 @@ import Animated, {
   type SharedValue,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withSpring,
 } from 'react-native-reanimated';
 import { RENDER_SCALE as R, itemDepthScale } from '@/services/room-geometry';
@@ -27,6 +28,8 @@ interface RoomFurnitureItemProps {
   zoom: SharedValue<number>;
   onMove: (id: string, x: number, y: number) => void;
   onRemove: (id: string) => void;
+  /** Только что купленный предмет: «выпрыгивает» крупнее, пока робот на него показывает. */
+  highlight?: boolean;
 }
 
 /**
@@ -42,6 +45,7 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   zoom,
   onMove,
   onRemove,
+  highlight = false,
 }: RoomFurnitureItemProps) {
   const px = useSharedValue(item.x * roomWidth);
   const py = useSharedValue(item.y * roomHeight);
@@ -54,6 +58,12 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
     px.value = item.x * roomWidth;
     py.value = item.y * roomHeight;
   }, [item.x, item.y, roomWidth, roomHeight, px, py]);
+
+  useEffect(() => {
+    lift.value = highlight
+      ? withSequence(withSpring(1.8, SPRING), withSpring(1.35, SPRING))
+      : withSpring(1, SPRING);
+  }, [highlight, lift]);
 
   let pan = Gesture.Pan()
     .minDistance(4)

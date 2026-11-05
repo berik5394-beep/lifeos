@@ -53,7 +53,7 @@ describe('room-geometry — 3D-комната и приближение', () => 
     expect(itemDepthScale(0.9)).toBeGreaterThan(itemDepthScale(0.3));
   });
 
-  it('zoomOffset ставит точку в центр, но не показывает пустоту за краем', () => {
+  it('zoomOffset ставит точку в центр, но не показывает пустоту за стенами и под полом', () => {
     const W = 400;
     const H = 600;
     const center = zoomOffset({ x: 200, y: 300 }, W, H, 2);
@@ -61,9 +61,14 @@ describe('room-geometry — 3D-комната и приближение', () => 
     close(center.y, 0);
     const near = zoomOffset({ x: 180, y: 300 }, W, H, 2);
     close(near.x, 40);
+    // Предел — передний проём комнаты: 2*(0.5-0.03)*400-200 = 176; 2*(0.5-0.06)*600-300 = 228.
     const corner = zoomOffset({ x: 0, y: 0 }, W, H, 2);
-    close(corner.x, 200); // предел (2-1)*400/2
-    close(corner.y, 300);
-    expect(clampPan({ x: 999, y: -999 }, W, H, 2)).toEqual({ x: 200, y: -300 });
+    close(corner.x, 176);
+    close(corner.y, 228);
+    const far = clampPan({ x: -999, y: -999 }, W, H, 2);
+    close(far.x, -176);
+    close(far.y, -264); // низ проёма 0.97: 2*(0.5-0.97)*600+300
+    // Без приближения двигать нечего.
+    expect(clampPan({ x: 50, y: 50 }, W, H, 1)).toEqual({ x: 0, y: 0 });
   });
 });
