@@ -66,6 +66,16 @@ describe('тексты сделок', () => {
     expect(dealBriefLine({ title: 'оборудование', amount: 2_000_000, stage: 'proposal', daysInStage: 4 }))
       .toBe('Сделка «оборудование» 2 млн ₸, КП отправлено 4 дн назад.');
   });
+  it('строка брифа — живые фразы по стадиям, 0 дн = «сегодня»', () => {
+    const line = (stage: string, daysInStage: number) => dealBriefLine({ title: 'x', amount: null, stage, daysInStage });
+    expect(line('proposal', 0)).toBe('Сделка «x», КП отправлено сегодня.');
+    expect(line('contract', 3)).toBe('Сделка «x», договор/оплата — 3 дн.');
+    expect(line('contract', 0)).toBe('Сделка «x», договор/оплата — сегодня.');
+    expect(line('talks', 4)).toBe('Сделка «x», переговоры идут 4 дн.');
+    expect(line('talks', 0)).toBe('Сделка «x», переговоры начались сегодня.');
+    expect(line('new', 2)).toBe('Сделка «x», новая, 2 дн.');
+    expect(line('new', 0)).toBe('Сделка «x», новая, сегодня.');
+  });
 });
 
 describe('творительный падеж', () => {

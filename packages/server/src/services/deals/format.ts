@@ -155,10 +155,25 @@ export function formatDealsSection(s: {
   return parts.join('; ') + '.';
 }
 
+/** Сколько сделка в стадии — живой фразой: «КП отправлено 4 дн назад», «переговоры идут 4 дн»; 0 дн → «сегодня». */
+function stageAge(stage: string, n: number): string {
+  const today = n === 0;
+  switch (stage) {
+    case 'proposal': return today ? 'КП отправлено сегодня' : `КП отправлено ${n} дн назад`;
+    case 'contract': return today ? 'договор/оплата — сегодня' : `договор/оплата — ${n} дн`;
+    case 'talks': return today ? 'переговоры начались сегодня' : `переговоры идут ${n} дн`;
+    case 'new': return today ? 'новая, сегодня' : `новая, ${n} дн`;
+    default: {
+      const label = (STAGE_LABEL[stage as DealStage] ?? stage).toLowerCase();
+      return today ? `${label}, сегодня` : `${label}, ${n} дн`;
+    }
+  }
+}
+
 /** Строка в бриф встречи с клиентом. */
 export function dealBriefLine(d: { title: string; amount: number | null; stage: string; daysInStage: number }): string {
   const amount = d.amount != null ? ` ${fmtMoney(d.amount)}` : '';
-  return `Сделка «${d.title}»${amount}, ${STAGE_LABEL[d.stage as DealStage] ?? d.stage} ${d.daysInStage} дн назад.`;
+  return `Сделка «${d.title}»${amount}, ${stageAge(d.stage, d.daysInStage)}.`;
 }
 
 /** Творительный «с Ахметом / с Даной / с Алей». */
