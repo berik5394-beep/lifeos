@@ -262,14 +262,14 @@ export const api = {
   /**
    * Повтор записи из офлайн-очереди (без повторной постановки в очередь).
    * true — ушло; false — сервер окончательно отказал (4xx: задачи уже нет и т.п.) →
-   * выкинуть; throw — нет сети/сервера/доступа (401, 429, 5xx) → оставить в очереди.
+   * выкинуть; throw — нет сети/сервера/доступа (401, 408, 429, 5xx) → оставить в очереди.
    */
   replayQueued: async (m: { method: string; endpoint: string; body?: unknown }, token: MaybeToken): Promise<boolean> => {
     try {
       await request<unknown>(m.endpoint, { method: m.method, body: m.body, token: token ?? undefined });
       return true;
     } catch (err) {
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 401 && err.status !== 429) return false;
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500 && ![401, 408, 429].includes(err.status)) return false;
       throw err;
     }
   },

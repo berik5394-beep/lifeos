@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { storage } from '@/services/storage';
-import { api } from '@/services/api';
+import { api, ApiError } from '@/services/api';
 
 interface User {
   id: string;
@@ -145,8 +145,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         token: data.accessToken,
         refreshToken: data.refreshToken,
       });
-    } catch {
-      await get().logout();
+    } catch (err) {
+      // Выходим, только если сервер отклонил токен. Нет сети (0), сервер
+      // лежит (5xx) или лимит (429) — остаёмся в аккаунте со старым токеном:
+      // раньше запуск без интернета выкидывал из приложения.
+      const status = err instanceof ApiError ? err.status : -1;
+      if (status === 400 || status === 401 || status === 403) await get().logout();
     }
   },
 

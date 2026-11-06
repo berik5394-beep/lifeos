@@ -7,8 +7,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useAppStore } from '@/stores/app-store';
 import { useThemeStore } from '@/stores/theme-store';
 import { useUIStore } from '@/stores/ui-store';
-import { initOfflineManager, networkMonitor, offlineQueue } from '@/services/offline-manager';
-import { api } from '@/services/api';
+import { startOfflineSync } from '@/services/offline-sync';
 import { setupVoiceAlarmListener } from '@/services/voice-alarm';
 
 // Робот-эпик, Часть 3: дом из двух экранов (Комната ↔ Рабочий) + панели-шторки
@@ -104,8 +103,6 @@ export default function Navigation() {
       } catch {
         // continue with empty cache
       }
-      // Initialize offline manager (network monitor + queue)
-      await initOfflineManager();
       // Rehydrate theme from persisted storage (must happen after storage.load())
       useThemeStore.getState().rehydrate();
       await loadStoredAuth();
@@ -115,66 +112,6 @@ export default function Navigation() {
       } catch {
         // If refresh fails, user will need to re-login
       }
-      // Sync offline queue when network is restored
-      const unsubscribeNetwork = networkMonitor.onChange(async (isConnected) => {
-        if (isConnected && offlineQueue.pendingCount > 0) {
-          const token = useAuthStore.getState().token;
-          if (!token) return;
-          await offlineQueue.sync(async (mutation) => {
-            // Раньше было `return res.ok || res.status === 404` — любой не-200
-            // ответ считался "non-retryable" и дропался из очереди. Это ломало
-            // два сценария:
-            //   1. 500/502/503 (транзиентная ошибка сервера) — пользователь
-            //      терял изменения вместо повторной попытки после восстановления
-            //      сервера.
-            //   2. 401 (access-токен истёк) — offline-мутация дропалась, хотя
-            //      после рефреша токена она бы прошла.
-            // Теперь:
-            //   - 2xx → success
-            //   - 404 → success (идемпотентный DELETE, запись уже удалена)
-            //   - 4xx (400, 403, 409, 422, ...) → drop (клиентский баг / конфликт)
-            //   - 401 / 408 / 429 / 5xx / network → throw → retry с backoff
-            try {
-              const headers: Record<string, string> = {};
-              if (mutation.body !== undefined) {
-                headers['Content-Type'] = 'application/json';
-              }
-              headers['Authorization'] = `Bearer ${token}`;
-              const res = await fetch(
-                `${process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000'}${mutation.endpoint}`,
-                {
-                  method: mutation.method,
-                  headers,
-                  body: mutation.body !== undefined ? JSON.stringify(mutation.body) : undefined,
-                }
-              );
-
-              // Успешные статусы
-              if (res.ok) return true;
-              if (res.status === 404) return true; // идемпотентный DELETE
-
-              // Транзиентные ошибки — бросаем, чтобы offlineQueue поставил
-              // на retry (с инкрементом retryCount).
-              if (
-                res.status === 401 ||  // токен истёк — после рефреша пройдёт
-                res.status === 408 ||  // request timeout
-                res.status === 429 ||  // rate limited
-                res.status >= 500      // 5xx серверные ошибки
-              ) {
-                throw new Error(`Transient HTTP ${res.status}`);
-              }
-
-              // 4xx (кроме 401/404/408/429) — клиентская ошибка, ретрай
-              // бессмысленен. Дропаем из очереди.
-              return false;
-            } catch (err) {
-              // Сетевые ошибки fetch (TypeError / "Network request failed")
-              // + наши явные throw выше → попадают сюда и идут на retry.
-              throw err instanceof Error ? err : new Error(String(err));
-            }
-          });
-        }
-      });
       // Setup voice alarm: speaks aloud when task/meeting alarm fires (respects assistant style)
       const cleanupVoiceAlarm = setupVoiceAlarmListener();
 
@@ -185,9 +122,11 @@ export default function Navigation() {
 
       setOnboardingDone(storage.getBoolean('onboarding_complete') ?? false);
       setIsReady(true);
+      // Сеть + отправка записей, сделанных без интернета: при запуске, при
+      // появлении связи и при возврате в приложение; потом сторы перечитываются.
+      startOfflineSync().catch(() => {});
 
       return () => {
-        unsubscribeNetwork();
         cleanupVoiceAlarm();
       };
     })();

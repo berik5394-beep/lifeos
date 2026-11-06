@@ -17,7 +17,9 @@ export function OfflineBanner() {
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
-      const offline = !(state.isConnected && state.isInternetReachable !== false);
+      // То же правило, что у офлайн-менеджера: только явное «нет подключения».
+      // Проверка доступности (isInternetReachable) на iOS ложно пишет «нет интернета» при живом Wi-Fi.
+      const offline = state.isConnected === false;
 
       if (offline && !isOffline) {
         setIsOffline(true);
@@ -59,7 +61,7 @@ export function OfflineBanner() {
         color="#FFF"
       />
       <Text style={styles.text}>
-        {isOffline ? 'Нет подключения к интернету' : 'Подключение восстановлено'}
+        {isOffline ? 'Нет сети — записи сохраню и отправлю позже' : 'Связь есть — отправляю'}
       </Text>
     </Animated.View>
   );
