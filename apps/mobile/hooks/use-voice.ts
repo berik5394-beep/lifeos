@@ -311,16 +311,19 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
     // должна затирать подсказку «удерживай кнопку». Вне записи — тоже молчим:
     // пустой результат после «стоп» обрабатывает stopRecording.
     if (event.error === 'aborted' || stateRef.current !== 'recording') return;
-    // code: 'no-speech' | 'audio-capture' | 'not-allowed' | 'network' | ...
+    // Siri сломалась, пока кнопку держат («Failed to initialize recognizer»,
+    // сеть, сбой движка): не падаем в ошибку — молча пересаживаемся на запись
+    // звука (Whisper на сервере), и ту же фразу всё равно запишем. Siri на
+    // этой сессии больше не трогаем: ломается она стабильно.
+    if (modeRef.current === 'speech-recognition' && event.error !== 'no-speech' && event.error !== 'not-allowed') {
+      speechRecognitionAvailable = false;
+      void switchToAudioFallbackRef.current();
+      return;
+    }
     if (event.error === 'no-speech') {
       setError('Ничего не услышал. Говорите ближе к микрофону.');
-    } else if (event.error === 'not-allowed') {
-      setError('Нет разрешения на распознавание речи. Проверь настройки.');
-    } else if (event.error === 'network') {
-      setError('Нет интернета — попробуй ещё раз.');
     } else {
-      // Сырой текст системы (по-английски) юзеру не показываем.
-      setError('Не получилось включить распознавание речи. Нажми и держи ещё раз.');
+      setError('Нет разрешения на распознавание речи. Проверь настройки.');
     }
     // Сессия умерла, пока кнопку держат: не оставляем «вечную запись».
     if (stateRef.current === 'recording' && modeRef.current === 'speech-recognition') {
@@ -395,6 +398,65 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
   // START
   // ==========================================================
 
+  /**
+   * Запасной путь: запись звука (expo-av) → /voice/transcribe (Whisper).
+   * Зовётся, если Siri недоступна, не стартовала или сломалась в процессе.
+   * silent — пересадка посреди нажатия: без повторной вибрации.
+   */
+  const startAudioFallback = useCallback(async (silent = false) => {
+    try {
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) {
+        setError('Нет доступа к микрофону. Разреши его в Настройках → LifeOS.');
+        stateRef.current = 'error';
+        setState('error');
+        hapticError();
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording } = await Audio.Recording.createAsync(
+        {
+          ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+          isMeteringEnabled: true,
+        } as Audio.RecordingOptions,
+      );
+
+      recordingRef.current = recording;
+      modeRef.current = 'audio-fallback';
+      startRealMeter();
+      stateRef.current = 'recording';
+      setState('recording');
+      if (!silent) hapticMedium();
+    } catch {
+      setError('Не получилось включить микрофон. Нажми и держи ещё раз.');
+      stateRef.current = 'error';
+      setState('error');
+      hapticError();
+    }
+  }, [startRealMeter, hapticMedium, hapticError]);
+
+  /** Siri упала посреди записи — тихо переходим на запись звука (та же кнопка, тот же палец). */
+  const switchToAudioFallback = useCallback(async () => {
+    try {
+      ExpoSpeechRecognitionModule?.abort();
+    } catch {
+      /* ignore */
+    }
+    stopSyntheticMeter();
+    modeRef.current = null;
+    if (stateRef.current !== 'recording') return;
+    await startAudioFallback(true);
+  }, [stopSyntheticMeter, startAudioFallback]);
+  const switchToAudioFallbackRef = useRef(switchToAudioFallback);
+  useEffect(() => {
+    switchToAudioFallbackRef.current = switchToAudioFallback;
+  }, [switchToAudioFallback]);
+
   const startInner = useCallback(async () => {
     setError(null);
     setLastResult(null);
@@ -439,47 +501,14 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
         hapticMedium();
         return;
       } catch (err) {
+        // Siri не стартовала (нет движка, язык не скачан и т.п.) — запись звука.
         console.warn('Speech recognition failed, falling back to audio recording', err);
         speechRecognitionAvailable = false;
       }
     }
 
-    // Fallback: expo-av recording
-    try {
-      const perm = await Audio.requestPermissionsAsync();
-      if (!perm.granted) {
-        setError('Нет разрешения на запись звука. Проверь настройки.');
-        setState('error');
-        hapticError();
-        Alert.alert('Микрофон', 'Разрешите доступ к микрофону в настройках устройства.');
-        return;
-      }
-
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      const { recording } = await Audio.Recording.createAsync(
-        {
-          ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-          isMeteringEnabled: true,
-        } as Audio.RecordingOptions,
-      );
-
-      recordingRef.current = recording;
-      modeRef.current = 'audio-fallback';
-      startRealMeter();
-      stateRef.current = 'recording';
-      setState('recording');
-      hapticMedium();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Не удалось начать запись';
-      setError(message);
-      setState('error');
-      hapticError();
-    }
-  }, [startRealMeter, startSyntheticMeter, hapticMedium, hapticError]);
+    await startAudioFallback();
+  }, [startSyntheticMeter, hapticMedium, startAudioFallback]);
 
   // ==========================================================
   // CANCEL
