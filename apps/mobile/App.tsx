@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Navigation from './navigation';
 import { useThemeStore } from '@/stores/theme-store';
+import { startOfflineSync } from '@/services/offline-sync';
 
 // Заставку прячет нативная сторона сама, как только нарисован первый кадр
 // (RCTContentDidAppear). Раньше держали её из JS (preventAutoHide + hideAsync
@@ -16,6 +17,8 @@ export default function App() {
   // монтирования (без таймера).
   useEffect(() => {
     SplashScreen.hideAsync().catch(() => {});
+    // Сеть + отправка записей, сделанных без интернета.
+    startOfflineSync().catch(() => {});
   }, []);
 
   return (

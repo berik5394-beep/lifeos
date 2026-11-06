@@ -49,8 +49,10 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   token?: string;
-  /** false — без сети НЕ ставить в офлайн-очередь, а бросить ошибку (покупки:
-   *  повтор «потом» без ведома юзера недопустим). По умолчанию true. */
+  /** true — без сети поставить запись в офлайн-очередь (уйдёт при появлении
+   *  связи) и бросить OfflineQueuedError, чтобы стор показал запись локально.
+   *  По умолчанию false: ИИ-запросы, вход, чат, покупки «потом» без ведома
+   *  юзера повторять нельзя — честная ошибка «нет интернета». */
   queueOffline?: boolean;
 }
 
@@ -63,6 +65,28 @@ export class ApiError extends Error {
     this.name = 'ApiError';
   }
 }
+
+/**
+ * Запись поставлена в офлайн-очередь и уйдёт на сервер, когда появится связь.
+ * Раньше в этом случае возвращался `{}` — сторы клали его в списки как задачу/
+ * трату (пустые строки, падения), а очередь никто не отправлял.
+ */
+export class OfflineQueuedError extends ApiError {
+  readonly queued = true;
+  constructor() {
+    super(0, 'Нет сети — сохранил на телефоне, отправлю, когда появится связь.');
+    this.name = 'OfflineQueuedError';
+  }
+}
+
+export function isOfflineQueued(err: unknown): err is OfflineQueuedError {
+  return err instanceof OfflineQueuedError;
+}
+
+/** Для сторов: обычная CRUD-запись, которую можно отправить позже. */
+export const QUEUE_OFFLINE = { queueOffline: true } as const;
+
+const OFFLINE_ERROR = 'Нет интернета — попробуй, когда появится связь.';
 
 // Lock to prevent multiple simultaneous refresh attempts
 let refreshPromise: Promise<string | null> | null = null;
@@ -112,7 +136,7 @@ function parseJsonSafe<T>(response: Response): Promise<T> {
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, token, queueOffline = true } = options;
+  const { method = 'GET', body, token, queueOffline = false } = options;
   const om = getOfflineManager();
 
   // ── Offline handling ──────────────────────────────────────────────────
@@ -123,16 +147,15 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       if (cached !== null) return cached;
       throw new ApiError(0, 'Нет интернета. Данные недоступны.');
     }
-    if (!queueOffline) throw new ApiError(0, 'Нет интернета — попробуй, когда появится связь.');
+    if (!queueOffline) throw new ApiError(0, OFFLINE_ERROR);
 
-    // For mutations (POST/PUT/PATCH/DELETE) — queue for later sync
+    // CRUD-запись — в очередь; стор сам покажет её локально.
     await om.offlineQueue.enqueue({
       method: method as 'POST' | 'PUT' | 'PATCH' | 'DELETE',
       endpoint,
       body,
     });
-    // Return optimistic empty result so UI doesn't break
-    return {} as T;
+    throw new OfflineQueuedError();
   }
 
   // ── Online request ────────────────────────────────────────────────────
@@ -170,15 +193,14 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       const cached = await om.getCachedData<T>(endpoint);
       if (cached !== null) return cached;
     } else if (!queueOffline) {
-      throw new ApiError(0, 'Нет интернета — попробуй, когда появится связь.');
+      throw new ApiError(0, OFFLINE_ERROR);
     } else {
-      // Queue mutation for later
       await om.offlineQueue.enqueue({
         method: method as 'POST' | 'PUT' | 'PATCH' | 'DELETE',
         endpoint,
         body,
       });
-      return {} as T;
+      throw new OfflineQueuedError();
     }
     throw new ApiError(0, 'Ошибка сети. Проверьте подключение к интернету.');
   }
@@ -231,11 +253,26 @@ export const api = {
   put: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean }) =>
     request<T>(endpoint, { method: 'PUT', body, token: token ?? undefined, ...opts }),
 
-  patch: <T>(endpoint: string, body: unknown, token?: MaybeToken) =>
-    request<T>(endpoint, { method: 'PATCH', body, token: token ?? undefined }),
+  patch: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean }) =>
+    request<T>(endpoint, { method: 'PATCH', body, token: token ?? undefined, ...opts }),
 
-  delete: <T>(endpoint: string, token?: MaybeToken) =>
-    request<T>(endpoint, { method: 'DELETE', token: token ?? undefined }),
+  delete: <T>(endpoint: string, token?: MaybeToken, opts?: { queueOffline?: boolean }) =>
+    request<T>(endpoint, { method: 'DELETE', token: token ?? undefined, ...opts }),
+
+  /**
+   * Повтор записи из офлайн-очереди (без повторной постановки в очередь).
+   * true — ушло; false — сервер окончательно отказал (4xx: задачи уже нет и т.п.) →
+   * выкинуть; throw — нет сети/сервера/доступа (401, 429, 5xx) → оставить в очереди.
+   */
+  replayQueued: async (m: { method: string; endpoint: string; body?: unknown }, token: MaybeToken): Promise<boolean> => {
+    try {
+      await request<unknown>(m.endpoint, { method: m.method, body: m.body, token: token ?? undefined });
+      return true;
+    } catch (err) {
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500 && err.status !== 401 && err.status !== 429) return false;
+      throw err;
+    }
+  },
 
   /**
    * Multipart upload (FormData). Тот же 401-retry как у обычного request,

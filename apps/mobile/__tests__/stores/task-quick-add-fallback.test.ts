@@ -5,7 +5,12 @@ import { useAuthStore } from '@/stores/auth-store';
 // Глобальный мок api (setup.ts) без ApiError — берём настоящий класс.
 jest.mock('@/services/api', () => {
   const actual = jest.requireActual('@/services/api');
-  return { ApiError: actual.ApiError, api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() } };
+  return {
+    ApiError: actual.ApiError,
+    isOfflineQueued: actual.isOfflineQueued,
+    QUEUE_OFFLINE: actual.QUEUE_OFFLINE,
+    api: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
+  };
 });
 const mocked = api as jest.Mocked<typeof api>;
 const TASK = { id: 't1', userId: 'u', title: 'Купить хлеб', category: 'personal', priority: 'medium', date: '2026-11-06', time: null, completed: false, notes: null, createdAt: '' };
@@ -24,6 +29,7 @@ describe('добавление задачи тапом: разбор фразы 
       '/tasks',
       expect.objectContaining({ title: 'Купить хлеб', category: 'personal', priority: 'medium', date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }),
       'tok',
+      { queueOffline: true },
     );
     expect(useTaskStore.getState().tasks).toEqual([TASK]);
   });

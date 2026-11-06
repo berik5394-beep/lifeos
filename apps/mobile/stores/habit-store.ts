@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { api } from '@/services/api';
+import { api, isOfflineQueued, QUEUE_OFFLINE } from '@/services/api';
+import { offlineId } from '@/utils/offline-id';
 import { useAuthStore } from '@/stores/auth-store';
 import { persistStoreData } from '@/services/store-persist';
 
@@ -81,7 +82,7 @@ function datesInRange(from: string, to: string): string[] {
   return out;
 }
 
-export const useHabitStore = create<HabitState>((set) => ({
+export const useHabitStore = create<HabitState>((set, get) => ({
   habits: [],
   logs: {},
   stats: [],
@@ -107,9 +108,23 @@ export const useHabitStore = create<HabitState>((set) => ({
     if (!token) return;
 
     try {
-      const habit = await api.post<Habit>('/habits', data, token);
+      const habit = await api.post<Habit>('/habits', data, token, QUEUE_OFFLINE);
       set((state) => ({ habits: [...state.habits, habit] }));
     } catch (err) {
+      // Без сети: запись в очереди — привычка видна сразу, после отправки перечитается.
+      if (isOfflineQueued(err)) {
+        const local: Habit = {
+          id: offlineId(),
+          userId: '',
+          ...data,
+          goalId: null,
+          order: get().habits.length,
+          active: true,
+          createdAt: new Date().toISOString(),
+        };
+        set((state) => ({ habits: [...state.habits, local] }));
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Ошибка при создании привычки';
       throw new Error(msg);
     }
@@ -120,11 +135,15 @@ export const useHabitStore = create<HabitState>((set) => ({
     if (!token) return;
 
     try {
-      const updated = await api.put<Habit>(`/habits/${id}`, data, token);
+      const updated = await api.put<Habit>(`/habits/${id}`, data, token, QUEUE_OFFLINE);
       set((state) => ({
         habits: state.habits.map((h) => (h.id === id ? updated : h)),
       }));
     } catch (err) {
+      if (isOfflineQueued(err)) {
+        set((state) => ({ habits: state.habits.map((h) => (h.id === id ? { ...h, ...data } : h)) }));
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Ошибка при обновлении привычки';
       throw new Error(msg);
     }
@@ -135,11 +154,15 @@ export const useHabitStore = create<HabitState>((set) => ({
     if (!token) return;
 
     try {
-      await api.delete(`/habits/${id}`, token);
+      await api.delete(`/habits/${id}`, token, QUEUE_OFFLINE);
       set((state) => ({
         habits: state.habits.filter((h) => h.id !== id),
       }));
     } catch (err) {
+      if (isOfflineQueued(err)) {
+        set((state) => ({ habits: state.habits.filter((h) => h.id !== id) }));
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Ошибка при удалении привычки';
       throw new Error(msg);
     }
@@ -149,13 +172,7 @@ export const useHabitStore = create<HabitState>((set) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    try {
-      const log = await api.post<HabitLog>(
-        `/habits/${habitId}/log`,
-        { date, completed },
-        token,
-      );
-
+    const putLog = (log: HabitLog) =>
       set((state) => {
         const dateLogs = state.logs[date] ?? [];
         const existingIndex = dateLogs.findIndex((l) => l.habitId === habitId);
@@ -168,7 +185,14 @@ export const useHabitStore = create<HabitState>((set) => ({
           logs: { ...state.logs, [date]: updatedLogs },
         };
       });
+    try {
+      putLog(await api.post<HabitLog>(`/habits/${habitId}/log`, { date, completed }, token, QUEUE_OFFLINE));
     } catch (err) {
+      // Без сети отметка в очереди — показываем её сразу.
+      if (isOfflineQueued(err)) {
+        putLog({ id: offlineId(), habitId, userId: '', date, completed, autoCompleted: false });
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Ошибка при отметке привычки';
       throw new Error(msg);
     }

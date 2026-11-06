@@ -26,8 +26,11 @@ class NetworkMonitor {
   start(): void {
     if (this.unsubscribe) return;
 
+    // Офлайн — только явное «нет подключения». Проверка доступности интернета
+    // (isInternetReachable) на iOS бывает ложной; если сеть есть, но сервер
+    // недоступен, запрос сам упадёт и попадёт в ту же офлайн-ветку.
     this.unsubscribe = NetInfo.addEventListener((state: NetInfoState) => {
-      const connected = !!(state.isConnected && state.isInternetReachable !== false);
+      const connected = state.isConnected !== false;
       if (connected !== this._isConnected) {
         this._isConnected = connected;
         this.listeners.forEach((fn) => fn(connected));
@@ -36,7 +39,7 @@ class NetworkMonitor {
 
     // Initial check
     NetInfo.fetch().then((state) => {
-      this._isConnected = !!(state.isConnected && state.isInternetReachable !== false);
+      this._isConnected = state.isConnected !== false;
     }).catch(() => { /* assume online */ });
   }
 

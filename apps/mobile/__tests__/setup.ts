@@ -32,15 +32,23 @@ jest.mock('@/services/storage', () => {
 });
 
 // Mock @/services/api
-jest.mock('@/services/api', () => ({
-  api: {
-    get: jest.fn(),
-    post: jest.fn(),
-    put: jest.fn(),
-    patch: jest.fn(),
-    delete: jest.fn(),
-  },
-}));
+jest.mock('@/services/api', () => {
+  // Классы ошибок и флаг очереди — настоящие (сторы различают «в очереди» и «упало»).
+  const actual = jest.requireActual('@/services/api');
+  return {
+    ApiError: actual.ApiError,
+    OfflineQueuedError: actual.OfflineQueuedError,
+    isOfflineQueued: actual.isOfflineQueued,
+    QUEUE_OFFLINE: actual.QUEUE_OFFLINE,
+    api: {
+      get: jest.fn(),
+      post: jest.fn(),
+      put: jest.fn(),
+      patch: jest.fn(),
+      delete: jest.fn(),
+    },
+  };
+});
 
 // Mock @/stores/auth-store
 jest.mock('@/stores/auth-store', () => ({

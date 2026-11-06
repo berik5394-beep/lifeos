@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { api, ApiError } from '@/services/api';
+import { api, ApiError, isOfflineQueued, QUEUE_OFFLINE } from '@/services/api';
+import { offlineId } from '@/utils/offline-id';
 import { formatDate } from '@/utils/dates';
 import { useAuthStore } from '@/stores/auth-store';
 import { useChatStore } from '@/stores/chat-store';
@@ -98,11 +99,29 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!token) return;
 
     try {
-      const { proposal, ...task } = await api.post<Task & { proposal?: RescheduleProposal }>('/tasks', data, token);
+      const { proposal, ...task } = await api.post<Task & { proposal?: RescheduleProposal }>('/tasks', data, token, QUEUE_OFFLINE);
       set((state) => ({ tasks: [...state.tasks, task] }));
       // Перегруз дня: робот предлагает сдвинуть график (облачко + «Подтвердить»).
       if (proposal) useChatStore.getState().showProposal(proposal);
     } catch (err) {
+      // Без сети: запись в очереди — показываем задачу сразу, после отправки
+      // список перечитается и временный id сменится настоящим.
+      if (isOfflineQueued(err)) {
+        const local: Task = {
+          id: offlineId(),
+          userId: '',
+          title: data.title,
+          category: data.category,
+          priority: data.priority,
+          date: data.date,
+          time: data.time ?? null,
+          completed: false,
+          notes: data.notes ?? null,
+          createdAt: new Date().toISOString(),
+        };
+        set((state) => ({ tasks: [...state.tasks, local] }));
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Ошибка при создании задачи';
       throw new Error(msg);
     }
@@ -113,12 +132,16 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!token) return;
 
     try {
-      const { proposal, ...updated } = await api.put<Task & { proposal?: RescheduleProposal }>(`/tasks/${id}`, data, token);
+      const { proposal, ...updated } = await api.put<Task & { proposal?: RescheduleProposal }>(`/tasks/${id}`, data, token, QUEUE_OFFLINE);
       set((state) => ({
         tasks: state.tasks.map((t) => (t.id === id ? updated : t)),
       }));
       if (proposal) useChatStore.getState().showProposal(proposal);
     } catch (err) {
+      if (isOfflineQueued(err)) {
+        set((state) => ({ tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...data } : t)) }));
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Ошибка при обновлении задачи';
       throw new Error(msg);
     }
@@ -129,11 +152,15 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!token) return;
 
     try {
-      await api.delete(`/tasks/${id}`, token);
+      await api.delete(`/tasks/${id}`, token, QUEUE_OFFLINE);
       set((state) => ({
         tasks: state.tasks.filter((t) => t.id !== id),
       }));
     } catch (err) {
+      if (isOfflineQueued(err)) {
+        set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }));
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Ошибка при удалении задачи';
       throw new Error(msg);
     }
@@ -154,11 +181,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }));
 
     try {
-      const updated = await api.patch<Task>(`/tasks/${id}/complete`, {}, token);
+      const updated = await api.patch<Task>(`/tasks/${id}/complete`, {}, token, QUEUE_OFFLINE);
       set((state) => ({
         tasks: state.tasks.map((t) => (t.id === id ? updated : t)),
       }));
-    } catch {
+    } catch (err) {
+      // Без сети отметка в очереди — оставляем как отметил.
+      if (isOfflineQueued(err)) return;
       // Revert on error
       set((state) => ({
         tasks: state.tasks.map((t) =>
@@ -176,14 +205,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       // Сервер отдаёт { task, parsed, confidence, proposal? } — раньше в список
       // попадала вся обёртка вместо задачи.
       const res = await api.post<{ task: Task; proposal?: RescheduleProposal }>('/tasks/quick-add', { text }, token);
-      // Офлайн/очередь: api отдаёт {} — задачи ещё нет, в список не кладём.
-      if (res.task) set((state) => ({ tasks: [...state.tasks, res.task] }));
+      set((state) => ({ tasks: [...state.tasks, res.task] }));
       if (res.proposal) useChatStore.getState().showProposal(res.proposal);
     } catch (err) {
-      // Разбор фразы (ИИ) не сработал — задачу не теряем: пишем как есть, на сегодня.
-      // Нет сети/доступа (0, 401) или лимит (429) — честная ошибка, обход не поможет.
+      // Разбор фразы (ИИ) не сработал или нет сети — задачу не теряем: пишем как
+      // есть, на сегодня (без сети — в очередь, видна сразу).
+      // Нет доступа (401) или лимит (429) — честная ошибка, обход не поможет.
       const status = err instanceof ApiError ? err.status : -1;
-      if (status >= 500 || status === 400 || status === 422) {
+      if (status >= 500 || status === 400 || status === 422 || status === 0) {
         await get().createTask({ title: text.trim(), category: 'personal', priority: 'medium', date: formatDate(new Date()) });
         return;
       }
@@ -203,11 +232,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }));
 
     try {
-      const updated = await api.patch<Task>(`/tasks/${taskId}/kanban`, { status }, token);
+      const updated = await api.patch<Task>(`/tasks/${taskId}/kanban`, { status }, token, QUEUE_OFFLINE);
       set((state) => ({
         tasks: state.tasks.map((t) => (t.id === taskId ? updated : t)),
       }));
-    } catch {
+    } catch (err) {
+      if (isOfflineQueued(err)) return;
       // Revert on error — refetch to restore correct state
       get().fetchTasks().catch(() => {});
     }

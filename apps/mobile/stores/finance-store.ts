@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { api } from '@/services/api';
+import { api, isOfflineQueued, QUEUE_OFFLINE } from '@/services/api';
+import { offlineId } from '@/utils/offline-id';
 import { useAuthStore } from '@/stores/auth-store';
 import { persistStoreData } from '@/services/store-persist';
 
@@ -136,9 +137,15 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     if (!token) return;
 
     try {
-      const expense = await api.post<Expense>('/finance/expenses', data, token);
+      const expense = await api.post<Expense>('/finance/expenses', data, token, QUEUE_OFFLINE);
       set((state) => ({ expenses: [expense, ...state.expenses] }));
     } catch (err) {
+      // Без сети: трата в очереди — видна сразу, после отправки список перечитается.
+      if (isOfflineQueued(err)) {
+        const local: Expense = { id: offlineId(), userId: '', ...data, createdAt: new Date().toISOString() };
+        set((state) => ({ expenses: [local, ...state.expenses] }));
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Ошибка при добавлении расхода';
       throw new Error(msg);
     }
@@ -149,11 +156,15 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     if (!token) return;
 
     try {
-      await api.delete(`/finance/expenses/${id}`, token);
+      await api.delete(`/finance/expenses/${id}`, token, QUEUE_OFFLINE);
       set((state) => ({
         expenses: state.expenses.filter((e) => e.id !== id),
       }));
     } catch (err) {
+      if (isOfflineQueued(err)) {
+        set((state) => ({ expenses: state.expenses.filter((e) => e.id !== id) }));
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Ошибка при удалении расхода';
       throw new Error(msg);
     }
@@ -164,9 +175,14 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     if (!token) return;
 
     try {
-      const income = await api.post<Income>('/finance/incomes', data, token);
+      const income = await api.post<Income>('/finance/incomes', data, token, QUEUE_OFFLINE);
       set((state) => ({ incomes: [income, ...state.incomes] }));
     } catch (err) {
+      if (isOfflineQueued(err)) {
+        const local: Income = { id: offlineId(), userId: '', ...data, createdAt: new Date().toISOString() };
+        set((state) => ({ incomes: [local, ...state.incomes] }));
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Ошибка при добавлении дохода';
       throw new Error(msg);
     }
@@ -177,11 +193,15 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     if (!token) return;
 
     try {
-      await api.delete(`/finance/incomes/${id}`, token);
+      await api.delete(`/finance/incomes/${id}`, token, QUEUE_OFFLINE);
       set((state) => ({
         incomes: state.incomes.filter((i) => i.id !== id),
       }));
     } catch (err) {
+      if (isOfflineQueued(err)) {
+        set((state) => ({ incomes: state.incomes.filter((i) => i.id !== id) }));
+        return;
+      }
       const msg = err instanceof Error ? err.message : 'Ошибка при удалении дохода';
       throw new Error(msg);
     }
