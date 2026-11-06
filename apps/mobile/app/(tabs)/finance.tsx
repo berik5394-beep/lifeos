@@ -14,7 +14,7 @@ import {
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useFinanceStore } from '@/stores/finance-store';
 import { useBudgetStore } from '@/stores/budget-store';
-import { Card, Button, Input, Modal, SlideTabs } from '@/components/ui';
+import { Card, Button, Input, Modal, SlideTabs, SwipeableRow, TapToAdd } from '@/components/ui';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { expenseCategories } from '@/constants/categories';
 import { FadeInView } from '@/components/ui/fade-in-view';
@@ -266,23 +266,13 @@ const JournalExpenseRow = React.memo(function JournalExpenseRow({
     expenseCategories.other;
   const isEven = index % 2 === 0;
 
+  // Сдвиг влево + красный минус — удаление без лишнего Alert.
   const handleDelete = useCallback(() => {
-    Alert.alert(
-      'Удалить расход?',
-      `${item.description || cat.label} — ${formatMoney(item.amount)}`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: () => onDelete(item.id),
-        },
-      ],
-    );
-  }, [item.id, item.description, item.amount, cat.label, onDelete]);
+    onDelete(item.id);
+  }, [item.id, onDelete]);
 
   return (
-    <TouchableOpacity onLongPress={handleDelete} activeOpacity={0.7}>
+    <SwipeableRow onDelete={handleDelete} deleteLabel="Удалить расход">
       <View
         style={[
           styles.journalRow,
@@ -302,7 +292,7 @@ const JournalExpenseRow = React.memo(function JournalExpenseRow({
           -{formatAmount(item.amount)} \u20B8
         </Text>
       </View>
-    </TouchableOpacity>
+    </SwipeableRow>
   );
 });
 
@@ -328,23 +318,13 @@ const JournalIncomeRow = React.memo(function JournalIncomeRow({
   const styles = useMemo(() => createStyles(c), [c]);
   const isEven = index % 2 === 0;
 
+  // Сдвиг влево + красный минус — удаление без лишнего Alert.
   const handleDelete = useCallback(() => {
-    Alert.alert(
-      'Удалить доход?',
-      `${item.source} — ${formatMoney(item.amount)}`,
-      [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: () => onDelete(item.id),
-        },
-      ],
-    );
-  }, [item.id, item.source, item.amount, onDelete]);
+    onDelete(item.id);
+  }, [item.id, onDelete]);
 
   return (
-    <TouchableOpacity onLongPress={handleDelete} activeOpacity={0.7}>
+    <SwipeableRow onDelete={handleDelete} deleteLabel="Удалить доход">
       <View
         style={[
           styles.journalRow,
@@ -361,7 +341,7 @@ const JournalIncomeRow = React.memo(function JournalIncomeRow({
           +{formatAmount(item.amount)} \u20B8
         </Text>
       </View>
-    </TouchableOpacity>
+    </SwipeableRow>
   );
 });
 
@@ -379,19 +359,13 @@ const DebtRow = React.memo(function DebtRow({
   const progress = debt.amount > 0 ? Math.min(debt.paid / debt.amount, 1) : 0;
   const remaining = Math.max(0, debt.amount - debt.paid);
 
+  // Сдвиг влево + красный минус — удаление без лишнего Alert.
   const handleDelete = useCallback(() => {
-    Alert.alert('Удалить долг?', `${debt.creditor}`, [
-      { text: 'Отмена', style: 'cancel' },
-      {
-        text: 'Удалить',
-        style: 'destructive',
-        onPress: () => onDelete(debt.id),
-      },
-    ]);
-  }, [debt.id, debt.creditor, onDelete]);
+    onDelete(debt.id);
+  }, [debt.id, onDelete]);
 
   return (
-    <TouchableOpacity onLongPress={handleDelete} activeOpacity={0.7}>
+    <SwipeableRow onDelete={handleDelete} deleteLabel="Удалить долг">
       <View style={styles.debtRow}>
         <View style={styles.debtHeader}>
           <Text style={styles.debtCreditor} numberOfLines={1}>
@@ -427,7 +401,7 @@ const DebtRow = React.memo(function DebtRow({
           {Math.round(progress * 100)}% выплачено
         </Text>
       </View>
-    </TouchableOpacity>
+    </SwipeableRow>
   );
 });
 
@@ -1300,9 +1274,6 @@ export default function FinanceScreen() {
         <Card style={styles.tableCard}>
           <View style={styles.tableTitleRow}>
             <Text style={[styles.tableTitle, { color: c.warning }]}>ДОЛГИ</Text>
-            <TouchableOpacity onPress={openDebtModal} hitSlop={8}>
-              <Text style={styles.tableTitleAction}>+ Добавить</Text>
-            </TouchableOpacity>
           </View>
 
           {debts.length === 0 ? (
@@ -1320,6 +1291,7 @@ export default function FinanceScreen() {
               />
             ))
           )}
+          <TapToAdd hint="Новый долг" onPress={openDebtModal} />
         </Card>
 
         <View style={styles.bottomSpacer} />
@@ -1441,6 +1413,7 @@ export default function FinanceScreen() {
               </Text>
             </View>
           )}
+          <TapToAdd hint="Новый расход" onPress={openExpenseModal} />
         </Card>
 
         {/* DAILY INCOME */}
@@ -1496,6 +1469,7 @@ export default function FinanceScreen() {
               </Text>
             </View>
           )}
+          <TapToAdd hint="Новый доход" onPress={openIncomeModal} />
         </Card>
 
         {/* Daily summary */}
@@ -1540,35 +1514,6 @@ export default function FinanceScreen() {
             </View>
           </Card>
         )}
-
-        {/* Add buttons */}
-        <View style={styles.journalButtons}>
-          <TouchableOpacity
-            style={[styles.journalAddBtn, { backgroundColor: c.danger + '20' }]}
-            onPress={openExpenseModal}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Добавить расход"
-          >
-            <Text style={[styles.journalAddBtnText, { color: c.danger }]}>
-              + Добавить расход
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.journalAddBtn,
-              { backgroundColor: c.success + '20' },
-            ]}
-            onPress={openIncomeModal}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Добавить доход"
-          >
-            <Text style={[styles.journalAddBtnText, { color: c.success }]}>
-              + Добавить доход
-            </Text>
-          </TouchableOpacity>
-        </View>
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
@@ -1617,19 +1562,6 @@ export default function FinanceScreen() {
       <SlideTabs tabs={SLIDE_TABS as unknown as Array<{ key: string; title: string; icon?: string }>}>
         {[OverviewSlide, TablesSlide, JournalSlide]}
       </SlideTabs>
-
-      {/* FAB for quick add expense */}
-      <TouchableOpacity
-        style={styles.fab}
-        activeOpacity={0.8}
-        onPress={openExpenseModal}
-        onLongPress={openIncomeModal}
-        accessibilityRole="button"
-        accessibilityLabel="Добавить расход"
-        accessibilityHint="Удерживайте для добавления дохода"
-      >
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
 
       {/* ============================================================= */}
       {/* MODALS                                                        */}
@@ -2475,23 +2407,6 @@ function createStyles(c: C) {
       fontWeight: '700',
     },
 
-    // Journal add buttons
-    journalButtons: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-      marginBottom: spacing.md,
-    },
-    journalAddBtn: {
-      flex: 1,
-      paddingVertical: spacing.md,
-      borderRadius: borderRadius.md,
-      alignItems: 'center',
-    },
-    journalAddBtnText: {
-      fontSize: fontSize.sm,
-      fontWeight: '700',
-    },
-
     // ---------------------------------------------------------------
     // Empty states
     // ---------------------------------------------------------------
@@ -2526,33 +2441,6 @@ function createStyles(c: C) {
     emptySmallText: {
       color: c.textSecondary,
       fontSize: fontSize.sm,
-    },
-
-    // ---------------------------------------------------------------
-    // FAB
-    // ---------------------------------------------------------------
-    fab: {
-      position: 'absolute',
-      bottom: 24,
-      right: 24,
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: c.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      elevation: 6,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 3 },
-      shadowOpacity: 0.3,
-      shadowRadius: 4,
-      zIndex: 10,
-    },
-    fabText: {
-      color: c.text,
-      fontSize: 28,
-      fontWeight: '300',
-      marginTop: -2,
     },
 
     // ---------------------------------------------------------------

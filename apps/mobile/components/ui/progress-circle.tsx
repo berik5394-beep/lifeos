@@ -76,9 +76,9 @@ export const ProgressCircle = React.memo(function ProgressCircle({
       position: 'absolute',
       top: 0,
     },
+    // Центр прозрачный — кольцо ложится на фон любой карточки.
     center: {
       position: 'absolute',
-      backgroundColor: c.surface,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -134,7 +134,13 @@ export const ProgressCircle = React.memo(function ProgressCircle({
                 borderWidth: strokeWidth,
                 borderRightWidth: 0,
                 borderColor: resolvedColor,
-                transform: [{ rotate: `${rightRotation}deg` }],
+                // Поворот вокруг центра круга (правый край полудуги), а не
+                // вокруг центра самой полудуги — иначе дуга «плывёт» и не заполняется.
+                transform: [
+                  { translateX: size / 4 },
+                  { rotate: `${rightRotation}deg` },
+                  { translateX: -size / 4 },
+                ],
               },
             ]}
           />
@@ -166,7 +172,12 @@ export const ProgressCircle = React.memo(function ProgressCircle({
                 borderWidth: strokeWidth,
                 borderLeftWidth: 0,
                 borderColor: resolvedColor,
-                transform: [{ rotate: `${leftRotation}deg` }],
+                // Поворот вокруг центра круга (левый край полудуги).
+                transform: [
+                  { translateX: -size / 4 },
+                  { rotate: `${leftRotation}deg` },
+                  { translateX: size / 4 },
+                ],
               },
             ]}
           />
@@ -191,7 +202,7 @@ export const ProgressCircle = React.memo(function ProgressCircle({
                 styles.percentText,
                 {
                   color: resolvedTextColor,
-                  fontSize: size < 60 ? fontSize.sm : size < 100 ? fontSize.lg : fontSize.xl,
+                  fontSize: size < 50 ? fontSize.xs : size < 60 ? fontSize.sm : size < 100 ? fontSize.lg : fontSize.xl,
                 },
               ]}
             >

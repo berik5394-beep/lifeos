@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
+import { TapToAdd } from '@/components/ui';
 import { borderRadius, fontSize, spacing } from '@/constants';
 import { useDealStore } from '@/stores/deal-store';
 import { useChatStore } from '@/stores/chat-store';
@@ -67,10 +68,6 @@ export default function DealsScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <PlanBar plan={plan} planKnown={planKnown} onPress={openPlan} />
-        {/* В потоке, а не плавающей кнопкой: плавающая перекрывала нижние сделки. */}
-        <Pressable onPress={openAdd} style={styles.addPill} accessibilityRole="button" accessibilityLabel="Добавить сделку">
-          <Text style={styles.addPillText}>+ Новая сделка</Text>
-        </Pressable>
         {loadError ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>Не удалось загрузить сделки — проверь интернет</Text>
@@ -83,7 +80,7 @@ export default function DealsScreen() {
           // Первая загрузка: пустой список — ещё не «сделок нет».
           loadError ? null : <ActivityIndicator style={styles.spinner} color={c.primary} />
         ) : groups.length === 0 ? (
-          <Text style={styles.empty}>Открытых сделок нет. Скажи роботу «Ахмет хочет оборудование на 2 млн» — заведу. Или нажми «+ Новая сделка».</Text>
+          <Text style={styles.empty}>Открытых сделок нет. Скажи роботу «Ахмет хочет оборудование на 2 млн» — заведу. Или нажми на пустую строку ниже.</Text>
         ) : (
           groups.map((g) => (
             <View key={g.stage} style={styles.group}>
@@ -94,6 +91,8 @@ export default function DealsScreen() {
             </View>
           ))
         )}
+        {/* Добавление без плюсиков: пустая строка в конце открытых сделок открывает форму. */}
+        <TapToAdd hint="Новая сделка" onPress={openAdd} />
         <Pressable onPress={toggleClosed} style={styles.closedToggle} accessibilityRole="button">
           <Text style={styles.groupTitle}>{`${showClosed ? '▾' : '▸'} Закрытые`}</Text>
         </Pressable>
@@ -134,14 +133,5 @@ function createStyles(c: ReturnType<typeof useColors>) {
     errorText: { color: c.danger, fontSize: fontSize.sm, textAlign: 'center' },
     retry: { alignSelf: 'center', marginTop: spacing.sm, paddingVertical: spacing.xs, paddingHorizontal: spacing.md },
     retryText: { color: c.primary, fontSize: fontSize.md, fontWeight: '600' },
-    addPill: {
-      alignSelf: 'flex-start',
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
-      borderRadius: borderRadius.xl,
-      marginBottom: spacing.lg,
-      backgroundColor: c.surface,
-    },
-    addPillText: { color: c.primary, fontSize: fontSize.md, fontWeight: '600' },
   });
 }

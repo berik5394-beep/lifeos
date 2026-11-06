@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { api } from '@/services/api';
+import { api, ApiError } from '@/services/api';
+import { formatDate } from '@/utils/dates';
 import { useAuthStore } from '@/stores/auth-store';
 import { useChatStore } from '@/stores/chat-store';
 import type { RescheduleProposal } from '@/stores/schedule-store';
@@ -179,8 +180,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (res.task) set((state) => ({ tasks: [...state.tasks, res.task] }));
       if (res.proposal) useChatStore.getState().showProposal(res.proposal);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Ошибка при быстром добавлении';
-      throw new Error(msg);
+      // Разбор фразы (ИИ) не сработал — задачу не теряем: пишем как есть, на сегодня.
+      // Нет сети/доступа (0, 401) или лимит (429) — честная ошибка, обход не поможет.
+      const status = err instanceof ApiError ? err.status : -1;
+      if (status >= 500 || status === 400 || status === 422) {
+        await get().createTask({ title: text.trim(), category: 'personal', priority: 'medium', date: formatDate(new Date()) });
+        return;
+      }
+      throw new Error(status === 429 && err instanceof Error ? err.message : 'Не получилось добавить задачу. Попробуй ещё раз.');
     }
   },
 

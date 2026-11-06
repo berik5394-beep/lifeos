@@ -1,5 +1,5 @@
-import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { RobotAvatar } from '@/components/robot/robot-avatar';
@@ -20,8 +20,6 @@ import { spacing, fontSize, borderRadius } from '@/constants';
 const ROBOT = 52;
 /** Ответ/подсказка робота лежит поверх инструмента — сам уходит, чтобы не закрывать данные. */
 const BUBBLE_MS = 9000;
-/** Пояснение к вкладке — не на каждое пролистывание, а когда на ней задержались. */
-const EXPLAIN_DELAY_MS = 700;
 const FRESH_REPLY_MS = 90_000;
 const VOICE_NOTE_MS = 4000;
 
@@ -48,6 +46,16 @@ export const ToolsPage = memo(function ToolsPage({
   const chatLoading = useChatStore((s) => s.isLoading);
   const confirmPendingAction = useChatStore((s) => s.confirmPendingAction);
   const voice = useSharedVoice();
+  // Клавиатура открыта (пишешь в инструменте) — робот в углу закрывал бы начало строки.
+  const [kbOpen, setKbOpen] = useState(false);
+  useEffect(() => {
+    const a = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKbOpen(true));
+    const b = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKbOpen(false));
+    return () => {
+      a.remove();
+      b.remove();
+    };
+  }, []);
 
   const latest = messages[0];
   const reply =
@@ -80,21 +88,28 @@ export const ToolsPage = memo(function ToolsPage({
       ? 'Распознаю…'
       : voiceNote;
 
-  // Пояснение робота к вкладке (по фактам, /robot/explain), когда на ней задержались.
+  // Пояснение робота к вкладке (по фактам, /robot/explain) — по тапу на робота:
+  // само на каждой вкладке оно ложилось бы на строку «Новая …» и тратило бюджет ИИ.
   const [explain, setExplain] = useState<{ tab: ToolKey; text: string } | null>(null);
+  const [explaining, setExplaining] = useState(false);
   const seq = useRef(0);
   useEffect(() => {
-    const my = ++seq.current;
+    seq.current += 1;
     setExplain(null);
-    const t = setTimeout(() => {
-      api
-        .post<{ text: string }>('/robot/explain', { panel: tab }, token ?? undefined)
-        .then((r) => {
-          if (my === seq.current && r.text) setExplain({ tab, text: r.text });
-        })
-        .catch(() => {});
-    }, EXPLAIN_DELAY_MS);
-    return () => clearTimeout(t);
+    setExplaining(false);
+  }, [tab]);
+  const askExplain = useCallback(() => {
+    const my = ++seq.current;
+    setExplaining(true);
+    api
+      .post<{ text: string }>('/robot/explain', { panel: tab }, token ?? undefined)
+      .then((r) => {
+        if (my === seq.current && r.text) setExplain({ tab, text: r.text });
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (my === seq.current) setExplaining(false);
+      });
   }, [tab, token]);
   useEffect(() => {
     if (!explain) return;
@@ -114,6 +129,8 @@ export const ToolsPage = memo(function ToolsPage({
       onConfirm={(yes) => reply && void confirmPendingAction(reply.id, yes)}
       onDismiss={reply ? () => setDismissed(reply.id) : undefined}
     />
+  ) : explaining ? (
+    <ChatReplyBubble text="" thinking tail="left" />
   ) : explain && explain.tab === tab ? (
     <Pressable onPress={() => setExplain(null)} accessibilityRole="button" accessibilityLabel="Убрать подсказку робота">
       <RobotSpeechBubble text={explain.text} tail="left" />
@@ -148,10 +165,18 @@ export const ToolsPage = memo(function ToolsPage({
       </View>
 
       {/* Маленький робот поверх инструмента, в углу; облачко — справа от него. */}
-      <View style={styles.robot} pointerEvents="none">
+      {!kbOpen && (
+      <Pressable
+        style={styles.robot}
+        onPress={askExplain}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel="Робот, что тут важного?"
+      >
         <RobotAvatar emotion={emotion} size={ROBOT} attention={voice.typing || voice.isRecording ? 'listening' : 'idle'} />
-      </View>
-      {bubble && <View style={styles.bubble}>{bubble}</View>}
+      </Pressable>
+      )}
+      {bubble && !kbOpen && <View style={styles.bubble}>{bubble}</View>}
     </SafeAreaView>
   );
 });

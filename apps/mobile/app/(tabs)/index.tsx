@@ -8,14 +8,13 @@ import {
   RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useNavigation } from '@react-navigation/native';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ProgressRing } from '@/components/ui';
+import { ProgressRing, SwipeableRow, TapToAdd } from '@/components/ui';
 import { Heatmap } from '@/components/charts';
 import { Confetti } from '@/components/shared';
 import { MorningGreeting, EveningRitual } from '@/components/voice';
@@ -33,8 +32,6 @@ import { spacing, fontSize, borderRadius } from '@/constants';
 import { taskCategories } from '@/constants/categories';
 
 import { useColors } from '@/hooks/use-colors';
-import { useUIStore } from '@/stores/ui-store';
-import { QuickAddBar } from '@/components/ui/quick-add-bar';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { hapticLight, hapticSelection, hapticSuccess } from '@/services/haptics';
 function getGreeting(): string {
@@ -184,8 +181,6 @@ export default function PlannerScreen() {
   const navigation = useNavigation();
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
-  const [newGoalText, setNewGoalText] = useState('');
-  const [addingGoal, setAddingGoal] = useState(false);
   // voiceModalVisible removed — hold-to-record replaces modal
   const [showConfetti, setShowConfetti] = useState(false);
   const [showEveningRitual, setShowEveningRitual] = useState(false);
@@ -195,7 +190,7 @@ export default function PlannerScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const hasSpokenTodayRef = useRef(false);
 
-  const { tasks, isLoading: tasksLoading, fetchTasks, toggleComplete } = useTaskStore();
+  const { tasks, isLoading: tasksLoading, fetchTasks, toggleComplete, deleteTask } = useTaskStore();
   const {
     weeklyGoals,
     isLoading: goalsLoading,
@@ -357,16 +352,14 @@ export default function PlannerScreen() {
     setSelectedDayIndex(null);
   }, []);
 
-  const handleAddGoal = useCallback(async () => {
-    if (!newGoalText.trim()) return;
+  // Пустая строка под целями недели: «Готово» добавляет, поле остаётся для следующей.
+  const handleAddGoal = useCallback(async (text: string) => {
     try {
-      await createWeeklyGoal(weekStartStr, newGoalText.trim());
-      setNewGoalText('');
-      setAddingGoal(false);
+      await createWeeklyGoal(weekStartStr, text);
     } catch {
       // Error handled by store
     }
-  }, [newGoalText, weekStartStr, createWeeklyGoal]);
+  }, [weekStartStr, createWeeklyGoal]);
 
   const handleToggleGoal = useCallback(
     async (id: string, completed: boolean) => {
@@ -440,10 +433,26 @@ export default function PlannerScreen() {
     }
   }, [quoteMuted, quote]);
 
+  // Пустая строка под задачами: дату из текста («завтра в 15:00») разбирает сервер.
   const handleQuickAddSubmit = useCallback(async (text: string) => {
     const quickAddFn = useTaskStore.getState().quickAdd;
-    if (quickAddFn) await quickAddFn(text);
+    try {
+      if (quickAddFn) await quickAddFn(text);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Не удалось добавить задачу';
+      Alert.alert('Ошибка', msg);
+    }
   }, []);
+
+  // Сдвиг строки влево + красный минус — уже осознанное действие, без диалога.
+  const handleDeleteTask = useCallback(async (id: string) => {
+    try {
+      await deleteTask(id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Ошибка удаления';
+      Alert.alert('Ошибка', msg);
+    }
+  }, [deleteTask]);
 
   const isLoading = tasksLoading || goalsLoading;
 
@@ -577,13 +586,6 @@ export default function PlannerScreen() {
         {/* Header */}
         <Text style={styles.screenTitle}>Планер</Text>
 
-        {/* Quick Add */}
-        {useUIStore.getState().isFeatureVisible('quick_add') && (
-          <View style={styles.quickAddWrapper}>
-            <QuickAddBar onSubmit={handleQuickAddSubmit} />
-          </View>
-        )}
-
         {/* Week Navigation */}
         <View style={styles.weekNav}>
           <TouchableOpacity onPress={handlePrevWeek} hitSlop={12}>
@@ -630,89 +632,63 @@ export default function PlannerScreen() {
           ) : (
             selectedDayTasks.map((task, idx) => (
               <FadeInView key={task.id} delay={idx * 40}>
-                <TaskRow
-                  title={task.title}
-                  category={task.category}
-                  completed={task.completed}
-                  time={task.time}
-                  onToggle={() => toggleComplete(task.id)}
-                />
+                <SwipeableRow
+                  onDelete={() => handleDeleteTask(task.id)}
+                  deleteLabel="Удалить задачу"
+                >
+                  <TaskRow
+                    title={task.title}
+                    category={task.category}
+                    completed={task.completed}
+                    time={task.time}
+                    onToggle={() => toggleComplete(task.id)}
+                  />
+                </SwipeableRow>
               </FadeInView>
             ))
           )}
+          {/* Добавление без плюсиков: тап по пустой строке под списком */}
+          <TapToAdd hint="Новая задача" onSubmit={handleQuickAddSubmit} />
         </Card>
 
         {/* Weekly Goals */}
         <Card style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Цели на неделю</Text>
-            {!addingGoal && (
-              <TouchableOpacity onPress={() => setAddingGoal(true)}>
-                <Text style={styles.addButton}>+ Добавить</Text>
-              </TouchableOpacity>
-            )}
           </View>
 
-          {weeklyGoals.length === 0 && !addingGoal && (
+          {weeklyGoals.length === 0 && (
             <Text style={styles.emptyText}>Нет целей на эту неделю</Text>
           )}
 
           {weeklyGoals.map((goal, idx) => (
             <FadeInView key={goal.id} delay={idx * 50}>
-            <View style={styles.goalRow}>
-              <Checkbox
-                checked={goal.completed}
-                onToggle={() => handleToggleGoal(goal.id, goal.completed)}
-                size={20}
-              />
-              <Text
-                style={[
-                  styles.goalText,
-                  goal.completed && styles.goalTextCompleted,
-                ]}
-                numberOfLines={2}
+              <SwipeableRow
+                onDelete={() => handleDeleteGoal(goal.id)}
+                deleteLabel="Удалить цель"
               >
-                {goal.goalText}
-              </Text>
-              <TouchableOpacity
-                onPress={() => handleDeleteGoal(goal.id)}
-                hitSlop={8}
-              >
-                <Text style={styles.deleteIcon}>{'\u2715'}</Text>
-              </TouchableOpacity>
-            </View>
+                <View style={styles.goalRow}>
+                  <Checkbox
+                    checked={goal.completed}
+                    onToggle={() => handleToggleGoal(goal.id, goal.completed)}
+                    size={20}
+                  />
+                  <Text
+                    style={[
+                      styles.goalText,
+                      goal.completed && styles.goalTextCompleted,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {goal.goalText}
+                  </Text>
+                </View>
+              </SwipeableRow>
             </FadeInView>
           ))}
 
-          {addingGoal && (
-            <View style={styles.addGoalRow}>
-              <Input
-                value={newGoalText}
-                onChangeText={setNewGoalText}
-                placeholder="Введите цель..."
-                onSubmitEditing={handleAddGoal}
-                returnKeyType="done"
-                style={styles.goalInput}
-              />
-              <View style={styles.addGoalActions}>
-                <Button
-                  title="Добавить"
-                  onPress={handleAddGoal}
-                  size="sm"
-                  disabled={!newGoalText.trim()}
-                />
-                <Button
-                  title="Отмена"
-                  onPress={() => {
-                    setAddingGoal(false);
-                    setNewGoalText('');
-                  }}
-                  variant="outline"
-                  size="sm"
-                />
-              </View>
-            </View>
-          )}
+          {/* Добавление без плюсиков: тап по пустой строке в конце целей */}
+          <TapToAdd hint="Новая цель недели" onSubmit={handleAddGoal} />
         </Card>
 
         {/* Year Activity Heatmap */}
@@ -805,10 +781,6 @@ function createStyles(c: C) {
     },
     scroll: {
       flex: 1,
-    },
-    quickAddWrapper: {
-      paddingHorizontal: spacing.md,
-      marginBottom: spacing.sm,
     },
     scrollContent: {
       padding: spacing.md,
@@ -1050,27 +1022,6 @@ function createStyles(c: C) {
     goalTextCompleted: {
       textDecorationLine: 'line-through',
       color: c.textSecondary,
-    },
-    deleteIcon: {
-      color: c.textSecondary,
-      fontSize: fontSize.sm,
-      padding: spacing.xs,
-    },
-    addButton: {
-      color: c.primary,
-      fontSize: fontSize.sm,
-      fontWeight: '600',
-    },
-    addGoalRow: {
-      marginTop: spacing.sm,
-      gap: spacing.sm,
-    },
-    goalInput: {
-      flex: 1,
-    },
-    addGoalActions: {
-      flexDirection: 'row',
-      gap: spacing.sm,
     },
     analyticsGrid: {
       flexDirection: 'row',

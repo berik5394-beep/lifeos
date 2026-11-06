@@ -29,6 +29,8 @@ import {
   AnimatedProgressBar,
   ProgressRing,
   StatCard,
+  SwipeableRow,
+  TapToAdd,
 } from '@/components/ui';
 import { spacing, borderRadius, fontSize, habitCategories } from '@/constants';
 import { FadeInView } from '@/components/ui/fade-in-view';
@@ -199,13 +201,14 @@ const HabitCard = React.memo(function HabitCard({
     onToggle(habitId, !isCompleted);
   }, [habitId, isCompleted, onToggle, scaleAnim]);
 
+  // Удержание — правка; удаление — сдвиг влево и красный минус.
   const handleLongPress = useCallback(() => {
-    Alert.alert(name, 'Выберите действие', [
-      { text: 'Редактировать', onPress: () => onEdit(habitId) },
-      { text: 'Удалить', style: 'destructive', onPress: () => onDelete(habitId) },
-      { text: 'Отмена', style: 'cancel' },
-    ]);
-  }, [habitId, name, onEdit, onDelete]);
+    onEdit(habitId);
+  }, [habitId, onEdit]);
+
+  const handleDelete = useCallback(() => {
+    onDelete(habitId);
+  }, [habitId, onDelete]);
 
   const frequencyLabel =
     frequency === 'daily' ? 'Каждый день' :
@@ -213,13 +216,15 @@ const HabitCard = React.memo(function HabitCard({
     'Каждый месяц';
 
   const styles = useMemo(() => StyleSheet.create({
+    wrap: {
+      marginBottom: spacing.sm,
+    },
     container: {
       backgroundColor: c.surface,
       borderRadius: borderRadius.lg,
       padding: spacing.md,
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: spacing.sm,
       borderLeftWidth: 4,
       borderLeftColor: cat.color,
     },
@@ -264,6 +269,8 @@ const HabitCard = React.memo(function HabitCard({
   }), [c, cat, isCompleted, streak]);
 
   return (
+    <View style={styles.wrap}>
+    <SwipeableRow onDelete={handleDelete} deleteLabel="Удалить привычку">
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
       <TouchableOpacity
         activeOpacity={0.7}
@@ -271,7 +278,7 @@ const HabitCard = React.memo(function HabitCard({
         style={styles.container}
         accessibilityRole="button"
         accessibilityLabel={`${name}, ${isCompleted ? 'выполнено' : 'не выполнено'}${streak > 0 ? `, серия ${streak} дней` : ''}`}
-        accessibilityHint="Удерживайте для редактирования или удаления"
+        accessibilityHint="Удерживайте, чтобы изменить; сдвиньте влево, чтобы удалить"
       >
         <TouchableOpacity
           activeOpacity={0.6}
@@ -297,6 +304,8 @@ const HabitCard = React.memo(function HabitCard({
         </View>
       </TouchableOpacity>
     </Animated.View>
+    </SwipeableRow>
+    </View>
   );
 });
 
@@ -1162,29 +1171,16 @@ export default function HabitsScreen() {
     [toggleHabitLog, today],
   );
 
+  // Сдвиг влево + красный минус — уже осознанные два шага, без лишнего Alert.
   const handleDeleteHabit = useCallback(
-    (habitId: string) => {
-      const habit = habits.find((h) => h.id === habitId);
-      Alert.alert(
-        'Удалить привычку',
-        `Вы уверены, что хотите удалить "${habit?.name ?? 'привычку'}"?`,
-        [
-          { text: 'Отмена', style: 'cancel' },
-          {
-            text: 'Удалить',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await deleteHabit(habitId);
-              } catch {
-                Alert.alert('Ошибка', 'Не удалось удалить привычку');
-              }
-            },
-          },
-        ],
-      );
+    async (habitId: string) => {
+      try {
+        await deleteHabit(habitId);
+      } catch {
+        Alert.alert('Ошибка', 'Не удалось удалить привычку');
+      }
     },
-    [habits, deleteHabit],
+    [deleteHabit],
   );
 
   const handleEditHabit = useCallback(
@@ -1489,6 +1485,11 @@ export default function HabitsScreen() {
         </View>
       )}
 
+      {/* Добавление без «+»: бледная строка в конце списка открывает форму */}
+      {activeHabits.length > 0 && (
+        <TapToAdd hint="Новая привычка" onPress={handleOpenCreateModal} />
+      )}
+
       {/* Stats Row */}
       <FadeInView delay={100}>
         <View style={styles.statsRow}>
@@ -1522,13 +1523,11 @@ export default function HabitsScreen() {
           <Text style={styles.emptyEmoji}>{'🌱'}</Text>
           <Text style={styles.emptyTitle}>Нет привычек</Text>
           <Text style={styles.emptyDesc}>
-            Создайте первую привычку, нажав кнопку ниже
+            Нажми «Новая привычка» ниже, чтобы создать первую
           </Text>
-          <Button
-            title="Создать привычку"
-            onPress={handleOpenCreateModal}
-            style={{ marginTop: spacing.md }}
-          />
+          <View style={styles.emptyAdd}>
+            <TapToAdd hint="Новая привычка" onPress={handleOpenCreateModal} />
+          </View>
         </View>
       )}
 
@@ -2070,15 +2069,6 @@ export default function HabitsScreen() {
         {renderAnalytics}
       </SlideTabs>
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        activeOpacity={0.8}
-        onPress={handleOpenCreateModal}
-      >
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
-
 
       {/* Modals */}
       {renderCreateModal}
@@ -2220,6 +2210,10 @@ function createStyles(c: C, SCREEN_WIDTH: number) {
       color: c.textSecondary,
       textAlign: 'center',
       paddingHorizontal: spacing.xl,
+    },
+    emptyAdd: {
+      alignSelf: 'stretch',
+      marginTop: spacing.md,
     },
 
     // ─── Month Navigator ────────────────────────────────────────────────────
@@ -2427,30 +2421,6 @@ function createStyles(c: C, SCREEN_WIDTH: number) {
       fontSize: fontSize.sm,
       fontWeight: '600',
       color: c.textSecondary,
-    },
-
-    // ─── FAB ────────────────────────────────────────────────────────────────
-    fab: {
-      position: 'absolute',
-      bottom: 90,
-      right: spacing.lg,
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: c.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 8,
-    },
-    fabText: {
-      fontSize: 28,
-      color: '#fff',
-      fontWeight: '600',
-      lineHeight: 30,
     },
   });
 }

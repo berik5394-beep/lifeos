@@ -10,7 +10,6 @@ import {
   RefreshControl,
   Dimensions,
   TextInput,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
@@ -23,6 +22,8 @@ import {
   SlideTabs,
   AnimatedProgressBar,
   StatCard,
+  SwipeableRow,
+  TapToAdd,
 } from '@/components/ui';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -33,7 +34,6 @@ import { useHabitStore } from '@/stores/habit-store';
 import { useUIStore } from '@/stores/ui-store';
 import { getWeekDays, isToday } from '@/utils/dates';
 import { useColors } from '@/hooks/use-colors';
-import { QuickAddBar } from '@/components/ui/quick-add-bar';
 import { TagChip } from '@/components/ui/tag-chip';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -189,7 +189,7 @@ function getBestDay(tasks: TaskItem[]): string {
 interface TaskRowProps {
   task: TaskItem;
   onToggle: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
   onEdit: (task: TaskItem) => void;
   colors: ReturnType<typeof useColors>;
 }
@@ -212,16 +212,18 @@ const TaskRow = React.memo(function TaskRow({
   const handleEdit = useCallback(() => onEdit(task), [onEdit, task]);
 
   return (
-    <TouchableOpacity
-      style={[styles.tableRow, task.completed && styles.tableRowCompleted]}
-      onPress={handleToggle}
-      onLongPress={handleEdit}
-      activeOpacity={0.7}
-      accessibilityRole="button"
-      accessibilityLabel={`${task.title}, ${task.completed ? 'выполнено' : 'не выполнено'}`}
-      accessibilityHint="Нажмите для переключения, удерживайте для редактирования"
-    >
-      <View style={styles.tableCell_title}>
+    <SwipeableRow onDelete={handleDelete} deleteLabel="Удалить задачу">
+      {/* Строка списка в ширину экрана: сдвиг влево открывает «минус» (широкая таблица
+          с прокруткой вбок забирала этот жест, а минус уезжал за край). */}
+      <TouchableOpacity
+        style={[styles.listRow, task.completed && styles.tableRowCompleted]}
+        onPress={handleToggle}
+        onLongPress={handleEdit}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={`${task.title}, ${task.completed ? 'выполнено' : 'не выполнено'}`}
+        accessibilityHint="Нажмите для переключения, удерживайте для редактирования"
+      >
         <Text
           style={[styles.tableCellText, task.completed && styles.tableCellTextCompleted]}
           numberOfLines={2}
@@ -235,51 +237,32 @@ const TaskRow = React.memo(function TaskRow({
             ))}
           </View>
         )}
-      </View>
-      <View style={styles.tableCell_priority}>
-        <View style={[styles.priorityBadge, { backgroundColor: prioInfo?.color ?? c.border }]}>
-          <Text style={styles.priorityBadgeText}>
+        <View style={styles.listMeta}>
+          <Text style={styles.tableCellTextSmall}>
             {prioInfo?.icon ?? ''} {prioInfo?.label ?? task.priority}
           </Text>
-        </View>
-      </View>
-      <View style={styles.tableCell_status}>
-        <Text style={[
-          styles.statusText,
-          status === 'completed' && { color: c.success },
-          status === 'overdue' && { color: c.danger },
-          status === 'in_progress' && { color: c.warning },
-        ]}>
-          {getStatusIcon(status)} {getStatusLabel(status)}
-        </Text>
-      </View>
-      <View style={styles.tableCell_category}>
-        <View style={[styles.categoryBadge, { backgroundColor: (catInfo?.color ?? c.border) + '20' }]}>
-          <Text style={[styles.categoryBadgeText, { color: catInfo?.color ?? c.textSecondary }]}>
+          <Text style={[
+            styles.tableCellTextSmall,
+            status === 'completed' && { color: c.success },
+            status === 'overdue' && { color: c.danger },
+            status === 'in_progress' && { color: c.warning },
+          ]}>
+            {getStatusIcon(status)} {getStatusLabel(status)}
+          </Text>
+          <Text style={[styles.tableCellTextSmall, { color: catInfo?.color ?? c.textSecondary }]}>
             {catInfo?.icon ?? ''} {catInfo?.label ?? task.category}
           </Text>
+          <Text style={[
+            styles.tableCellTextSmall,
+            !task.completed && daysLeft < 0 && { color: c.danger },
+            !task.completed && daysLeft === 0 && { color: c.warning },
+          ]}>
+            {formatShortDate(task.date)}
+            {task.completed ? '' : daysLeft < 0 ? ` · ${Math.abs(daysLeft)} дн. назад` : daysLeft === 0 ? ' · сегодня' : ` · ${daysLeft} дн.`}
+          </Text>
         </View>
-      </View>
-      <View style={styles.tableCell_date}>
-        <Text style={styles.tableCellTextSmall}>{formatShortDate(task.createdAt)}</Text>
-      </View>
-      <View style={styles.tableCell_deadline}>
-        <Text style={styles.tableCellTextSmall}>{formatShortDate(task.date)}</Text>
-      </View>
-      <View style={styles.tableCell_remaining}>
-        <Text style={[
-          styles.tableCellTextSmall,
-          daysLeft < 0 && { color: c.danger },
-          daysLeft === 0 && { color: c.warning },
-          daysLeft > 0 && { color: c.success },
-        ]}>
-          {task.completed ? '—' : daysLeft < 0 ? `${Math.abs(daysLeft)} дн. назад` : daysLeft === 0 ? 'Сегодня' : `${daysLeft} дн.`}
-        </Text>
-      </View>
-      <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-        <Text style={styles.deleteButtonText}>{'\uD83D\uDDD1'}</Text>
       </TouchableOpacity>
-    </TouchableOpacity>
+    </SwipeableRow>
   );
 });
 
@@ -292,7 +275,7 @@ interface WeekDayColumnProps {
   tasks: TaskItem[];
   isCurrentDay: boolean;
   onToggle: (id: string) => void;
-  onAddTask: (date: Date) => void;
+  onAddTask: (date: Date, title: string) => Promise<void>;
   colors: ReturnType<typeof useColors>;
 }
 
@@ -307,7 +290,7 @@ const WeekDayColumn = React.memo(function WeekDayColumn({
   colors: c,
 }: WeekDayColumnProps) {
   const styles = useMemo(() => createStyles(c), [c]);
-  const handleAdd = useCallback(() => onAddTask(date), [onAddTask, date]);
+  const handleAdd = useCallback((title: string) => onAddTask(date, title), [onAddTask, date]);
 
   const completed = tasks.filter((t) => t.completed).length;
   const total = tasks.length;
@@ -365,9 +348,8 @@ const WeekDayColumn = React.memo(function WeekDayColumn({
           <Text style={styles.weekDayEmpty}>Нет задач</Text>
         )}
       </View>
-      <TouchableOpacity style={styles.weekDayAddButton} onPress={handleAdd}>
-        <Text style={styles.weekDayAddButtonText}>+</Text>
-      </TouchableOpacity>
+      {/* Тап по пустой строке внизу дня — задача сразу на этот день */}
+      <TapToAdd hint="Добавить" onSubmit={handleAdd} />
     </View>
   );
 });
@@ -595,12 +577,11 @@ export default function TasksScreen() {
   // ─── State ───────────────────────────────────────────────────────────────
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [currentWeek, setCurrentWeek] = useState(new Date());
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Create modal form state
+  // Edit modal form state
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState<string>('personal');
   const [newPriority, setNewPriority] = useState<string>('medium');
@@ -820,8 +801,14 @@ export default function TasksScreen() {
     });
   }, [isFeatureVisible]);
 
+  // Пустая строка в конце списка: дату из текста («завтра в 15:00») разбирает сервер.
   const handleQuickAdd = useCallback(async (text: string) => {
-    await quickAdd(text);
+    try {
+      await quickAdd(text);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Не удалось добавить задачу';
+      Alert.alert('Ошибка', msg);
+    }
   }, [quickAdd]);
 
   const handleViewModePress = useCallback((mode: ViewModeItem) => {
@@ -880,27 +867,15 @@ export default function TasksScreen() {
     [toggleComplete],
   );
 
+  // Сдвиг строки влево + красный минус — уже осознанное действие, без диалога.
   const handleDeleteTask = useCallback(
-    (id: string) => {
-      Alert.alert(
-        'Удалить задачу?',
-        'Эта задача будет удалена безвозвратно.',
-        [
-          { text: 'Отмена', style: 'cancel' },
-          {
-            text: 'Удалить',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await deleteTask(id);
-              } catch (err) {
-                const msg = err instanceof Error ? err.message : 'Ошибка удаления';
-                Alert.alert('Ошибка', msg);
-              }
-            },
-          },
-        ],
-      );
+    async (id: string) => {
+      try {
+        await deleteTask(id);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Ошибка удаления';
+        Alert.alert('Ошибка', msg);
+      }
     },
     [deleteTask],
   );
@@ -916,47 +891,25 @@ export default function TasksScreen() {
     setShowEditModal(true);
   }, []);
 
-  const handleCloseCreateModal = useCallback(() => setShowCreateModal(false), []);
   const handleCloseEditModal = useCallback(() => setShowEditModal(false), []);
 
-  const handleOpenCreate = useCallback((presetDate?: Date) => {
-    setEditingTask(null);
-    setNewTitle('');
-    setNewCategory('personal');
-    setNewPriority('medium');
-    setNewDate(presetDate ? toDateString(presetDate) : toDateString(new Date()));
-    setNewTime('');
-    setNewNotes('');
-    setShowCreateModal(true);
-  }, []);
-
+  // Пустая строка внизу дня в планере: задача на этот день с прежними
+  // значениями по умолчанию (категория «Личное», приоритет «Средний»).
   const handleAddTaskForDay = useCallback(
-    (date: Date) => {
-      handleOpenCreate(date);
+    async (date: Date, title: string) => {
+      try {
+        await createTask({
+          title,
+          category: 'personal',
+          priority: 'medium',
+          date: toDateString(date),
+        });
+      } catch {
+        Alert.alert('Ошибка', 'Не удалось создать задачу');
+      }
     },
-    [handleOpenCreate],
+    [createTask],
   );
-
-  const handleSaveTask = useCallback(async () => {
-    if (!newTitle.trim()) {
-      Alert.alert('Ошибка', 'Введите название задачи');
-      return;
-    }
-    try {
-      await createTask({
-        title: newTitle.trim(),
-        category: newCategory,
-        priority: newPriority,
-        date: newDate,
-        time: newTime || undefined,
-        notes: newNotes || undefined,
-      });
-      setShowCreateModal(false);
-      setNewTitle('');
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось создать задачу');
-    }
-  }, [newTitle, newCategory, newPriority, newDate, newTime, newNotes, createTask]);
 
   const handleUpdateTask = useCallback(async () => {
     if (!editingTask) return;
@@ -1003,10 +956,10 @@ export default function TasksScreen() {
     [],
   );
 
-  // ─── Render: Task Modal (Create / Edit) ──────────────────────────────────
+  // ─── Render: Task Modal (Edit) ───────────────────────────────────────────
   const renderTaskModal = useCallback(
-    (visible: boolean, onClose: () => void, onSave: () => void, isEdit: boolean) => (
-      <Modal visible={visible} onClose={onClose} title={isEdit ? 'Редактировать задачу' : 'Новая задача'}>
+    (visible: boolean, onClose: () => void, onSave: () => void) => (
+      <Modal visible={visible} onClose={onClose} title="Редактировать задачу">
 
         <Text style={styles.modalLabel}>Название</Text>
         <Input
@@ -1065,7 +1018,7 @@ export default function TasksScreen() {
             style={styles.modalButton}
           />
           <Button
-            title={isEdit ? 'Сохранить' : 'Создать задачу'}
+            title="Сохранить"
             onPress={onSave}
             style={styles.modalButton}
           />
@@ -1140,57 +1093,26 @@ export default function TasksScreen() {
         <Card style={styles.tableCard}>
           <Text style={styles.sectionTitle}>Обзор задач</Text>
 
-          {/* Table Header */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View>
-              <View style={styles.tableHeader}>
-                <View style={styles.tableCell_title}>
-                  <Text style={styles.tableHeaderText}>Задача</Text>
-                </View>
-                <View style={styles.tableCell_priority}>
-                  <Text style={styles.tableHeaderText}>Приоритет</Text>
-                </View>
-                <View style={styles.tableCell_status}>
-                  <Text style={styles.tableHeaderText}>Статус</Text>
-                </View>
-                <View style={styles.tableCell_category}>
-                  <Text style={styles.tableHeaderText}>Категория</Text>
-                </View>
-                <View style={styles.tableCell_date}>
-                  <Text style={styles.tableHeaderText}>Создана</Text>
-                </View>
-                <View style={styles.tableCell_deadline}>
-                  <Text style={styles.tableHeaderText}>Дедлайн</Text>
-                </View>
-                <View style={styles.tableCell_remaining}>
-                  <Text style={styles.tableHeaderText}>Осталось</Text>
-                </View>
-                <View style={{ width: 40 }} />
-              </View>
-
-              {/* Table Body */}
-              {monthTasks.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyEmoji}>{'\uD83D\uDCCB'}</Text>
-                  <Text style={styles.emptyText}>Нет задач за этот месяц</Text>
-                  <Text style={styles.emptySubtext}>
-                    Нажмите + чтобы создать первую задачу
-                  </Text>
-                </View>
-              ) : (
-                monthTasks.map((task) => (
-                  <TaskRow
-                    key={task.id}
-                    task={task}
-                    onToggle={handleToggleComplete}
-                    onDelete={handleDeleteTask}
-                    onEdit={handleEditTask}
-                    colors={c}
-                  />
-                ))
-              )}
+          {monthTasks.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              onToggle={handleToggleComplete}
+              onDelete={handleDeleteTask}
+              onEdit={handleEditTask}
+              colors={c}
+            />
+          ))}
+          {/* Пусто — подпись в ширину карточки, а не широкой таблицы (иначе обрезалась справа). */}
+          {monthTasks.length === 0 && (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>{'\uD83D\uDCCB'}</Text>
+              <Text style={styles.emptyText}>Нет задач за этот месяц</Text>
+              <Text style={styles.emptySubtext}>Нажми на пустую строку ниже, чтобы добавить задачу</Text>
             </View>
-          </ScrollView>
+          )}
+          {/* Добавление без плюсиков: тап по пустой строке в конце списка */}
+          <TapToAdd hint="Новая задача" onSubmit={handleQuickAdd} />
         </Card>
 
         {/* Pie Charts */}
@@ -1213,7 +1135,7 @@ export default function TasksScreen() {
   }, [
     currentMonth, monthTasks, monthStats, priorityDistribution, statusDistribution,
     refreshing, handleRefresh, handlePrevMonth, handleNextMonth, handleToggleComplete,
-    handleDeleteTask, handleEditTask, styles, c,
+    handleDeleteTask, handleEditTask, handleQuickAdd, styles, c,
   ]);
 
   // ─── Render: Slide 2 — Week Planner ─────────────────────────────────────
@@ -1605,16 +1527,6 @@ export default function TasksScreen() {
         })}
       </ScrollView>
 
-      {/* Quick Add Bar */}
-      {isFeatureVisible('quick_add') && (
-        <View style={styles.quickAddWrapper}>
-          <QuickAddBar
-            onSubmit={handleQuickAdd}
-            placeholder="Быстро добавить задачу..."
-          />
-        </View>
-      )}
-
       {isLoading && tasks.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={c.primary} />
@@ -1626,21 +1538,8 @@ export default function TasksScreen() {
         </SlideTabs>
       )}
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => handleOpenCreate()}
-        activeOpacity={0.8}
-        accessibilityRole="button"
-        accessibilityLabel="Добавить задачу"
-      >
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
-
-
-      {/* Modals */}
-      {renderTaskModal(showCreateModal, handleCloseCreateModal, handleSaveTask, false)}
-      {renderTaskModal(showEditModal, handleCloseEditModal, handleUpdateTask, true)}
+      {/* Модалка редактирования (долгое нажатие на строку) */}
+      {renderTaskModal(showEditModal, handleCloseEditModal, handleUpdateTask)}
     </ScreenSafeArea>
   );
 }
@@ -1758,38 +1657,23 @@ function createStyles(c: C) {
       marginBottom: spacing.sm,
       paddingHorizontal: spacing.xs,
     },
-    tableHeader: {
-      flexDirection: 'row',
-      backgroundColor: c.surfaceLight,
-      borderRadius: borderRadius.sm,
-      paddingVertical: spacing.sm,
+    listRow: {
+      paddingVertical: spacing.sm + 2,
       paddingHorizontal: spacing.xs,
-      marginBottom: spacing.xs,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+      backgroundColor: c.surface,
+      gap: 4,
     },
-    tableHeaderText: {
-      fontSize: fontSize.xs,
-      fontWeight: '700',
-      color: c.textSecondary,
-      textTransform: 'uppercase',
-    },
-    tableRow: {
+    listMeta: {
       flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.xs,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: c.divider,
+      flexWrap: 'wrap',
+      columnGap: spacing.md,
+      rowGap: 2,
     },
     tableRowCompleted: {
       opacity: 0.6,
     },
-    tableCell_title: { width: 150, paddingRight: spacing.sm },
-    tableCell_priority: { width: 110, paddingRight: spacing.sm },
-    tableCell_status: { width: 110, paddingRight: spacing.sm },
-    tableCell_category: { width: 120, paddingRight: spacing.sm },
-    tableCell_date: { width: 90, paddingRight: spacing.sm },
-    tableCell_deadline: { width: 90, paddingRight: spacing.sm },
-    tableCell_remaining: { width: 90, paddingRight: spacing.sm },
     tableCellText: {
       fontSize: fontSize.sm,
       color: c.text,
@@ -1804,37 +1688,6 @@ function createStyles(c: C) {
     },
 
     // ─── Priority / Category / Status Badges ────────────────────────────
-    priorityBadge: {
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 3,
-      borderRadius: borderRadius.sm,
-    },
-    priorityBadgeText: {
-      fontSize: fontSize.xs,
-      fontWeight: '600',
-      color: '#FFFFFF',
-    },
-    categoryBadge: {
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 3,
-      borderRadius: borderRadius.sm,
-    },
-    categoryBadgeText: {
-      fontSize: fontSize.xs,
-      fontWeight: '500',
-    },
-    statusText: {
-      fontSize: fontSize.xs,
-      fontWeight: '600',
-    },
-    deleteButton: {
-      width: 40,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    deleteButtonText: {
-      fontSize: fontSize.md,
-    },
 
     // ─── Pie Charts ──────────────────────────────────────────────────────
     pieChartsRow: {
@@ -2033,17 +1886,6 @@ function createStyles(c: C) {
       color: c.textMuted,
       textAlign: 'center',
       paddingVertical: spacing.md,
-    },
-    weekDayAddButton: {
-      alignItems: 'center',
-      paddingVertical: spacing.xs,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: c.divider,
-    },
-    weekDayAddButtonText: {
-      fontSize: fontSize.lg,
-      color: c.primary,
-      fontWeight: '600',
     },
 
     // ─── Notes Cards ─────────────────────────────────────────────────────
@@ -2387,30 +2229,6 @@ function createStyles(c: C) {
       flex: 1,
     },
 
-    // ─── FAB ─────────────────────────────────────────────────────────────
-    fab: {
-      position: 'absolute',
-      right: spacing.lg,
-      bottom: Platform.OS === 'ios' ? 100 : 80,
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: c.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      elevation: 8,
-      shadowColor: c.primary,
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-    },
-    fabText: {
-      fontSize: 28,
-      color: '#FFFFFF',
-      fontWeight: '600',
-      marginTop: -2,
-    },
-
     // ─── View Mode Toolbar ───────────────────────────────────────────────
     viewModeBar: {
       maxHeight: 44,
@@ -2445,12 +2263,6 @@ function createStyles(c: C) {
     },
     viewModePillTextActive: {
       color: '#FFFFFF',
-    },
-
-    // ─── Quick Add Bar ───────────────────────────────────────────────────
-    quickAddWrapper: {
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs,
     },
 
     // ─── Task Tag Chips ──────────────────────────────────────────────────

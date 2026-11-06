@@ -20,6 +20,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { AnimatedProgressBar } from '@/components/ui/animated-progress-bar';
+import { ProgressCircle } from '@/components/ui/progress-circle';
+import { SwipeableRow } from '@/components/ui/swipeable-row';
+import { TapToAdd } from '@/components/ui/tap-to-add';
 
 import { useGoalStore } from '@/stores/goal-store';
 import { useHabitStore } from '@/stores/habit-store';
@@ -194,6 +197,8 @@ const HabitItem = React.memo(function HabitItem({
 
 // ─────────────────── Goal item (memoized) ───────────────────
 
+type ScreenStyles = ReturnType<typeof createStyles>;
+
 interface GoalItemProps {
   goal: {
     id: string;
@@ -203,11 +208,16 @@ interface GoalItemProps {
   };
   areaColor: string;
   onEdit: (goal: { id: string; goalText: string; progress: number; area: string }) => void;
-  onDelete: (id: string, text: string) => void;
+  onDelete: (id: string) => void;
   onProgressChange: (id: string, progress: number) => void;
   c: ReturnType<typeof useColors>;
+  styles: ScreenStyles;
 }
 
+/**
+ * Цель: слева кольцо, которое заполняется прогрессом; тап по тексту — правка;
+ * сдвиг влево и красный минус — удаление; справа компактные «+10% / −10%».
+ */
 const GoalItem = React.memo(function GoalItem({
   goal,
   areaColor,
@@ -215,6 +225,7 @@ const GoalItem = React.memo(function GoalItem({
   onDelete,
   onProgressChange,
   c,
+  styles,
 }: GoalItemProps) {
   const progressPercent = Math.round(goal.progress * 100);
   const isComplete = progressPercent >= 100;
@@ -224,8 +235,8 @@ const GoalItem = React.memo(function GoalItem({
   }, [goal, onEdit]);
 
   const handleDelete = useCallback(() => {
-    onDelete(goal.id, goal.goalText);
-  }, [goal.id, goal.goalText, onDelete]);
+    onDelete(goal.id);
+  }, [goal.id, onDelete]);
 
   const handleSliderDecrease = useCallback(() => {
     const newVal = Math.max(0, goal.progress - 0.1);
@@ -238,112 +249,54 @@ const GoalItem = React.memo(function GoalItem({
   }, [goal.id, goal.progress, onProgressChange]);
 
   return (
-    <View
-      accessible={true}
-      accessibilityLabel={`${goal.goalText}, прогресс ${Math.round(goal.progress * 100)}%`}
-      style={{
-        backgroundColor: c.surface,
-        borderRadius: borderRadius.md,
-        padding: spacing.md,
-        marginBottom: spacing.sm,
-        borderLeftWidth: 3,
-        borderLeftColor: areaColor,
-      }}
-    >
-      {/* Goal text + action buttons */}
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={{
-              fontSize: fontSize.md,
-              fontWeight: '600',
-              color: c.text,
-              lineHeight: fontSize.md * 1.4,
-            }}
-          >
-            {isComplete ? '🎉 ' : ''}
-            {goal.goalText}
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', marginLeft: spacing.sm }}>
+    <View style={styles.goalItemWrap}>
+      <SwipeableRow onDelete={handleDelete} deleteLabel="Удалить цель">
+        <View style={[styles.goalItem, { borderLeftColor: areaColor }]}>
+          <ProgressCircle
+            progress={progressPercent}
+            size={56}
+            strokeWidth={5}
+            color={areaColor}
+            trackColor={c.surfaceLight}
+            textColor={isComplete ? areaColor : c.text}
+          />
+
           <TouchableOpacity
             onPress={handleEdit}
-            style={{ padding: spacing.xs }}
+            style={styles.goalTextWrap}
             activeOpacity={0.6}
             accessibilityRole="button"
-            accessibilityLabel="Редактировать цель"
+            accessibilityLabel={`${goal.goalText}, прогресс ${progressPercent}%`}
+            accessibilityHint="Нажми, чтобы изменить цель"
           >
-            <Text style={{ fontSize: 16 }}>✏️</Text>
+            <Text style={styles.goalText}>
+              {isComplete ? '🎉 ' : ''}
+              {goal.goalText}
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleDelete}
-            style={{ padding: spacing.xs, marginLeft: spacing.xs }}
-            activeOpacity={0.6}
-            accessibilityRole="button"
-            accessibilityLabel="Удалить цель"
-          >
-            <Text style={{ fontSize: 16 }}>🗑️</Text>
-          </TouchableOpacity>
+
+          <View style={styles.goalStepper}>
+            <TouchableOpacity
+              onPress={handleSliderIncrease}
+              style={styles.goalStepBtn}
+              activeOpacity={0.6}
+              accessibilityRole="button"
+              accessibilityLabel="Прогресс плюс 10%"
+            >
+              <Text style={styles.goalStepText}>+</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSliderDecrease}
+              style={styles.goalStepBtn}
+              activeOpacity={0.6}
+              accessibilityRole="button"
+              accessibilityLabel="Прогресс минус 10%"
+            >
+              <Text style={styles.goalStepText}>−</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-
-      {/* Progress bar + controls */}
-      <View style={{ marginTop: spacing.sm }}>
-        <AnimatedProgressBar
-          progress={progressPercent}
-          color={areaColor}
-          height={10}
-          showLabel={false}
-        />
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginTop: spacing.xs,
-          }}
-        >
-          <TouchableOpacity
-            onPress={handleSliderDecrease}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: c.surfaceLight,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            activeOpacity={0.6}
-          >
-            <Text style={{ fontSize: 18, fontWeight: '700', color: c.text }}>−</Text>
-          </TouchableOpacity>
-
-          <Text
-            style={{
-              fontSize: fontSize.lg,
-              fontWeight: '700',
-              color: isComplete ? areaColor : c.text,
-            }}
-          >
-            {progressPercent}%
-          </Text>
-
-          <TouchableOpacity
-            onPress={handleSliderIncrease}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: c.surfaceLight,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            activeOpacity={0.6}
-          >
-            <Text style={{ fontSize: 18, fontWeight: '700', color: c.text }}>+</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      </SwipeableRow>
     </View>
   );
 });
@@ -371,14 +324,15 @@ interface AreaCardProps {
   todayLogs: { habitId: string; completed: boolean }[];
   isExpanded: boolean;
   onToggleExpand: (key: GoalAreaKey) => void;
-  onAddGoal: (area: GoalAreaKey) => void;
+  onQuickAddGoal: (area: GoalAreaKey, text: string) => Promise<void>;
   onEditGoal: (goal: { id: string; goalText: string; progress: number; area: string }) => void;
-  onDeleteGoal: (id: string, text: string) => void;
+  onDeleteGoal: (id: string) => void;
   onProgressChange: (id: string, progress: number) => void;
   onToggleHabit: (habitId: string, completed: boolean) => void;
   onUnlinkHabit: (habitId: string) => void;
   onLinkHabit: (area: GoalAreaKey) => void;
   c: ReturnType<typeof useColors>;
+  styles: ScreenStyles;
 }
 
 const AreaCard = React.memo(function AreaCard({
@@ -389,7 +343,7 @@ const AreaCard = React.memo(function AreaCard({
   todayLogs,
   isExpanded,
   onToggleExpand,
-  onAddGoal,
+  onQuickAddGoal,
   onEditGoal,
   onDeleteGoal,
   onProgressChange,
@@ -397,6 +351,7 @@ const AreaCard = React.memo(function AreaCard({
   onUnlinkHabit,
   onLinkHabit,
   c,
+  styles,
 }: AreaCardProps) {
   const area = goalAreas[areaKey];
   const areaColor = area.color;
@@ -448,9 +403,11 @@ const AreaCard = React.memo(function AreaCard({
     onToggleExpand(areaKey);
   }, [areaKey, onToggleExpand]);
 
-  const handleAddGoal = useCallback(() => {
-    onAddGoal(areaKey);
-  }, [areaKey, onAddGoal]);
+  // Тап по пустой строке «Новая цель» → ввод → цель в этой области.
+  const handleQuickAddGoal = useCallback(
+    (text: string) => onQuickAddGoal(areaKey, text),
+    [areaKey, onQuickAddGoal],
+  );
 
   const handleLinkHabit = useCallback(() => {
     onLinkHabit(areaKey);
@@ -572,29 +529,16 @@ const AreaCard = React.memo(function AreaCard({
           </View>
         </View>
 
-        {/* Progress circle */}
-        <View style={{ alignItems: 'center', marginRight: spacing.sm }}>
-          <View
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 21,
-              borderWidth: 3,
-              borderColor: goals.length > 0 ? areaColor : c.border,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text
-              style={{
-                fontSize: fontSize.xs,
-                fontWeight: '700',
-                color: goals.length > 0 ? areaColor : c.textSecondary,
-              }}
-            >
-              {areaProgress}%
-            </Text>
-          </View>
+        {/* Кольцо прогресса области — заполняется средним прогрессом целей */}
+        <View style={styles.areaRing}>
+          <ProgressCircle
+            progress={areaProgress}
+            size={44}
+            strokeWidth={4}
+            color={areaColor}
+            trackColor={c.surfaceLight}
+            textColor={goals.length > 0 ? areaColor : c.textSecondary}
+          />
         </View>
 
         {/* Expand chevron */}
@@ -603,59 +547,12 @@ const AreaCard = React.memo(function AreaCard({
         </Animated.View>
       </TouchableOpacity>
 
-      {/* Progress bar under header */}
-      {goals.length > 0 && (
-        <View style={{ paddingHorizontal: spacing.md, paddingBottom: isExpanded ? 0 : spacing.sm }}>
-          <AnimatedProgressBar
-            progress={areaProgress}
-            color={areaColor}
-            height={6}
-            showLabel={false}
-          />
-        </View>
-      )}
-
       {/* Expanded content */}
       {isExpanded && (
         <View style={{ padding: spacing.md, paddingTop: spacing.md }}>
           {/* ────── Goals section ────── */}
           <View style={{ marginBottom: spacing.md }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: spacing.sm,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: fontSize.sm,
-                  fontWeight: '700',
-                  color: c.text,
-                  textTransform: 'uppercase',
-                  letterSpacing: 1,
-                }}
-              >
-                Цели на год
-              </Text>
-              <TouchableOpacity
-                onPress={handleAddGoal}
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: spacing.sm,
-                  paddingVertical: spacing.xs,
-                  backgroundColor: areaColor + '20',
-                  borderRadius: borderRadius.sm,
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={{ fontSize: 14, color: areaColor, fontWeight: '600' }}>
-                  + Добавить
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.areaSectionTitle}>Цели на год</Text>
 
             {goals.length === 0 ? (
               <View
@@ -673,7 +570,7 @@ const AreaCard = React.memo(function AreaCard({
                     lineHeight: fontSize.sm * 1.5,
                   }}
                 >
-                  Нет целей. Добавьте свою{'\n'}первую цель!
+                  Нет целей. Нажми «Новая цель»{'\n'}ниже, чтобы добавить первую.
                 </Text>
               </View>
             ) : (
@@ -686,10 +583,12 @@ const AreaCard = React.memo(function AreaCard({
                     onDelete={onDeleteGoal}
                     onProgressChange={onProgressChange}
                     c={c}
+                    styles={styles}
                   />
                 </FadeInView>
               ))
             )}
+            <TapToAdd hint="Новая цель" onSubmit={handleQuickAddGoal} />
           </View>
 
           {/* ────── Habits section ────── */}
@@ -726,7 +625,7 @@ const AreaCard = React.memo(function AreaCard({
                 activeOpacity={0.7}
               >
                 <Text style={{ fontSize: 14, color: areaColor, fontWeight: '600' }}>
-                  + Привязать
+                  Привязать
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1240,13 +1139,17 @@ export default function GoalsScreen() {
   }, []);
 
   // ── Goal CRUD ──
-  const handleAddGoal = useCallback((area: GoalAreaKey) => {
-    setEditingGoal(null);
-    setModalArea(area);
-    setModalGoalText('');
-    setModalProgress(0);
-    setGoalModalVisible(true);
-  }, []);
+  // Добавление без «+»: строка «Новая цель» в области → сразу цель на выбранный год.
+  const handleQuickAddGoal = useCallback(
+    async (area: GoalAreaKey, text: string) => {
+      try {
+        await createYearlyGoal({ year, area, goalText: text });
+      } catch {
+        Alert.alert('Ошибка', 'Не удалось сохранить цель');
+      }
+    },
+    [year, createYearlyGoal],
+  );
 
   const handleEditGoal = useCallback(
     (goal: { id: string; goalText: string; progress: number; area: string }) => {
@@ -1259,22 +1162,14 @@ export default function GoalsScreen() {
     [],
   );
 
+  // Сдвиг влево + красный минус — уже осознанные два шага, без лишнего Alert.
   const handleDeleteGoal = useCallback(
-    (id: string, text: string) => {
-      Alert.alert('Удалить цель', `Вы уверены, что хотите удалить "${text}"?`, [
-        { text: 'Отмена', style: 'cancel' },
-        {
-          text: 'Удалить',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteYearlyGoal(id);
-            } catch {
-              Alert.alert('Ошибка', 'Не удалось удалить цель');
-            }
-          },
-        },
-      ]);
+    async (id: string) => {
+      try {
+        await deleteYearlyGoal(id);
+      } catch {
+        Alert.alert('Ошибка', 'Не удалось удалить цель');
+      }
     },
     [deleteYearlyGoal],
   );
@@ -1290,36 +1185,21 @@ export default function GoalsScreen() {
     [updateYearlyGoal],
   );
 
+  // Модалка теперь только для правки (новые цели добавляются строкой в области).
   const handleSaveGoal = useCallback(async () => {
-    if (!modalArea || !modalGoalText.trim()) return;
+    if (!editingGoal || !modalArea || !modalGoalText.trim()) return;
 
     try {
-      if (editingGoal) {
-        await updateYearlyGoal(editingGoal.id, {
-          area: modalArea,
-          goalText: modalGoalText.trim(),
-          progress: modalProgress / 100,
-        });
-      } else {
-        await createYearlyGoal({
-          year,
-          area: modalArea,
-          goalText: modalGoalText.trim(),
-        });
-      }
+      await updateYearlyGoal(editingGoal.id, {
+        area: modalArea,
+        goalText: modalGoalText.trim(),
+        progress: modalProgress / 100,
+      });
       setGoalModalVisible(false);
     } catch {
       Alert.alert('Ошибка', 'Не удалось сохранить цель');
     }
-  }, [
-    editingGoal,
-    modalArea,
-    modalGoalText,
-    modalProgress,
-    year,
-    createYearlyGoal,
-    updateYearlyGoal,
-  ]);
+  }, [editingGoal, modalArea, modalGoalText, modalProgress, updateYearlyGoal]);
 
   const handleCloseGoalModal = useCallback(() => {
     setGoalModalVisible(false);
@@ -1420,15 +1300,6 @@ export default function GoalsScreen() {
     [linkArea, goalsByArea, createHabit, fetchHabits],
   );
 
-  // ── FAB handler ──
-  const handleFabPress = useCallback(() => {
-    setEditingGoal(null);
-    setModalArea(null);
-    setModalGoalText('');
-    setModalProgress(0);
-    setGoalModalVisible(true);
-  }, []);
-
   // ── Progress controls in modal ──
   const handleModalProgressDecrease = useCallback(() => {
     setModalProgress((p) => Math.max(0, p - 10));
@@ -1484,23 +1355,20 @@ export default function GoalsScreen() {
               <Text style={styles.overallTitle}>Общий прогресс</Text>
               <Text style={styles.overallSubtitle}>
                 {totalGoals === 0
-                  ? 'Добавьте свои цели на год'
+                  ? 'Открой область и нажми «Новая цель»'
                   : `${completedGoals} из ${totalGoals} целей выполнено`}
               </Text>
             </View>
-            <View style={styles.overallPercentCircle}>
-              <Text style={styles.overallPercentText}>
-                {overallProgress}%
-              </Text>
-            </View>
+            {/* Кольцо общего прогресса — заполняется средним по всем целям года */}
+            <ProgressCircle
+              progress={overallProgress}
+              size={64}
+              strokeWidth={6}
+              color={c.primary}
+              trackColor={c.surfaceLight}
+              textColor={c.primary}
+            />
           </View>
-          <AnimatedProgressBar
-            progress={overallProgress}
-            color={c.primary}
-            height={8}
-            showLabel={false}
-            style={{ marginTop: spacing.sm }}
-          />
           {/* Summary chips */}
           <View style={styles.summaryRow}>
             <View style={styles.summaryChip}>
@@ -1535,7 +1403,7 @@ export default function GoalsScreen() {
             todayLogs={todayLogs}
             isExpanded={expandedAreas.has(areaKey)}
             onToggleExpand={handleToggleExpand}
-            onAddGoal={handleAddGoal}
+            onQuickAddGoal={handleQuickAddGoal}
             onEditGoal={handleEditGoal}
             onDeleteGoal={handleDeleteGoal}
             onProgressChange={handleProgressChange}
@@ -1543,29 +1411,19 @@ export default function GoalsScreen() {
             onUnlinkHabit={handleUnlinkHabit}
             onLinkHabit={handleOpenLinkModal}
             c={c}
+            styles={styles}
           />
         ))}
 
-        {/* Bottom spacer for FAB */}
+        {/* Нижний отступ, чтобы последняя область не пряталась под навигацией */}
         <View style={{ height: 100 }} />
       </ScrollView>
-
-      {/* ── FAB ── */}
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: c.primary }]}
-        onPress={handleFabPress}
-        activeOpacity={0.8}
-        accessibilityRole="button"
-        accessibilityLabel="Добавить цель"
-      >
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
 
       {/* ═══════ CREATE / EDIT GOAL MODAL ═══════ */}
       <Modal
         visible={goalModalVisible}
         onClose={handleCloseGoalModal}
-        title={editingGoal ? 'Редактировать цель' : 'Новая цель'}
+        title="Редактировать цель"
       >
         <View style={styles.modalContent}>
           {/* Area selector */}
@@ -1596,7 +1454,7 @@ export default function GoalsScreen() {
             textAlignVertical="top"
           />
 
-          {/* Progress slider (only for edit) */}
+          {/* Прогресс */}
           {editingGoal && (
             <View style={{ marginBottom: spacing.md }}>
               <Text style={styles.modalLabel}>Прогресс</Text>
@@ -1666,9 +1524,7 @@ export default function GoalsScreen() {
             activeOpacity={0.8}
             disabled={!modalArea || !modalGoalText.trim()}
           >
-            <Text style={styles.saveButtonText}>
-              {editingGoal ? 'Сохранить' : 'Создать цель'}
-            </Text>
+            <Text style={styles.saveButtonText}>Сохранить</Text>
           </TouchableOpacity>
         </View>
       </Modal>
@@ -1884,20 +1740,6 @@ function createStyles(c: C) {
       color: c.textSecondary,
       marginTop: 4,
     },
-    overallPercentCircle: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      borderWidth: 3,
-      borderColor: c.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    overallPercentText: {
-      fontSize: fontSize.lg,
-      fontWeight: '800',
-      color: c.primary,
-    },
     summaryRow: {
       flexDirection: 'row',
       marginTop: spacing.md,
@@ -1923,27 +1765,60 @@ function createStyles(c: C) {
       fontWeight: '600',
     },
 
-    // ── FAB ──
-    fab: {
-      position: 'absolute',
-      right: spacing.lg,
-      bottom: spacing.xl + 10,
-      width: 58,
-      height: 58,
-      borderRadius: 29,
+    // ── Area card ──
+    areaRing: {
+      marginRight: spacing.sm,
+    },
+    areaSectionTitle: {
+      fontSize: fontSize.sm,
+      fontWeight: '700',
+      color: c.text,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      marginBottom: spacing.sm,
+    },
+
+    // ── Goal item ──
+    goalItemWrap: {
+      marginBottom: spacing.sm,
+    },
+    goalItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: c.surface,
+      borderRadius: borderRadius.md,
+      paddingVertical: spacing.sm,
+      paddingLeft: spacing.sm,
+      paddingRight: spacing.xs,
+      borderLeftWidth: 3,
+    },
+    goalTextWrap: {
+      flex: 1,
+      marginHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    goalText: {
+      fontSize: fontSize.md,
+      fontWeight: '600',
+      color: c.text,
+      lineHeight: fontSize.md * 1.4,
+    },
+    goalStepper: {
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    goalStepBtn: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      backgroundColor: c.surfaceLight,
       alignItems: 'center',
       justifyContent: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 6,
-      elevation: 8,
     },
-    fabText: {
-      fontSize: 30,
-      fontWeight: '600',
-      color: '#FFFFFF',
-      marginTop: -2,
+    goalStepText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: c.text,
     },
 
     // ── Modal ──
