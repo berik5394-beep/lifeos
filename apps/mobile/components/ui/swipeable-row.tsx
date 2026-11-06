@@ -1,7 +1,7 @@
 import React, { useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Animated, TouchableOpacity, Alert } from 'react-native';
+import { View, StyleSheet, Animated, TouchableOpacity, Alert } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
-import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 
 interface SwipeableRowProps {
@@ -11,13 +11,13 @@ interface SwipeableRowProps {
   confirmText?: string;
   /** Заголовок подтверждения. По умолчанию "Удалить?" */
   confirmTitle?: string;
-  /** Что показать в красной кнопке */
+  /** Подпись для озвучки и кнопки в подтверждении. */
   deleteLabel?: string;
 }
 
 /**
- * Универсальная строка со свайпом влево для удаления.
- * При свайпе влево показывает красную кнопку "Удалить".
+ * Строка инструмента: чуть сдвинул влево — справа красный «минус», тап по нему
+ * удаляет (Berik: «сдвинуть чуть влево и нажать минус»).
  * Если confirmText задан — показывает Alert перед удалением.
  * Иначе удаляет сразу.
  */
@@ -50,42 +50,38 @@ export const SwipeableRow = React.memo(function SwipeableRow({
   }, [confirmText, confirmTitle, deleteLabel, performDelete]);
 
   const styles = useMemo(() => StyleSheet.create({
-    deleteButton: {
+    action: {
+      width: 64,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    minus: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       backgroundColor: c.danger,
       justifyContent: 'center',
       alignItems: 'center',
-      width: 88,
-      marginVertical: spacing.xs,
-      marginRight: spacing.md,
-      borderRadius: borderRadius.md,
-    },
-    deleteIcon: {
-      fontSize: 22,
-      marginBottom: 2,
-    },
-    deleteText: {
-      color: '#fff',
-      fontSize: fontSize.xs,
-      fontWeight: '700',
     },
   }), [c]);
 
   const renderRightActions = useCallback(
     (_progress: Animated.AnimatedInterpolation<number>, dragX: Animated.AnimatedInterpolation<number>) => {
       const scale = dragX.interpolate({
-        inputRange: [-100, -40, 0],
-        outputRange: [1, 0.8, 0.5],
+        inputRange: [-64, -24, 0],
+        outputRange: [1, 0.7, 0.3],
         extrapolate: 'clamp',
       });
       return (
         <TouchableOpacity
           activeOpacity={0.85}
-          style={styles.deleteButton}
+          style={styles.action}
           onPress={handlePress}
+          accessibilityRole="button"
+          accessibilityLabel={deleteLabel}
         >
-          <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
-            <Text style={styles.deleteIcon}>🗑</Text>
-            <Text style={styles.deleteText}>{deleteLabel}</Text>
+          <Animated.View style={[styles.minus, { transform: [{ scale }] }]}>
+            <Feather name="minus" size={22} color="#fff" />
           </Animated.View>
         </TouchableOpacity>
       );
@@ -98,8 +94,10 @@ export const SwipeableRow = React.memo(function SwipeableRow({
       ref={swipeableRef}
       renderRightActions={renderRightActions}
       overshootRight={false}
-      friction={2}
-      rightThreshold={40}
+      friction={1.5}
+      rightThreshold={24}
+      // Короткий горизонтальный сдвиг — строке; вертикальный — прокрутке списка.
+      dragOffsetFromRightEdge={8}
     >
       <View>{children}</View>
     </Swipeable>

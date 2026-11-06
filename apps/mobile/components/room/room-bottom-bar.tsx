@@ -1,172 +1,73 @@
-import React, { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { memo, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize, borderRadius } from '@/constants';
-import type { PanelDef } from '@/services/panels';
 
-type Shelf = 'tools' | 'furnish' | null;
+type Shelf = 'furnish' | null;
 
 /**
- * Робот-эпик, Часть 5: низ единственного экрана-комнаты. Две полки по кнопке
- * («Инструменты» — робот достанет из мебели, «Обставить» — каталог мебели) и
- * строка разговора с роботом: текст или микрофон (удерживать).
+ * Низ комнаты: «Инструменты» — перейти на экран инструментов (он слева, тот же
+ * свайп), «Обставить» — каталог мебели. Строка разговора с роботом — общая,
+ * под обоими экранами (ChatInputRow).
  */
 export const RoomBottomBar = memo(function RoomBottomBar({
-  tools,
-  onTool,
+  onTools,
   shop,
   onShelfChange,
-  onSend,
-  sending,
-  isRecording,
-  isProcessing,
-  onMicIn,
-  onMicOut,
-  onTyping,
   compact = false,
   highlight = null,
-  closeTool = null,
 }: {
-  tools: PanelDef[];
-  onTool: (key: string) => void;
+  /** Перейти к инструментам. */
+  onTools: () => void;
   /** Часть 6: магазин ремонта (полка «Обставить»). */
   shop: ReactNode;
   /** Открыли/закрыли полку — комната подсвечивает ячейки, грузит каталог. */
-  onShelfChange?: (shelf: 'tools' | 'furnish' | null) => void;
-  onSend: (text: string) => void;
-  sending: boolean;
-  isRecording: boolean;
-  isProcessing: boolean;
-  onMicIn: () => void;
-  onMicOut: () => void;
-  /** Юзер пишет — робот «слушает». */
-  onTyping?: (typing: boolean) => void;
-  /** Открыта клавиатура: только строка ввода — полки прячем, чтобы не съедать место. */
+  onShelfChange?: (shelf: Shelf) => void;
+  /** Открыта клавиатура: полки прячем, чтобы не съедать место. */
   compact?: boolean;
-  /** Знакомство: подсветить кнопку/строку, о которой говорит робот. */
-  highlight?: 'input' | 'tools' | 'furnish' | null;
-  /** Открыт инструмент: вместо «Обставить» — «Закрыть …» (у карточки нет своей шапки). */
-  closeTool?: { label: string; onPress: () => void } | null;
+  /** Знакомство: подсветить кнопку, о которой говорит робот. */
+  highlight?: 'tools' | 'furnish' | null;
 }) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
   const [shelf, setShelf] = useState<Shelf>(null);
-  const [text, setText] = useState('');
-
-  const toggle = useCallback((s: Exclude<Shelf, null>) => setShelf((cur) => (cur === s ? null : s)), []);
   useEffect(() => onShelfChange?.(shelf), [shelf, onShelfChange]);
-  const send = useCallback(() => {
-    const t = text.trim();
-    if (!t || sending) return;
-    setText('');
-    onTyping?.(false);
-    onSend(t);
-  }, [text, sending, onSend, onTyping]);
+  if (compact) return null;
 
   return (
     <View style={styles.wrap}>
-      {!compact && (
       <View style={styles.toggles}>
         <Pressable
-          style={[styles.toggle, shelf === 'tools' && styles.toggleOn, highlight === 'tools' && styles.glow]}
-          onPress={() => toggle('tools')}
+          style={[styles.toggle, highlight === 'tools' && styles.glow]}
+          onPress={() => {
+            setShelf(null);
+            onTools();
+          }}
           accessibilityRole="button"
           accessibilityLabel="Инструменты"
         >
           <Feather name="grid" size={15} color={c.text} />
           <Text style={styles.toggleText}>Инструменты</Text>
         </Pressable>
-        {closeTool ? (
-          <Pressable
-            style={styles.toggle}
-            onPress={closeTool.onPress}
-            accessibilityRole="button"
-            accessibilityLabel={`Закрыть: ${closeTool.label}`}
-          >
-            <Feather name="x" size={15} color={c.text} />
-            <Text style={styles.toggleText}>Закрыть</Text>
-          </Pressable>
-        ) : (
-          <Pressable
-            style={[styles.toggle, shelf === 'furnish' && styles.toggleOn, highlight === 'furnish' && styles.glow]}
-            onPress={() => toggle('furnish')}
-            accessibilityRole="button"
-            accessibilityLabel="Обставить комнату"
-          >
-            <Feather name="home" size={15} color={c.text} />
-            <Text style={styles.toggleText}>Обставить</Text>
-          </Pressable>
-        )}
-      </View>
-      )}
-
-      {!compact && shelf === 'tools' && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.shelf}>
-          {tools.map((p) => (
-            <Pressable
-              key={p.key}
-              style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
-              onPress={() => {
-                setShelf(null);
-                onTool(p.key);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={`Достать: ${p.label}`}
-            >
-              <Feather name={p.icon as never} size={14} color={c.primary} />
-              <Text style={styles.chipText}>{p.label}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
-      {!compact && shelf === 'furnish' && !closeTool && (
-        <View style={styles.shelfFurnish}>{shop}</View>
-      )}
-
-      <View style={styles.inputRow}>
         <Pressable
-          style={[styles.round, isRecording && styles.roundActive]}
-          onPressIn={onMicIn}
-          onPressOut={onMicOut}
+          style={[styles.toggle, shelf === 'furnish' && styles.toggleOn, highlight === 'furnish' && styles.glow]}
+          onPress={() => setShelf((cur) => (cur === 'furnish' ? null : 'furnish'))}
           accessibilityRole="button"
-          accessibilityLabel="Сказать голосом (удерживать)"
+          accessibilityLabel="Обставить комнату"
         >
-          {isProcessing ? (
-            <ActivityIndicator size="small" color={c.primary} />
-          ) : (
-            <Feather name="mic" size={20} color={isRecording ? c.text : c.textSecondary} />
-          )}
-        </Pressable>
-        <TextInput
-          style={[styles.input, highlight === 'input' && styles.glow]}
-          value={text}
-          onChangeText={(t) => {
-            setText(t);
-            onTyping?.(t.trim().length > 0);
-          }}
-          placeholder="Скажи роботу…"
-          placeholderTextColor={c.textSecondary}
-          multiline
-          maxLength={2000}
-        />
-        <Pressable
-          style={[styles.round, text.trim() ? styles.roundSend : null]}
-          onPress={send}
-          disabled={!text.trim() || sending}
-          accessibilityRole="button"
-          accessibilityLabel="Отправить"
-        >
-          <Feather name="send" size={19} color={text.trim() ? c.text : c.textSecondary} />
+          <Feather name="home" size={15} color={c.text} />
+          <Text style={styles.toggleText}>Обставить</Text>
         </Pressable>
       </View>
+      {shelf === 'furnish' && <View>{shop}</View>}
     </View>
   );
 });
 
 function createStyles(c: ReturnType<typeof useColors>) {
   return StyleSheet.create({
-    wrap: { paddingTop: spacing.xs, paddingBottom: spacing.sm, gap: spacing.xs },
+    wrap: { paddingTop: spacing.xs, gap: spacing.xs },
     toggles: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.md },
     toggle: {
       flexDirection: 'row',
@@ -181,41 +82,5 @@ function createStyles(c: ReturnType<typeof useColors>) {
     // Подсветка на знакомстве — яркая рамка, как маркер в комиксе.
     glow: { borderWidth: 3, borderColor: c.warning },
     toggleText: { fontSize: fontSize.sm, color: c.text, fontWeight: '600' },
-    shelf: { gap: spacing.sm, paddingHorizontal: spacing.md },
-    shelfFurnish: {},
-    chip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: spacing.md,
-      height: 40,
-      borderRadius: borderRadius.lg,
-      backgroundColor: c.surface,
-    },
-    chipPressed: { backgroundColor: c.surfaceLight },
-    chipText: { fontSize: fontSize.sm, color: c.text },
-    inputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm, paddingHorizontal: spacing.md },
-    round: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: c.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    roundActive: { backgroundColor: c.danger },
-    roundSend: { backgroundColor: c.primary },
-    input: {
-      flex: 1,
-      minHeight: 44,
-      maxHeight: 110,
-      borderRadius: 22,
-      backgroundColor: c.surface,
-      color: c.text,
-      fontSize: fontSize.md,
-      paddingHorizontal: spacing.md,
-      paddingTop: 12,
-      paddingBottom: 12,
-    },
   });
 }

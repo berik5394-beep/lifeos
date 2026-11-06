@@ -152,6 +152,8 @@ export const SlideTabs = React.memo(function SlideTabs({
         ref={scrollRef}
         horizontal
         pagingEnabled
+        // Вкладки — тапом: горизонтальный свайп занят переходом в комнату и сдвигом строки (удалить).
+        scrollEnabled={false}
         showsHorizontalScrollIndicator={false}
         onScroll={handleScroll}
         onMomentumScrollEnd={handleMomentumEnd}

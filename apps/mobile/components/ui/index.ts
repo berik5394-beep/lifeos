@@ -8,6 +8,7 @@ export { AnimatedCheckbox } from './animated-checkbox';
 export { ProgressRing } from './progress-ring';
 export { ProgressCircle } from './progress-circle';
 export { SwipeableRow } from './swipeable-row';
+export { TapToAdd } from './tap-to-add';
 export { SectionHeader } from './section-header';
 export { OverviewCard, type OverviewStat } from './overview-card';
 export { WeekGrid, type WeekDay } from './week-grid';

@@ -18,7 +18,6 @@ import { RoomDiorama } from '@/components/room/room-diorama';
 import { RobotSpeechBubble } from '@/components/robot/robot-speech-bubble';
 import { ChatReplyBubble } from '@/components/room/chat-reply-bubble';
 import { RoomBottomBar } from '@/components/room/room-bottom-bar';
-import { ToolCard } from '@/components/room/tool-card';
 import { RoomShop } from '@/components/room/room-shop';
 import { SlotGrid } from '@/components/room/slot-grid';
 import { CoinCounter } from '@/components/room/coin-counter';
@@ -26,38 +25,28 @@ import { useScheduleStore } from '@/stores/schedule-store';
 import { RoomIntro } from '@/components/room/room-intro';
 import { useColors } from '@/hooks/use-colors';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
-import { useVoice } from '@/hooks/use-voice';
+import { useSharedVoice } from '@/hooks/shared-voice';
 import { useRoomStore } from '@/stores/room-store';
 import { useRoomToolStore } from '@/stores/room-tool-store';
 import { useChatStore } from '@/stores/chat-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { useUIStore } from '@/stores/ui-store';
 import { useDealStore } from '@/stores/deal-store';
-import { api } from '@/services/api';
 import { storage } from '@/services/storage';
 import { thanksFor } from '@/services/robot-thanks';
 import { visiblePanels } from '@/services/panels';
 import { ROBOT_SIDE_W, planPurchaseView, type SpeechLayout } from '@/services/speech-layout';
 import { SLOT_POS, finishTier, isPlaceSlot, spotOf, type RoomSpot, type RoomVariant } from '@/services/room-catalog';
 import { RENDER_SCALE as R, ZOOM_IN, clampPan, zoomOffset } from '@/services/room-geometry';
-import { isToolKey, toolSource, toolsInItem, type ToolKey } from '@/services/room-tools';
-import { robotShift, robotStandPoint, toolOrigin } from '@/services/tool-scene';
-import { TOOL_TITLE } from '@/components/room/tool-card';
-import { hapticLight } from '@/services/haptics';
+import { toolsInItem, type ToolKey } from '@/services/room-tools';
+import { TOOL_TITLE } from '@/components/room/tool-screens';
 import { INTRO_STEPS, furnitureBadge, isIntroDone, markIntroDone } from '@/services/room-intro';
 import { spacing, borderRadius } from '@/constants';
-import { useUtterance } from '@/hooks/use-utterance';
-import { DictationModal } from '@/components/voice';
 
 /**
- * Робот-эпик, Части 4–5: комната — ЕДИНСТВЕННЫЙ экран приложения.
- * 3D-диорама квартиры в духе СНГ; внизу — разговор с роботом (текст/голос) и
- * полки «Инструменты» / «Обставить». Ответ робота — комиксовое облачко над ним.
- *
- * Инструменты живут в мебели (services/room-tools): робот подходит к предмету,
- * тянется, достаёт — карточка вылетает из предмета на весь экран, комната
- * отъезжает, маленький робот в углу показывает на инструмент и объясняет по
- * фактам (/robot/explain). Нет нужной мебели — достаёт «из воздуха».
+ * Комната робота — отдельный экран (свайп от инструментов). 3D-диорама квартиры
+ * в духе СНГ, обстановка за монеты, ответ робота — комиксовое облачко над ним.
+ * Мебель с инструментом: тап — переходим на экран инструментов, нужная вкладка.
  * Покупка предмета — приближение, робот показывает и благодарит (speech-layout).
  */
 function timeTint(hour: number): string {
@@ -77,23 +66,8 @@ const ROBOT_SIZE = 150;
 const CHAT_ROBOT_SCALE = 0.42;
 const VOICE_NOTE_MS = 4000;
 const ROBOT_SIDE_SCALE = 0.68;
-// Робот поверх открытого инструмента — совсем маленький, в углу.
-const ROBOT_CORNER_SCALE = 0.32;
-/** Пояснение к инструменту лежит поверх карточки — сам уходит, чтобы не закрывать данные. */
-const EXPLAIN_MS = 8000;
-const WALK_MS = 560;
-const FETCH_MS = 380;
 /** Ответ робота показываем, если он свежий (пришёл в этой сессии). */
 const FRESH_REPLY_MS = 90_000;
-
-type ToolPhase = 'walking' | 'fetching' | 'open';
-interface ToolScene {
-  tool: ToolKey;
-  from: { x: number; y: number };
-  sourceId: string | null;
-  phase: ToolPhase;
-  closing: boolean;
-}
 
 export const RoomPage = memo(function RoomPage() {
   const c = useColors();
@@ -106,26 +80,10 @@ export const RoomPage = memo(function RoomPage() {
   const [thanks, setThanks] = useState<string | null>(null);
   const [plan, setPlan] = useState<SpeechLayout | null>(null);
   const [newItemId, setNewItemId] = useState<string | null>(null);
-  const [scene, setScene] = useState<ToolScene | null>(null);
-  /** Когда открыли инструмент: ответы робота ПОСЛЕ этого видны поверх карточки. */
-  const sceneOpenedAt = useRef(0);
-  const [explain, setExplain] = useState<string | null>(null);
-  /**
-   * Объяснение робота устарело (поправили сделки руками или пришёл новый ответ робота) —
-   * прячем, а не перезапрашиваем (бюджет ИИ). Сброс — при каждом открытии инструмента.
-   */
-  const [explainHidden, setExplainHidden] = useState(false);
-  /** Номер запроса /robot/explain: поздний ответ для закрытого инструмента не попадёт в другой. */
-  const explainSeq = useRef(0);
-  /** На момент открытия: ревизия сделок и последний ответ робота — новее значит «объяснение устарело». */
-  const dealsRevAtOpen = useRef(0);
-  const replyIdAtOpen = useRef<string | undefined>(undefined);
   const [mirror, setMirror] = useState(false);
-  const [typing, setTyping] = useState(false);
   const [dismissedReply, setDismissedReply] = useState<string | null>(null);
   // Знакомство после установки: робот показывает, что где. null — тур не идёт.
   const [introStep, setIntroStep] = useState<number | null>(() => (isIntroDone() ? null : 0));
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const userName = useAuthStore((s) => s.user?.name ?? null);
   const token = useAuthStore((s) => s.token);
@@ -175,16 +133,8 @@ export const RoomPage = memo(function RoomPage() {
   }, [fetchDeals, token]);
   const tools = useMemo(() => visiblePanels(isFeatureVisible, { dealsAvailable }), [isFeatureVisible, dealsAvailable]);
   const visibleToolKeys = useMemo(() => tools.map((t) => t.key), [tools]);
-  const toolSeq = useRoomToolStore((s) => s.seq);
-  const {
-    isRecording,
-    isProcessing,
-    lastResult,
-    liveTranscript,
-    error: voiceError,
-    startRecording,
-    stopRecording,
-  } = useVoice({ transcribeOnly: true });
+  // Голос — общий для обоих экранов (один микрофон под ними).
+  const { isRecording, isProcessing, liveTranscript, error: voiceError, typing, setInputHighlight } = useSharedVoice();
   // Ошибка/подсказка голоса («удерживай кнопку…», «не расслышал») — облачком робота, ненадолго.
   const [voiceNote, setVoiceNote] = useState<string | null>(null);
   useEffect(() => {
@@ -215,7 +165,6 @@ export const RoomPage = memo(function RoomPage() {
   const robotX = useSharedValue(0);
   const robotY = useSharedValue(0);
   const robotS = useSharedValue(1);
-  const recede = useSharedValue(0);
   // Сцена нарисована в R раз крупнее и уменьшена: издалека масштаб 1/R, вблизи — 1 (чётко).
   const sceneScale = useDerivedValue(() => zoom.value / R);
 
@@ -231,27 +180,9 @@ export const RoomPage = memo(function RoomPage() {
     fetchCoins();
   }, [fetchCoins, latestId, scheduleRevision]);
 
-  useEffect(
-    () => () => {
-      timers.current.forEach(clearTimeout);
-    },
-    [],
-  );
-  const later = useCallback((fn: () => void, ms: number) => {
-    timers.current.push(setTimeout(fn, ms));
-  }, []);
-
-  // Голос → текст → мозг (как в чате, без двойного исполнения). Один микрофон:
-  // «ЛайфОС, …» — обращение; «ЛайфОС, диктофон» / «давай поговорим» — свои функции.
-  const utterance = useUtterance();
-  const handleUtterance = utterance.handle;
-  useEffect(() => {
-    if (lastResult?.transcript) handleUtterance(lastResult.transcript);
-  }, [lastResult, handleUtterance]);
-
   // Робот иногда мягко поворачивает голову, пока ничего не происходит.
   useEffect(() => {
-    if (scene || zoomed) return;
+    if (zoomed) return;
     let back: ReturnType<typeof setTimeout>;
     const t = setInterval(() => {
       const options: Array<-1 | 0 | 1> = [-1, 0, 1, 0];
@@ -262,7 +193,7 @@ export const RoomPage = memo(function RoomPage() {
       clearInterval(t);
       clearTimeout(back);
     };
-  }, [scene, zoomed]);
+  }, [zoomed]);
 
   useEffect(() => {
     shift.value = withSpring(-headTurn * PARALLAX_PX * R, { damping: 18, stiffness: 90 });
@@ -330,124 +261,18 @@ export const RoomPage = memo(function RoomPage() {
     robotToRest();
   }, [zoom, tx, ty, robotToRest]);
 
-  // ─── Инструмент: подошёл → достал → показал ─────────────────────────────
-  const openToolScene = useCallback(
-    (tool: ToolKey) => {
-      if (size.w === 0) return;
-      // Скрытый в настройках инструмент не достаём (как раньше: скрытая вкладка не открывалась).
-      if (!visibleToolKeys.includes(tool)) return;
-      timers.current.forEach(clearTimeout);
-      timers.current = [];
-      if (zoomed) zoomOut();
-      setThanks(null);
-      setExplain(null);
-      setExplainHidden(false);
-      const seq = ++explainSeq.current;
-      dealsRevAtOpen.current = useDealStore.getState().revision;
-      replyIdAtOpen.current = useChatStore.getState().messages[0]?.id;
-
-      const source = toolSource(tool, useRoomStore.getState().items, { x: 0.5, y: 0.96 });
-      const from = toolOrigin(source, size.w, size.h);
-      const stand = robotStandPoint(source, size.w, size.h);
-      const { dx, dy } = robotShift(stand, size.w, size.h);
-      setScene({ tool, from, sourceId: source?.id ?? null, phase: 'walking', closing: false });
-      sceneOpenedAt.current = Date.now();
-      setMirror(!!source && source.x * size.w < stand.x);
-      moveRobot(dx, dy, source ? 0.8 : 1, source ? WALK_MS : 120);
-      hapticLight();
-
-      later(
-        () => {
-          setScene((s) => (s ? { ...s, phase: 'fetching' } : s));
-          setNewItemId(source?.id ?? null);
-        },
-        source ? WALK_MS : 120,
-      );
-      later(
-        () => {
-          setScene((s) => (s ? { ...s, phase: 'open' } : s));
-          recede.value = withTiming(1, { duration: 420 });
-          // Маленький робот в углу показывает на инструмент.
-          moveRobot(
-            -(size.w / 2 - (ROBOT_SIZE * ROBOT_CORNER_SCALE) / 2 - 6),
-            (ROBOT_SIZE * (1 - ROBOT_CORNER_SCALE)) / 2,
-            ROBOT_CORNER_SCALE,
-            420,
-          );
-          setMirror(false);
-          setNewItemId(null);
-          api
-            .post<{ text: string }>('/robot/explain', { panel: tool }, token ?? undefined)
-            .then((r) => {
-              if (seq === explainSeq.current) setExplain(r.text);
-            })
-            .catch(() => {
-              if (seq === explainSeq.current) setExplain(`Вот ${TOOL_TITLE[tool].toLowerCase()} — смотри!`);
-            });
-        },
-        (source ? WALK_MS : 120) + FETCH_MS,
-      );
-    },
-    [size, zoomed, zoomOut, moveRobot, later, recede, token, visibleToolKeys],
-  );
-
-  const closeTool = useCallback(() => {
-    setScene((s) => (s ? { ...s, closing: true } : s));
-    recede.value = withTiming(0, { duration: 420 });
-    explainSeq.current += 1;
-    setExplain(null);
-  }, [recede]);
-
-  // Сделки поправили руками, пока открыт инструмент «Сделки», — цифры в объяснении устарели.
-  const dealsRevision = useDealStore((s) => s.revision);
-  const sceneTool = scene?.tool ?? null;
-  useEffect(() => {
-    if (sceneTool === 'deals' && dealsRevision !== dealsRevAtOpen.current) setExplainHidden(true);
-  }, [sceneTool, dealsRevision]);
-  // Пояснение лежит поверх карточки — через несколько секунд уходит само (тап — сразу).
-  useEffect(() => {
-    if (!explain) return;
-    const t = setTimeout(() => setExplainHidden(true), EXPLAIN_MS);
-    return () => clearTimeout(t);
-  }, [explain]);
-  // Новый ответ робота после открытия (голосом что-то поменяли) — объяснение тоже устарело.
-  const latestAssistantId = messages[0]?.role === 'assistant' ? messages[0].id : undefined;
-  useEffect(() => {
-    if (sceneTool && latestAssistantId && latestAssistantId !== replyIdAtOpen.current) setExplainHidden(true);
-  }, [sceneTool, latestAssistantId]);
-
-  const onToolClosed = useCallback(() => {
-    setScene(null);
-    robotToRest();
-    void fetchCoins(); // в инструменте могли закрыть задачи/привычки
-  }, [robotToRest, fetchCoins]);
-
-  // Запросы «достань инструмент» из пушей/голоса/дашборда.
-  // Забираем запрос, только когда комната уже знает свой размер — иначе пуш на
-  // холодном старте «съедался» бы до раскладки и ничего не открывалось.
-  useEffect(() => {
-    if (size.w === 0) return;
-    const tool = useRoomToolStore.getState().take();
-    if (tool) openToolScene(tool);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toolSeq, size.w]);
-
-  // «Покажи задачи» → мозг присылает openPanel → робот достаёт (один раз на ответ).
-  const openedFor = useRef<string | null>(reply?.id ?? null);
-  useEffect(() => {
-    if (!reply || openedFor.current === reply.id || !isToolKey(reply.openPanel)) return;
-    openedFor.current = reply.id;
-    openToolScene(reply.openPanel);
-  }, [reply, openToolScene]);
+  // Инструмент — на соседнем экране: просим дом показать нужную вкладку.
+  const showTool = useCallback((tool: ToolKey) => {
+    useRoomToolStore.getState().openTool(tool);
+  }, []);
 
   // ─── Жесты сцены: двойное нажатие — приблизить/отдалить, вблизи — панорама ──
   const onDoubleTap = useCallback(
     (sx: number, sy: number) => {
-      if (scene) return;
       if (zoomed) zoomOut();
       else zoomTo(sx, sy);
     },
-    [scene, zoomed, zoomOut, zoomTo],
+    [zoomed, zoomOut, zoomTo],
   );
   const doubleTap = Gesture.Tap()
     .numberOfTaps(2)
@@ -455,7 +280,7 @@ export const RoomPage = memo(function RoomPage() {
       if (ok) runOnJS(onDoubleTap)(e.x, e.y);
     });
   const lookAround = Gesture.Pan()
-    .enabled(zoomed && !scene)
+    .enabled(zoomed)
     .minDistance(6)
     .onStart(() => {
       panStartX.value = tx.value;
@@ -480,12 +305,6 @@ export const RoomPage = memo(function RoomPage() {
   const robotStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: robotX.value }, { translateY: robotY.value }, { scale: robotS.value }],
   }));
-  // Комната «отъезжает», когда достали инструмент.
-  const recedeStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: 1 - 0.1 * recede.value }],
-    borderRadius: 24 + 8 * recede.value,
-  }));
-  const dimStyle = useAnimatedStyle(() => ({ opacity: 0.55 * recede.value }));
 
   const onLayout = useCallback((e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -518,26 +337,25 @@ export const RoomPage = memo(function RoomPage() {
     [placeFromStorage],
   );
 
-  // Тап по мебели с инструментом — робот достаёт его (два в предмете — спрашиваем какой).
+  // Тап по мебели с инструментом — открываем его вкладку (два в предмете — спрашиваем какой).
   const onItemTap = useCallback(
     (id: string) => {
       const it = useRoomStore.getState().items.find((i) => i.id === id);
       if (!it) return;
       const inside = toolsInItem(it.itemKey).filter((t) => tools.some((p) => p.key === t));
-      if (inside.length === 1) openToolScene(inside[0]);
+      if (inside.length === 1) showTool(inside[0]);
       else if (inside.length > 1) {
         Alert.alert('Что достать?', undefined, [
-          ...inside.map((t) => ({ text: TOOL_TITLE[t], onPress: () => openToolScene(t) })),
+          ...inside.map((t) => ({ text: TOOL_TITLE[t], onPress: () => showTool(t) })),
           { text: 'Отмена', style: 'cancel' as const },
         ]);
       }
     },
-    [tools, openToolScene],
+    [tools, showTool],
   );
 
   const onBuy = useCallback(
     async (v: RoomVariant) => {
-      if (scene) closeTool();
       setBuying(v.key);
       const res = await buy(v.key);
       setBuying(null);
@@ -563,14 +381,14 @@ export const RoomPage = memo(function RoomPage() {
       setNewItemId(isPlaceSlot(slot) ? res.item.id : null);
       setThanks(text);
     },
-    [scene, closeTool, buy, zoomWithOffset, robotToSide, size, userName],
+    [buy, zoomWithOffset, robotToSide, size, userName],
   );
 
   // Обставляем: комната короче (магазин снизу) — робот уменьшается, чтобы не
   // закрывать задние ячейки; ноги остаются на полу.
-  const chatMode = kbOpen && !zoomed && !scene && introStep == null;
+  const chatMode = kbOpen && !zoomed && introStep == null;
   useEffect(() => {
-    if (zoomed || scene) return;
+    if (zoomed) return;
     if (chatMode) {
       // Левый нижний угол: ноги на полу, сразу над строкой ввода.
       moveRobot(
@@ -581,10 +399,10 @@ export const RoomPage = memo(function RoomPage() {
       );
     } else if (furnishing) moveRobot(0, (ROBOT_SIZE * (1 - FURNISH_ROBOT_SCALE)) / 2, FURNISH_ROBOT_SCALE);
     else robotToRest();
-  }, [chatMode, size.w, furnishing, zoomed, scene, moveRobot, robotToRest]);
+  }, [chatMode, size.w, furnishing, zoomed, moveRobot, robotToRest]);
 
   const onShelfChange = useCallback(
-    (shelf: 'tools' | 'furnish' | null) => {
+    (shelf: 'furnish' | null) => {
       setFurnishing(shelf === 'furnish');
       if (shelf === 'furnish') {
         fetchCatalog();
@@ -594,8 +412,8 @@ export const RoomPage = memo(function RoomPage() {
     [fetchCatalog, fetchCoins],
   );
 
-  const onTool = useCallback((key: string) => isToolKey(key) && openToolScene(key), [openToolScene]);
   const introTarget = introStep == null ? null : INTRO_STEPS[introStep].target;
+  useEffect(() => setInputHighlight(introTarget === 'input'), [introTarget, setInputHighlight]);
   const finishIntro = useCallback(() => {
     markIntroDone();
     setIntroStep(null);
@@ -603,7 +421,6 @@ export const RoomPage = memo(function RoomPage() {
   const nextIntro = useCallback(() => {
     setIntroStep((s) => (s == null || s >= INTRO_STEPS.length - 1 ? (markIntroDone(), null) : s + 1));
   }, []);
-  const onSend = handleUtterance;
   const onConfirm = useCallback(
     (yes: boolean) => {
       if (reply) void confirmPendingAction(reply.id, yes);
@@ -611,19 +428,9 @@ export const RoomPage = memo(function RoomPage() {
     [reply, confirmPendingAction],
   );
 
-  const pointing = zoomed || scene?.phase === 'fetching' || scene?.phase === 'open';
+  const pointing = zoomed;
   const showReply =
-    introStep == null && !scene && !zoomed && (chatLoading || (reply && dismissedReply !== reply.id));
-  // Пока открыта карточка: ответ робота, пришедший уже при ней (в т.ч.
-  // предложение сдвинуть график после сохранения задачи), — над маленьким
-  // роботом, с кнопками. Раньше ответ на «Скажи роботу…» был не виден до закрытия.
-  const sceneReply =
-    reply &&
-    dismissedReply !== reply.id &&
-    ((reply.kind === 'proposal' && !!reply.pendingAction) || new Date(reply.createdAt).getTime() >= sceneOpenedAt.current)
-      ? reply
-      : undefined;
-  const showProposal = !!scene && scene.phase === 'open' && !scene.closing && (chatLoading || !!sceneReply);
+    introStep == null && !zoomed && (chatLoading || (reply && dismissedReply !== reply.id));
   const voiceBubble = isRecording
     ? liveTranscript || 'Слушаю… говори, пока держишь кнопку'
     : isProcessing
@@ -634,7 +441,7 @@ export const RoomPage = memo(function RoomPage() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <GestureDetector gesture={sceneGesture}>
         <View style={styles.roomOuter} onLayout={onLayout}>
-          <Animated.View style={[styles.room, recedeStyle]}>
+          <View style={styles.room}>
             <Animated.View
               style={[
                 styles.scene,
@@ -649,7 +456,7 @@ export const RoomPage = memo(function RoomPage() {
             >
               <RoomDiorama width={size.w * R} height={size.h * R} hour={hour} wallsTier={wallsTier} floorTier={floorTier} />
               <Animated.View style={[StyleSheet.absoluteFill, furnitureStyle]} pointerEvents="box-none">
-                {size.w > 0 && (furnishing || dragging) && !scene && (
+                {size.w > 0 && (furnishing || dragging) && (
                   <SlotGrid width={size.w * R} height={size.h * R} owned={owned} dragSpot={dragSpot} />
                 )}
                 {size.w > 0 &&
@@ -673,25 +480,7 @@ export const RoomPage = memo(function RoomPage() {
               </Animated.View>
             </Animated.View>
             <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} pointerEvents="none" />
-          </Animated.View>
-
-          {/* Затемнение отъехавшей комнаты; тап — убрать инструмент. */}
-          {scene && (
-            <Animated.View style={[StyleSheet.absoluteFill, styles.dim, dimStyle]}>
-              <Pressable style={StyleSheet.absoluteFill} onPress={closeTool} accessibilityLabel="Убрать инструмент" />
-            </Animated.View>
-          )}
-
-          {scene && scene.phase === 'open' && (
-            <ToolCard
-              tool={scene.tool}
-              from={scene.from}
-              width={size.w}
-              height={size.h}
-              closing={scene.closing}
-              onClosed={onToolClosed}
-            />
-          )}
+          </View>
 
           {/* Реплики под роботом: поднятая рука робота поверх облачка. */}
           {zoomed && thanks && plan && (
@@ -707,36 +496,6 @@ export const RoomPage = memo(function RoomPage() {
             >
               <RobotSpeechBubble text={thanks} tail={plan.tail} />
             </View>
-          )}
-          {showProposal && (
-            <View style={styles.bubbleProposal}>
-              <ChatReplyBubble
-                text={sceneReply?.content ?? ''}
-                thinking={chatLoading}
-                tail="bottom"
-                confirm={!chatLoading && !!sceneReply?.pendingAction}
-                onConfirm={onConfirm}
-                onDismiss={sceneReply ? () => setDismissedReply(sceneReply.id) : undefined}
-              />
-            </View>
-          )}
-          {/* Карточка открыта, держишь микрофон — что расслышал, в полосе под карточкой. */}
-          {scene?.phase === 'open' && !scene.closing && !showProposal && voiceBubble && (
-            <View style={styles.bubbleExplain} pointerEvents="none">
-              <ChatReplyBubble text={voiceBubble} tail="left" />
-            </View>
-          )}
-          {/* Скрытое (устаревшее) объяснение не показываем вовсе — иначе вместо него висело бы «…».
-              Клавиатура открыта — комната сжата, облачко легло бы на карточку: прячем. */}
-          {scene?.phase === 'open' && !scene.closing && !showProposal && !voiceBubble && !explainHidden && !kbOpen && (
-            <Pressable
-              style={styles.bubbleExplain}
-              onPress={() => setExplainHidden(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Убрать подсказку робота"
-            >
-              {explain ? <RobotSpeechBubble text={explain} tail="left" /> : <ChatReplyBubble text="" thinking tail="left" />}
-            </Pressable>
           )}
           {showReply && !chatMode && !voiceBubble && (
             <View style={[styles.bubbleReply, { bottom: size.h * 0.04 + ROBOT_SIZE + 6 }]}>
@@ -766,7 +525,7 @@ export const RoomPage = memo(function RoomPage() {
             </View>
           )}
           {/* Голос: пока держишь — что расслышал; ошибка — подсказка. */}
-          {!chatMode && voiceBubble && !scene && !zoomed && (
+          {!chatMode && voiceBubble && !zoomed && (
             <View style={[styles.bubbleReply, { bottom: size.h * 0.04 + ROBOT_SIZE + 6 }]} pointerEvents="none">
               <ChatReplyBubble text={voiceBubble} tail="bottom" />
             </View>
@@ -793,7 +552,6 @@ export const RoomPage = memo(function RoomPage() {
             </View>
           </Animated.View>
 
-          {!scene && (
           <View style={styles.topLeft}>
             <Pressable
               style={styles.iconBtn}
@@ -820,13 +578,12 @@ export const RoomPage = memo(function RoomPage() {
               <Feather name="help-circle" size={18} color="#FFFFFF" />
             </Pressable>
           </View>
-          )}
-          {!zoomed && !scene && (
+          {!zoomed && (
             <View style={styles.topRight} pointerEvents="none">
               <CoinCounter coins={coins} gain={coinGain} />
             </View>
           )}
-          {zoomed && !scene && (
+          {zoomed && (
             <Pressable
               onPress={zoomOut}
               style={[styles.iconBtn, styles.topRight]}
@@ -840,8 +597,7 @@ export const RoomPage = memo(function RoomPage() {
       </GestureDetector>
 
       <RoomBottomBar
-        tools={tools}
-        onTool={onTool}
+        onTools={() => useRoomToolStore.getState().focusTools()}
         shop={
           <RoomShop
             catalog={catalog}
@@ -853,18 +609,9 @@ export const RoomPage = memo(function RoomPage() {
           />
         }
         onShelfChange={onShelfChange}
-        onSend={onSend}
-        sending={chatLoading}
-        isRecording={isRecording}
-        isProcessing={isProcessing}
-        onMicIn={() => void startRecording()}
-        onMicOut={() => void stopRecording()}
-        onTyping={setTyping}
         compact={kbOpen}
-        closeTool={scene && scene.phase === 'open' && !scene.closing ? { label: TOOL_TITLE[scene.tool], onPress: closeTool } : null}
-        highlight={introTarget === 'input' || introTarget === 'tools' || introTarget === 'furnish' ? introTarget : null}
+        highlight={introTarget === 'tools' || introTarget === 'furnish' ? introTarget : null}
       />
-      <DictationModal visible={utterance.dictationOpen} onClose={utterance.closeDictation} />
     </SafeAreaView>
   );
 });
@@ -875,20 +622,15 @@ function createStyles(c: ReturnType<typeof useColors>) {
     roomOuter: { flex: 1, marginHorizontal: spacing.sm, marginTop: spacing.sm },
     room: { flex: 1, borderRadius: 24, overflow: 'hidden', backgroundColor: '#0B1022' },
     scene: { position: 'absolute' },
-    dim: { backgroundColor: '#05070F', borderRadius: 24 },
     robot: { position: 'absolute', left: 0, right: 0, bottom: '4%', alignItems: 'center' },
     // Облачко благодарности там, где свободно (services/speech-layout).
     bubbleBottomRight: { position: 'absolute', left: ROBOT_SIDE_W - 8, right: -6, bottom: 4 },
     bubbleBottomLeft: { position: 'absolute', left: -6, right: ROBOT_SIDE_W - 8, bottom: 4 },
     bubbleTop: { position: 'absolute', left: -4, right: -4, top: 4 },
-    // Пояснение к инструменту — в полосе под карточкой, справа от маленького робота.
-    bubbleExplain: { position: 'absolute', left: ROBOT_SIZE * ROBOT_CORNER_SCALE + 4, right: 4, bottom: 6 },
     // Ответ робота в разговоре — над ним, хвостик вниз.
     bubbleReply: { position: 'absolute', left: 0, right: 0 },
     // Режим разговора: справа от маленького робота, низ — на уровне пола.
     bubbleChat: { position: 'absolute', left: ROBOT_SIZE * CHAT_ROBOT_SCALE + 6, right: 2, bottom: 6 },
-    // Предложение перегруза поверх низа карточки, хвостик к маленькому роботу.
-    bubbleProposal: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: ROBOT_SIZE * ROBOT_CORNER_SCALE + 24 },
     mirror: { transform: [{ scaleX: -1 }] },
     topLeft: { position: 'absolute', top: spacing.sm, left: spacing.sm, flexDirection: 'row', gap: spacing.sm },
     topRight: { position: 'absolute', top: spacing.sm, right: spacing.sm },
