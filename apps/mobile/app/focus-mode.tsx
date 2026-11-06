@@ -13,6 +13,8 @@ import { useColors } from '@/hooks/use-colors';
 import { spacing, borderRadius, fontSize } from '@/constants';
 import { PomodoroTimer } from '@/components/ui/pomodoro-timer';
 import type { Theme } from '@/constants/themes';
+import { useTaskStore } from '@/stores/task-store';
+import { formatDate } from '@/utils/dates';
 
 interface FocusTask {
   id: string;
@@ -182,19 +184,31 @@ const createStyles = (c: Theme) =>
     },
   });
 
-// Demo tasks for standalone usage
-const DEMO_TASKS: FocusTask[] = [
-  { id: '1', title: 'Подготовить отчёт', category: 'work', priority: 'high' },
-  { id: '2', title: 'Тренировка', category: 'health', priority: 'medium' },
-  { id: '3', title: 'Прочитать книгу', category: 'education', priority: 'low' },
-];
+/** Важность → порядок в «Фокусе»: сначала самое важное. */
+const PRIORITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
 export default function FocusModeScreen() {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
   const navigation = useNavigation();
 
-  const [tasks, setTasks] = useState<FocusTask[]>(DEMO_TASKS);
+  // Реальные незакрытые задачи на сегодня и просроченные (раньше здесь были
+  // демо-задачи «Подготовить отчёт / Тренировка», которых у пользователя нет).
+  const allTasks = useTaskStore((s) => s.tasks);
+  const fetchTasks = useTaskStore((s) => s.fetchTasks);
+  const toggleComplete = useTaskStore((s) => s.toggleComplete);
+  useEffect(() => {
+    fetchTasks().catch(() => {});
+  }, [fetchTasks]);
+  const todayKey = formatDate(new Date());
+  const tasks = useMemo<FocusTask[]>(
+    () =>
+      allTasks
+        .filter((t) => !t.completed && t.date.slice(0, 10) <= todayKey)
+        .sort((a, b) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9))
+        .map((t) => ({ id: t.id, title: t.title, category: t.category, priority: t.priority })),
+    [allTasks, todayKey],
+  );
   const [currentIndex, setCurrentIndex] = useState(0);
   const [pomodoroCount, setPomodoroCount] = useState(0);
   const [remainingSeconds, setRemainingSeconds] = useState(POMODORO_DURATION);
@@ -245,12 +259,13 @@ export default function FocusModeScreen() {
     setRemainingSeconds(POMODORO_DURATION);
   }, []);
 
+  // «Готово» закрывает задачу по-настоящему; список пересчитается, индекс не двигаем.
   const handleDone = useCallback(() => {
     setIsRunning(false);
     setIsBreak(false);
     setRemainingSeconds(POMODORO_DURATION);
-    setCurrentIndex((prev) => prev + 1);
-  }, []);
+    if (currentTask) void toggleComplete(currentTask.id);
+  }, [currentTask, toggleComplete]);
 
   const handleSkipTask = useCallback(() => {
     setIsRunning(false);

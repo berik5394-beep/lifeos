@@ -122,7 +122,11 @@ export const ProgressRing = React.memo(function ProgressRing({
               borderWidth: strokeWidth,
               borderRightWidth: 0,
               borderColor: resolvedColor,
-              transform: [{ rotate: `${rightRotation}deg` }],
+              transform: [
+                { translateX: size / 4 },
+                { rotate: `${rightRotation}deg` },
+                { translateX: -size / 4 },
+              ],
             },
           ]}
         />
@@ -155,7 +159,11 @@ export const ProgressRing = React.memo(function ProgressRing({
               borderWidth: strokeWidth,
               borderLeftWidth: 0,
               borderColor: resolvedColor,
-              transform: [{ rotate: `${leftRotation}deg` }],
+              transform: [
+                { translateX: -size / 4 },
+                { rotate: `${leftRotation}deg` },
+                { translateX: size / 4 },
+              ],
             },
           ]}
         />
