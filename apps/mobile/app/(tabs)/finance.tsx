@@ -154,7 +154,7 @@ const CategoryBar = React.memo(function CategoryBar({
         />
       </View>
       <View style={styles.barValue}>
-        <Text style={styles.barAmount}>{formatAmount(amount)} \u20B8</Text>
+        <Text style={styles.barAmount}>{formatAmount(amount)} ₸</Text>
         <Text style={styles.barPercent}>{percentage}%</Text>
       </View>
     </View>
@@ -290,7 +290,7 @@ const JournalExpenseRow = React.memo(function JournalExpenseRow({
           {cat.label}
         </Text>
         <Text style={[styles.journalCellAmount, { color: c.danger }]}>
-          -{formatAmount(item.amount)} \u20B8
+          -{formatAmount(item.amount)} ₸
         </Text>
       </View>
     </SwipeableRow>
@@ -339,7 +339,7 @@ const JournalIncomeRow = React.memo(function JournalIncomeRow({
           </Text>
         </View>
         <Text style={[styles.journalCellAmount, { color: c.success }]}>
-          +{formatAmount(item.amount)} \u20B8
+          +{formatAmount(item.amount)} ₸
         </Text>
       </View>
     </SwipeableRow>
@@ -1576,7 +1576,7 @@ export default function FinanceScreen() {
       >
         <ScrollView keyboardShouldPersistTaps="handled">
           <Input
-            label="Сумма (\u20B8)"
+            label="Сумма (₸)"
             placeholder="0"
             keyboardType="numeric"
             value={formAmount}
@@ -1639,7 +1639,7 @@ export default function FinanceScreen() {
       >
         <ScrollView keyboardShouldPersistTaps="handled">
           <Input
-            label="Сумма (\u20B8)"
+            label="Сумма (₸)"
             placeholder="0"
             keyboardType="numeric"
             value={formAmount}
@@ -1707,7 +1707,7 @@ export default function FinanceScreen() {
           />
 
           <Input
-            label="Сумма (\u20B8)"
+            label="Сумма (₸)"
             placeholder="0"
             keyboardType="numeric"
             value={formAmount}

@@ -29,8 +29,7 @@ interface ChipConfig {
 }
 
 const CHIPS: ChipConfig[] = [
-  { action: 'details', icon: '\u{1F4CA}', label: 'Подробнее', dismissOnPress: false },
-  { action: 'plan_tomorrow', icon: '\u{1F4DD}', label: 'Спланировать завтра', dismissOnPress: false },
+    { action: 'plan_tomorrow', icon: '\u{1F4DD}', label: 'Спланировать завтра', dismissOnPress: true },
   { action: 'goodnight', icon: '\u{1F319}', label: 'Спокойной ночи', dismissOnPress: true },
 ];
 
@@ -145,7 +144,6 @@ function EveningRitualComponent({
               strokeWidth={8}
               color={progressColor}
             />
-            <Text style={styles.progressText}>{Math.round(dayProgress)}%</Text>
           </View>
 
           {/* Message */}
@@ -211,12 +209,6 @@ function createStyles(c: ReturnType<typeof useColors>) {
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.lg,
-  },
-  progressText: {
-    position: 'absolute',
-    color: c.text,
-    fontSize: fontSize.xl,
-    fontWeight: '700',
   },
   messageText: {
     color: c.text,
