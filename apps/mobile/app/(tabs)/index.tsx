@@ -9,7 +9,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useNavigation } from '@react-navigation/native';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,9 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ProgressRing } from '@/components/ui';
 import { Heatmap } from '@/components/charts';
 import { Confetti } from '@/components/shared';
-import { VoiceButton, MorningGreeting, EveningRitual, DictationModal } from '@/components/voice';
-import { useVoice } from '@/hooks/use-voice';
-import { useOpenPanel } from '@/hooks/use-open-panel';
+import { MorningGreeting, EveningRitual } from '@/components/voice';
 import { useMorningGreeting } from '@/hooks/use-morning-greeting';
 import { useTaskStore } from '@/stores/task-store';
 import { useScheduleStore } from '@/stores/schedule-store';
@@ -190,7 +188,6 @@ export default function PlannerScreen() {
   const [addingGoal, setAddingGoal] = useState(false);
   // voiceModalVisible removed — hold-to-record replaces modal
   const [showConfetti, setShowConfetti] = useState(false);
-  const [dictationOpen, setDictationOpen] = useState(false);
   const [showEveningRitual, setShowEveningRitual] = useState(false);
   const [eveningMessage, setEveningMessage] = useState('');
   const [dayProgress, setDayProgress] = useState(0);
@@ -210,17 +207,6 @@ export default function PlannerScreen() {
   const { habits, logs, fetchHabits, fetchLogs } = useHabitStore();
   const user = useAuthStore((state) => state.user);
   const { todayEntry, fetchEntry: fetchJournalEntry } = useJournalStore();
-
-  const {
-    isRecording,
-    isProcessing,
-    lastResult,
-    error: voiceError,
-    startRecording,
-    stopRecording,
-    amplitude,
-  } = useVoice();
-  useOpenPanel(lastResult);
 
   const {
     shouldShowGreeting,
@@ -359,13 +345,6 @@ export default function PlannerScreen() {
     setRefreshing(false);
   }, [weekStartStr, sundayDate, todayStr, fetchTasks, fetchWeeklyGoals, fetchHabits, fetchLogs, fetchJournalEntry]);
 
-  // voice-one-brain: голосовую команду исполнил СЕРВЕР (единый мозг) —
-  // экран только подтягивает свой срез данных. Никакого локального исполнения.
-  useEffect(() => {
-    // Ошибку рефреша глушим: данные подтянутся при следующем фокусе/pull-to-refresh.
-    if (lastResult) void handleRefresh().catch(() => {});
-  }, [lastResult]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const handlePrevWeek = useCallback(() => {
     hapticSelection();
     setWeekOffset((prev) => prev - 1);
@@ -412,13 +391,6 @@ export default function PlannerScreen() {
     [deleteWeeklyGoal],
   );
 
-  const handleVoicePress = useCallback(() => {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      startRecording();
-    }
-  }, [isRecording, startRecording, stopRecording]);
 
 
   const token = useAuthStore((state) => state.token);
@@ -451,7 +423,6 @@ export default function PlannerScreen() {
   const handleNavigateTaskCapture = useCallback(() => navigation.navigate('TaskCapture' as never), [navigation]);
   const handleNavigateFocusMode = useCallback(() => navigation.navigate('FocusMode' as never), [navigation]);
   const handleNavigateKanbanBoard = useCallback(() => navigation.navigate('KanbanBoard' as never), [navigation]);
-  const handleNavigateVoiceConversation = useCallback(() => navigation.navigate('VoiceConversation' as never), [navigation]);
   const handleNavigateLifeInsights = useCallback(() => navigation.navigate('LifeInsights' as never), [navigation]);
   const handleNavigateCalendar = useCallback(() => navigation.navigate('Calendar' as never), [navigation]);
 
@@ -477,7 +448,7 @@ export default function PlannerScreen() {
   const isLoading = tasksLoading || goalsLoading;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <ScreenSafeArea style={styles.container} edges={['top']}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
@@ -558,13 +529,6 @@ export default function PlannerScreen() {
             activeOpacity={0.7}
           >
             <Text style={styles.quickActionText}>{'\u{1F4DD}'} Дневник</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickActionPill}
-            onPress={handleVoicePress}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.quickActionText}>{'\u{1F3A4}'} Голос</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.quickActionPill}
@@ -801,32 +765,6 @@ export default function PlannerScreen() {
         </FadeInView>
       </ScrollView>
 
-      {/* Floating Voice Button — tap opens JARVIS, hold for quick command */}
-      <VoiceButton
-        onPress={handleNavigateVoiceConversation}
-        onPressIn={startRecording}
-        onPressOut={stopRecording}
-        isRecording={isRecording}
-        isProcessing={isProcessing}
-        amplitude={amplitude}
-        style={styles.floatingVoice}
-      />
-
-      {/* Dictation FAB — рядом с голосовой кнопкой, открывает JARVIS-диктофон. */}
-      <TouchableOpacity
-        onPress={() => setDictationOpen(true)}
-        style={styles.dictationFab}
-        activeOpacity={0.85}
-        accessibilityRole="button"
-        accessibilityLabel="JARVIS диктофон — записать речь, выделить задачи и запомнить факты"
-      >
-        <Text style={styles.dictationFabEmoji}>🎙️</Text>
-      </TouchableOpacity>
-
-      <DictationModal
-        visible={dictationOpen}
-        onClose={() => setDictationOpen(false)}
-      />
 
       {/* Confetti for 100% day */}
       <Confetti
@@ -852,7 +790,7 @@ export default function PlannerScreen() {
         dayProgress={dayProgress}
         onChipPress={handleEveningChipPress}
       />
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 
@@ -1160,29 +1098,5 @@ function createStyles(c: C) {
       fontSize: fontSize.xs,
       marginTop: spacing.xs,
     },
-    floatingVoice: {
-      position: 'absolute',
-      bottom: 90,
-      right: 20,
-    },
-    dictationFab: {
-      position: 'absolute',
-      bottom: 100,
-      right: 96, // левее VoiceButton (~60px+padding), не перекрывает
-      width: 52,
-      height: 52,
-      borderRadius: 26,
-      backgroundColor: c.surface,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.08)',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 6,
-      elevation: 8,
-    },
-    dictationFabEmoji: { fontSize: 22 },
   });
 }

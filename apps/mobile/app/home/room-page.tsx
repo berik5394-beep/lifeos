@@ -46,6 +46,8 @@ import { TOOL_TITLE } from '@/components/room/tool-card';
 import { hapticLight } from '@/services/haptics';
 import { INTRO_STEPS, furnitureBadge, isIntroDone, markIntroDone } from '@/services/room-intro';
 import { spacing, borderRadius } from '@/constants';
+import { useUtterance } from '@/hooks/use-utterance';
+import { DictationModal } from '@/components/voice';
 
 /**
  * Робот-эпик, Части 4–5: комната — ЕДИНСТВЕННЫЙ экран приложения.
@@ -159,7 +161,6 @@ export const RoomPage = memo(function RoomPage() {
   const floorTier = useMemo(() => finishTier(owned, 'floor'), [owned]);
   const messages = useChatStore((s) => s.messages);
   const chatLoading = useChatStore((s) => s.isLoading);
-  const sendMessage = useChatStore((s) => s.sendMessage);
   const confirmPendingAction = useChatStore((s) => s.confirmPendingAction);
   const isFeatureVisible = useUIStore((s) => s.isFeatureVisible);
   // Сделки: сервер ответил 404 (флаг выключен) или ещё не ответил → инструмента на столе нет.
@@ -237,10 +238,13 @@ export const RoomPage = memo(function RoomPage() {
     timers.current.push(setTimeout(fn, ms));
   }, []);
 
-  // Голос → текст → мозг (как в чате, без двойного исполнения).
+  // Голос → текст → мозг (как в чате, без двойного исполнения). Один микрофон:
+  // «ЛайфОС, …» — обращение; «ЛайфОС, диктофон» / «давай поговорим» — свои функции.
+  const utterance = useUtterance();
+  const handleUtterance = utterance.handle;
   useEffect(() => {
-    if (lastResult?.transcript) void sendMessage(lastResult.transcript, true);
-  }, [lastResult, sendMessage]);
+    if (lastResult?.transcript) handleUtterance(lastResult.transcript);
+  }, [lastResult, handleUtterance]);
 
   // Робот иногда мягко поворачивает голову, пока ничего не происходит.
   useEffect(() => {
@@ -590,7 +594,7 @@ export const RoomPage = memo(function RoomPage() {
   const nextIntro = useCallback(() => {
     setIntroStep((s) => (s == null || s >= INTRO_STEPS.length - 1 ? (markIntroDone(), null) : s + 1));
   }, []);
-  const onSend = useCallback((text: string) => void sendMessage(text, true), [sendMessage]);
+  const onSend = handleUtterance;
   const onConfirm = useCallback(
     (yes: boolean) => {
       if (reply) void confirmPendingAction(reply.id, yes);
@@ -708,8 +712,15 @@ export const RoomPage = memo(function RoomPage() {
               />
             </View>
           )}
-          {/* Скрытое (устаревшее) объяснение не показываем вовсе — иначе вместо него висело бы «…». */}
-          {scene?.phase === 'open' && !scene.closing && !showProposal && !explainHidden && (
+          {/* Карточка открыта, держишь микрофон — что расслышал, в полосе под карточкой. */}
+          {scene?.phase === 'open' && !scene.closing && !showProposal && voiceBubble && (
+            <View style={styles.bubbleExplain} pointerEvents="none">
+              <ChatReplyBubble text={voiceBubble} tail="left" />
+            </View>
+          )}
+          {/* Скрытое (устаревшее) объяснение не показываем вовсе — иначе вместо него висело бы «…».
+              Клавиатура открыта — комната сжата, облачко легло бы на карточку: прячем. */}
+          {scene?.phase === 'open' && !scene.closing && !showProposal && !voiceBubble && !explainHidden && !kbOpen && (
             <View style={styles.bubbleExplain} pointerEvents="none">
               {explain ? <RobotSpeechBubble text={explain} tail="left" /> : <ChatReplyBubble text="" thinking tail="left" />}
             </View>
@@ -839,6 +850,7 @@ export const RoomPage = memo(function RoomPage() {
         compact={kbOpen}
         highlight={introTarget === 'input' || introTarget === 'tools' || introTarget === 'furnish' ? introTarget : null}
       />
+      <DictationModal visible={utterance.dictationOpen} onClose={utterance.closeDictation} />
     </SafeAreaView>
   );
 });

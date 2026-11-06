@@ -91,11 +91,8 @@ const SleepCard = React.memo(function SleepCard({ value, onChange }: SleepCardPr
           <Text style={styles.sectionValue}>{value} ч</Text>
         )}
       </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipRow}
-      >
+      {/* Сетка 5×2 вместо прокрутки: все часы видны и не обрезаются краем карточки. */}
+      <View style={styles.chipRow}>
         {SLEEP_OPTIONS.map((hours) => (
           <TouchableOpacity
             key={hours}
@@ -115,7 +112,7 @@ const SleepCard = React.memo(function SleepCard({ value, onChange }: SleepCardPr
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
     </Card>
   );
 });
@@ -395,11 +392,13 @@ function createStyles(c: ReturnType<typeof useColors>) {
   // Sleep chips
   chipRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     paddingVertical: spacing.xs,
   },
   chip: {
-    width: 44,
+    flexBasis: '17%',
+    flexGrow: 1,
     height: 44,
     borderRadius: borderRadius.sm,
     backgroundColor: c.surfaceLight,
@@ -419,15 +418,17 @@ function createStyles(c: ReturnType<typeof useColors>) {
   },
 
   // Energy circles
+  // 10 кружков делят ширину поровну — в узкой карточке не вылезают за край.
   energyRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: spacing.xs,
   },
   energyCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    flex: 1,
+    aspectRatio: 1,
+    maxWidth: 34,
+    borderRadius: 17,
     backgroundColor: c.surfaceLight,
     alignItems: 'center',
     justifyContent: 'center',

@@ -6,6 +6,7 @@ import { useColors } from '@/hooks/use-colors';
 import { fontSize, spacing } from '@/constants';
 import { COMIC } from '@/constants/comic';
 import { toolCardRect } from '@/services/tool-scene';
+import { ContentWidthContext } from '@/hooks/use-content-width';
 import type { ToolKey } from '@/services/room-tools';
 import DashboardScreen from '@/screens/dashboard';
 import TasksScreen from '@/screens/tasks';
@@ -99,8 +100,11 @@ export const ToolCard = memo(function ToolCard({
           <Feather name="x" size={22} color={COMIC.ink} />
         </Pressable>
       </View>
+      {/* Экран рисуется в ширину карточки, а не телефона — иначе вылезает вправо. */}
       <View style={styles.body}>
-        <Screen />
+        <ContentWidthContext.Provider value={card.w - COMIC.outline * 2}>
+          <Screen />
+        </ContentWidthContext.Provider>
       </View>
     </Animated.View>
   );

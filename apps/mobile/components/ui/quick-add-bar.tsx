@@ -80,7 +80,7 @@ export const QuickAddBar = React.memo(function QuickAddBar({
         {loading ? (
           <ActivityIndicator color="#fff" size="small" />
         ) : (
-          <Feather name="mic" size={20} color="#fff" />
+          <Feather name="plus" size={20} color="#fff" />
         )}
       </TouchableOpacity>
     </View>

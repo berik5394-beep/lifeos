@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { Card } from '@/components/ui';
@@ -63,7 +63,7 @@ export default function CalendarScreen() {
   }, [navigation]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <ScreenSafeArea style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={prevMonth} hitSlop={12}>
           <Feather name="chevron-left" size={24} color={colors.text} />
@@ -96,7 +96,7 @@ export default function CalendarScreen() {
         onClose={() => setSelectedDay(null)}
         onOpenTasks={openTasks}
       />
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

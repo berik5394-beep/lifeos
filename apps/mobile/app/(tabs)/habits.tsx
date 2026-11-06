@@ -7,17 +7,18 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
-  Dimensions,
   Alert,
   TextInput,
   Animated,
   Easing,
   Vibration,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useColors } from '@/hooks/use-colors';
 import { useHabitStore } from '@/stores/habit-store';
 import { useJournalStore } from '@/stores/journal-store';
+import { useScheduleStore } from '@/stores/schedule-store';
+import { useContentWidth } from '@/hooks/use-content-width';
 import {
   Card,
   Button,
@@ -29,14 +30,10 @@ import {
   ProgressRing,
   StatCard,
 } from '@/components/ui';
-import { VoiceButton } from '@/components/voice';
-import { useVoice } from '@/hooks/use-voice';
-import { useOpenPanel } from '@/hooks/use-open-panel';
 import { spacing, borderRadius, fontSize, habitCategories } from '@/constants';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { hapticLight, hapticSelection } from '@/services/haptics';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -385,17 +382,19 @@ const MoodSelector = React.memo(function MoodSelector({
             key={index}
             onPress={() => onChange(moodValue)}
             style={{
+              // Пять равных долей: в узкой карточке «Отлично» не вылезает за край.
+              flex: 1,
               alignItems: 'center',
-              padding: spacing.sm,
+              paddingVertical: spacing.sm,
+              paddingHorizontal: 2,
               borderRadius: borderRadius.md,
               backgroundColor: isSelected ? c.primary + '20' : 'transparent',
               borderWidth: isSelected ? 2 : 0,
               borderColor: isSelected ? c.primary : 'transparent',
-              minWidth: 56,
             }}
           >
             <Text style={{ fontSize: 28, marginBottom: 4 }}>{emoji}</Text>
-            <Text style={{
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{
               fontSize: fontSize.xs,
               color: isSelected ? c.primary : c.textSecondary,
               fontWeight: isSelected ? '600' : '400',
@@ -513,6 +512,7 @@ const SleepInput = React.memo(function SleepInput({
   onChange,
   c,
 }: SleepInputProps) {
+  const SCREEN_WIDTH = useContentWidth();
   const hours = value ?? 0;
   const quality = hours >= 8 ? 'Отлично' : hours >= 7 ? 'Хорошо' : hours >= 6 ? 'Нормально' : hours >= 4 ? 'Мало' : 'Критично';
   const qualityColor = hours >= 8 ? '#22C55E' : hours >= 7 ? '#3B82F6' : hours >= 6 ? '#F59E0B' : '#EF4444';
@@ -698,6 +698,7 @@ const SimpleLineChart = React.memo(function SimpleLineChart({
   c,
   height = 100,
 }: LineChartProps) {
+  const SCREEN_WIDTH = useContentWidth();
   if (data.length === 0) return null;
   const maxVal = Math.max(...data, 1);
   const chartWidth = SCREEN_WIDTH - spacing.lg * 4;
@@ -789,7 +790,8 @@ const SimpleLineChart = React.memo(function SimpleLineChart({
 
 export default function HabitsScreen() {
   const c = useColors();
-  const styles = useMemo(() => createStyles(c), [c]);
+  const contentWidth = useContentWidth();
+  const styles = useMemo(() => createStyles(c, contentWidth), [c, contentWidth]);
 
   // ─── Stores ───────────────────────────────────────────────────────────────
   const {
@@ -815,16 +817,6 @@ export default function HabitsScreen() {
   } = useJournalStore();
 
   // ─── Voice ────────────────────────────────────────────────────────────────
-  const {
-    isRecording,
-    isProcessing,
-    lastResult,
-    error: voiceError,
-    startRecording,
-    stopRecording,
-    amplitude,
-  } = useVoice();
-  useOpenPanel(lastResult);
 
 
   // ─── State ────────────────────────────────────────────────────────────────
@@ -1130,6 +1122,17 @@ export default function HabitsScreen() {
     fetchMonthEntries(getMonthKey(todayDate.getFullYear(), todayDate.getMonth()));
   }, []);
 
+  // Робот что-то сделал (голос/текст в комнате) → перечитываем отметки, если панель открыта.
+  const scheduleRevision = useScheduleStore((s) => s.revision);
+  const seenRevision = useRef(scheduleRevision);
+  useEffect(() => {
+    if (seenRevision.current === scheduleRevision) return;
+    seenRevision.current = scheduleRevision;
+    fetchHabits();
+    fetchLogs(monthFrom, today);
+    fetchStats(getMonthKey(todayDate.getFullYear(), todayDate.getMonth()));
+  }, [scheduleRevision]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Callbacks ────────────────────────────────────────────────────────────
 
   const handleRefresh = useCallback(async () => {
@@ -1146,13 +1149,6 @@ export default function HabitsScreen() {
       setRefreshing(false);
     }
   }, [fetchHabits, fetchLogs, monthFrom, fetchStats, fetchJournalEntry, fetchMonthEntries, today, todayDate]);
-
-  // voice-one-brain: голосовую команду исполнил СЕРВЕР (единый мозг) —
-  // экран только подтягивает свой срез данных. Никакого локального исполнения.
-  useEffect(() => {
-    // Ошибку рефреша глушим: данные подтянутся при следующем фокусе/pull-to-refresh.
-    if (lastResult) void handleRefresh().catch(() => {});
-  }, [lastResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleHabit = useCallback(
     async (habitId: string, completed: boolean) => {
@@ -2067,7 +2063,7 @@ export default function HabitsScreen() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <ScreenSafeArea style={styles.container} edges={['top']}>
       <SlideTabs tabs={tabs}>
         {renderOverview}
         {renderCalendar}
@@ -2083,20 +2079,11 @@ export default function HabitsScreen() {
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
 
-      {/* Voice */}
-      <VoiceButton
-        onPressIn={startRecording}
-        onPressOut={stopRecording}
-        isRecording={isRecording}
-        isProcessing={isProcessing}
-        amplitude={amplitude}
-        style={styles.floatingVoice}
-      />
 
       {/* Modals */}
       {renderCreateModal}
       {renderEditModal}
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 
@@ -2104,7 +2091,7 @@ export default function HabitsScreen() {
 // STYLES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function createStyles(c: C) {
+function createStyles(c: C, SCREEN_WIDTH: number) {
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -2464,11 +2451,6 @@ function createStyles(c: C) {
       color: '#fff',
       fontWeight: '600',
       lineHeight: 30,
-    },
-    floatingVoice: {
-      position: 'absolute',
-      bottom: 90,
-      right: 20,
     },
   });
 }

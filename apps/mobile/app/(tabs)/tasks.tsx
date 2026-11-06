@@ -13,7 +13,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import {
   Card,
   Button,
@@ -26,9 +26,6 @@ import {
 } from '@/components/ui';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { VoiceButton } from '@/components/voice';
-import { useVoice } from '@/hooks/use-voice';
-import { useOpenPanel } from '@/hooks/use-open-panel';
 import { spacing, borderRadius, fontSize, taskCategories, priorities } from '@/constants';
 import { useTaskStore } from '@/stores/task-store';
 import { useScheduleStore } from '@/stores/schedule-store';
@@ -593,16 +590,6 @@ export default function TasksScreen() {
   const { habits, logs: habitLogs, fetchHabits } = useHabitStore();
 
   // ─── Voice ───────────────────────────────────────────────────────────────
-  const {
-    isRecording,
-    isProcessing,
-    lastResult,
-    error: voiceError,
-    startRecording,
-    stopRecording,
-    amplitude,
-  } = useVoice();
-  useOpenPanel(lastResult);
 
 
   // ─── State ───────────────────────────────────────────────────────────────
@@ -853,13 +840,6 @@ export default function TasksScreen() {
       setRefreshing(false);
     }
   }, [fetchTasks]);
-
-  // voice-one-brain: голосовую команду исполнил СЕРВЕР (единый мозг) —
-  // экран только подтягивает свой срез данных. Никакого локального исполнения.
-  useEffect(() => {
-    // Ошибку рефреша глушим: данные подтянутся при следующем фокусе/pull-to-refresh.
-    if (lastResult) void handleRefresh().catch(() => {});
-  }, [lastResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrevMonth = useCallback(() => {
     setCurrentMonth((prev) => {
@@ -1591,7 +1571,7 @@ export default function TasksScreen() {
 
   // ─── Main Render ─────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <ScreenSafeArea style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{'\uD83D\uDCCB'} Задачи</Text>
       </View>
@@ -1657,20 +1637,11 @@ export default function TasksScreen() {
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
 
-      {/* Voice */}
-      <VoiceButton
-        onPressIn={startRecording}
-        onPressOut={stopRecording}
-        isRecording={isRecording}
-        isProcessing={isProcessing}
-        amplitude={amplitude}
-        style={styles.floatingVoice}
-      />
 
       {/* Modals */}
       {renderTaskModal(showCreateModal, handleCloseCreateModal, handleSaveTask, false)}
       {renderTaskModal(showEditModal, handleCloseEditModal, handleUpdateTask, true)}
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 
@@ -2438,11 +2409,6 @@ function createStyles(c: C) {
       color: '#FFFFFF',
       fontWeight: '600',
       marginTop: -2,
-    },
-    floatingVoice: {
-      position: 'absolute',
-      bottom: 90,
-      right: 20,
     },
 
     // ─── View Mode Toolbar ───────────────────────────────────────────────

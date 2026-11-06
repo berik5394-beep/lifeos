@@ -2,7 +2,6 @@ import React, { useState, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   ScrollView,
-  Dimensions,
   Text,
   TouchableOpacity,
   StyleSheet,
@@ -12,8 +11,7 @@ import {
 } from 'react-native';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import { useContentWidth } from '@/hooks/use-content-width';
 
 interface SlideTab {
   key: string;
@@ -33,6 +31,8 @@ export const SlideTabs = React.memo(function SlideTabs({
   initialTab = 0,
 }: SlideTabsProps) {
   const scrollRef = useRef<ScrollView>(null);
+  // Ширина страницы = ширина, где нарисован экран (в карточке комнаты — уже окна).
+  const SCREEN_WIDTH = useContentWidth();
   const [activeIndex, setActiveIndex] = useState(initialTab);
   const scrollX = useRef(new Animated.Value(initialTab * SCREEN_WIDTH)).current;
   const c = useColors();
@@ -42,7 +42,7 @@ export const SlideTabs = React.memo(function SlideTabs({
       scrollRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
       setActiveIndex(index);
     },
-    [],
+    [SCREEN_WIDTH],
   );
 
   const handleScroll = Animated.event(
@@ -55,7 +55,7 @@ export const SlideTabs = React.memo(function SlideTabs({
       const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
       setActiveIndex(idx);
     },
-    [],
+    [SCREEN_WIDTH],
   );
 
   const tabWidth = SCREEN_WIDTH / tabs.length;
@@ -101,7 +101,7 @@ export const SlideTabs = React.memo(function SlideTabs({
     page: {
       width: SCREEN_WIDTH,
     },
-  }), [c]);
+  }), [c, SCREEN_WIDTH]);
 
   return (
     <View style={styles.container}>

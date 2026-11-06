@@ -14,7 +14,7 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1450,7 +1450,7 @@ export default function GoalsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <ScreenSafeArea style={styles.container} edges={['top']}>
       {/* ── Header ── */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Цели на год</Text>
@@ -1797,7 +1797,7 @@ export default function GoalsScreen() {
           )}
         </View>
       </Modal>
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 

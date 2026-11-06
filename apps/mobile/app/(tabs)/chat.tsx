@@ -30,6 +30,8 @@ import { useUIStore } from '@/stores/ui-store';
 import { useDealStore } from '@/stores/deal-store';
 import { useColors } from '@/hooks/use-colors';
 import { hapticLight } from '@/services/haptics';
+import { useUtterance } from '@/hooks/use-utterance';
+import { DictationModal } from '@/components/voice';
 import { spacing, fontSize, borderRadius } from '@/constants';
 const ACTION_LABELS: Record<string, { icon: string; label: string }> = {
   create_task: { icon: '\u2705', label: 'Создать задачу' },
@@ -171,19 +173,19 @@ export default function ChatScreen() {
     fetchHistory(0);
   }, [fetchHistory]);
 
-  // When voice result arrives, send it as chat message
+  // Голос → тот же разбор, что в комнате: «ЛайфОС, …», диктофон, режим разговора.
+  const utterance = useUtterance();
+  const handleUtterance = utterance.handle;
   useEffect(() => {
-    if (lastResult?.transcript) {
-      sendMessage(lastResult.transcript, true);
-    }
-  }, [lastResult, sendMessage]);
+    if (lastResult?.transcript) handleUtterance(lastResult.transcript);
+  }, [lastResult, handleUtterance]);
 
   const handleSend = useCallback(() => {
     const trimmed = inputText.trim();
     if (!trimmed || isLoading) return;
     setInputText('');
-    sendMessage(trimmed, true);
-  }, [inputText, isLoading, sendMessage]);
+    handleUtterance(trimmed);
+  }, [inputText, isLoading, handleUtterance]);
 
   const navigation = useNavigation<any>();
   const handleAction = useCallback((action: ChatAction) => {
@@ -431,6 +433,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      <DictationModal visible={utterance.dictationOpen} onClose={utterance.closeDictation} />
     </KeyboardAvoidingView>
     </View>
     </SafeAreaView>

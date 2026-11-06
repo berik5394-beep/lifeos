@@ -103,6 +103,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: [assistantMessage, ...state.messages],
         isLoading: false,
       }));
+      // Мозг мог что-то сделать (отметил привычку, добавил задачу) — открытая
+      // панель перечитает свои данные. Микрофон теперь один, у поля ввода.
+      useScheduleStore.getState().bump();
     } catch (err) {
       // Дневной лимит (429) и «нет интернета» — показываем понятный текст сервера/сети.
       const known = err instanceof ApiError && (err.status === 429 || err.status === 0);
@@ -194,9 +197,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       const res = await confirmPendingVoiceAction(confirm, pending.action);
       // График сдвинут → открытые экраны задач/календаря перечитают данные.
-      if (confirm && pending.action === RESCHEDULE_ACTION && res.intent === RESCHEDULE_ACTION) {
-        useScheduleStore.getState().bump();
-      }
+      // Подтверждённое действие (сдвиг графика, доход, задача) → открытые экраны перечитают данные.
+      // Устаревшее предложение (409) приходит без intent — там ничего не сделано.
+      if (confirm && res.intent) useScheduleStore.getState().bump();
       const reply: ChatMessage = {
         id: uniqueId('assistant'),
         role: 'assistant',

@@ -11,7 +11,7 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useFinanceStore } from '@/stores/finance-store';
 import { useBudgetStore } from '@/stores/budget-store';
 import { Card, Button, Input, Modal, SlideTabs } from '@/components/ui';
@@ -1601,7 +1601,7 @@ export default function FinanceScreen() {
   const navigation = useNavigation<any>();
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <ScreenSafeArea style={styles.container} edges={['top']}>
       <View style={styles.screenHeader}>
         <Text style={styles.screenTitle}>Финансы</Text>
         <TouchableOpacity
@@ -1857,7 +1857,7 @@ export default function FinanceScreen() {
           />
         </ScrollView>
       </Modal>
-    </SafeAreaView>
+    </ScreenSafeArea>
   );
 }
 
