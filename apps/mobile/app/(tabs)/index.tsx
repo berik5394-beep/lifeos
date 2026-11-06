@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { KbScrollView } from '@/components/shared/kb-scroll-view';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useNavigation } from '@react-navigation/native';
 import { Card } from '@/components/ui/card';
@@ -458,7 +459,7 @@ export default function PlannerScreen() {
 
   return (
     <ScreenSafeArea style={styles.container} edges={['top']}>
-      <ScrollView
+      <KbScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -739,7 +740,7 @@ export default function PlannerScreen() {
             </View>
           </Card>
         </FadeInView>
-      </ScrollView>
+      </KbScrollView>
 
 
       {/* Confetti for 100% day */}

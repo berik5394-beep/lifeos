@@ -12,6 +12,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
+import { KbScrollView } from '@/components/shared/kb-scroll-view';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import {
   Card,
@@ -1036,7 +1037,7 @@ export default function TasksScreen() {
     const monthName = `${RUSSIAN_MONTHS[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
 
     return (
-      <ScrollView
+      <KbScrollView
         style={styles.slideContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -1130,7 +1131,7 @@ export default function TasksScreen() {
         </View>
 
         <View style={styles.bottomSpacer} />
-      </ScrollView>
+      </KbScrollView>
     );
   }, [
     currentMonth, monthTasks, monthStats, priorityDistribution, statusDistribution,
@@ -1141,7 +1142,7 @@ export default function TasksScreen() {
   // ─── Render: Slide 2 — Week Planner ─────────────────────────────────────
   const renderWeekPlanner = useCallback(() => {
     return (
-      <ScrollView
+      <KbScrollView
         style={styles.slideContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -1281,7 +1282,7 @@ export default function TasksScreen() {
         </Card>
 
         <View style={styles.bottomSpacer} />
-      </ScrollView>
+      </KbScrollView>
     );
   }, [
     currentWeek, weekDays, weekTasksByDay, weekStats, weekNotes, weekImprove, weekGratitude,
@@ -1300,7 +1301,7 @@ export default function TasksScreen() {
       totalDiff > 0 ? 'up' : totalDiff < 0 ? 'down' : 'neutral';
 
     return (
-      <ScrollView
+      <KbScrollView
         style={styles.slideContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -1484,7 +1485,7 @@ export default function TasksScreen() {
         </Card>
 
         <View style={styles.bottomSpacer} />
-      </ScrollView>
+      </KbScrollView>
     );
   }, [
     weekStats, prevWeekStats, currentStreak, bestDay, dailyCompletion, maxDailyTasks,

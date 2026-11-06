@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KbScrollView } from '@/components/shared/kb-scroll-view';
 import { useColors } from '@/hooks/use-colors';
 import { TapToAdd } from '@/components/ui';
 import { borderRadius, fontSize, spacing } from '@/constants';
@@ -66,7 +67,8 @@ export default function DealsScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <KbScrollView
+         contentContainerStyle={styles.content}>
         <PlanBar plan={plan} planKnown={planKnown} onPress={openPlan} />
         {loadError ? (
           <View style={styles.errorBox}>
@@ -111,7 +113,7 @@ export default function DealsScreen() {
         ) : (
           closed.map((d) => <DealRow key={d.id} deal={d} today={today} onPress={setOpenId} />)
         )}
-      </ScrollView>
+      </KbScrollView>
       <DealSheet deal={openDeal} onClose={closeDeal} />
       <NewDealSheet visible={adding} onClose={closeAdd} />
       <PlanSheet visible={editingPlan} current={plan?.plan ?? null} onClose={closePlan} />

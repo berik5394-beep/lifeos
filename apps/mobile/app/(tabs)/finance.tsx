@@ -11,6 +11,7 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
+import { KbScrollView } from '@/components/shared/kb-scroll-view';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useFinanceStore } from '@/stores/finance-store';
 import { useBudgetStore } from '@/stores/budget-store';
@@ -904,7 +905,7 @@ export default function FinanceScreen() {
 
   const OverviewSlide = useMemo(
     () => (
-      <ScrollView
+      <KbScrollView
         style={styles.slideContainer}
         contentContainerStyle={styles.slideContent}
         showsVerticalScrollIndicator={false}
@@ -1058,7 +1059,7 @@ export default function FinanceScreen() {
         )}
 
         <View style={styles.bottomSpacer} />
-      </ScrollView>
+      </KbScrollView>
     ),
     [
       MonthHeader,
@@ -1086,7 +1087,7 @@ export default function FinanceScreen() {
 
   const TablesSlide = useMemo(
     () => (
-      <ScrollView
+      <KbScrollView
         style={styles.slideContainer}
         contentContainerStyle={styles.slideContent}
         showsVerticalScrollIndicator={false}
@@ -1295,7 +1296,7 @@ export default function FinanceScreen() {
         </Card>
 
         <View style={styles.bottomSpacer} />
-      </ScrollView>
+      </KbScrollView>
     ),
     [
       MonthHeader,
@@ -1330,7 +1331,7 @@ export default function FinanceScreen() {
 
   const JournalSlide = useMemo(
     () => (
-      <ScrollView
+      <KbScrollView
         style={styles.slideContainer}
         contentContainerStyle={styles.slideContent}
         showsVerticalScrollIndicator={false}
@@ -1516,7 +1517,7 @@ export default function FinanceScreen() {
         )}
 
         <View style={styles.bottomSpacer} />
-      </ScrollView>
+      </KbScrollView>
     ),
     [
       refreshing,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Keyboard,
 } from 'react-native';
+import { KbScrollView } from '@/components/shared/kb-scroll-view';
 // Stack header is now managed by the parent navigator in navigation/index.tsx
 import { Card } from '@/components/ui';
 import { Button } from '@/components/ui';
@@ -200,9 +202,11 @@ const MoodCard = React.memo(function MoodCard({ value, onChange }: MoodCardProps
 interface NotesCardProps {
   value: string;
   onChange: (text: string) => void;
+  /** Поле в фокусе — экран докручивает его и «Сохранить» над клавиатурой. */
+  onFocus?: () => void;
 }
 
-const NotesCard = React.memo(function NotesCard({ value, onChange }: NotesCardProps) {
+const NotesCard = React.memo(function NotesCard({ value, onChange, onFocus }: NotesCardProps) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
   return (
@@ -219,6 +223,7 @@ const NotesCard = React.memo(function NotesCard({ value, onChange }: NotesCardPr
         placeholderTextColor={c.textSecondary}
         value={value}
         onChangeText={onChange}
+        onFocus={onFocus}
         textAlignVertical="top"
       />
     </Card>
@@ -230,6 +235,28 @@ const NotesCard = React.memo(function NotesCard({ value, onChange }: NotesCardPr
 export default function JournalScreen() {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
+  // Заметки — внизу: после подъёма клавиатуры докручиваем до конца, чтобы
+  // поле целиком и «Сохранить» были над ней.
+  // Ждём, пока клавиатура поднимется (и дом сожмёт экран), — иначе докрутка
+  // срабатывала до сжатия и поле оставалось под клавиатурой.
+  const scrollRef = useRef<ScrollView>(null);
+  const notesFocused = useRef(false);
+  const scrollNotesIntoView = useCallback(() => {
+    notesFocused.current = true;
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 350);
+  }, []);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => {
+      if (notesFocused.current) scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      notesFocused.current = false;
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [sleepHours, setSleepHours] = useState<number | null>(null);
@@ -296,10 +323,14 @@ export default function JournalScreen() {
   return (
     <>
       {/* Header managed by parent navigator */}
-      <ScrollView
+      {/* Клавиатура не закрывает «Заметки»: iOS сам поднимает содержимое над ней
+          (отступ ровно на перекрытие — внутри дома, где окно уже сжато, он нулевой). */}
+      <KbScrollView
+        ref={scrollRef}
         style={styles.container}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
+        
       >
         <DateSelector
           date={selectedDate}
@@ -310,7 +341,7 @@ export default function JournalScreen() {
         <SleepCard value={sleepHours} onChange={setSleepHours} />
         <EnergyCard value={energy} onChange={setEnergy} />
         <MoodCard value={mood} onChange={setMood} />
-        <NotesCard value={notes} onChange={setNotes} />
+        <NotesCard value={notes} onChange={setNotes} onFocus={scrollNotesIntoView} />
 
         <Button
           title="Сохранить"
@@ -319,7 +350,7 @@ export default function JournalScreen() {
           disabled={isLoading}
           style={styles.saveButton}
         />
-      </ScrollView>
+      </KbScrollView>
     </>
   );
 }

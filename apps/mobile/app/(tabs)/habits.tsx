@@ -13,6 +13,7 @@ import {
   Easing,
   Vibration,
 } from 'react-native';
+import { KbScrollView } from '@/components/shared/kb-scroll-view';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useColors } from '@/hooks/use-colors';
 import { useHabitStore } from '@/stores/habit-store';
@@ -1345,7 +1346,7 @@ export default function HabitsScreen() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   const renderOverview = useMemo(() => (
-    <ScrollView
+    <KbScrollView
       style={styles.slide}
       contentContainerStyle={styles.slideContent}
       showsVerticalScrollIndicator={false}
@@ -1532,7 +1533,7 @@ export default function HabitsScreen() {
       )}
 
       <View style={{ height: 100 }} />
-    </ScrollView>
+    </KbScrollView>
   ), [
     styles, c, refreshing, handleRefresh, todayCompleted, todayTotal,
     currentStreak, todayProgress, dailyHabits, weeklyHabits, monthlyHabits,
@@ -1557,7 +1558,7 @@ export default function HabitsScreen() {
         : 0;
 
     return (
-      <ScrollView
+      <KbScrollView
         style={styles.slide}
         contentContainerStyle={styles.slideContent}
         showsVerticalScrollIndicator={false}
@@ -1727,7 +1728,7 @@ export default function HabitsScreen() {
         )}
 
         <View style={{ height: 100 }} />
-      </ScrollView>
+      </KbScrollView>
     );
   }, [
     styles, c, calMonth, calYear, todayDate, calDaysInMonth,
@@ -1740,7 +1741,7 @@ export default function HabitsScreen() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   const renderAnalytics = useMemo(() => (
-    <ScrollView
+    <KbScrollView
       style={styles.slide}
       contentContainerStyle={styles.slideContent}
       showsVerticalScrollIndicator={false}
@@ -1883,7 +1884,7 @@ export default function HabitsScreen() {
       </FadeInView>
 
       <View style={{ height: 100 }} />
-    </ScrollView>
+    </KbScrollView>
   ), [
     styles, c, todayEntry, handleMoodChange, handleSleepChange,
     weeklyMoodData, weeklySleepData, waterGlasses, waterTarget,

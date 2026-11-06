@@ -14,6 +14,7 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
+import { KbScrollView } from '@/components/shared/kb-scroll-view';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 
 import { Button } from '@/components/ui/button';
@@ -1336,7 +1337,7 @@ export default function GoalsScreen() {
         </View>
       </View>
 
-      <ScrollView
+      <KbScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -1417,7 +1418,7 @@ export default function GoalsScreen() {
 
         {/* Нижний отступ, чтобы последняя область не пряталась под навигацией */}
         <View style={{ height: 100 }} />
-      </ScrollView>
+      </KbScrollView>
 
       {/* ═══════ CREATE / EDIT GOAL MODAL ═══════ */}
       <Modal
