@@ -16,6 +16,7 @@ import { Button } from '@/components/ui';
 import { useJournalStore } from '@/stores/journal-store';
 import { spacing, borderRadius, fontSize } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
+import { MOOD_LEVELS, moodLevel } from '@/constants/mood';
 
 const MONTH_NAMES_GENITIVE = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -24,13 +25,6 @@ const MONTH_NAMES_GENITIVE = [
 
 const SLEEP_OPTIONS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 
-const MOOD_OPTIONS: { emoji: string; minValue: number; maxValue: number; value: number }[] = [
-  { emoji: '😫', minValue: 1, maxValue: 2, value: 2 },
-  { emoji: '😕', minValue: 3, maxValue: 4, value: 4 },
-  { emoji: '😐', minValue: 5, maxValue: 6, value: 6 },
-  { emoji: '🙂', minValue: 7, maxValue: 8, value: 8 },
-  { emoji: '😄', minValue: 9, maxValue: 10, value: 10 },
-];
 
 function formatDate(date: Date): string {
   const day = date.getDate();
@@ -179,8 +173,8 @@ const MoodCard = React.memo(function MoodCard({ value, onChange }: MoodCardProps
         <Text style={styles.sectionLabel}>Настроение</Text>
       </View>
       <View style={styles.moodRow}>
-        {MOOD_OPTIONS.map((option) => {
-          const isSelected = value !== null && value >= option.minValue && value <= option.maxValue;
+        {MOOD_LEVELS.map((option, index) => {
+          const isSelected = moodLevel(value) === index;
           return (
             <TouchableOpacity
               key={option.value}
@@ -275,10 +269,9 @@ export default function JournalScreen() {
       await fetchEntry(dateString);
       if (cancelled) return;
 
-      const state = useJournalStore.getState();
-      const entry = state.entries.find((e) => e.date.slice(0, 10) === dateString) ?? state.todayEntry;
+      const entry = useJournalStore.getState().entries.find((e) => e.date.slice(0, 10) === dateString);
 
-      if (entry && entry.date === dateString) {
+      if (entry) {
         setSleepHours(entry.sleepHours);
         setEnergy(entry.energy);
         setMood(entry.mood);
@@ -315,8 +308,8 @@ export default function JournalScreen() {
         notes: notes.trim() || null,
       });
       Alert.alert('Готово', 'Запись сохранена');
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось сохранить запись');
+    } catch (err) {
+      Alert.alert('Не сохранилось', err instanceof Error ? err.message : 'Попробуй ещё раз.');
     }
   }, [dateString, sleepHours, energy, mood, notes, saveEntry]);
 

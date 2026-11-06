@@ -34,6 +34,8 @@ import { taskCategories } from '@/constants/categories';
 import { useColors } from '@/hooks/use-colors';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { hapticLight, hapticSelection, hapticSuccess } from '@/services/haptics';
+import { moodEmoji } from '@/constants/mood';
+
 function getGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return 'Доброе утро';
@@ -41,18 +43,6 @@ function getGreeting(): string {
   return 'Добрый вечер';
 }
 
-const MOOD_EMOJIS: Record<number, string> = {
-  1: '\u{1F614}',
-  2: '\u{1F641}',
-  3: '\u{1F610}',
-  4: '\u{1F642}',
-  5: '\u{1F604}',
-};
-
-function getMoodEmoji(mood: number | null | undefined): string {
-  if (mood == null) return '\u2014';
-  return MOOD_EMOJIS[mood] ?? '\u2014';
-}
 
 function getMonday(date: Date): Date {
   const d = new Date(date);
@@ -355,13 +345,10 @@ export default function PlannerScreen() {
   }, []);
 
   // Пустая строка под целями недели: «Готово» добавляет, поле остаётся для следующей.
-  const handleAddGoal = useCallback(async (text: string) => {
-    try {
-      await createWeeklyGoal(weekStartStr, text);
-    } catch {
-      // Error handled by store
-    }
-  }, [weekStartStr, createWeeklyGoal]);
+  const handleAddGoal = useCallback(
+    (text: string) => createWeeklyGoal(weekStartStr, text),
+    [weekStartStr, createWeeklyGoal],
+  );
 
   const handleToggleGoal = useCallback(
     async (id: string, completed: boolean) => {
@@ -436,15 +423,8 @@ export default function PlannerScreen() {
   }, [quoteMuted, quote]);
 
   // Пустая строка под задачами: дату из текста («завтра в 15:00») разбирает сервер.
-  const handleQuickAddSubmit = useCallback(async (text: string) => {
-    const quickAddFn = useTaskStore.getState().quickAdd;
-    try {
-      if (quickAddFn) await quickAddFn(text);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Не удалось добавить задачу';
-      Alert.alert('Ошибка', msg);
-    }
-  }, []);
+  // Ошибку покажет сама строка «Новая задача» (текст не пропадёт).
+  const handleQuickAddSubmit = useCallback((text: string) => useTaskStore.getState().quickAdd(text), []);
 
   // Сдвиг строки влево + красный минус — уже осознанное действие, без диалога.
   const handleDeleteTask = useCallback(async (id: string) => {
@@ -526,7 +506,7 @@ export default function PlannerScreen() {
             />
             <SummaryCard
               label="Настрой"
-              value={getMoodEmoji(todayEntry?.mood)}
+              value={moodEmoji(todayEntry?.mood)}
               color={c.secondary}
             />
           </View>

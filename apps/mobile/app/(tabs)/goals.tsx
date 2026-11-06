@@ -1142,13 +1142,7 @@ export default function GoalsScreen() {
   // ── Goal CRUD ──
   // Добавление без «+»: строка «Новая цель» в области → сразу цель на выбранный год.
   const handleQuickAddGoal = useCallback(
-    async (area: GoalAreaKey, text: string) => {
-      try {
-        await createYearlyGoal({ year, area, goalText: text });
-      } catch {
-        Alert.alert('Ошибка', 'Не удалось сохранить цель');
-      }
-    },
+    (area: GoalAreaKey, text: string) => createYearlyGoal({ year, area, goalText: text }),
     [year, createYearlyGoal],
   );
 

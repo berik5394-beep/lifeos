@@ -1,5 +1,5 @@
-import React, { memo, useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput } from 'react-native';
+import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize, borderRadius } from '@/constants';
 
@@ -8,6 +8,10 @@ import { spacing, fontSize, borderRadius } from '@/constants';
  * («Новая задача»). Тап по ней — сразу поле ввода; «Готово» добавляет и
  * оставляет поле открытым для следующей записи, пустое — сворачивается.
  * Если вместо строки нужна форма (сумма, категория) — onPress открывает её.
+ *
+ * Текст стирается только после успешной записи: onSubmit бросает ошибку —
+ * текст остаётся, причина видна под строкой. Пока пишется — второй «Готово»
+ * не шлёт дубль.
  */
 export const TapToAdd = memo(function TapToAdd({
   hint,
@@ -16,7 +20,7 @@ export const TapToAdd = memo(function TapToAdd({
 }: {
   /** Бледная подпись пустой строки: «Новая задача», «Новая цель». */
   hint: string;
-  /** Короткая запись прямо в строке. */
+  /** Короткая запись прямо в строке. Не сохранилось — бросить ошибку (текст останется). */
   onSubmit?: (text: string) => void | Promise<unknown>;
   /** Вместо строки — открыть свою форму. */
   onPress?: () => void;
@@ -25,34 +29,60 @@ export const TapToAdd = memo(function TapToAdd({
   const styles = useMemo(() => createStyles(c), [c]);
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const busy = useRef(false);
 
-  const submit = useCallback(() => {
+  const submit = useCallback(async () => {
     const t = text.trim();
     if (!t) {
       setEditing(false);
       return;
     }
-    setText('');
-    void Promise.resolve(onSubmit?.(t)).catch(() => {});
+    if (busy.current) return;
+    busy.current = true;
+    setSaving(true);
+    setError(null);
+    try {
+      await onSubmit?.(t);
+      setText('');
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : 'Не сохранилось. Попробуй ещё раз.');
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
   }, [text, onSubmit]);
 
   if (editing && onSubmit) {
     return (
-      <TextInput
-        style={[styles.row, styles.input]}
-        value={text}
-        onChangeText={setText}
-        placeholder={hint}
-        placeholderTextColor={c.textSecondary}
-        autoFocus
-        returnKeyType="done"
-        blurOnSubmit={false}
-        onSubmitEditing={submit}
-        onBlur={() => {
-          if (!text.trim()) setEditing(false);
-        }}
-        accessibilityLabel={hint}
-      />
+      <View>
+        <TextInput
+          style={[styles.row, styles.input, saving && styles.saving]}
+          value={text}
+          onChangeText={(v) => {
+            setText(v);
+            if (error) setError(null);
+          }}
+          placeholder={hint}
+          placeholderTextColor={c.textSecondary}
+          autoFocus
+          editable={!saving}
+          returnKeyType="done"
+          blurOnSubmit={false}
+          onSubmitEditing={() => void submit()}
+          onBlur={() => {
+            if (!text.trim()) setEditing(false);
+          }}
+          accessibilityLabel={hint}
+          accessibilityState={{ busy: saving }}
+        />
+        {error ? (
+          <Text style={styles.error} accessibilityLiveRegion="polite">
+            {error}
+          </Text>
+        ) : null}
+      </View>
     );
   }
   return (
@@ -78,5 +108,7 @@ function createStyles(c: ReturnType<typeof useColors>) {
     pressed: { backgroundColor: c.surface },
     hint: { color: c.textSecondary, fontSize: fontSize.md, opacity: 0.55 },
     input: { color: c.text, fontSize: fontSize.md, backgroundColor: c.surface },
+    saving: { opacity: 0.6 },
+    error: { color: c.danger, fontSize: fontSize.sm, paddingHorizontal: spacing.md, paddingTop: spacing.xs },
   });
 }

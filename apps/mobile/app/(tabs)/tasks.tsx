@@ -803,14 +803,8 @@ export default function TasksScreen() {
   }, [isFeatureVisible]);
 
   // Пустая строка в конце списка: дату из текста («завтра в 15:00») разбирает сервер.
-  const handleQuickAdd = useCallback(async (text: string) => {
-    try {
-      await quickAdd(text);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Не удалось добавить задачу';
-      Alert.alert('Ошибка', msg);
-    }
-  }, [quickAdd]);
+  // Ошибку покажет сама строка (текст не пропадёт).
+  const handleQuickAdd = useCallback((text: string) => quickAdd(text), [quickAdd]);
 
   const handleViewModePress = useCallback((mode: ViewModeItem) => {
     if (mode.route) {
@@ -897,18 +891,13 @@ export default function TasksScreen() {
   // Пустая строка внизу дня в планере: задача на этот день с прежними
   // значениями по умолчанию (категория «Личное», приоритет «Средний»).
   const handleAddTaskForDay = useCallback(
-    async (date: Date, title: string) => {
-      try {
-        await createTask({
-          title,
-          category: 'personal',
-          priority: 'medium',
-          date: toDateString(date),
-        });
-      } catch {
-        Alert.alert('Ошибка', 'Не удалось создать задачу');
-      }
-    },
+    (date: Date, title: string) =>
+      createTask({
+        title,
+        category: 'personal',
+        priority: 'medium',
+        date: toDateString(date),
+      }),
     [createTask],
   );
 

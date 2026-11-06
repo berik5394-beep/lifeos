@@ -65,7 +65,8 @@ export default function CalendarScreen() {
   const addTask = useCallback(
     async (title: string) => {
       if (!selectedDay) return;
-      await createTask({ title, category: 'personal', priority: 'medium', date: selectedDay }).catch(fail);
+      // Ошибку покажет сама строка «Новая задача» (текст не пропадёт).
+      await createTask({ title, category: 'personal', priority: 'medium', date: selectedDay });
     },
     [selectedDay, createTask],
   );

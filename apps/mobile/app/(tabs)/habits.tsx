@@ -36,6 +36,7 @@ import {
 import { spacing, borderRadius, fontSize, habitCategories } from '@/constants';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { hapticLight, hapticSelection } from '@/services/haptics';
+import { MOOD_LEVELS, moodLevel } from '@/constants/mood';
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -83,8 +84,6 @@ const FREQUENCY_OPTIONS: Array<{ key: string; label: string }> = [
   { key: 'monthly', label: 'Ежемесячно' },
 ];
 
-const MOOD_EMOJIS = ['😢', '😕', '😐', '🙂', '😊'];
-const MOOD_LABELS = ['Ужасно', 'Плохо', 'Нормально', 'Хорошо', 'Отлично'];
 
 const CATEGORY_KEYS = Object.keys(habitCategories) as Array<keyof typeof habitCategories>;
 
@@ -384,9 +383,8 @@ const MoodSelector = React.memo(function MoodSelector({
       justifyContent: 'space-around',
       paddingVertical: spacing.sm,
     }}>
-      {MOOD_EMOJIS.map((emoji, index) => {
-        const moodValue = index + 1;
-        const isSelected = value === moodValue;
+      {MOOD_LEVELS.map(({ emoji, label, value: moodValue }, index) => {
+        const isSelected = moodLevel(value) === index;
         return (
           <TouchableOpacity
             key={index}
@@ -409,7 +407,7 @@ const MoodSelector = React.memo(function MoodSelector({
               color: isSelected ? c.primary : c.textSecondary,
               fontWeight: isSelected ? '600' : '400',
             }}>
-              {MOOD_LABELS[index]}
+              {label}
             </Text>
           </TouchableOpacity>
         );
@@ -1270,7 +1268,11 @@ export default function HabitsScreen() {
   const handleMoodChange = useCallback(
     async (mood: number) => {
       hapticSelection();
-      await saveJournalEntry({ date: today, mood });
+      try {
+        await saveJournalEntry({ date: today, mood });
+      } catch (err) {
+        Alert.alert('Не сохранилось', err instanceof Error ? err.message : 'Попробуй ещё раз.');
+      }
     },
     [saveJournalEntry, today],
   );
@@ -1278,7 +1280,11 @@ export default function HabitsScreen() {
   const handleSleepChange = useCallback(
     async (hours: number) => {
       hapticSelection();
-      await saveJournalEntry({ date: today, sleepHours: hours });
+      try {
+        await saveJournalEntry({ date: today, sleepHours: hours });
+      } catch (err) {
+        Alert.alert('Не сохранилось', err instanceof Error ? err.message : 'Попробуй ещё раз.');
+      }
     },
     [saveJournalEntry, today],
   );

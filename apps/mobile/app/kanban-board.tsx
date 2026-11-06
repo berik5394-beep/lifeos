@@ -225,13 +225,8 @@ export default function KanbanBoardScreen() {
   const fetchTasks = useTaskStore((s) => s.fetchTasks);
   const quickAdd = useTaskStore((s) => s.quickAdd);
   const handleQuickAdd = useCallback(
-    async (text: string) => {
-      try {
-        await quickAdd(text);
-      } catch (err) {
-        Alert.alert('Ошибка', err instanceof Error ? err.message : 'Не получилось добавить задачу');
-      }
-    },
+    // Ошибку покажет сама строка (текст не пропадёт).
+    (text: string) => quickAdd(text),
     [quickAdd],
   );
   const updateKanbanStatus = useTaskStore((s) => s.updateKanbanStatus);
