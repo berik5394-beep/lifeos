@@ -269,7 +269,7 @@ export default function PlannerScreen() {
 
   // Today's summary data
   const todayTasks = useMemo(
-    () => tasks.filter((t) => t.date === todayStr),
+    () => tasks.filter((t) => t.date.slice(0, 10) === todayStr),
     [tasks, todayStr],
   );
   const todayTasksCompleted = todayTasks.filter((t) => t.completed).length;
@@ -298,7 +298,7 @@ export default function PlannerScreen() {
   const selectedDayTasks = useMemo(() => {
     if (selectedDayIndex === null) return tasks;
     const dayDate = formatDate(weekDays[selectedDayIndex].date);
-    return tasks.filter((t) => t.date === dayDate);
+    return tasks.filter((t) => t.date.slice(0, 10) === dayDate);
   }, [tasks, selectedDayIndex, weekDays]);
 
   // Heatmap data: compute completion % per day from tasks
@@ -306,9 +306,11 @@ export default function PlannerScreen() {
     const map: Record<string, number> = {};
     const byDate: Record<string, { total: number; done: number }> = {};
     tasks.forEach((t) => {
-      if (!byDate[t.date]) byDate[t.date] = { total: 0, done: 0 };
-      byDate[t.date].total++;
-      if (t.completed) byDate[t.date].done++;
+      // Сервер отдаёт дату ISO-строкой ('…T00:00:00.000Z') — сравниваем по дню.
+      const d = t.date.slice(0, 10);
+      if (!byDate[d]) byDate[d] = { total: 0, done: 0 };
+      byDate[d].total++;
+      if (t.completed) byDate[d].done++;
     });
     Object.entries(byDate).forEach(([date, { total, done }]) => {
       map[date] = total > 0 ? Math.round((done / total) * 100) : 0;

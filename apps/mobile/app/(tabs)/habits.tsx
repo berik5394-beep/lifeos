@@ -1089,7 +1089,7 @@ export default function HabitsScreen() {
       const dd = new Date(d);
       dd.setDate(dd.getDate() + i);
       const dateKey = formatDateKey(dd.getFullYear(), dd.getMonth(), dd.getDate());
-      const entry = journalEntries.find((e) => e.date === dateKey);
+      const entry = journalEntries.find((e) => e.date.slice(0, 10) === dateKey);
       data.push(entry?.mood ?? 0);
       labels.push(WEEKDAY_NAMES_SHORT[i]);
     }
@@ -1109,7 +1109,7 @@ export default function HabitsScreen() {
       const dd = new Date(d);
       dd.setDate(dd.getDate() + i);
       const dateKey = formatDateKey(dd.getFullYear(), dd.getMonth(), dd.getDate());
-      const entry = journalEntries.find((e) => e.date === dateKey);
+      const entry = journalEntries.find((e) => e.date.slice(0, 10) === dateKey);
       data.push(entry?.sleepHours ?? 0);
       labels.push(WEEKDAY_NAMES_SHORT[i]);
     }

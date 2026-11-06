@@ -276,7 +276,7 @@ export default function JournalScreen() {
       if (cancelled) return;
 
       const state = useJournalStore.getState();
-      const entry = state.entries.find((e) => e.date === dateString) ?? state.todayEntry;
+      const entry = state.entries.find((e) => e.date.slice(0, 10) === dateString) ?? state.todayEntry;
 
       if (entry && entry.date === dateString) {
         setSleepHours(entry.sleepHours);

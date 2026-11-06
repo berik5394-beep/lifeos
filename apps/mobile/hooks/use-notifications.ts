@@ -195,7 +195,7 @@ export function useNotifications(): UseNotificationsResult {
 
     // Update badge count with uncompleted task count for today
     const todayUncompleted = tasks.filter(
-      (t) => !t.completed && t.date === todayStr,
+      (t) => !t.completed && t.date.slice(0, 10) === todayStr,
     ).length;
     setBadgeCount(todayUncompleted).catch(() => {});
   }, [tasks]);

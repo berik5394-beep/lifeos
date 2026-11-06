@@ -16,6 +16,15 @@ export interface MatrixDay {
   inMonth: boolean; // принадлежит отображаемому месяцу
 }
 
+/**
+ * Дата задачи/события как 'YYYY-MM-DD'. Сервер отдаёт её полной ISO-строкой
+ * ('2026-11-06T00:00:00.000Z'): раньше сравнение с ключом дня никогда не
+ * совпадало — задачи не отмечались на числах, а день был «пустым».
+ */
+export function dayKey(date: string): string {
+  return date.slice(0, 10);
+}
+
 /** Минимальная форма задачи, нужная для расчётов (шире — из task-store). */
 interface TaskLike {
   date: string;
@@ -62,10 +71,11 @@ export function computeDayStats(
   const todayKey = formatDate(now);
   const agg: Record<string, { total: number; done: number; openCount: number }> = {};
   for (const t of tasks) {
-    if (!agg[t.date]) agg[t.date] = { total: 0, done: 0, openCount: 0 };
-    agg[t.date].total++;
-    if (t.completed) agg[t.date].done++;
-    else agg[t.date].openCount++;
+    const d = dayKey(t.date);
+    if (!agg[d]) agg[d] = { total: 0, done: 0, openCount: 0 };
+    agg[d].total++;
+    if (t.completed) agg[d].done++;
+    else agg[d].openCount++;
   }
   const out: Record<string, DayStat> = {};
   for (const [date, a] of Object.entries(agg)) {
@@ -101,4 +111,56 @@ export function heatColor(pct: number, surface: string): string {
   if (pct <= 50) return '#059669';
   if (pct <= 75) return '#34D399';
   return '#22C55E';
+}
+
+// ─── Цвет задачи = её важность (Berik: «клиент сам выберет, какая задача красная») ───
+
+export const PRIORITY_CYCLE = ['low', 'medium', 'high', 'critical'] as const;
+export type PriorityKey = (typeof PRIORITY_CYCLE)[number];
+
+/** Цвет важности: зелёный → синий → оранжевый → красный (как в constants/priorities). */
+export const PRIORITY_COLOR: Record<PriorityKey, string> = {
+  low: '#22C55E',
+  medium: '#3B82F6',
+  high: '#F97316',
+  critical: '#EF4444',
+};
+
+function asPriority(p: string | null | undefined): PriorityKey {
+  return (PRIORITY_CYCLE as readonly string[]).includes(p ?? '') ? (p as PriorityKey) : 'medium';
+}
+
+/** Тап по точке задачи — следующий цвет по кругу. */
+export function nextPriority(p: string | null | undefined): PriorityKey {
+  const i = PRIORITY_CYCLE.indexOf(asPriority(p));
+  return PRIORITY_CYCLE[(i + 1) % PRIORITY_CYCLE.length];
+}
+
+export function priorityColor(p: string | null | undefined): string {
+  return PRIORITY_COLOR[asPriority(p)];
+}
+
+interface ColoredTaskLike extends TaskLike {
+  priority?: string | null;
+}
+
+/**
+ * Точки на числе: цвета НЕвыполненных задач дня, самые важные первыми, без
+ * повторов, не больше 3. Всё выполнено — точек нет (на числе галочка).
+ */
+export function dayPriorityColors(tasks: ColoredTaskLike[]): Record<string, string[]> {
+  const byDay: Record<string, Set<PriorityKey>> = {};
+  for (const t of tasks) {
+    if (t.completed) continue;
+    (byDay[dayKey(t.date)] ??= new Set()).add(asPriority(t.priority));
+  }
+  const out: Record<string, string[]> = {};
+  for (const [date, set] of Object.entries(byDay)) {
+    out[date] = [...PRIORITY_CYCLE]
+      .reverse()
+      .filter((p) => set.has(p))
+      .slice(0, 3)
+      .map((p) => PRIORITY_COLOR[p]);
+  }
+  return out;
 }

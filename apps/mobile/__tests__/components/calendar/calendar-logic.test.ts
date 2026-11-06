@@ -99,3 +99,38 @@ describe('heatColor', () => {
     expect(heatColor(100, '#1E293B')).toBe('#22C55E');
   });
 });
+
+describe('цвет задачи = важность', () => {
+  const { dayPriorityColors, nextPriority, priorityColor } = jest.requireActual('@/components/calendar/calendar-logic');
+
+  it('тап по точке меняет цвет по кругу: зелёный → синий → оранжевый → красный → зелёный', () => {
+    expect(nextPriority('low')).toBe('medium');
+    expect(nextPriority('medium')).toBe('high');
+    expect(nextPriority('high')).toBe('critical');
+    expect(nextPriority('critical')).toBe('low');
+    expect(nextPriority(undefined)).toBe('high'); // без важности считаем «средней»
+  });
+
+  it('на числе — цвета невыполненных задач, красные первыми, без повторов, не больше 3', () => {
+    const colors = dayPriorityColors([
+      { date: '2026-11-06', completed: false, priority: 'low' },
+      { date: '2026-11-06', completed: false, priority: 'critical' },
+      { date: '2026-11-06', completed: false, priority: 'critical' },
+      { date: '2026-11-06', completed: false, priority: 'high' },
+      { date: '2026-11-06', completed: false, priority: 'medium' },
+      { date: '2026-11-06', completed: true, priority: 'critical' },
+      { date: '2026-11-07', completed: true, priority: 'low' },
+    ]);
+    expect(colors['2026-11-06']).toEqual([priorityColor('critical'), priorityColor('high'), priorityColor('medium')]);
+    expect(colors['2026-11-07']).toBeUndefined(); // всё выполнено — точек нет
+  });
+});
+
+describe('дата с сервера полной ISO-строкой', () => {
+  const { computeDayStats: stats, dayPriorityColors: colors } = jest.requireActual('@/components/calendar/calendar-logic');
+  it('задача с датой «2026-11-06T00:00:00.000Z» попадает на 6 ноября (раньше — никуда)', () => {
+    const tasks = [{ date: '2026-11-06T00:00:00.000Z', completed: false, priority: 'critical' }];
+    expect(stats(tasks, new Date(2026, 10, 6))['2026-11-06'].total).toBe(1);
+    expect(colors(tasks)['2026-11-06']).toHaveLength(1);
+  });
+});

@@ -15,6 +15,8 @@ interface MonthGridProps {
   month: number; // 0-based
   dayStats: Record<string, DayStat>;
   eventDays: Set<string>;
+  /** Цветные точки задач дня (цвет = важность), самые важные первыми. */
+  dayColors?: Record<string, string[]>;
   onDayPress: (dateKey: string) => void;
 }
 
@@ -23,6 +25,7 @@ export const MonthGrid = React.memo(function MonthGrid({
   month,
   dayStats,
   eventDays,
+  dayColors = {},
   onDayPress,
 }: MonthGridProps) {
   const colors = useColors();
@@ -74,15 +77,23 @@ export const MonthGrid = React.memo(function MonthGrid({
                   >
                     {cell.day}
                   </Text>
-                  <Text style={styles.marker}>
-                    {marker === 'check'
-                      ? '✓'
-                      : marker === 'cross'
-                        ? '✗'
-                        : marker === 'dot'
-                          ? '•'
-                          : ' '}
-                  </Text>
+                  {cell.inMonth && (dayColors[cell.dateKey]?.length ?? 0) > 0 ? (
+                    <View style={styles.dots}>
+                      {dayColors[cell.dateKey].map((col) => (
+                        <View key={col} style={[styles.dot, { backgroundColor: col }]} />
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={styles.marker}>
+                      {marker === 'check'
+                        ? '✓'
+                        : marker === 'cross'
+                          ? '✗'
+                          : marker === 'dot'
+                            ? '•'
+                            : ' '}
+                    </Text>
+                  )}
                 </View>
               </Pressable>
             );
@@ -107,4 +118,6 @@ const styles = StyleSheet.create({
   dayNum: { fontSize: fontSize.sm, fontWeight: '600' },
   dimmed: { opacity: 0.4 },
   marker: { fontSize: 10, height: 12, color: '#F8FAFC' },
+  dots: { flexDirection: 'row', gap: 2, height: 12, alignItems: 'center' },
+  dot: { width: 7, height: 7, borderRadius: 3.5 },
 });
