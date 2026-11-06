@@ -7,7 +7,6 @@ import {
   scheduleEveningReview,
   scheduleWeeklyReport,
   scheduleStreakReminder,
-  rescheduleAllTaskReminders,
   rescheduleAllEventReminders,
   setBadgeCount,
 } from '@/services/notifications';
@@ -17,6 +16,8 @@ import { useAuthStore } from '@/stores/auth-store';
 import { storage } from '@/services/storage';
 import { api } from '@/services/api';
 import { useRoomToolStore } from '@/stores/room-tool-store';
+import { syncTaskReminders } from '@/services/task-reminders';
+import { formatDate } from '@/utils/dates';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -185,13 +186,11 @@ export function useNotifications(): UseNotificationsResult {
   useEffect(() => {
     if (tasks.length === 0) return;
 
-    const todayStr = new Date().toISOString().split('T')[0];
-    const futureTasks = tasks.filter((t) => {
-      if (t.completed || !t.time) return false;
-      return t.date >= todayStr;
-    });
-
-    rescheduleAllTaskReminders(futureTasks).catch(() => {});
+    // «Сегодня» — по местному времени (toISOString давал UTC: ночью — вчера).
+    const todayStr = formatDate(new Date());
+    // Пересобираем напоминания только задач из списка; задачи вне выборки
+    // (другой месяц) не трогаем. Закрытые и прошедшие — снимаются.
+    syncTaskReminders(tasks).catch(() => {});
 
     // Update badge count with uncompleted task count for today
     const todayUncompleted = tasks.filter(
@@ -214,7 +213,7 @@ export function useNotifications(): UseNotificationsResult {
   useEffect(() => {
     if (habits.length === 0) return;
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = formatDate(new Date());
     const todayLogs = logs[todayStr] ?? [];
     const completedCount = todayLogs.filter((l) => l.completed).length;
     const allDone = completedCount >= habits.filter((h) => h.active).length;

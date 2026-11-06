@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { storage } from '@/services/storage';
+import { formatDate } from '@/utils/dates';
 
 const PRO_FEATURES = [
   'unlimited_voice',
@@ -41,7 +42,8 @@ interface SubscriptionState {
 }
 
 function getTodayString(): string {
-  return new Date().toISOString().split('T')[0];
+  // Местная дата (toISOString — UTC: в Алматы до 5 утра это ещё «вчера»).
+  return formatDate(new Date());
 }
 
 export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({

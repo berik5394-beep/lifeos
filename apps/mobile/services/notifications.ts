@@ -2,7 +2,6 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { getDailyQuote, getRandomQuote } from '@/utils/quotes';
-import { scheduleAlarmNotification } from '@/services/alarm-notifications';
 
 // ---------------------------------------------------------------------------
 // Notification handler — global config for foreground display
@@ -23,7 +22,6 @@ Notifications.setNotificationHandler({
 const PREFIX_MORNING = 'morning-briefing';
 const PREFIX_EVENING = 'evening-review';
 const PREFIX_WEEKLY = 'weekly-report';
-const PREFIX_TASK = 'task-reminder-';
 const PREFIX_EVENT_60 = 'event-60-';
 const PREFIX_EVENT_30 = 'event-30-';
 const PREFIX_STREAK = 'streak-reminder';
@@ -98,57 +96,7 @@ export async function setBadgeCount(count: number): Promise<void> {
   await Notifications.setBadgeCountAsync(count);
 }
 
-// ---------------------------------------------------------------------------
-// Task reminders  (30 min soft push + alarm at exact time)
-// ---------------------------------------------------------------------------
-export async function scheduleTaskReminder(
-  taskId: string,
-  title: string,
-  taskDate: Date,
-  taskTime: string,
-): Promise<string | null> {
-  const [hours, minutes] = taskTime.split(':').map(Number);
-  const triggerDate = new Date(taskDate);
-  triggerDate.setHours(hours, minutes, 0, 0);
-
-  // Soft reminder 30 min before
-  const reminderDate = new Date(triggerDate.getTime() - 30 * 60 * 1000);
-  let softId: string | null = null;
-
-  if (reminderDate.getTime() > Date.now()) {
-    softId = await Notifications.scheduleNotificationAsync({
-      identifier: `${PREFIX_TASK}${taskId}`,
-      content: {
-        title: 'Напоминание',
-        body: `Через 30 минут: ${title}`,
-        sound: true,
-        data: { type: 'task', taskId },
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: reminderDate,
-      },
-    });
-  }
-
-  // Alarm at exact task time
-  if (triggerDate.getTime() > Date.now()) {
-    await scheduleAlarmNotification({
-      title: `Время: ${title}`,
-      body: `Задача "${title}" — начинай прямо сейчас!`,
-      triggerDate,
-    });
-  }
-
-  return softId;
-}
-
-/**
- * Cancel a previously scheduled task reminder by task id.
- */
-export async function cancelTaskReminder(taskId: string): Promise<void> {
-  await cancelByPrefix(`${PREFIX_TASK}${taskId}`);
-}
+// Напоминания задач — services/task-reminders.ts (пересборка по выборке, будильник с постоянным id).
 
 // ---------------------------------------------------------------------------
 // Event reminders (1 hour + 30 min before)
@@ -425,37 +373,6 @@ export async function sendMotivationQuote(): Promise<string> {
   return id;
 }
 
-// ---------------------------------------------------------------------------
-// Reschedule ALL task reminders from an array of tasks
-// ---------------------------------------------------------------------------
-interface TaskForReminder {
-  id: string;
-  title: string;
-  date: string;
-  time: string | null;
-  completed: boolean;
-}
-
-export async function rescheduleAllTaskReminders(
-  tasks: TaskForReminder[],
-): Promise<void> {
-  // Cancel all existing task reminders
-  await cancelByPrefix(PREFIX_TASK);
-
-  // Schedule reminders only for future, uncompleted tasks with a time
-  const now = Date.now();
-  for (const task of tasks) {
-    if (task.completed || !task.time) continue;
-
-    const taskDate = new Date(task.date);
-    const [h, m] = task.time.split(':').map(Number);
-    taskDate.setHours(h, m, 0, 0);
-
-    if (taskDate.getTime() > now) {
-      await scheduleTaskReminder(task.id, task.title, new Date(task.date), task.time);
-    }
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Reschedule ALL event reminders from an array of events

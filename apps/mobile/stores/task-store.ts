@@ -150,6 +150,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   deleteTask: async (id: string) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
+    // Удалённая задача не должна звенеть: снимаем её напоминание и будильник.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { cancelTaskReminders } = require('@/services/task-reminders') as typeof import('@/services/task-reminders');
+      cancelTaskReminders(id).catch(() => {});
+    } catch {
+      /* уведомления недоступны — не мешаем удалению */
+    }
 
     try {
       await api.delete(`/tasks/${id}`, token, QUEUE_OFFLINE);

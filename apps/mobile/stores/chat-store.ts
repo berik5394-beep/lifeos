@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { confirmPendingVoiceAction, isConfirmable, type PendingActionInfo } from '@/services/voice-followup';
 import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
 import { useScheduleStore, RESCHEDULE_ACTION, type RescheduleProposal } from '@/stores/schedule-store';
+import { formatDate } from '@/utils/dates';
 
 export interface ChatAction {
   type: string;
@@ -262,7 +263,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         case 'complete_habit':
           if (action.data.habitId) {
             await api.post(`/habits/${action.data.habitId as string}/log`, {
-              date: new Date().toISOString().split('T')[0],
+              date: formatDate(new Date()), // местная дата, не UTC
               completed: true,
             }, token);
           }

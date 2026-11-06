@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { storage } from '@/services/storage';
+import { formatDate } from '@/utils/dates';
 
 const STORAGE_KEY_FOCUS_TODAY = 'focus_minutes_today';
 const STORAGE_KEY_FOCUS_DATE = 'focus_date';
@@ -7,7 +8,8 @@ const STORAGE_KEY_POMODORO = 'pomodoro_minutes';
 const STORAGE_KEY_BREAK = 'break_minutes';
 
 function getTodayString(): string {
-  return new Date().toISOString().split('T')[0];
+  // Местная дата (toISOString — UTC: в Алматы до 5 утра это ещё «вчера»).
+  return formatDate(new Date());
 }
 
 function loadTodayMinutes(): number {
