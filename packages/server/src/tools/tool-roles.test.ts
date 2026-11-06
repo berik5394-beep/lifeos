@@ -73,7 +73,9 @@ describe('маршрутизация без ИИ', () => {
  * отвечает болтовнёй без tools. Пока — только сделки (у части старых
  * инструментов примеры этому не отвечают, см. отчёт ревью сделок).
  */
-const EXAMPLE_GUARDED = ['create_deal', 'update_deal', 'list_deals', 'set_sales_plan'];
+// Все инструменты реестра: «один мозг» — у каждого пример фразы обязан доходить
+// до инструментов (раньше ~25 инструментов были недостижимы обычной фразой).
+const EXAMPLE_GUARDED = [...registry.keys()];
 
 describe('примеры инструментов доходят до инструментов', () => {
   const cases = EXAMPLE_GUARDED.flatMap((name) => (registry.get(name)?.examples ?? []).map((e) => [name, e] as const));
