@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Pressable,
 } from 'react-native';
 import { KbScrollView } from '@/components/shared/kb-scroll-view';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
@@ -35,6 +36,7 @@ import { useColors } from '@/hooks/use-colors';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { hapticLight, hapticSelection, hapticSuccess } from '@/services/haptics';
 import { moodEmoji } from '@/constants/mood';
+import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -100,12 +102,15 @@ const TaskRow = React.memo(function TaskRow({
   completed,
   time,
   onToggle,
+  onOpen,
 }: {
   title: string;
   category: string;
   completed: boolean;
   time: string | null;
   onToggle: () => void;
+  /** Тап по названию — карточка задачи (важность, день, время). */
+  onOpen: () => void;
 }) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
@@ -117,7 +122,12 @@ const TaskRow = React.memo(function TaskRow({
   return (
     <View style={styles.taskRow}>
       <Checkbox checked={completed} onToggle={handleToggle} size={20} />
-      <View style={styles.taskInfo}>
+      <Pressable
+        style={styles.taskInfo}
+        onPress={onOpen}
+        accessibilityRole="button"
+        accessibilityLabel={`${title}: открыть задачу`}
+      >
         <Text
           style={[styles.taskTitle, completed && styles.taskTitleCompleted]}
           numberOfLines={1}
@@ -127,7 +137,7 @@ const TaskRow = React.memo(function TaskRow({
         {time ? (
           <Text style={styles.taskTime}>{time}</Text>
         ) : null}
-      </View>
+      </Pressable>
     </View>
   );
 });
@@ -181,6 +191,10 @@ export default function PlannerScreen() {
   const hasSpokenTodayRef = useRef(false);
 
   const { tasks, isLoading: tasksLoading, fetchTasks, toggleComplete, deleteTask } = useTaskStore();
+  // Карточка задачи: id, а не копия — после сохранения показываем свежую задачу из стора.
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const editingTask = useMemo(() => tasks.find((t) => t.id === editingTaskId) ?? null, [tasks, editingTaskId]);
+  const closeTaskCard = useCallback(() => setEditingTaskId(null), []);
   const {
     weeklyGoals,
     isLoading: goalsLoading,
@@ -626,6 +640,7 @@ export default function PlannerScreen() {
                     completed={task.completed}
                     time={task.time}
                     onToggle={() => toggleComplete(task.id)}
+                    onOpen={() => setEditingTaskId(task.id)}
                   />
                 </SwipeableRow>
               </FadeInView>
@@ -750,6 +765,8 @@ export default function PlannerScreen() {
         dayProgress={dayProgress}
         onChipPress={handleEveningChipPress}
       />
+
+      <TaskEditSheet task={editingTask} onClose={closeTaskCard} />
     </ScreenSafeArea>
   );
 }

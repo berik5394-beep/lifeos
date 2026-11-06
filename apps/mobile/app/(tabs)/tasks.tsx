@@ -17,8 +17,6 @@ import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import {
   Card,
   Button,
-  Input,
-  Modal,
   Checkbox,
   SlideTabs,
   AnimatedProgressBar,
@@ -36,6 +34,7 @@ import { useUIStore } from '@/stores/ui-store';
 import { getWeekDays, isToday } from '@/utils/dates';
 import { useColors } from '@/hooks/use-colors';
 import { TagChip } from '@/components/ui/tag-chip';
+import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -217,50 +216,53 @@ const TaskRow = React.memo(function TaskRow({
       {/* Строка списка в ширину экрана: сдвиг влево открывает «минус» (широкая таблица
           с прокруткой вбок забирала этот жест, а минус уезжал за край). */}
       <TouchableOpacity
-        style={[styles.listRow, task.completed && styles.tableRowCompleted]}
-        onPress={handleToggle}
-        onLongPress={handleEdit}
+        style={[styles.listRow, styles.listRowWithCheck, task.completed && styles.tableRowCompleted]}
+        onPress={handleEdit}
         activeOpacity={0.7}
         accessibilityRole="button"
         accessibilityLabel={`${task.title}, ${task.completed ? 'выполнено' : 'не выполнено'}`}
-        accessibilityHint="Нажмите для переключения, удерживайте для редактирования"
+        accessibilityHint="Нажми, чтобы открыть и поправить задачу"
       >
-        <Text
-          style={[styles.tableCellText, task.completed && styles.tableCellTextCompleted]}
-          numberOfLines={2}
-        >
-          {task.title}
-        </Text>
-        {task.taskTags && task.taskTags.length > 0 && (
-          <View style={styles.taskTagsRow}>
-            {task.taskTags.map((tt) => (
-              <TagChip key={tt.id} name={tt.tag.name} color={tt.tag.color} size="small" />
-            ))}
+        {/* Кружок отмечает выполнение, тап по строке — карточка задачи. */}
+        <Checkbox checked={task.completed} onToggle={handleToggle} size={22} />
+        <View style={styles.listRowBody}>
+          <Text
+            style={[styles.tableCellText, task.completed && styles.tableCellTextCompleted]}
+            numberOfLines={2}
+          >
+            {task.title}
+          </Text>
+          {task.taskTags && task.taskTags.length > 0 && (
+            <View style={styles.taskTagsRow}>
+              {task.taskTags.map((tt) => (
+                <TagChip key={tt.id} name={tt.tag.name} color={tt.tag.color} size="small" />
+              ))}
+            </View>
+          )}
+          <View style={styles.listMeta}>
+            <Text style={styles.tableCellTextSmall}>
+              {prioInfo?.icon ?? ''} {prioInfo?.label ?? task.priority}
+            </Text>
+            <Text style={[
+              styles.tableCellTextSmall,
+              status === 'completed' && { color: c.success },
+              status === 'overdue' && { color: c.danger },
+              status === 'in_progress' && { color: c.warning },
+            ]}>
+              {getStatusIcon(status)} {getStatusLabel(status)}
+            </Text>
+            <Text style={[styles.tableCellTextSmall, { color: catInfo?.color ?? c.textSecondary }]}>
+              {catInfo?.icon ?? ''} {catInfo?.label ?? task.category}
+            </Text>
+            <Text style={[
+              styles.tableCellTextSmall,
+              !task.completed && daysLeft < 0 && { color: c.danger },
+              !task.completed && daysLeft === 0 && { color: c.warning },
+            ]}>
+              {formatShortDate(task.date)}
+              {task.completed ? '' : daysLeft < 0 ? ` · ${Math.abs(daysLeft)} дн. назад` : daysLeft === 0 ? ' · сегодня' : ` · ${daysLeft} дн.`}
+            </Text>
           </View>
-        )}
-        <View style={styles.listMeta}>
-          <Text style={styles.tableCellTextSmall}>
-            {prioInfo?.icon ?? ''} {prioInfo?.label ?? task.priority}
-          </Text>
-          <Text style={[
-            styles.tableCellTextSmall,
-            status === 'completed' && { color: c.success },
-            status === 'overdue' && { color: c.danger },
-            status === 'in_progress' && { color: c.warning },
-          ]}>
-            {getStatusIcon(status)} {getStatusLabel(status)}
-          </Text>
-          <Text style={[styles.tableCellTextSmall, { color: catInfo?.color ?? c.textSecondary }]}>
-            {catInfo?.icon ?? ''} {catInfo?.label ?? task.category}
-          </Text>
-          <Text style={[
-            styles.tableCellTextSmall,
-            !task.completed && daysLeft < 0 && { color: c.danger },
-            !task.completed && daysLeft === 0 && { color: c.warning },
-          ]}>
-            {formatShortDate(task.date)}
-            {task.completed ? '' : daysLeft < 0 ? ` · ${Math.abs(daysLeft)} дн. назад` : daysLeft === 0 ? ' · сегодня' : ` · ${daysLeft} дн.`}
-          </Text>
         </View>
       </TouchableOpacity>
     </SwipeableRow>
@@ -455,44 +457,6 @@ const MiniPieChart = React.memo(function MiniPieChart({ data, title, colors: c }
 
 // ─── Category Chip Picker ────────────────────────────────────────────────────
 
-interface ChipPickerProps {
-  items: Array<{ key: string; label: string; icon: string; color: string }>;
-  selected: string;
-  onSelect: (key: string) => void;
-  colors: ReturnType<typeof useColors>;
-}
-
-const ChipPicker = React.memo(function ChipPicker({ items, selected, onSelect, colors: c }: ChipPickerProps) {
-  const styles = useMemo(() => createStyles(c), [c]);
-
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chipPickerContainer}
-    >
-      {items.map((item) => (
-        <TouchableOpacity
-          key={item.key}
-          style={[
-            styles.chip,
-            selected === item.key && { backgroundColor: item.color + '30', borderColor: item.color },
-          ]}
-          onPress={() => onSelect(item.key)}
-          activeOpacity={0.7}
-        >
-          <Text style={[
-            styles.chipText,
-            selected === item.key && { color: item.color },
-          ]}>
-            {item.icon} {item.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  );
-});
-
 // ─── Insight Row Component ───────────────────────────────────────────────────
 
 interface InsightRowProps {
@@ -583,12 +547,6 @@ export default function TasksScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Edit modal form state
-  const [newTitle, setNewTitle] = useState('');
-  const [newCategory, setNewCategory] = useState<string>('personal');
-  const [newPriority, setNewPriority] = useState<string>('medium');
-  const [newDate, setNewDate] = useState(toDateString(new Date()));
-  const [newTime, setNewTime] = useState('');
-  const [newNotes, setNewNotes] = useState('');
 
   // Week planner notes
   const [weekNotes, setWeekNotes] = useState('');
@@ -877,12 +835,6 @@ export default function TasksScreen() {
 
   const handleEditTask = useCallback((task: TaskItem) => {
     setEditingTask(task);
-    setNewTitle(task.title);
-    setNewCategory(task.category);
-    setNewPriority(task.priority);
-    setNewDate(task.date.slice(0, 10));
-    setNewTime(task.time ?? '');
-    setNewNotes(task.notes ?? '');
     setShowEditModal(true);
   }, []);
 
@@ -901,125 +853,6 @@ export default function TasksScreen() {
     [createTask],
   );
 
-  const handleUpdateTask = useCallback(async () => {
-    if (!editingTask) return;
-    if (!newTitle.trim()) {
-      Alert.alert('Ошибка', 'Введите название задачи');
-      return;
-    }
-    try {
-      await updateTask(editingTask.id, {
-        title: newTitle.trim(),
-        category: newCategory,
-        priority: newPriority,
-        date: newDate,
-        time: newTime || undefined,
-        notes: newNotes || undefined,
-      });
-      setShowEditModal(false);
-      setEditingTask(null);
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось обновить задачу');
-    }
-  }, [editingTask, newTitle, newCategory, newPriority, newDate, newTime, newNotes, updateTask]);
-
-  // ─── Chip Items ──────────────────────────────────────────────────────────
-  const categoryChips = useMemo(
-    () =>
-      CATEGORY_KEYS.map((key) => ({
-        key,
-        label: taskCategories[key].label,
-        icon: taskCategories[key].icon,
-        color: taskCategories[key].color,
-      })),
-    [],
-  );
-
-  const priorityChips = useMemo(
-    () =>
-      PRIORITY_KEYS.map((key) => ({
-        key,
-        label: priorities[key].label,
-        icon: priorities[key].icon,
-        color: priorities[key].color,
-      })),
-    [],
-  );
-
-  // ─── Render: Task Modal (Edit) ───────────────────────────────────────────
-  const renderTaskModal = useCallback(
-    (visible: boolean, onClose: () => void, onSave: () => void) => (
-      <Modal visible={visible} onClose={onClose} title="Редактировать задачу">
-
-        <Text style={styles.modalLabel}>Название</Text>
-        <Input
-          placeholder="Что нужно сделать?"
-          value={newTitle}
-          onChangeText={setNewTitle}
-        />
-
-        <Text style={styles.modalLabel}>Категория</Text>
-        <ChipPicker
-          items={categoryChips}
-          selected={newCategory}
-          onSelect={setNewCategory}
-          colors={c}
-        />
-
-        <Text style={styles.modalLabel}>Приоритет</Text>
-        <ChipPicker
-          items={priorityChips}
-          selected={newPriority}
-          onSelect={setNewPriority}
-          colors={c}
-        />
-
-        <Text style={styles.modalLabel}>Дата (ГГГГ-ММ-ДД)</Text>
-        <Input
-          placeholder="2026-04-12"
-          value={newDate}
-          onChangeText={setNewDate}
-        />
-
-        <Text style={styles.modalLabel}>Время (ЧЧ:ММ)</Text>
-        <Input
-          placeholder="14:00"
-          value={newTime}
-          onChangeText={setNewTime}
-        />
-
-        <Text style={styles.modalLabel}>Заметки</Text>
-        <TextInput
-          style={styles.notesInput}
-          placeholder="Дополнительные заметки..."
-          placeholderTextColor={c.textMuted}
-          value={newNotes}
-          onChangeText={setNewNotes}
-          multiline
-          numberOfLines={3}
-          textAlignVertical="top"
-        />
-
-        <View style={styles.modalButtons}>
-          <Button
-            title="Отмена"
-            onPress={onClose}
-            variant="outline"
-            style={styles.modalButton}
-          />
-          <Button
-            title="Сохранить"
-            onPress={onSave}
-            style={styles.modalButton}
-          />
-        </View>
-      </Modal>
-    ),
-    [
-      styles, c, newTitle, newCategory, newPriority, newDate, newTime, newNotes,
-      categoryChips, priorityChips,
-    ],
-  );
 
   // ─── Render: Slide 1 — Dashboard ────────────────────────────────────────
   const renderDashboard = useCallback(() => {
@@ -1529,7 +1362,7 @@ export default function TasksScreen() {
       )}
 
       {/* Модалка редактирования (долгое нажатие на строку) */}
-      {renderTaskModal(showEditModal, handleCloseEditModal, handleUpdateTask)}
+      <TaskEditSheet task={showEditModal ? editingTask : null} onClose={handleCloseEditModal} />
     </ScreenSafeArea>
   );
 }
@@ -1647,6 +1480,8 @@ function createStyles(c: C) {
       marginBottom: spacing.sm,
       paddingHorizontal: spacing.xs,
     },
+    listRowWithCheck: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
+    listRowBody: { flex: 1, gap: 4 },
     listRow: {
       paddingVertical: spacing.sm + 2,
       paddingHorizontal: spacing.xs,
