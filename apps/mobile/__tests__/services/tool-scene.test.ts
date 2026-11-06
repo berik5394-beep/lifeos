@@ -1,15 +1,11 @@
-import { ROBOT_STRIP_H, robotShift, robotStandPoint, toolCardRect, toolOrigin } from '@/services/tool-scene';
-import { overlapArea } from '@/services/speech-layout';
+import { robotShift, robotStandPoint, toolCardRect, toolOrigin } from '@/services/tool-scene';
 
 const W = 380;
 const H = 640;
 
 describe('tool-scene — робот достаёт инструмент', () => {
-  it('карточка почти на весь экран и не залезает в полосу маленького робота', () => {
-    const card = toolCardRect(W, H);
-    expect(card.w).toBeGreaterThan(W * 0.9);
-    const strip = { x: 0, y: H - ROBOT_STRIP_H, w: W, h: ROBOT_STRIP_H };
-    expect(overlapArea(card, strip)).toBe(0);
+  it('карточка — вся комната целиком, без полосы снизу', () => {
+    expect(toolCardRect(W, H)).toEqual({ x: 0, y: 0, w: W, h: H });
   });
   it('карточка вылетает из предмета, а без предмета — над роботом', () => {
     expect(toolOrigin({ id: 'a', itemKey: 'desk', x: 0.2, y: 0.8 }, W, H)).toEqual({ x: 76, y: 512 });

@@ -1,9 +1,7 @@
 import React, { memo, useEffect, useMemo, type ComponentType } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/use-colors';
-import { fontSize, spacing } from '@/constants';
 import { COMIC } from '@/constants/comic';
 import { toolCardRect } from '@/services/tool-scene';
 import { ContentWidthContext } from '@/hooks/use-content-width';
@@ -44,8 +42,8 @@ const OPEN_MS = 460;
 
 /**
  * Робот-эпик, Часть 5: инструмент, который робот достал из мебели.
- * Карточка вылетает из точки `from` (предмет) и разворачивается почти на весь
- * экран, оставляя полосу внизу под маленького робота. closing → «улетает»
+ * Карточка вылетает из точки `from` (предмет) и разворачивается на всю
+ * комнату; маленький робот — поверх неё в углу. closing → «улетает»
  * обратно в предмет и зовёт onClosed.
  */
 export const ToolCard = memo(function ToolCard({
@@ -54,7 +52,6 @@ export const ToolCard = memo(function ToolCard({
   width,
   height,
   closing,
-  onClose,
   onClosed,
 }: {
   tool: ToolKey;
@@ -62,7 +59,6 @@ export const ToolCard = memo(function ToolCard({
   width: number;
   height: number;
   closing: boolean;
-  onClose: () => void;
   onClosed: () => void;
 }) {
   const c = useColors();
@@ -93,14 +89,12 @@ export const ToolCard = memo(function ToolCard({
 
   const Screen = TOOL_SCREEN[tool];
   return (
-    <Animated.View style={[styles.card, { left: card.x, top: card.y, width: card.w, height: card.h }, style]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{TOOL_TITLE[tool]}</Text>
-        <Pressable onPress={onClose} hitSlop={12} accessibilityRole="button" accessibilityLabel="Убрать инструмент">
-          <Feather name="x" size={22} color={COMIC.ink} />
-        </Pressable>
-      </View>
-      {/* Экран рисуется в ширину карточки, а не телефона — иначе вылезает вправо. */}
+    <Animated.View
+      style={[styles.card, { left: card.x, top: card.y, width: card.w, height: card.h }, style]}
+      accessibilityLabel={TOOL_TITLE[tool]}
+    >
+      {/* Без шапки: вся комната — один экран инструмента; «Закрыть» — внизу, вместо «Обставить».
+          Экран рисуется в ширину карточки, а не телефона — иначе вылезает вправо. */}
       <View style={styles.body}>
         <ContentWidthContext.Provider value={card.w - COMIC.outline * 2}>
           <Screen />
@@ -114,23 +108,13 @@ function createStyles(c: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     card: {
       position: 'absolute',
-      borderRadius: 22,
+      // Как у комнаты: карточка ложится ровно в её рамку.
+      borderRadius: 24,
       borderWidth: COMIC.outline,
       borderColor: COMIC.ink,
       backgroundColor: c.background,
       overflow: 'hidden',
     },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      backgroundColor: COMIC.userPaper,
-      borderBottomWidth: COMIC.outline,
-      borderBottomColor: COMIC.ink,
-    },
-    title: { fontFamily: COMIC.font, fontSize: fontSize.lg, color: COMIC.ink },
     body: { flex: 1 },
   });
 }

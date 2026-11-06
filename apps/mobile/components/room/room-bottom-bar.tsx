@@ -26,6 +26,7 @@ export const RoomBottomBar = memo(function RoomBottomBar({
   onTyping,
   compact = false,
   highlight = null,
+  closeTool = null,
 }: {
   tools: PanelDef[];
   onTool: (key: string) => void;
@@ -45,6 +46,8 @@ export const RoomBottomBar = memo(function RoomBottomBar({
   compact?: boolean;
   /** Знакомство: подсветить кнопку/строку, о которой говорит робот. */
   highlight?: 'input' | 'tools' | 'furnish' | null;
+  /** Открыт инструмент: вместо «Обставить» — «Закрыть …» (у карточки нет своей шапки). */
+  closeTool?: { label: string; onPress: () => void } | null;
 }) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
@@ -74,15 +77,27 @@ export const RoomBottomBar = memo(function RoomBottomBar({
           <Feather name="grid" size={15} color={c.text} />
           <Text style={styles.toggleText}>Инструменты</Text>
         </Pressable>
-        <Pressable
-          style={[styles.toggle, shelf === 'furnish' && styles.toggleOn, highlight === 'furnish' && styles.glow]}
-          onPress={() => toggle('furnish')}
-          accessibilityRole="button"
-          accessibilityLabel="Обставить комнату"
-        >
-          <Feather name="home" size={15} color={c.text} />
-          <Text style={styles.toggleText}>Обставить</Text>
-        </Pressable>
+        {closeTool ? (
+          <Pressable
+            style={styles.toggle}
+            onPress={closeTool.onPress}
+            accessibilityRole="button"
+            accessibilityLabel={`Закрыть: ${closeTool.label}`}
+          >
+            <Feather name="x" size={15} color={c.text} />
+            <Text style={styles.toggleText}>Закрыть</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            style={[styles.toggle, shelf === 'furnish' && styles.toggleOn, highlight === 'furnish' && styles.glow]}
+            onPress={() => toggle('furnish')}
+            accessibilityRole="button"
+            accessibilityLabel="Обставить комнату"
+          >
+            <Feather name="home" size={15} color={c.text} />
+            <Text style={styles.toggleText}>Обставить</Text>
+          </Pressable>
+        )}
       </View>
       )}
 
@@ -105,7 +120,7 @@ export const RoomBottomBar = memo(function RoomBottomBar({
           ))}
         </ScrollView>
       )}
-      {!compact && shelf === 'furnish' && (
+      {!compact && shelf === 'furnish' && !closeTool && (
         <View style={styles.shelfFurnish}>{shop}</View>
       )}
 

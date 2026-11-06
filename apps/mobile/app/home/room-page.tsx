@@ -41,7 +41,7 @@ import { ROBOT_SIDE_W, planPurchaseView, type SpeechLayout } from '@/services/sp
 import { SLOT_POS, finishTier, isPlaceSlot, spotOf, type RoomSpot, type RoomVariant } from '@/services/room-catalog';
 import { RENDER_SCALE as R, ZOOM_IN, clampPan, zoomOffset } from '@/services/room-geometry';
 import { isToolKey, toolSource, toolsInItem, type ToolKey } from '@/services/room-tools';
-import { ROBOT_STRIP_H, robotShift, robotStandPoint, toolOrigin } from '@/services/tool-scene';
+import { robotShift, robotStandPoint, toolOrigin } from '@/services/tool-scene';
 import { TOOL_TITLE } from '@/components/room/tool-card';
 import { hapticLight } from '@/services/haptics';
 import { INTRO_STEPS, furnitureBadge, isIntroDone, markIntroDone } from '@/services/room-intro';
@@ -77,7 +77,10 @@ const ROBOT_SIZE = 150;
 const CHAT_ROBOT_SCALE = 0.42;
 const VOICE_NOTE_MS = 4000;
 const ROBOT_SIDE_SCALE = 0.68;
-const ROBOT_CORNER_SCALE = 0.55;
+// Робот поверх открытого инструмента — совсем маленький, в углу.
+const ROBOT_CORNER_SCALE = 0.32;
+/** Пояснение к инструменту лежит поверх карточки — сам уходит, чтобы не закрывать данные. */
+const EXPLAIN_MS = 8000;
 const WALK_MS = 560;
 const FETCH_MS = 380;
 /** Ответ робота показываем, если он свежий (пришёл в этой сессии). */
@@ -401,6 +404,12 @@ export const RoomPage = memo(function RoomPage() {
   useEffect(() => {
     if (sceneTool === 'deals' && dealsRevision !== dealsRevAtOpen.current) setExplainHidden(true);
   }, [sceneTool, dealsRevision]);
+  // Пояснение лежит поверх карточки — через несколько секунд уходит само (тап — сразу).
+  useEffect(() => {
+    if (!explain) return;
+    const t = setTimeout(() => setExplainHidden(true), EXPLAIN_MS);
+    return () => clearTimeout(t);
+  }, [explain]);
   // Новый ответ робота после открытия (голосом что-то поменяли) — объяснение тоже устарело.
   const latestAssistantId = messages[0]?.role === 'assistant' ? messages[0].id : undefined;
   useEffect(() => {
@@ -680,7 +689,6 @@ export const RoomPage = memo(function RoomPage() {
               width={size.w}
               height={size.h}
               closing={scene.closing}
-              onClose={closeTool}
               onClosed={onToolClosed}
             />
           )}
@@ -721,9 +729,14 @@ export const RoomPage = memo(function RoomPage() {
           {/* Скрытое (устаревшее) объяснение не показываем вовсе — иначе вместо него висело бы «…».
               Клавиатура открыта — комната сжата, облачко легло бы на карточку: прячем. */}
           {scene?.phase === 'open' && !scene.closing && !showProposal && !voiceBubble && !explainHidden && !kbOpen && (
-            <View style={styles.bubbleExplain} pointerEvents="none">
+            <Pressable
+              style={styles.bubbleExplain}
+              onPress={() => setExplainHidden(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Убрать подсказку робота"
+            >
               {explain ? <RobotSpeechBubble text={explain} tail="left" /> : <ChatReplyBubble text="" thinking tail="left" />}
-            </View>
+            </Pressable>
           )}
           {showReply && !chatMode && !voiceBubble && (
             <View style={[styles.bubbleReply, { bottom: size.h * 0.04 + ROBOT_SIZE + 6 }]}>
@@ -848,6 +861,7 @@ export const RoomPage = memo(function RoomPage() {
         onMicOut={() => void stopRecording()}
         onTyping={setTyping}
         compact={kbOpen}
+        closeTool={scene && scene.phase === 'open' && !scene.closing ? { label: TOOL_TITLE[scene.tool], onPress: closeTool } : null}
         highlight={introTarget === 'input' || introTarget === 'tools' || introTarget === 'furnish' ? introTarget : null}
       />
       <DictationModal visible={utterance.dictationOpen} onClose={utterance.closeDictation} />
@@ -868,13 +882,13 @@ function createStyles(c: ReturnType<typeof useColors>) {
     bubbleBottomLeft: { position: 'absolute', left: -6, right: ROBOT_SIDE_W - 8, bottom: 4 },
     bubbleTop: { position: 'absolute', left: -4, right: -4, top: 4 },
     // Пояснение к инструменту — в полосе под карточкой, справа от маленького робота.
-    bubbleExplain: { position: 'absolute', left: 64, right: -6, bottom: 2, maxHeight: ROBOT_STRIP_H },
+    bubbleExplain: { position: 'absolute', left: ROBOT_SIZE * ROBOT_CORNER_SCALE + 4, right: 4, bottom: 6 },
     // Ответ робота в разговоре — над ним, хвостик вниз.
     bubbleReply: { position: 'absolute', left: 0, right: 0 },
     // Режим разговора: справа от маленького робота, низ — на уровне пола.
     bubbleChat: { position: 'absolute', left: ROBOT_SIZE * CHAT_ROBOT_SCALE + 6, right: 2, bottom: 6 },
     // Предложение перегруза поверх низа карточки, хвостик к маленькому роботу.
-    bubbleProposal: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: ROBOT_STRIP_H - 8 },
+    bubbleProposal: { position: 'absolute', left: spacing.sm, right: spacing.sm, bottom: ROBOT_SIZE * ROBOT_CORNER_SCALE + 24 },
     mirror: { transform: [{ scaleX: -1 }] },
     topLeft: { position: 'absolute', top: spacing.sm, left: spacing.sm, flexDirection: 'row', gap: spacing.sm },
     topRight: { position: 'absolute', top: spacing.sm, right: spacing.sm },
