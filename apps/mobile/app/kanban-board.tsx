@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Dimensions,
   LayoutChangeEvent,
+  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -27,6 +28,7 @@ import { spacing, fontSize, borderRadius } from '@/constants';
 import { useTaskStore } from '@/stores/task-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { TagChip } from '@/components/ui/tag-chip';
+import { TapToAdd } from '@/components/ui/tap-to-add';
 import { hapticMedium, hapticLight } from '@/services/haptics';
 import type { Theme } from '@/constants/themes';
 
@@ -221,6 +223,17 @@ export default function KanbanBoardScreen() {
   const tasks = useTaskStore((s) => s.tasks);
   const loading = useTaskStore((s) => s.isLoading);
   const fetchTasks = useTaskStore((s) => s.fetchTasks);
+  const quickAdd = useTaskStore((s) => s.quickAdd);
+  const handleQuickAdd = useCallback(
+    async (text: string) => {
+      try {
+        await quickAdd(text);
+      } catch (err) {
+        Alert.alert('Ошибка', err instanceof Error ? err.message : 'Не получилось добавить задачу');
+      }
+    },
+    [quickAdd],
+  );
   const updateKanbanStatus = useTaskStore((s) => s.updateKanbanStatus);
   const token = useAuthStore((s) => s.token);
   const [draggingTask, setDraggingTask] = useState<string | null>(null);
@@ -287,7 +300,7 @@ export default function KanbanBoardScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={c.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Kanban</Text>
+          <Text style={styles.headerTitle}>Канбан</Text>
           <View style={styles.headerHint}>
             <Feather name="move" size={14} color={c.textMuted} />
             <Text style={styles.headerHintText}>Зажми карточку</Text>
@@ -357,9 +370,13 @@ export default function KanbanBoardScreen() {
                       scrollOffset={scrollOffset}
                     />
                   )}
+                  // Добавление тапом по бледной строке (без плюсиков) — в «К выполнению».
+                  ListFooterComponent={
+                    col.id === 'todo' ? <TapToAdd hint="Новая задача" onSubmit={handleQuickAdd} /> : null
+                  }
                 />
 
-                {colTasks.length === 0 && (
+                {colTasks.length === 0 && col.id !== 'todo' && (
                   <View style={styles.emptyColumn}>
                     <Feather name="inbox" size={24} color={c.textMuted} />
                     <Text style={styles.emptyText}>Пусто</Text>

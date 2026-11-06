@@ -4,7 +4,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
@@ -532,7 +531,9 @@ export default function PlannerScreen() {
         </FadeInView>
 
         {/* Quick Actions */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsRow}>
+        {/* Сеткой, без прокрутки вбок: в ленте «Канбан» был обрезан у края, а свайп
+            по ленте спорил с переходом в комнату — нажималась соседняя кнопка. */}
+        <View style={styles.quickActionsRow}>
           <TouchableOpacity
             style={styles.quickActionPill}
             onPress={handleNavigateJournal}
@@ -582,7 +583,7 @@ export default function PlannerScreen() {
           >
             <Text style={styles.quickActionText}>{'\u{1F50D}'} Правда</Text>
           </TouchableOpacity>
-        </ScrollView>
+        </View>
 
         {/* Header */}
         <Text style={styles.screenTitle}>Планер</Text>
@@ -879,11 +880,14 @@ function createStyles(c: C) {
     },
     quickActionsRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: spacing.sm,
       marginBottom: spacing.lg,
     },
     quickActionPill: {
-      flex: 1,
+      // Три в ряд, переносом — все кнопки видны целиком.
+      flexBasis: '30%',
+      flexGrow: 1,
       backgroundColor: c.surfaceLight,
       borderRadius: borderRadius.xl,
       paddingVertical: spacing.sm,

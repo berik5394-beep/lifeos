@@ -319,7 +319,8 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
     } else if (event.error === 'network') {
       setError('Нет интернета — попробуй ещё раз.');
     } else {
-      setError('Ошибка распознавания: ' + (event.message || event.error));
+      // Сырой текст системы (по-английски) юзеру не показываем.
+      setError('Не получилось включить распознавание речи. Нажми и держи ещё раз.');
     }
     // Сессия умерла, пока кнопку держат: не оставляем «вечную запись».
     if (stateRef.current === 'recording' && modeRef.current === 'speech-recognition') {
@@ -407,9 +408,18 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
 
     if (canUseSpeech) {
       try {
-        const perm = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-        if (!perm.granted) {
-          throw new Error('permission-denied');
+        // Первое нажатие: iOS спрашивает разрешения, и палец приходится отпустить,
+        // чтобы нажать «Разрешить», — раньше это выглядело как «зависло и не
+        // записало». Теперь первое нажатие только спрашивает разрешение.
+        const current = await ExpoSpeechRecognitionModule.getPermissionsAsync();
+        if (!current.granted) {
+          const asked = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+          if (asked.granted) {
+            setError('Готово! Теперь зажми микрофон и говори.');
+            return;
+          }
+          setError('Нет доступа к микрофону. Разреши его в Настройках → LifeOS.');
+          return;
         }
 
         const options: ExpoSpeechRecognitionOptions = {
