@@ -203,6 +203,8 @@ const OPEN_PANEL_RE =
  */
 export interface IntentOptions {
   disabledPanels?: ReadonlySet<string>;
+  /** Модель для LLM-шага (замер Sonnet/Haiku); по умолчанию INTENT_MODEL. */
+  model?: string;
 }
 
 export function detectOpenPanel(text: string, disabledPanels?: ReadonlySet<string>): string | null {
@@ -375,6 +377,32 @@ export function deterministicIntent(
   return null;
 }
 
+/**
+ * Модель разбора намерений. По умолчанию Haiku (этап 6: второй вызов модели на
+ * каждое сообщение — быстрее и дешевле Sonnet). Откат без кода: в Railway
+ * INTENT_MODEL=sonnet. Замер точности: scripts/intent-eval.ts.
+ */
+export const INTENT_MODEL: string =
+  process.env.INTENT_MODEL === 'sonnet' ? MODELS.sonnet : process.env.INTENT_MODEL === 'haiku' || !process.env.INTENT_MODEL ? MODELS.haiku : process.env.INTENT_MODEL;
+
+/** JSON из ответа модели: голый объект, в ```json-обёртке или с текстом вокруг. */
+export function parseIntentJson(raw: string): VoiceIntent | null {
+  const t = raw.trim();
+  const candidates = [t, t.replace(/^```(?:json)?\s*|\s*```$/g, '')];
+  const s = t.indexOf('{');
+  const e = t.lastIndexOf('}');
+  if (s >= 0 && e > s) candidates.push(t.slice(s, e + 1));
+  for (const c of candidates) {
+    try {
+      const v = JSON.parse(c) as VoiceIntent;
+      if (v && typeof v === 'object' && typeof v.action === 'string') return v;
+    } catch {
+      /* следующий вариант */
+    }
+  }
+  return null;
+}
+
 export async function parseIntent(
   text: string,
   tz: string = 'UTC',
@@ -448,7 +476,9 @@ export async function parseIntent(
 
   try {
     const response = await anthropic.messages.create({
-      model: MODELS.sonnet,
+      // Этап 6: Haiku вместо Sonnet — второй вызов модели на КАЖДОЕ сообщение;
+      // быстрее и дешевле. Замер на 30 фразах — в коммите. opts.model — для замера.
+      model: opts.model ?? INTENT_MODEL,
       max_tokens: 256,
       system: systemPrompt,
       messages: [{ role: 'user', content: text }],
@@ -459,11 +489,8 @@ export async function parseIntent(
       return { action: 'unknown', text };
     }
 
-    try {
-      return JSON.parse(content.text) as VoiceIntent;
-    } catch {
-      return { action: 'unknown', text: content.text };
-    }
+    const parsed = parseIntentJson(content.text);
+    return parsed ?? { action: 'unknown', text: content.text };
   } catch (err) {
     // C1 (AUDIT-2026-06): Claude недоступен / таймаут / rate-limit на шаге
     // разбора интента. НЕ роняем весь чат в 500 — откатываемся на free-form

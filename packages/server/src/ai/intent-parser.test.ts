@@ -269,3 +269,14 @@ describe('open_panel: выключенная панель не перехват�
   });
 });
 
+
+describe('parseIntentJson — устойчиво к обёрткам модели', () => {
+  it('голый JSON, ```json-обёртка, текст вокруг; мусор → null', async () => {
+    const { parseIntentJson } = await import('./intent-parser.js');
+    expect(parseIntentJson('{"action":"goodnight"}')).toEqual({ action: 'goodnight' });
+    expect(parseIntentJson('```json\n{"action":"good_morning"}\n```')).toEqual({ action: 'good_morning' });
+    expect(parseIntentJson('Вот: {"action":"get_summary","period":"today"} — готово')).toEqual({ action: 'get_summary', period: 'today' });
+    expect(parseIntentJson('не json')).toBeNull();
+    expect(parseIntentJson('{"foo":1}')).toBeNull();
+  });
+});
