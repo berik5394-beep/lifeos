@@ -33,6 +33,7 @@ import { FadeInView } from '@/components/ui/fade-in-view';
 import { useColors } from '@/hooks/use-colors';
 import { hapticLight, hapticSelection } from '@/services/haptics';
 import { goalPercent, GOAL_STEP_PCT } from '@/utils/goal-progress';
+import { useInTools } from '@/hooks/use-content-width';
 
 // Enable LayoutAnimation on Android
 if (
@@ -1000,6 +1001,7 @@ export default function GoalsScreen() {
   const [modalArea, setModalArea] = useState<GoalAreaKey | null>(null);
   const [modalGoalText, setModalGoalText] = useState('');
   const [modalProgress, setModalProgress] = useState(0);
+  const inTools = useInTools();
 
   // Link habit modal
   const [linkModalVisible, setLinkModalVisible] = useState(false);
@@ -1318,7 +1320,7 @@ export default function GoalsScreen() {
     <ScreenSafeArea style={styles.container} edges={['top']}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Цели на год</Text>
+        {!inTools && <Text style={styles.headerTitle}>Цели на год</Text>}
         <View style={styles.yearNav}>
           <TouchableOpacity onPress={handlePrevYear} style={styles.yearArrow} activeOpacity={0.6}>
             <Text style={styles.yearArrowText}>◀</Text>

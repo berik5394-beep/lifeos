@@ -14,3 +14,11 @@ export function useContentWidth(): number {
   const { width } = useWindowDimensions();
   return fromCard ?? width;
 }
+
+/**
+ * Экран открыт внутри дома (вкладки инструментов сверху уже называют его) —
+ * свой заголовок «Задачи / Финансы / Привычки» не рисуем: дубль шапки.
+ */
+export function useInTools(): boolean {
+  return useContext(ContentWidthContext) != null;
+}

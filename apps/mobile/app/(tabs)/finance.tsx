@@ -26,6 +26,7 @@ import { useColors } from '@/hooks/use-colors';
 import { hapticSelection } from '@/services/haptics';
 import { useNavigation } from '@react-navigation/native';
 import { goalPercent } from '@/utils/goal-progress';
+import { useInTools } from '@/hooks/use-content-width';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1499,11 +1500,12 @@ export default function FinanceScreen() {
   // ---------------------------------------------------------------------------
 
   const navigation = useNavigation<any>();
+  const inTools = useInTools();
 
   return (
     <ScreenSafeArea style={styles.container} edges={['top']}>
       <View style={styles.screenHeader}>
-        <Text style={styles.screenTitle}>Финансы</Text>
+        {!inTools ? <Text style={styles.screenTitle}>Финансы</Text> : <View />}
         <TouchableOpacity
           style={[styles.aiPill, { backgroundColor: c.primary + '20' }]}
           onPress={() => navigation.navigate('LifeInsights')}

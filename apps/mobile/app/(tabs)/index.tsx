@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import * as Speech from 'expo-speech';
 import {
   View,
@@ -38,6 +38,7 @@ import { hapticLight, hapticSelection, hapticSuccess } from '@/services/haptics'
 import { moodEmoji } from '@/constants/mood';
 import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
 import { useYearActivity } from '@/hooks/use-year-activity';
+import { useRoomToolStore } from '@/stores/room-tool-store';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -187,9 +188,10 @@ export default function PlannerScreen() {
   const [showEveningRitual, setShowEveningRitual] = useState(false);
   const [eveningMessage, setEveningMessage] = useState('');
   const [dayProgress, setDayProgress] = useState(0);
-  const [quoteMuted, setQuoteMuted] = useState(false);
+  // Цитата звучит только по кнопке: раньше — сама при каждом открытии «Сегодня»,
+  // поверх утреннего приветствия (два голоса сразу).
+  const [quotePlaying, setQuotePlaying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const hasSpokenTodayRef = useRef(false);
 
   const { tasks, isLoading: tasksLoading, fetchTasks, toggleComplete, deleteTask } = useTaskStore();
   // Карточка задачи: id, а не копия — после сохранения показываем свежую задачу из стора.
@@ -220,22 +222,10 @@ export default function PlannerScreen() {
   const quote = useMemo(() => getRandomQuote(), []);
   const greeting = useMemo(() => getGreeting(), []);
 
-  // Speak daily quote via TTS on first mount of the day
-  useEffect(() => {
-    if (hasSpokenTodayRef.current || quoteMuted) return;
-    hasSpokenTodayRef.current = true;
-
-    const textToSpeak = `${quote.text} — ${quote.author}`;
-    Speech.speak(textToSpeak, {
-      language: 'ru-RU',
-      rate: 0.85,
-      pitch: 1.05,
-    });
-
-    return () => {
-      Speech.stop();
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Ушёл с экрана — цитату не дочитываем.
+  useEffect(() => () => {
+    Speech.stop();
+  }, []);
   const userName = user?.name ?? '';
 
   const currentMonday = useMemo(() => {
@@ -398,9 +388,10 @@ export default function PlannerScreen() {
 
   const handleEveningChipPress = useCallback((action: string) => {
     if (action === 'plan_tomorrow') {
-      navigation.navigate('Tasks' as never);
+      // Вкладка «Задачи» в доме, а не отдельная модалка с двойной шапкой.
+      useRoomToolStore.getState().openTool('tasks');
     }
-  }, [navigation]);
+  }, []);
 
   const handleDismissEveningRitual = useCallback(() => setShowEveningRitual(false), []);
 
@@ -411,19 +402,22 @@ export default function PlannerScreen() {
   const handleNavigateLifeInsights = useCallback(() => navigation.navigate('LifeInsights' as never), [navigation]);
   const handleNavigateCalendar = useCallback(() => navigation.navigate('Calendar' as never), [navigation]);
 
-  const handleQuoteMuteToggle = useCallback(() => {
-    if (quoteMuted) {
-      setQuoteMuted(false);
-      Speech.speak(`${quote.text} — ${quote.author}`, {
-        language: 'ru-RU',
-        rate: 0.85,
-        pitch: 1.05,
-      });
-    } else {
-      setQuoteMuted(true);
+  const handleQuoteSpeak = useCallback(() => {
+    if (quotePlaying) {
       Speech.stop();
+      setQuotePlaying(false);
+      return;
     }
-  }, [quoteMuted, quote]);
+    setQuotePlaying(true);
+    Speech.speak(`${quote.text} — ${quote.author}`, {
+      language: 'ru-RU',
+      rate: 0.85,
+      pitch: 1.05,
+      onDone: () => setQuotePlaying(false),
+      onStopped: () => setQuotePlaying(false),
+      onError: () => setQuotePlaying(false),
+    });
+  }, [quotePlaying, quote]);
 
   // Пустая строка под задачами: дату из текста («завтра в 15:00») разбирает сервер.
   // Ошибку покажет сама строка «Новая задача» (текст не пропадёт).
@@ -459,14 +453,14 @@ export default function PlannerScreen() {
           <View style={styles.quoteHeader}>
             <Text style={[styles.quoteText, { flex: 1 }]}>{quote.text}</Text>
             <TouchableOpacity
-              onPress={handleQuoteMuteToggle}
+              onPress={handleQuoteSpeak}
               hitSlop={8}
               style={styles.quoteSpeakerBtn}
               accessibilityRole="button"
-              accessibilityLabel={quoteMuted ? 'Включить озвучку цитаты' : 'Выключить озвучку цитаты'}
+              accessibilityLabel={quotePlaying ? 'Остановить цитату' : 'Прослушать цитату'}
             >
               <Text style={styles.quoteSpeakerIcon}>
-                {quoteMuted ? '\u{1F507}' : '\u{1F50A}'}
+                {quotePlaying ? '\u23F9' : '\u{1F50A}'}
               </Text>
             </TouchableOpacity>
           </View>

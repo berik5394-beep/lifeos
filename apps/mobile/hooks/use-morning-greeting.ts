@@ -51,6 +51,9 @@ export function useMorningGreeting(): UseMorningGreetingResult {
       })
       .finally(() => {
         setIsLoading(false);
+        // Один раз в день: раньше день отмечался только по «закрыть», и при
+        // возврате на «Сегодня» приветствие показывалось и звучало заново.
+        storage.set('lastGreetingDate', todayStr);
       });
   }, [token]);
 

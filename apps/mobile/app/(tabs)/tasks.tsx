@@ -37,6 +37,7 @@ import { TagChip } from '@/components/ui/tag-chip';
 import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
 import { bestWeekday } from '@/utils/task-stats';
 import { useWeekNotes } from '@/hooks/use-week-notes';
+import { useInTools } from '@/hooks/use-content-width';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -568,6 +569,7 @@ export default function TasksScreen() {
   }, [monthTasks]);
 
   const weekDays = useMemo(() => getWeekDays(currentWeek), [currentWeek]);
+  const inTools = useInTools();
   // Заметки недели хранятся на телефоне по неделям (раньше пропадали при уходе с экрана).
   const [weekNoteFields, setWeekNote] = useWeekNotes(toDateString(weekDays[0].date));
   const { notes: weekNotes, improve: weekImprove, gratitude: weekGratitude } = weekNoteFields;
@@ -1306,9 +1308,11 @@ export default function TasksScreen() {
   // ─── Main Render ─────────────────────────────────────────────────────────
   return (
     <ScreenSafeArea style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>{'\uD83D\uDCCB'} Задачи</Text>
-      </View>
+      {!inTools && (
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>{'\uD83D\uDCCB'} Задачи</Text>
+        </View>
+      )}
 
       {/* View Mode Toolbar */}
       <ScrollView

@@ -37,6 +37,7 @@ import { spacing, borderRadius, fontSize, habitCategories } from '@/constants';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { hapticLight, hapticSelection } from '@/services/haptics';
 import { MOOD_LEVELS, moodLevel } from '@/constants/mood';
+import { useInTools } from '@/hooks/use-content-width';
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -797,6 +798,7 @@ const SimpleLineChart = React.memo(function SimpleLineChart({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function HabitsScreen() {
+  const inTools = useInTools();
   const c = useColors();
   const contentWidth = useContentWidth();
   const styles = useMemo(() => createStyles(c, contentWidth), [c, contentWidth]);
@@ -1300,6 +1302,12 @@ export default function HabitsScreen() {
   }, []);
 
   const handleOpenCreateModal = useCallback(() => setShowCreateModal(true), []);
+  // Как задачи и цели: тап по строке, пишешь название, «Готово» — привычка есть
+  // (каждый день, «Здоровье»; поменять — в карточке привычки). Ошибку покажет строка.
+  const handleQuickAddHabit = useCallback(
+    (name: string) => createHabit({ name, category: 'health', frequency: 'daily' }),
+    [createHabit],
+  );
   const handleCloseCreateModal = useCallback(() => setShowCreateModal(false), []);
   const handleCloseEditModal = useCallback(() => {
     setShowEditModal(false);
@@ -1367,7 +1375,7 @@ export default function HabitsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Привычки</Text>
+          {!inTools && <Text style={styles.title}>Привычки</Text>}
           <Text style={styles.subtitle}>
             {todayCompleted}/{todayTotal} выполнено сегодня
           </Text>
@@ -1492,9 +1500,9 @@ export default function HabitsScreen() {
         </View>
       )}
 
-      {/* Добавление без «+»: бледная строка в конце списка открывает форму */}
+      {/* Добавление без «+»: бледная строка в конце списка — пишешь прямо в ней */}
       {activeHabits.length > 0 && (
-        <TapToAdd hint="Новая привычка" onPress={handleOpenCreateModal} />
+        <TapToAdd hint="Новая привычка" onSubmit={handleQuickAddHabit} />
       )}
 
       {/* Stats Row */}
@@ -1533,7 +1541,7 @@ export default function HabitsScreen() {
             Нажми «Новая привычка» ниже, чтобы создать первую
           </Text>
           <View style={styles.emptyAdd}>
-            <TapToAdd hint="Новая привычка" onPress={handleOpenCreateModal} />
+            <TapToAdd hint="Новая привычка" onSubmit={handleQuickAddHabit} />
           </View>
         </View>
       )}
@@ -1545,7 +1553,7 @@ export default function HabitsScreen() {
     currentStreak, todayProgress, dailyHabits, weeklyHabits, monthlyHabits,
     todayLogs, stats, handleToggleHabit, handleDeleteHabit, handleEditHabit,
     weeklyCompletionMap, bestStreak, monthTotalCompleted, monthCompletionPct,
-    activeHabits, isLoading, handleOpenCreateModal,
+    activeHabits, isLoading, handleQuickAddHabit, inTools,
   ]);
 
   // ═══════════════════════════════════════════════════════════════════════════

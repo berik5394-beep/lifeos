@@ -158,6 +158,8 @@ export default function Navigation() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: theme.background },
+          // Шапкам с «назад» — по-русски (было «< Home»).
+          headerBackTitle: 'Назад',
         }}
       >
         {!onboardingDone ? (
