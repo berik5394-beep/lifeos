@@ -29,7 +29,7 @@ export const deleteIncomeTool = defineTool({
     const userId = ctx.userId;
     const rows = await prisma.income.findMany({
       where: { userId },
-      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ date: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
       take: 50,
     });
     if (rows.length === 0) {
