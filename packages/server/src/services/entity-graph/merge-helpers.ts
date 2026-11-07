@@ -136,3 +136,57 @@ export function capAliases(aliases: string[], max = 20, maxLen = 255): string[] 
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Родственники без имени: «Старший брат» ≠ «Младший брат»
+// ---------------------------------------------------------------------------
+
+/** Слова родства (нижний регистр, ё→е). */
+const KIN_NOUNS = new Set([
+  'брат', 'братишка', 'сестра', 'сестренка', 'мама', 'мать', 'папа', 'отец', 'сын', 'дочь', 'дочка',
+  'бабушка', 'дедушка', 'дед', 'баба', 'дядя', 'тетя', 'муж', 'жена', 'племянник', 'племянница',
+  'внук', 'внучка', 'тесть', 'теща', 'свекор', 'свекровь', 'зять', 'невестка', 'кузен', 'кузина',
+  'отчим', 'мачеха', 'аке', 'апа', 'ага', 'әке', 'ана',
+]);
+/** Различители родства — по основе (старший/старшая/старшего → «старш»). */
+const KIN_QUALIFIERS = ['старш', 'младш', 'средн', 'двоюрод', 'троюрод', 'сводн', 'родн', 'перв', 'втор', 'трет', 'больш', 'маленьк'];
+
+function nameWords(name: string): string[] {
+  return name.toLowerCase().replace(/ё/g, 'е').split(/[^a-zа-яәіңғүұқөһ0-9]+/i).filter(Boolean);
+}
+function qualifierOf(w: string): string | null {
+  return KIN_QUALIFIERS.find((q) => w.startsWith(q)) ?? null;
+}
+
+/** Имя — только родство (+ различитель): «Брат», «Старший брат», «Двоюродная сестра». */
+export function isKinOnlyName(name: string): boolean {
+  const ws = nameWords(name);
+  return ws.length > 0 && ws.some((w) => KIN_NOUNS.has(w)) && ws.every((w) => KIN_NOUNS.has(w) || qualifierOf(w) !== null || w === 'мой' || w === 'моя');
+}
+
+/**
+ * Два имени — заведомо РАЗНЫЕ родственники, даже если похожи по смыслу
+ * (эмбеддинг «Старший брат» ≈ «Младший брат», «Брат Ерлан» ≈ «Брат Данияр»):
+ *  - разное родство (брат / сестра);
+ *  - оба с различителем, и различители разные (старший / младший);
+ *  - одно родство, но у каждого своё имя (Ерлан / Данияр).
+ * Склейку по эмбеддингу в таких случаях не делаем.
+ */
+export function kinConflict(a: string, b: string): boolean {
+  const wa = nameWords(a);
+  const wb = nameWords(b);
+  const kinA = new Set(wa.filter((w) => KIN_NOUNS.has(w)));
+  const kinB = new Set(wb.filter((w) => KIN_NOUNS.has(w)));
+  if (kinA.size === 0 || kinB.size === 0) return false; // не про родню — решает эмбеддинг
+  const same = (x: Set<string>, y: Set<string>) => x.size === y.size && [...x].every((v) => y.has(v));
+  if (!same(kinA, kinB)) return true;
+  const qa = new Set(wa.map(qualifierOf).filter((q): q is string => q !== null));
+  const qb = new Set(wb.map(qualifierOf).filter((q): q is string => q !== null));
+  if (qa.size > 0 && qb.size > 0 && !same(qa, qb)) return true;
+  const rest = (ws: string[]) => new Set(ws.filter((w) => !KIN_NOUNS.has(w) && qualifierOf(w) === null && w !== 'мой' && w !== 'моя'));
+  const ra = rest(wa);
+  const rb = rest(wb);
+  const onlyA = [...ra].some((w) => !rb.has(w));
+  const onlyB = [...rb].some((w) => !ra.has(w));
+  return onlyA && onlyB;
+}

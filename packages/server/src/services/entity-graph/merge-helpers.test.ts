@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { shouldMergeByEmbedding, capAliases, MERGE_MAX_COSINE_DIST } from './merge-helpers.js';
-import { mergeAttributes, attrHistoryFacts, canonicalAttrKey } from './merge-helpers.js';
+import { mergeAttributes, attrHistoryFacts, canonicalAttrKey, kinConflict, isKinOnlyName } from './merge-helpers.js';
 
 describe('shouldMergeByEmbedding', () => {
   it('dist ниже порога → true', () => { expect(shouldMergeByEmbedding(0.05, 0.12)).toBe(true); });
@@ -91,5 +91,28 @@ describe('mergeAttributes — «изменилось» из разговора',
     const a = mergeAttributes(mergeAttributes({ город: 'Алматы' }, { город: 'Шымкент' }, true, [], now), { город: 'Астана' }, true, [], now);
     expect(attrHistoryFacts(a)).toEqual(['раньше город: Шымкент']);
     expect(attrHistoryFacts({})).toEqual([]);
+  });
+});
+
+describe('kinConflict — разные родственники не склеиваются', () => {
+  it.each([
+    ['Старший брат', 'Младший брат'],
+    ['Брат', 'Сестра'],
+    ['Брат Ерлан', 'Брат Данияр'],
+    ['Двоюродная сестра', 'Родная сестра'],
+    ['Мама', 'Папа'],
+  ])('«%s» ≠ «%s»', (a, b) => expect(kinConflict(a, b)).toBe(true));
+  it.each([
+    ['Старший брат', 'Старшего брата'],
+    ['Брат', 'Старший брат'],
+    ['Брат Ерлан', 'Ерлан'],
+    ['Сергей', 'Серёга'],
+    ['Мама', 'Мама'],
+  ])('«%s» ~ «%s» — не запрещаем', (a, b) => expect(kinConflict(a, b)).toBe(false));
+  it('isKinOnlyName', () => {
+    expect(isKinOnlyName('Старший брат')).toBe(true);
+    expect(isKinOnlyName('Брат')).toBe(true);
+    expect(isKinOnlyName('Ерлан')).toBe(false);
+    expect(isKinOnlyName('Брат Ерлан')).toBe(false);
   });
 });

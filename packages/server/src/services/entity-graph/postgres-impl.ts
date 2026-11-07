@@ -19,7 +19,7 @@ import {
   toVectorLiteral,
 } from '../embeddings.js';
 import { Prisma, type Entity, type EntityRelationship } from '@prisma/client';
-import { capAliases, mergeAttributes, shouldMergeByEmbedding } from './merge-helpers.js';
+import { capAliases, isKinOnlyName, kinConflict, mergeAttributes, shouldMergeByEmbedding } from './merge-helpers.js';
 import { isV2EntityResolveEnabled, isV2MemGraphEnabled } from '../../lib/feature-flags.js';
 import type { EntityGraphStore } from './types.js';
 
@@ -155,6 +155,34 @@ export class PostgresEntityGraph implements EntityGraphStore {
       }
     }
 
+    // Имя родственника стало известно: «брата зовут Ерлан» → name «Ерлан»,
+    // aliases ["Брат"]. Если есть запись «Брат» (только родство) — это он:
+    // переименовываем её, а не заводим второго человека.
+    if (resolveOn && type === 'person') {
+      for (const alias of incomingAliases) {
+        if (!isKinOnlyName(alias)) continue;
+        const kin = await prisma.entity.findUnique({
+          where: { userId_type_name: { userId, type, name: alias.trim().slice(0, 255) } },
+        });
+        if (!kin) continue;
+        const mergedAttributes = isV2MemGraphEnabled(userId)
+          ? mergeAttributes(kin.attributes as Record<string, unknown>, attributes, deliberate, changedKeys)
+          : { ...(kin.attributes as Record<string, unknown>), ...attributes };
+        const renamed = await prisma.entity.update({
+          where: { id: kin.id },
+          data: {
+            name,
+            aliases: capAliases([...(kin.aliases as string[]), kin.name, ...incomingAliases]),
+            attributes: mergedAttributes as Prisma.InputJsonValue,
+            importance: Math.max(kin.importance, importance),
+            lastSeenAt: new Date(),
+          },
+        });
+        await storeEntityEmbedding(renamed.id, renamed.name, renamed.aliases as string[]);
+        return renamed;
+      }
+    }
+
     // Создать новую (OFF: incomingAliases=[] → как сейчас).
     const created = await prisma.entity.create({
       data: {
@@ -280,7 +308,8 @@ export class PostgresEntityGraph implements EntityGraphStore {
             userId,
             v,
           );
-          if (rows.length > 0 && shouldMergeByEmbedding(Number(rows[0].dist))) {
+          // «Старший брат» ≈ «Младший брат» по смыслу, но это два человека.
+          if (rows.length > 0 && shouldMergeByEmbedding(Number(rows[0].dist)) && !kinConflict(rows[0].name, mentionClean)) {
             const { dist: _dist, ...ent } = rows[0];
             return ent as Entity;
           }

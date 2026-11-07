@@ -10,7 +10,7 @@ describe('T5 graph — upsertEntity attributes guard за флагом', () => {
   });
   it('обе точки merge имеют флаг-ветку mergeAttributes', () => {
     const on = impl.match(/isV2MemGraphEnabled\(userId\)\s*\n?\s*\?\s*mergeAttributes\(/g) || [];
-    expect(on.length).toBe(2);
+    expect(on.length).toBe(3); // точный матч, resolve-merge, переименование «Брат» → имя
   });
 });
 
