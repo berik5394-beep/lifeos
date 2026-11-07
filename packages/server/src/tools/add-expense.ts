@@ -5,6 +5,7 @@ import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { analyzeBudgetAfterExpense } from './_finance.js';
 import { MAX_MONEY_AMOUNT } from '../lib/money.js';
+import { normalizeExpenseCategory } from '../lib/expense-category.js';
 
 /**
  * SSOT Step 6 — ДЕНЬГИ. needsConfirm:true (гейт ЖИВЁТ НА ИНСТРУМЕНТЕ,
@@ -31,7 +32,13 @@ export const addExpenseTool = defineTool({
   examples: ['потратил 5000 на еду', 'расход 3000 продукты', '40000 комиссия Kaspi'],
   handler: async (input, ctx) => {
     const userId = ctx.userId;
-    const category = input.category || 'other';
+    // Ключ графиков/лимитов (food/transport/…). Мозг и ответ на «на что?»
+    // присылают свободный текст — «еда» без нормализации график не видел.
+    const category = normalizeExpenseCategory(input.category, input.description);
+    // Незнакомое слово («компьютер») → «Прочее», но само слово не теряем.
+    const rawCat = input.category?.trim() ?? '';
+    const description =
+      input.description || (category === 'other' && rawCat && !/^(other|прочее|другое)$/i.test(rawCat) ? rawCat : '');
     // R9 TZ-aware: «сегодня» в локальной TZ юзера (раньше
     // setHours(0,0,0,0) = server-local UTC midnight; для Almaty юзера
     // в 00:30 локально (= 19:30 UTC prev day) expense попадал в
@@ -44,13 +51,13 @@ export const addExpenseTool = defineTool({
         date: today,
         amount: input.amount,
         category,
-        description: input.description || '',
+        description,
       },
     });
     const analysis = await analyzeBudgetAfterExpense(userId, category);
     return {
       message: `Расход ${input.amount} ₸ записан${
-        input.description ? ' (' + input.description + ')' : ''
+        description ? ' (' + description + ')' : ''
       }. ${analysis.warning || ''}`.trim(),
       expenseId: expense.id,
       analysis,

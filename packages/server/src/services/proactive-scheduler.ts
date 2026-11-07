@@ -36,6 +36,45 @@ const TICK_MS = 10 * 60 * 1000; // 10 минут
 let timer: NodeJS.Timeout | null = null;
 let running = false; // защита от наложения тиков если один затянулся
 
+/** Сколько дней без активности юзер без пушей ещё обрабатывается тиком. */
+export const ACTIVE_NO_CHANNEL_DAYS = 14;
+
+/**
+ * Юзеры для тика. С каналом (expo push / активный Telegram) — всё как раньше.
+ * Без канала, но писавшие роботу или создававшие задачи за 14 дней — тоже:
+ * иначе отказ в пушах навсегда выключал проактивность (и «как ты?»), хотя
+ * нудж мог бы прийти облачком в приложении.
+ */
+export async function selectTickUsers(now: Date): Promise<Array<{ id: string; hasChannel: boolean }>> {
+  const tgUserIds = (
+    await prisma.integration.findMany({
+      where: { provider: 'telegram', active: true },
+      select: { userId: true },
+    })
+  ).map((i) => i.userId);
+  const withChannel = await prisma.user.findMany({
+    where: {
+      OR: [{ expoPushToken: { not: null } }, { id: { in: tgUserIds.length ? tgUserIds : ['__none__'] } }],
+    },
+    select: { id: true },
+  });
+  const since = new Date(now.getTime() - ACTIVE_NO_CHANNEL_DAYS * 86_400_000);
+  const channelIds = new Set(withChannel.map((u) => u.id));
+  const [talked, tasked] = await Promise.all([
+    prisma.chatMessage.findMany({
+      where: { role: 'user', createdAt: { gte: since } },
+      distinct: ['userId'],
+      select: { userId: true },
+    }),
+    prisma.task.findMany({ where: { createdAt: { gte: since } }, distinct: ['userId'], select: { userId: true } }),
+  ]);
+  const active = new Set([...talked, ...tasked].map((r) => r.userId).filter((id) => !channelIds.has(id)));
+  return [
+    ...withChannel.map((u) => ({ id: u.id, hasChannel: true })),
+    ...[...active].map((id) => ({ id, hasChannel: false })),
+  ];
+}
+
 async function tick(): Promise<void> {
   if (running) return;
   running = true;
@@ -62,24 +101,10 @@ async function tick(): Promise<void> {
       );
     }
 
-    // Только юзеры с хоть каким-то каналом доставки: expo push token
-    // ИЛИ привязанный telegram. Остальных нет смысла обрабатывать.
-    const tgUserIds = (
-      await prisma.integration.findMany({
-        where: { provider: 'telegram', active: true },
-        select: { userId: true },
-      })
-    ).map((i) => i.userId);
-
-    const users = await prisma.user.findMany({
-      where: {
-        OR: [
-          { expoPushToken: { not: null } },
-          { id: { in: tgUserIds.length ? tgUserIds : ['__none__'] } },
-        ],
-      },
-      select: { id: true },
-    });
+    // Кого обрабатывать: юзеры с каналом доставки (пуш/Telegram) + активные
+    // за 14 дней без канала — им робот тоже «думает» (детекторы, «как ты?»),
+    // нудж придёт облачком при открытии (/nudges/next). Пуши им не шлём.
+    const users = await selectTickUsers(new Date());
 
     const now = Date.now();
 
@@ -174,16 +199,19 @@ async function tick(): Promise<void> {
       }
     }
 
-    for (const { id: userId } of users) {
-      let notifications;
-      try {
-        notifications = await generateProactiveNotifications(userId);
-      } catch (err) {
-        console.warn(
-          `[scheduler] generate failed user=${userId}:`,
-          err instanceof Error ? err.message : err,
-        );
-        continue;
+    for (const { id: userId, hasChannel } of users) {
+      let notifications: Awaited<ReturnType<typeof generateProactiveNotifications>> = [];
+      // Без канала напоминания/брифы доставить некуда — только «думаем» ниже.
+      if (hasChannel) {
+        try {
+          notifications = await generateProactiveNotifications(userId);
+        } catch (err) {
+          console.warn(
+            `[scheduler] generate failed user=${userId}:`,
+            err instanceof Error ? err.message : err,
+          );
+          continue;
+        }
       }
 
       for (const n of notifications) {
@@ -289,14 +317,17 @@ async function tick(): Promise<void> {
       // R6 — ЕДИНЫЙ Insight-стор: ≤1 пуш/день, top-severity, вне
       // тихих часов (R11), tz-корректно. НЕ-фатально: сбой не должен
       // ронять тик/notifications. Идемпотентно по дню (deliveredAt).
-      try {
-        const ins = await deliverTopInsight(userId, new Date());
-        if (ins.deliveredId) delivered++;
-      } catch (err) {
-        console.warn(
-          `[scheduler] insight push failed user=${userId}:`,
-          err instanceof Error ? err.message : err,
-        );
+      // Пуш нужен канал; без него нудж ждёт открытия приложения (/nudges/next).
+      if (hasChannel) {
+        try {
+          const ins = await deliverTopInsight(userId, new Date());
+          if (ins.deliveredId) delivered++;
+        } catch (err) {
+          console.warn(
+            `[scheduler] insight push failed user=${userId}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
       }
     }
 

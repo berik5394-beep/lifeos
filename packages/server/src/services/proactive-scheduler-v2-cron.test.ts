@@ -23,7 +23,7 @@ describe('proactive-scheduler — v2 cron wiring (A5)', () => {
     const tickFn = SRC.slice(SRC.indexOf('async function tick'));
     const moodIdx = tickFn.indexOf('runMoodRetention');
     const patternIdx = tickFn.indexOf('runPatternExtraction');
-    const loopIdx = tickFn.indexOf('for (const { id: userId }');
+    const loopIdx = tickFn.indexOf('for (const { id: userId, hasChannel }');
     expect(moodIdx).toBeGreaterThan(0);
     expect(patternIdx).toBeGreaterThan(0);
     expect(loopIdx).toBeGreaterThan(0);

@@ -50,8 +50,8 @@ export function friendshipPoints(c: FriendshipCounts): number {
   return c.talkDays * FRIEND_POINTS.talkDay + c.tasks * FRIEND_POINTS.task + c.habits * FRIEND_POINTS.habit + c.journal * FRIEND_POINTS.journal;
 }
 
-export function friendshipFrom(c: FriendshipCounts): Friendship {
-  const points = friendshipPoints(c);
+export function friendshipFrom(c: FriendshipCounts, peak = 0): Friendship {
+  const points = Math.max(friendshipPoints(c), peak);
   const cur = [...FRIEND_LEVELS].reverse().find((l) => points >= l.at) ?? FRIEND_LEVELS[0];
   const next = FRIEND_LEVELS.find((l) => l.level === cur.level + 1) ?? null;
   const progress = next ? Math.min(1, (points - cur.at) / (next.at - cur.at)) : 1;
@@ -90,8 +90,28 @@ export async function friendshipCounts(userId: string): Promise<FriendshipCounts
   return { talkDays: days[0]?.n ?? 0, tasks, habits, journal };
 }
 
+/**
+ * Пик очков: читаем из settings, растим атомарно (jsonb_set + условие), чтобы
+ * параллельная правка профиля не затёрла его и он не откатился назад.
+ */
+async function friendPeak(userId: string, live: number): Promise<number> {
+  const rows = await prisma.$queryRaw<Array<{ peak: number | null }>>(Prisma.sql`
+    SELECT (settings->>'friendPeak')::int AS peak FROM "User" WHERE id = ${userId}`);
+  const peak = rows[0]?.peak ?? 0;
+  if (live > peak) {
+    await prisma.$executeRaw(Prisma.sql`
+      UPDATE "User"
+      SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{friendPeak}', to_jsonb(${live}::int))
+      WHERE id = ${userId} AND COALESCE((settings->>'friendPeak')::int, 0) < ${live}`);
+    return live;
+  }
+  return peak;
+}
+
 export async function getFriendship(userId: string): Promise<Friendship> {
-  return friendshipFrom(await friendshipCounts(userId));
+  const counts = await friendshipCounts(userId);
+  const peak = await friendPeak(userId, friendshipPoints(counts)).catch(() => 0);
+  return friendshipFrom(counts, peak);
 }
 
 /** Строка для мозга: робот знает, насколько вы близки, и не выдумывает. */
@@ -118,7 +138,12 @@ export async function takeLevelUp(userId: string, f: Friendship): Promise<string
   const settings = (u.settings ?? {}) as Record<string, unknown>;
   const seen = typeof settings.friendLevelSeen === 'number' ? settings.friendLevelSeen : null;
   if (seen !== null && f.level <= seen) return null;
-  await prisma.user.update({ where: { id: userId }, data: { settings: { ...settings, friendLevelSeen: f.level } as Prisma.InputJsonValue } });
+  // Атомарно, только своё поле: целый settings из памяти затёр бы friendPeak
+  // и параллельную правку профиля.
+  await prisma.$executeRaw(Prisma.sql`
+    UPDATE "User"
+    SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{friendLevelSeen}', to_jsonb(${f.level}::int))
+    WHERE id = ${userId}`);
   if (seen === null && f.level === 1) return null;
   captureActivity(userId, { type: 'friendship_level', content: `Уровень дружбы с роботом вырос: «${f.title}»`, importance: 4 });
   return levelUpMessage(f, u.name);

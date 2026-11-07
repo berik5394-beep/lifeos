@@ -36,7 +36,7 @@ describe('v2 proactivity flow — scheduler → engine chain', () => {
     const tickFn = SCHED.slice(SCHED.indexOf('async function tick'));
     const moodIdx = tickFn.indexOf('runMoodRetention');
     const patternIdx = tickFn.indexOf('runPatternExtraction');
-    const loopIdx = tickFn.indexOf('for (const { id: userId }');
+    const loopIdx = tickFn.indexOf('for (const { id: userId, hasChannel }');
     expect(moodIdx).toBeGreaterThan(0);
     expect(patternIdx).toBeGreaterThan(0);
     expect(loopIdx).toBeGreaterThan(Math.max(moodIdx, patternIdx));
@@ -98,7 +98,7 @@ describe('v2 proactivity flow — scheduler → engine chain', () => {
   });
 
   it('per-user engine call is wrapped in try/catch (loop continues on user failure)', () => {
-    const userBlock = SCHED.slice(SCHED.indexOf('for (const { id: userId }'));
+    const userBlock = SCHED.slice(SCHED.indexOf('for (const { id: userId, hasChannel }'));
     const head = userBlock.slice(0, 6000);
     expect(head).toMatch(/getProactivityEngine[\s\S]{0,200}?runForUser/);
     expect(head).toMatch(/\[v2-proactivity\]/);
@@ -106,7 +106,7 @@ describe('v2 proactivity flow — scheduler → engine chain', () => {
   });
 
   it('cron hooks are individually try/catch wrapped (one cron failure cannot break the other)', () => {
-    const beforeLoop = SCHED.slice(0, SCHED.indexOf('for (const { id: userId }'));
+    const beforeLoop = SCHED.slice(0, SCHED.indexOf('for (const { id: userId, hasChannel }'));
     const tryCount = (beforeLoop.match(/\btry\s*\{/g) ?? []).length;
     // At minimum: one try per cron hook + any pre-existing ones in tick init.
     expect(tryCount).toBeGreaterThanOrEqual(2);

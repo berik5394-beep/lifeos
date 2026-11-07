@@ -35,6 +35,22 @@ describe('робот-друг №4: уровень дружбы', () => {
     expect(f.next?.title).toBe('Приятели');
   });
 
+  it('никогда не падает: удалил задачи / почистились сообщения — уровень прежний', async () => {
+    const u = await user();
+    for (let d = 1; d <= 5; d++) await say(u, `2026-10-0${d}T06:00:00Z`);
+    const before = await getFriendship(u);
+    expect(before.level).toBe(2); // 5 дней × 10 = 50 → «Приятели»
+    await prisma.chatMessage.deleteMany({ where: { userId: u } }); // как кризисная чистка через 30 дней
+    const after = await getFriendship(u);
+    expect(after.points).toBe(before.points);
+    expect(after.level).toBe(2);
+    // живой рост поверх «пика» по-прежнему считается
+    await say(u, '2026-11-01T06:00:00Z');
+    expect((await getFriendship(u)).points).toBe(before.points);
+    for (let d = 2; d <= 7; d++) await say(u, `2026-11-0${d}T06:00:00Z`);
+    expect((await getFriendship(u)).points).toBe(70);
+  });
+
   it('уровни по порогам, максимальный — без «следующего»', () => {
     const at = (talkDays: number) => friendshipFrom({ talkDays, tasks: 0, habits: 0, journal: 0 });
     expect(at(5).level).toBe(2);

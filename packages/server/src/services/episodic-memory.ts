@@ -192,6 +192,9 @@ export async function writeMemory(
         FROM "Memory" m
         WHERE m."userId" = ${userId}
           AND m.type = ${input.type}
+          -- Забытое («Неправда», supersede) — не цель дедупа: иначе новое
+          -- знание сольётся в скрытую строку и тоже станет невидимым.
+          AND (m."invalidAt" IS NULL OR m."invalidAt" > NOW())
           AND to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${content})
         ORDER BY ts_rank(
           to_tsvector('russian', coalesce(m.content, '')),
