@@ -57,6 +57,12 @@ function createStyles(c: ReturnType<typeof useColors>) {
       paddingTop: spacing.sm,
       paddingBottom: spacing.xl,
     },
+    supportHint: {
+      fontSize: fontSize.xs,
+      color: c.textSecondary,
+      lineHeight: 17,
+      paddingBottom: spacing.sm,
+    },
     sectionTitle: {
       fontSize: fontSize.sm,
       fontWeight: '600',
@@ -340,6 +346,7 @@ export default function SettingsScreen() {
       if (p.assistantGender) setAssistantGender(p.assistantGender);
       if (p.wakeUpTime) setWakeUpTime(p.wakeUpTime);
       if (typeof p.checkIns === 'boolean') setCheckIns(p.checkIns);
+      if (typeof p.therapeuticMode === 'boolean') setSupportMode(p.therapeuticMode);
     });
     return () => {
       alive = false;
@@ -364,6 +371,18 @@ export default function SettingsScreen() {
       Alert.alert('Не сохранилось', 'Нет связи с сервером. Попробуй ещё раз.');
     });
   }, [checkIns]);
+
+  // Робот-друг №5: режим поддержки (User.therapeuticMode). Кризисная помощь —
+  // на сервере всегда, переключатель её не трогает.
+  const [supportMode, setSupportMode] = useState(true);
+  const handleToggleSupport = useCallback(() => {
+    const next = !supportMode;
+    setSupportMode(next);
+    saveAssistantProfile({ therapeuticMode: next }).catch(() => {
+      setSupportMode(!next);
+      Alert.alert('Не сохранилось', 'Нет связи с сервером. Попробуй ещё раз.');
+    });
+  }, [supportMode]);
 
   const handleToggleMorning = useCallback(() => {
     const next = !morningReminder;
@@ -768,6 +787,14 @@ export default function SettingsScreen() {
               </AnimatedPress>
             </View>
           )}
+          <View style={styles.separator} />
+          <SettingRow icon="🫂" label="Режим поддержки" isToggle toggleValue={supportMode} onPress={handleToggleSupport} styles={styles} />
+          <Text style={styles.supportHint}>
+            {supportMode
+              ? 'Когда тебе тяжело, робот отвечает бережно и спокойно — даже если выбран строгий или токсичный стиль.'
+              : 'Робот всегда отвечает в выбранном стиле, даже когда тебе тяжело.'}{' '}
+            Помощь в кризисной ситуации работает всегда.
+          </Text>
         </Card>
       </FadeInView>
 

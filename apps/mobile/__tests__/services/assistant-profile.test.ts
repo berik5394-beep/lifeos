@@ -23,4 +23,13 @@ describe('стиль ассистента — на сервере, не толь
     expect(await loadAssistantProfile()).toEqual({ assistantStyle: 'calm', assistantGender: 'male', wakeUpTime: '06:30' });
     expect(storage.getString('wakeUpTime')).toBe('06:30');
   });
+  it('режим поддержки: переключатель уходит на сервер, при открытии — с сервера', async () => {
+    mocked.patch.mockResolvedValueOnce({});
+    await saveAssistantProfile({ therapeuticMode: false });
+    expect(mocked.patch).toHaveBeenCalledWith('/auth/profile', { therapeuticMode: false }, 'test-token-123');
+    mocked.get.mockResolvedValueOnce({ user: { therapeuticMode: false } });
+    expect((await loadAssistantProfile())?.therapeuticMode).toBe(false);
+    mocked.get.mockResolvedValueOnce({ user: {} });
+    expect((await loadAssistantProfile())?.therapeuticMode).toBeUndefined();
+  });
 });
