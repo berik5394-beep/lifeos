@@ -1,5 +1,26 @@
 import { AppState, type AppStateStatus } from 'react-native';
-import * as Updates from 'expo-updates';
+import { requireOptionalNativeModule } from 'expo';
+import type * as UpdatesModule from 'expo-updates';
+
+type Updates = typeof UpdatesModule;
+
+/**
+ * expo-updates — нативный модуль. В сборке без него (старая dev-сборка
+ * симулятора, сборки до №13) жёсткий import ронял приложение при запуске
+ * («Cannot find native module 'ExpoUpdates'»). Грузим мягко: нет модуля —
+ * обновления по воздуху просто выключены.
+ */
+function loadUpdates(): Updates | null {
+  // Сначала спросить, есть ли нативный модуль: require('expo-updates') без
+  // него падает при загрузке модуля (в dev это красный экран, даже под try).
+  if (!requireOptionalNativeModule('ExpoUpdates')) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('expo-updates') as Updates;
+  } catch {
+    return null;
+  }
+}
 
 /** Не дёргать сервер обновлений чаще (возвраты в приложение бывают каждую минуту). */
 const CHECK_EVERY_MS = 10 * 60 * 1000;
@@ -13,8 +34,9 @@ const CHECK_EVERY_MS = 10 * 60 * 1000;
  * ушёл с экрана (фон) и обновление скачано — перезапустить JS. Вернётся он уже
  * в новую версию, ничего не прерывая на глазах. В разработке (Metro) выключено.
  */
-export function startOtaUpdates(deps: { updates?: typeof Updates; appState?: typeof AppState; now?: () => number } = {}): () => void {
-  const U = deps.updates ?? Updates;
+export function startOtaUpdates(deps: { updates?: Updates; appState?: typeof AppState; now?: () => number } = {}): () => void {
+  const U = deps.updates ?? loadUpdates();
+  if (!U) return () => {};
   const appState = deps.appState ?? AppState;
   const now = deps.now ?? Date.now;
   if (__DEV__ || !U.isEnabled) return () => {};
