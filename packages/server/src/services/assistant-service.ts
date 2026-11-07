@@ -58,7 +58,7 @@ export async function gatherAssistantContext(
   text: string,
   /** Уже распарсенный intent (оркестратор парсит раньше) — чтобы не
    *  дёргать parseIntent дважды (лишний Claude-вызов). */
-  knownIntent?: { action: string; [key: string]: unknown },
+  knownIntent?: { action: string; [key: string]: unknown } | Promise<{ action: string; [key: string]: unknown }>,
 ): Promise<GatheredContext | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },

@@ -17,6 +17,7 @@ import {
 import { runAgent } from './claude-agent.js';
 import { AgentDeadlineError, TURN_DEADLINE_MS, deadlineReplyText } from '../lib/agent-deadline.js';
 import { userNumberClaims, ungroundedClaims } from '../lib/chat-number-claims.js';
+import { createTurnTiming } from '../lib/turn-timing.js';
 import { buildConfirmPrompt } from './confirm-prompt.js';
 import { matchesCrisisPhrase, classifyCrisis } from './safety-classifier.js';
 import { buildSafetyResponse } from './safety-response.js';
@@ -832,6 +833,7 @@ async function handleMessageCore(
   // SSOT Step 7: засекаем начало хода — бейдж считаем из ToolCall,
   // созданных за этот ход (факт), а не из NLP-выдумки.
   const turnStart = new Date();
+  const timing = createTurnTiming();
   // Предел на весь ход: телефон ждёт 60 с, робот укладывается раньше и честно
   // говорит «не успел», а не висит минутами (каждый вызов Claude — до 60 с ×3).
   const deadlineAt = turnStart.getTime() + TURN_DEADLINE_MS;
@@ -991,7 +993,18 @@ async function handleMessageCore(
   // intent-TZ фикс (аудит brain-hands 2026-06-11): «сегодня/завтра» в
   // интентах/брони = календарь ЮЗЕРА, не UTC сервера (Алматы 00–05 → вчера).
   const userTz = await getUserTimezone(userId);
-  const intent = await parseIntent(text, userTz, undefined, { disabledPanels: isV2DealsEnabled(userId) ? undefined : DEALS_PANEL_OFF });
+  const intentP = parseIntent(text, userTz, undefined, { disabledPanels: isV2DealsEnabled(userId) ? undefined : DEALS_PANEL_OFF });
+  // Контекст для агента: история, память/цели/финансы, эмоция. Не зависит от
+  // намерения (кроме ритуала — подставляется из того же intentP).
+  const startContext = (ip: typeof intentP) =>
+    Promise.all([getRecentHistory(userId, 6), gatherAssistantContext(userId, text, ip), classifyEmotional(text)]);
+  // Голос (jarvis-roadmap №5): собираем контекст ОДНОВРЕМЕННО с разбором
+  // намерения — первое слово раньше. На быстрых командах (задача, трата) это
+  // лишнее чтение (ничего не пишет); для текста — по-прежнему по очереди.
+  const early = channel === 'voice' ? startContext(intentP) : null;
+  early?.catch(() => {});
+  const intent = await intentP;
+  timing.mark('intent');
 
   // ---- Робот-эпик, Часть 3: открыть панель приложения (без ИИ) ----------
   if (intent.action === 'open_panel' && typeof intent.panel === 'string') {
@@ -1485,17 +1498,13 @@ async function handleMessageCore(
   // ОДИН источник правды: gatherAssistantContext (полный контекст,
   // variant A — всегда) + buildJarvisPrompt (ЯДРО+СТИЛЬ+КОНТЕКСТ,
   // тот же что в fallback). goodnight/good_morning → ритуальный тон.
-  const [history, gathered, therapeuticMode] = await Promise.all([
-    getRecentHistory(userId, 6),
-    gatherAssistantContext(userId, text, intent),
-    // Phase 6 C3 — эмо-маршрутизация: Safety > therapeutic > toxic.
-    // Safety уже отсёк кризис в самом верху handleMessage. Здесь
-    // классифицируем НЕ-кризисный эмо vs транзакция; при эмо —
-    // therapeutic-mode перебивает STYLE (включая toxic). Bias к
-    // транзакции (precision > recall) защищает «запиши расход» от
-    // получения «как ты?» (провал-инвариант спеки #4).
-    classifyEmotional(text),
-  ]);
+  // Phase 6 C3 — эмо-маршрутизация (classifyEmotional внутри startContext):
+  // Safety > therapeutic > toxic. Safety уже отсёк кризис в самом верху
+  // handleMessage. Здесь классифицируем НЕ-кризисный эмо vs транзакция; при
+  // эмо — therapeutic-mode перебивает STYLE (включая toxic). Bias к транзакции
+  // (precision > recall) защищает «запиши расход» от получения «как ты?».
+  const [history, gathered, therapeuticMode] = await (early ?? startContext(Promise.resolve(intent)));
+  timing.mark('ctx');
 
   // Phase 6 C5 — opt-out AND-gate: даже если эмо-классификатор
   // сработал, при therapeuticMode=false у юзера → ОБЫЧНЫЙ режим
@@ -1539,17 +1548,6 @@ async function handleMessageCore(
   const optIn = gathered?.context.therapeuticMode !== false;
   const finalTherapeutic = therapeuticMode && optIn;
 
-  // v2 Phase B2 — lazy refresh bot traits (recompute if stale > 6h).
-  // Cheap (pure compute + small queries); persists into BotIdentity.traits
-  // so the enrichment block's getTraits sees fresh values.
-  if (isV2IdentityEnabled(userId)) {
-    try {
-      await getBotTraitsStore().refreshTraitsIfStale(userId);
-    } catch (err) {
-      console.warn('[orchestrator:identity-refresh] failed:', err);
-    }
-  }
-
   // Real-Time Foundation: пояс юзера в промпт ТОЛЬКО при флаге (best-effort,
   // off → undefined → байт-идентично). userTz уже резолвнут выше (тот же
   // getUserTimezone, падает в 'UTC') — без второго запроса.
@@ -1567,110 +1565,104 @@ async function handleMessageCore(
       })
     : 'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
 
-  // v2.0 Week 5 D3 — additive memory enrichment block (best-effort,
-  // dropped silently on fault → legacy prompt unaffected).
-  if (gathered && isV2MemoryEnabled(userId)) {
-    try {
-      // Бюджет 2500мс: enrichment теперь несёт кросс-домен инсайты (runway/
-      // goal-impact/energy/relationship), которые читают много из БД. Старые
-      // 900мс роняли ВЕСЬ блок (фича «инсайт с числом» не доходила до промпта,
-      // bug 2026-06-04). Внутри fetchV2EnrichmentData каждый тяжёлый билдер уже
-      // капается своим withTimeout(1500), + reflector-факты дедуплены, так что
-      // зависший тиер всё равно не блокирует дольше ~1.5с.
-      // Этап 4: оси пользователя и тон бота были написаны, но не вызывались
-      // нигде — писались в БД и не читались. Теперь — тем же заходом.
-      const [v2Data, axesSection, toneSection] = await Promise.all([
-        withTimeout(fetchV2EnrichmentData(userId), 2500, null),
-        withTimeout(fetchV2EnrichmentAxesSection(userId), 1500, ''),
-        withTimeout(fetchV2EnrichmentToneSection(userId), 1500, ''),
-      ]);
-      if (v2Data) {
-        system = system + '\n\n' + buildV2EnrichmentBlock(v2Data);
+  // Ускорение начала ответа (jarvis-roadmap №5): дополнения к промпту — память,
+  // оси, тон, цена часа/команда, навыки, нужны ли инструменты — НЕ зависят друг
+  // от друга, раньше шли по очереди. Теперь — одновременно; применяем в прежнем
+  // порядке (память → оси → тон → время=деньги → навык). Каждый — best-effort.
+  const memoryOn = !!gathered && isV2MemoryEnabled(userId);
+  const [enrich, toneSection, timeLines, skill, toolsHint] = await Promise.all([
+    // v2.0 Week 5 D3 — additive memory enrichment block (best-effort, dropped
+    // silently on fault → legacy prompt unaffected). Бюджет 2500мс: enrichment
+    // несёт кросс-домен инсайты (runway/goal-impact/energy/relationship); внутри
+    // каждый тяжёлый билдер капается своим withTimeout(1500).
+    memoryOn
+      ? Promise.all([
+          withTimeout(fetchV2EnrichmentData(userId), 2500, null),
+          withTimeout(fetchV2EnrichmentAxesSection(userId), 1500, ''),
+        ]).catch((err) => {
+          console.warn('[v2-enrichment] hook failed:', err);
+          return [null, ''] as const;
+        })
+      : Promise.resolve([null, ''] as const),
+    // v2 Phase B2 — lazy refresh bot traits (stale > 6h) → затем тон бота
+    // (тон читает свежие traits, поэтому — цепочкой, но параллельно остальному).
+    (async () => {
+      if (isV2IdentityEnabled(userId)) {
+        try {
+          await getBotTraitsStore().refreshTraitsIfStale(userId);
+        } catch (err) {
+          console.warn('[orchestrator:identity-refresh] failed:', err);
+        }
       }
-      if (axesSection) system = system + '\n\n' + axesSection;
-      if (toneSection) {
-        system =
-          system +
-          '\n\n' +
-          toneSection +
-          '\n(Стиль, который выбрал пользователь, главнее этих оттенков.)';
-      }
-    } catch (err) {
-      console.warn('[v2-enrichment] hook failed:', err);
-    }
-  }
-
-  // Время = деньги и команда (jarvis-roadmap №3): цена часа и команда в контексте —
-  // «стоит ли мне идти на совещание?», «кому отдать отчёт?». Нет данных — нет строк.
-  if (gathered) {
-    try {
-      const { getHourRate, listTeam, timeValueContextLines } = await import('./time-value.js');
-      const [rate, team] = await withTimeout(Promise.all([getHourRate(userId), listTeam(userId)]), 1000, [null, []] as const);
-      const lines = timeValueContextLines(rate, [...team]);
-      if (lines.length > 0) {
-        system +=
-          '\n\n' +
-          lines.join('\n') +
-          '\nДлинная встреча или дело не по уровню пользователя — можешь честно сказать, сколько это стоит его времени, и предложить отдать человеку из команды (только с его «да»).';
-      }
-    } catch (err) {
-      console.warn('[time-value] context failed:', err instanceof Error ? err.message : err);
-    }
-  }
-
-  // v2 Phase B4 — Hermes: if the message routes to a saved skill, seed the
-  // agent turn with the skill's plan. The existing loop executes it, so
-  // money/write steps still hit their normal confirm gates. Best-effort.
-  // H2 composition routing: skills whose plan contains a confirm step
-  // (money/irreversible) run through the deterministic runSkillPlan runner
-  // (two-phase: batch → confirm); all other skills seed the agent loop as
-  // before (zero regression).
-  let hermesForceTools = false;
-  let skillReply: string | null = null;
-  if (isV2HermesEnabled(userId)) {
-    try {
-      const skills = await getHermesStore().activeSkills(userId);
-      const matched = await routeToSkill(userId, text, skills);
-      if (matched) {
+      if (!memoryOn) return '';
+      return withTimeout(fetchV2EnrichmentToneSection(userId), 1500, '').catch(() => '');
+    })(),
+    // Время = деньги и команда (jarvis-roadmap №3): цена часа и команда в контексте.
+    gathered
+      ? (async () => {
+          const { getHourRate, listTeam, timeValueContextLines } = await import('./time-value.js');
+          const [rate, team] = await withTimeout(Promise.all([getHourRate(userId), listTeam(userId)]), 1000, [null, []] as const);
+          return timeValueContextLines(rate, [...team]);
+        })().catch((err) => {
+          console.warn('[time-value] context failed:', err instanceof Error ? err.message : err);
+          return [] as string[];
+        })
+      : Promise.resolve([] as string[]),
+    // v2 Phase B4 — Hermes: сохранённый навык. С confirm-шагом (деньги) —
+    // детерминированный раннер (две фазы: пакет → подтверждение), без агента;
+    // иначе — план навыка в промпт агенту. Best-effort: сбой → обычный агент.
+    (async (): Promise<{ reply: string | null; instruction: string | null }> => {
+      if (!isV2HermesEnabled(userId)) return { reply: null, instruction: null };
+      try {
+        const skills = await getHermesStore().activeSkills(userId);
+        const matched = await routeToSkill(userId, text, skills);
+        if (!matched) return { reply: null, instruction: null };
         const plan = (matched.plan as unknown as { toolName: string }[]) ?? [];
         // ASSUMPTION: all confirm-tools today use a boolean needsConfirm
         // (add-expense/add-income/send-telegram/suggest-goal). We probe with
-        // {} args at routing time (before arg-resolve). If a tool ever uses an
-        // input-DEPENDENT needsConfirm lambda, this under-detects → re-evaluate
-        // hasConfirm after resolveSkillArgs (or add availableToAgent decoupling).
-        const hasConfirm = plan.some((s) => toolConfirmRequired(s.toolName, {}));
-        if (hasConfirm) {
-          // v2 H2 — action skill: deterministic two-phase runner (money steps
-          // batch into a confirm); bypasses the agent loop.
-          skillReply = await runSkillPlan(userId, matched, text);
-          void getHermesStore().bumpUsage(matched.id);
-        } else {
-          // read/write-non-money skill: existing agent-loop seed (unchanged).
-          const spec: SkillSpec = {
-            name: matched.name,
-            description: matched.description,
-            triggers: matched.triggers,
-            plan: matched.plan as unknown as SkillSpec['plan'],
-            synthesis: matched.synthesis,
-          };
-          system = system + '\n\n' + buildSkillInstruction(spec);
-          hermesForceTools = true;
-          void getHermesStore().bumpUsage(matched.id);
-        }
+        // {} args at routing time (before arg-resolve).
+        const hasConfirm = plan.some((st) => toolConfirmRequired(st.toolName, {}));
+        void getHermesStore().bumpUsage(matched.id);
+        if (hasConfirm) return { reply: await runSkillPlan(userId, matched, text), instruction: null };
+        const spec: SkillSpec = {
+          name: matched.name,
+          description: matched.description,
+          triggers: matched.triggers,
+          plan: matched.plan as unknown as SkillSpec['plan'],
+          synthesis: matched.synthesis,
+        };
+        return { reply: null, instruction: buildSkillInstruction(spec) };
+      } catch (err) {
+        console.warn('[hermes:run-seed/runSkillPlan] failed:', err);
+        return { reply: null, instruction: null };
       }
-    } catch (err) {
-      // Guards routeToSkill + runSkillPlan + buildSkillInstruction. On any
-      // throw, skillReply stays null + hermesForceTools false → clean
-      // fall-through to the normal agent loop (best-effort degradation).
-      console.warn('[hermes:run-seed/runSkillPlan] failed:', err);
-    }
+    })(),
+    // Нужны ли агенту инструменты (словари + клиенты сделок) — заранее.
+    needsLocalTools(userId, text).catch(() => true),
+  ]);
+  timing.mark('prep');
+
+  const [v2Data, axesSection] = enrich;
+  if (v2Data) system = system + '\n\n' + buildV2EnrichmentBlock(v2Data);
+  if (axesSection) system = system + '\n\n' + axesSection;
+  if (toneSection) {
+    system = system + '\n\n' + toneSection + '\n(Стиль, который выбрал пользователь, главнее этих оттенков.)';
   }
+  if (timeLines.length > 0) {
+    system +=
+      '\n\n' +
+      timeLines.join('\n') +
+      '\nДлинная встреча или дело не по уровню пользователя — можешь честно сказать, сколько это стоит его времени, и предложить отдать человеку из команды (только с его «да»).';
+  }
+  const skillReply: string | null = skill.reply;
+  const hermesForceTools = skill.instruction !== null;
+  if (skill.instruction) system = system + '\n\n' + skill.instruction;
 
   let reply: string;
   if (skillReply !== null) {
     reply = skillReply;
   } else {
-    const wantTools = hermesForceTools || (await needsLocalTools(userId, text));
+    const wantTools = hermesForceTools || toolsHint;
     try {
       reply = await runAgent({
         system,
@@ -1687,7 +1679,12 @@ async function handleMessageCore(
         localTools: wantTools,
         userId,
         // Поток — только у основного ответа; повтор/запасные пути отдадут итог целиком.
-        onText: stream?.onText,
+        onText: stream?.onText
+          ? (d: string) => {
+              timing.firstToken();
+              stream.onText?.(d);
+            }
+          : undefined,
         // Confirm-bridge: confirm-tool (set_balance/clear_overdue/решения…)
         // НЕ исполняется в цикле — стейджим pending + детерминир. текст,
         // запись только на «да» через peekPendingAction→runConfirmedAction.
@@ -1791,6 +1788,8 @@ async function handleMessageCore(
       }
     }
   }
+
+  console.log(timing.line({ user: userId, ch: channel ?? 'text', tools: toolsHint ? 1 : 0 }));
 
   // Числа о делах пользователя («осталось 12 000 ₸», «3 задачи»), которых нет
   // ни в контексте, ни в словах пользователя, ни в инструментах хода, —
