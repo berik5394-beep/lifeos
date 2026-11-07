@@ -202,8 +202,9 @@ export class PostgresEntityGraph implements EntityGraphStore {
   // -------------------------------------------------------------------------
   // getEntity — primary key lookup
   // -------------------------------------------------------------------------
-  async getEntity(id: string): Promise<Entity | null> {
-    return prisma.entity.findUnique({ where: { id } });
+  async getEntity(userId: string, id: string): Promise<Entity | null> {
+    // Только своё: id мог прийти откуда угодно — без userId это чужая карточка.
+    return prisma.entity.findFirst({ where: { id, userId } });
   }
 
   // -------------------------------------------------------------------------
@@ -396,6 +397,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
   // getNeighbors — recursive CTE with depth cap
   // -------------------------------------------------------------------------
   async getNeighbors(
+    userId: string,
     entityId: string,
     depth: number,
   ): Promise<Array<{ entity: Entity; relation: EntityRelationship; distance: number }>> {
@@ -426,7 +428,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
         SELECT r."toId" AS "entityId", r.type AS "relType", r.label AS "relLabel",
                1 AS distance, r.id AS "relId"
         FROM "EntityRelationship" r
-        WHERE r."fromId" = $1 AND r."invalidAt" IS NULL
+        WHERE r."fromId" = $1 AND r."userId" = $3 AND r."invalidAt" IS NULL
 
         UNION
 
@@ -434,7 +436,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
         SELECT r."fromId" AS "entityId", r.type AS "relType", r.label AS "relLabel",
                1 AS distance, r.id AS "relId"
         FROM "EntityRelationship" r
-        WHERE r."toId" = $1 AND r."invalidAt" IS NULL
+        WHERE r."toId" = $1 AND r."userId" = $3 AND r."invalidAt" IS NULL
 
         UNION
 
@@ -443,10 +445,10 @@ export class PostgresEntityGraph implements EntityGraphStore {
                n.distance + 1 AS distance, r.id AS "relId"
         FROM neighbors n
         JOIN "EntityRelationship" r ON r."fromId" = n."entityId"
-        WHERE n.distance < $2 AND r."invalidAt" IS NULL
+        WHERE n.distance < $2 AND r."userId" = $3 AND r."invalidAt" IS NULL
       )
       SELECT DISTINCT ON (e.id)
-        e.*,
+        ${COLS},
         n.distance,
         r.id         AS "rel_id",
         r."userId"   AS "rel_userId",
@@ -462,10 +464,11 @@ export class PostgresEntityGraph implements EntityGraphStore {
       FROM neighbors n
       JOIN "Entity" e ON e.id = n."entityId"
       JOIN "EntityRelationship" r ON r.id = n."relId"
-      WHERE e.id != $1
+      WHERE e.id != $1 AND e."userId" = $3
       ORDER BY e.id, n.distance ASC, e.importance DESC`,
       entityId,
       safeDepth,
+      userId,
     );
 
     return rows.map((row) => ({

@@ -360,13 +360,16 @@ export async function recordEvent(
  * Default invalidAt = now().
  */
 export async function invalidateEvent(
+  userId: string,
   eventId: string,
   invalidAt: Date = new Date(),
-): Promise<void> {
-  await prisma.memory.update({
-    where: { id: eventId },
+): Promise<boolean> {
+  // Только своё: чужой id — ничего не трогаем (false).
+  const r = await prisma.memory.updateMany({
+    where: { id: eventId, userId },
     data: { invalidAt },
   });
+  return r.count > 0;
 }
 
 /** F2 floor: топик-матч обычно одно-токенный. Главная защита — единственный-
@@ -396,7 +399,7 @@ export async function supersedeByTopic(
     LIMIT 3;`;
   const strong = rows.filter((r) => r.rank >= SUPERSEDE_MIN_RANK);
   if (strong.length !== 1) return null;
-  await invalidateEvent(strong[0].id);
+  await invalidateEvent(userId, strong[0].id);
   console.warn(`[memory] SUPERSEDE type=${type} topic="${topic}" invalidated=${strong[0].id} (user=${userId})`);
   return strong[0].id;
 }

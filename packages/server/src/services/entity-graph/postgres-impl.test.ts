@@ -61,11 +61,11 @@ describe('postgres-impl.ts structural — getEntity', () => {
     expect(SRC).toMatch(/async getEntity\s*\(/);
   });
 
-  it('getEntity calls prisma.entity.findUnique', () => {
+  it('getEntity ищет только своё: id + userId', () => {
     const start = SRC.indexOf('async getEntity');
     expect(start).toBeGreaterThan(-1);
     const body = SRC.slice(start, start + 400);
-    expect(body).toContain('prisma.entity.findUnique');
+    expect(body).toContain('prisma.entity.findFirst({ where: { id, userId } })');
   });
 
   it('getEntity does NOT throw for missing entity (returns null)', () => {

@@ -54,9 +54,9 @@ export interface EntityGraphStore {
   ): Promise<Entity>;
 
   /**
-   * Get entity by primary key. Returns null if not found.
+   * Get entity by primary key — ТОЛЬКО своего пользователя (чужая → null).
    */
-  getEntity(id: string): Promise<Entity | null>;
+  getEntity(userId: string, id: string): Promise<Entity | null>;
 
   /**
    * Create or update EntityRelationship. Idempotent on triple
@@ -83,6 +83,8 @@ export interface EntityGraphStore {
    * importance DESC within each distance tier.
    */
   getNeighbors(
+    /** Только связи и люди этого пользователя (чужой entityId → пусто). */
+    userId: string,
     entityId: string,
     depth: number,
   ): Promise<Array<{ entity: Entity; relation: EntityRelationship; distance: number }>>;
