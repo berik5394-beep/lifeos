@@ -18,6 +18,7 @@ import { ToolsPage } from './tools-page';
 import { startRobotNudges } from '@/services/robot-nudges';
 import { storage } from '@/services/storage';
 import { isIntroDone } from '@/services/room-intro';
+import { syncUiLevel } from '@/services/ui-level-sync';
 
 const TOOLS_PAGE = 0;
 const ROOM_PAGE = 1;
@@ -92,6 +93,10 @@ function HomePager() {
   useEffect(() => {
     void fetchDeals();
   }, [fetchDeals, token]);
+  // Уровень интерфейса — из аккаунта (другой телефон, переустановка).
+  useEffect(() => {
+    void syncUiLevel();
+  }, [token]);
   // Робот сам говорит, что заметил (нуджи мозга) — облачком при открытии приложения.
   useEffect(() => (token ? startRobotNudges(token) : undefined), [token]);
   const tools = useMemo(() => visiblePanels(isFeatureVisible, { dealsAvailable }), [isFeatureVisible, dealsAvailable]);

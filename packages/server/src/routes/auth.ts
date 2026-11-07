@@ -58,6 +58,9 @@ const profileUpdateSchema = z.object({
   therapeuticMode: z.boolean().optional(),
   // Робот-друг №2: «как ты?» без повода (в User.settings.checkIns; по умолчанию вкл).
   checkIns: z.boolean().optional(),
+  // Уровень интерфейса — в аккаунте (User.settings.uiComplexity), чтобы не
+  // терялся на другом телефоне/после переустановки.
+  uiComplexity: z.enum(['simple', 'standard', 'power']).optional(),
 });
 
 // ============================================================================
@@ -538,9 +541,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     // settings — JSON: сливаем, а не затираем (там могут быть другие ключи).
     let settingsUpdate: Record<string, unknown> | undefined;
-    if (body.checkIns !== undefined) {
+    if (body.checkIns !== undefined || body.uiComplexity !== undefined) {
       const cur = await prisma.user.findUnique({ where: { id: userId }, select: { settings: true } });
-      settingsUpdate = { ...((cur?.settings ?? {}) as Record<string, unknown>), checkIns: body.checkIns };
+      settingsUpdate = {
+        ...((cur?.settings ?? {}) as Record<string, unknown>),
+        ...(body.checkIns !== undefined ? { checkIns: body.checkIns } : {}),
+        ...(body.uiComplexity !== undefined ? { uiComplexity: body.uiComplexity } : {}),
+      };
     }
 
     if (Object.keys(dataToUpdate).length === 0 && !settingsUpdate) {
@@ -559,6 +566,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       body.therapeuticMode !== undefined && `режим поддержки ${body.therapeuticMode ? 'вкл' : 'выкл'}`,
       body.checkIns !== undefined && `вопросы «как ты?» ${body.checkIns ? 'вкл' : 'выкл'}`,
     ].filter(Boolean);
+    // Уровень интерфейса — не про отношения с роботом: в память не пишем.
     const user = await prisma.user.update({
       where: { id: userId },
       data: { ...dataToUpdate, ...(settingsUpdate ? { settings: settingsUpdate as Prisma.InputJsonValue } : {}) },
@@ -574,7 +582,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       },
     });
     // После успешной записи — в память (не пишем «сменил», если не сменилось).
-    captureActivity(userId, { type: 'profile_updated', content: `Настройки: ${changes.join(', ')}` });
+    if (changes.length > 0) captureActivity(userId, { type: 'profile_updated', content: `Настройки: ${changes.join(', ')}` });
 
     return reply.send({ user });
   });
@@ -602,7 +610,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     });
     if (!user) return reply.status(404).send({ message: 'Не найден' });
     const { settings, ...rest } = user;
-    const checkIns = ((settings ?? {}) as { checkIns?: unknown }).checkIns !== false;
-    return reply.send({ user: { ...rest, checkIns }, disclaimer: disclaimerFull() });
+    const st = (settings ?? {}) as { checkIns?: unknown; uiComplexity?: unknown };
+    const checkIns = st.checkIns !== false;
+    const uiComplexity =
+      st.uiComplexity === 'simple' || st.uiComplexity === 'standard' || st.uiComplexity === 'power' ? st.uiComplexity : null;
+    return reply.send({ user: { ...rest, checkIns, uiComplexity }, disclaimer: disclaimerFull() });
   });
 }

@@ -21,6 +21,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useUIStore, type UIComplexity } from '@/stores/ui-store';
 import { AnimatedPress } from '@/components/ui/animated-press';
 import { FadeInView } from '@/components/ui/fade-in-view';
+import { chooseUiLevel } from '@/services/ui-level-sync';
 
 
 /** Фон приложения (Berik 2026-11-07: вернуть выбор, по умолчанию светлая «слоновая кость»). */
@@ -309,7 +310,6 @@ export default function SettingsScreen() {
   const themeName = useThemeStore((s) => s.themeName);
   const setTheme = useThemeStore((s) => s.setTheme);
   const uiComplexity = useUIStore((s) => s.complexity);
-  const setUIComplexity = useUIStore((s) => s.setComplexity);
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
 
@@ -670,7 +670,7 @@ export default function SettingsScreen() {
               {index > 0 && <View style={styles.separator} />}
               <AnimatedPress
                 style={styles.row}
-                onPress={() => setUIComplexity(opt.key)}
+                onPress={() => void chooseUiLevel(opt.key)}
               >
                 <View style={styles.rowLeft}>
                   <Text style={styles.rowIcon}>{opt.icon}</Text>

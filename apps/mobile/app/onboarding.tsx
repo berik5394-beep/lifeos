@@ -13,10 +13,11 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { storage } from '@/services/storage';
 import { useAppStore } from '@/stores/app-store';
-import { useUIStore, type UIComplexity } from '@/stores/ui-store';
+import type { UIComplexity } from '@/stores/ui-store';
 import { Button } from '@/components/ui';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
+import { chooseUiLevel } from '@/services/ui-level-sync';
 
 const { width } = Dimensions.get('window');
 
@@ -173,8 +174,8 @@ export default function OnboardingScreen() {
     storage.setBoolean('onboarding_complete', true);
     storage.set('assistantStyle', selectedAssistant);
 
-    // Save UI complexity to store
-    useUIStore.getState().setComplexity(selectedComplexity);
+    // Уровень интерфейса — на экран и в аккаунт (до входа дошлётся после него).
+    void chooseUiLevel(selectedComplexity);
 
     useAppStore.getState().setOnboardingDone(true);
   }, [selectedAssistant, selectedComplexity]);
