@@ -604,6 +604,14 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
             </Pressable>
             <Pressable
               style={styles.iconBtn}
+              onPress={() => navigation.navigate('RobotDiary')}
+              accessibilityRole="button"
+              accessibilityLabel="Дневник робота"
+            >
+              <Feather name="book-open" size={18} color="#FFFFFF" />
+            </Pressable>
+            <Pressable
+              style={styles.iconBtn}
               onPress={() => setIntroStep(0)}
               accessibilityRole="button"
               accessibilityLabel="Показать подсказки ещё раз"

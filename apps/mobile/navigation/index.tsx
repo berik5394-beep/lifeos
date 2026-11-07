@@ -33,6 +33,7 @@ const OnboardingScreen = React.lazy(() => import('@/screens/onboarding'));
 const JournalScreen = React.lazy(() => import('@/screens/journal'));
 const SettingsScreen = React.lazy(() => import('@/screens/settings'));
 const RobotMemoryScreen = React.lazy(() => import('@/screens/robot-memory'));
+const RobotDiaryScreen = React.lazy(() => import('@/screens/robot-diary'));
 const IntegrationsScreen = React.lazy(() => import('@/screens/integrations'));
 const ImportScreen = React.lazy(() => import('@/screens/import'));
 const ScheduleImportScreen = React.lazy(() => import('@/screens/schedule-import'));
@@ -255,6 +256,18 @@ export default function Navigation() {
               options={{
                 headerShown: true,
                 title: 'Что я о тебе помню',
+                headerStyle: { backgroundColor: theme.background },
+                headerTintColor: theme.text,
+                headerTitleStyle: { fontWeight: '600' },
+              }}
+            />
+            {/* Робот-друг, пункт 3: дневник робота о наших днях. */}
+            <RootStack.Screen
+              name="RobotDiary"
+              component={RobotDiaryScreen}
+              options={{
+                headerShown: true,
+                title: 'Дневник робота',
                 headerStyle: { backgroundColor: theme.background },
                 headerTintColor: theme.text,
                 headerTitleStyle: { fontWeight: '600' },

@@ -109,6 +109,7 @@ model User {
   salesPlans             SalesPlan[]
   weekNotes              WeekNote[]
   idempotencyKeys        IdempotencyKey[]
+  robotDiary             RobotDiaryEntry[]
 }
 
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
@@ -424,6 +425,21 @@ model IdempotencyKey {
 
   @@unique([userId, key])
   @@index([createdAt])
+}
+
+/// Дневник робота (робот-друг №3): что робот «думал» о дне человека —
+/// 2–3 фразы от первого лица по реальным фактам дня. Одна запись на день.
+model RobotDiaryEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  day       DateTime @db.Date
+  text      String
+  /// 'ai' — написал робот (прошёл гард чисел); 'facts' — честный текст из фактов.
+  source    String   @default("facts")
+  createdAt DateTime @default(now())
+
+  @@unique([userId, day])
 }
 
 /// Заметки недели из планера: заметки / что улучшить / благодарность / победы.
