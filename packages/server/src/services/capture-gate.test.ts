@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { looksCaptureWorthy } from './jarvis-orchestrator.js';
+import { looksCaptureWorthy, looksMemoryWorthy } from './jarvis-orchestrator.js';
 
 /**
  * ISSUE-8 — гейт ambient-capture. Чистая эвристика без БД/LLM.
@@ -95,4 +95,27 @@ describe('looksCaptureWorthy — осмысленный ambient-capture извл
   ])('«%s» → true', (t) => {
     expect(looksCaptureWorthy(t)).toBe(true);
   });
+});
+
+describe('looksMemoryWorthy — факты о себе и близких из болтовни', () => {
+  it.each([
+    'Привет, меня зовут Берик, у меня компания с турникетами',
+    'Расскажу о себе: мой брат Ерлан живёт в Астане',
+    'Как-то так, я работаю в продажах уже пять лет',
+    'Привет! Моя мама переехала в Астану',
+    'У нас с женой годовщина в субботу',
+  ])('«%s» → в память', (t) => {
+    expect(looksMemoryWorthy(t)).toBe(true);
+  });
+  it('приветствие с фактами раньше не доходило до памяти вовсе', () => {
+    expect(looksCaptureWorthy('Привет, меня зовут Берик, у меня компания с турникетами')).toBe(false);
+    expect(looksCaptureWorthy('Привет! Моя мама переехала в Астану')).toBe(false);
+  });
+  it.each([
+    'Как мне начать бегать?',
+    'Привет, как дела',
+    'расскажи анекдот про кота',
+    'мотивируй меня немного',
+    'ок',
+  ])('«%s» → нет', (t) => expect(looksMemoryWorthy(t)).toBe(false));
 });

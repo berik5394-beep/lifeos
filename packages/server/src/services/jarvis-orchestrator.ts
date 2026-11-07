@@ -160,6 +160,22 @@ const PANEL_REPLY: Record<string, string> = {
  * Сериком», «подарок для Даны») — без лишнего вызова модели на каждое
  * «добавь задачу купить хлеб».
  */
+/**
+ * Память о пользователе: факты о себе и близких приходят и в болтовне —
+ * «Привет, меня зовут Берик, у меня компания с турникетами», «Расскажу о
+ * себе: брат Ерлан живёт в Астане». looksCaptureWorthy такие реплики
+ * отсекал (он против мусорных ЗАДАЧ), и экран «Что я о тебе помню» оставался
+ * пустым. Здесь — отдельный, мягкий фильтр только для фактов/людей.
+ */
+export function looksMemoryWorthy(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 12 || t.endsWith('?')) return false;
+  const SELF = /(?:^|[^а-яё])(?:я|меня|мне|мой|моя|моё|мое|мои|моего|моей|моих|моим|нас|наш|наша|наше|наши)(?=[^а-яё]|$)/i;
+  const CLOSE =
+    /(?:^|[^а-яё])(?:мам|пап|брат|сестр|жен[аеуыо]|муж[аеуь]?(?=[^а-яё]|$)|сын|доч|друз|друг|подруг|бабушк|дедушк|коллег|начальник|партн[её]р|зовут|работаю|живу|живём|живем|люблю|ненавижу|боюсь|мечтаю|увлекаюсь|компани|бизнес|родил)/i;
+  return SELF.test(t) && CLOSE.test(t);
+}
+
 export function looksPeopleWorthy(text: string): boolean {
   const t = text.trim();
   if (t.length < 12 || t.endsWith('?')) return false;
@@ -1775,6 +1791,11 @@ async function handleMessageCore(
         '[captureInBackground] failed:',
         err instanceof Error ? err.message : err,
       );
+    });
+  } else if (looksMemoryWorthy(text) || looksPeopleWorthy(text)) {
+    // Болтовня с фактами о себе/близких: задачи не создаём, факты и людей — да.
+    void captureInBackground(userId, text, String(Date.now()), { memoriesOnly: true }).catch((err) => {
+      console.warn('[captureInBackground:memories] failed:', err instanceof Error ? err.message : err);
     });
   }
 
