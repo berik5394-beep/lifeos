@@ -172,6 +172,12 @@ export async function activeRowsForFeed(
 }
 
 /**
+ * Строки, показанные прямо в ответе чата (не пуш). Пишутся с deliveredAt=now
+ * как маркер своего дневного дедупа — в лимит пушей не идут.
+ */
+export const INLINE_REPLY_SOURCES = ['day_load', 'week_load', 'month_load', 'goal_pace', 'savings_coach'] as const;
+
+/**
  * R6 — доставить РОВНО один инсайт пушем (≤1/день, top-severity,
  * вне тихих часов R11). DB/tz-glue; решение — чистое
  * chooseInsightToPush. tz-КОРРЕКТНО: локальный час и «доставлено
@@ -196,8 +202,11 @@ export async function deliverTopInsight(
   const dayStart = localDayStartUTC(tz, now);
 
   const [deliveredToday, undelivered] = await Promise.all([
+    // Считаем только пуши: строки-ответы в чате (сдвиг дня, темп цели, коуч)
+    // пишутся сразу с deliveredAt как маркер своего дедупа — раньше первая же
+    // добавленная задача съедала дневной пуш.
     prisma.insight.count({
-      where: { userId, deliveredAt: { gte: dayStart } },
+      where: { userId, deliveredAt: { gte: dayStart }, source: { notIn: [...INLINE_REPLY_SOURCES] } },
     }),
     prisma.insight.findMany({
       where: {

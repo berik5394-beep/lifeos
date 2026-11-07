@@ -155,15 +155,13 @@ describe('scoreSignificance — pure', () => {
     ).toBe(0.8);
   });
 
-  it('goal_no_progress scales daysSilent / 14', () => {
-    expect(
-      scoreSignificance({
-        source: 'goal_no_progress',
-        significance: 0,
-        payload: { daysSilent: 7 },
-        toneHint: 'curious',
-      }),
-    ).toBe(0.5);
+  it('goal_no_progress: порог 0.6 с 14-го дня, потолок 0.7 (раньше 1.0 душил все нуджи)', () => {
+    const sig = (daysSilent: number) =>
+      scoreSignificance({ source: 'goal_no_progress', significance: 0, payload: { daysSilent }, toneHint: 'curious' });
+    expect(sig(7)).toBeCloseTo(0.3);
+    expect(sig(14)).toBeCloseTo(0.6);
+    expect(sig(28)).toBeCloseTo(0.7);
+    expect(sig(365)).toBeCloseTo(0.7);
   });
 
   it('decision_review clears gate3 floor (>= 0.6) — иначе нудж не доходит', () => {
@@ -429,9 +427,9 @@ describe('structural — A4 gates + filterCandidates', () => {
     expect(SRC).toMatch(/source:\s*'v2-proactivity'/);
     expect(SRC).toMatch(/<\s*2\b|todayCount\s*<\s*2/);
   });
-  it('gate4 uses 7-day window on metadata.entityId', () => {
-    expect(SRC).toMatch(/path:\s*\['entityId'\]/);
-    expect(SRC).toMatch(/7\s*\*\s*DAY_MS|subDays\(\s*\w+\s*,\s*7\s*\)/);
+  it('gate4 ищет по тому же ключу, что пишет runForUser (поведение — v2-proactivity-delivery.it.test)', () => {
+    const body = SRC.slice(SRC.indexOf('async function gate4_Dedup'));
+    expect(body.slice(0, 600)).toMatch(/nudgedWithin\(userId, nudgeScopeKey\(candidate\)/);
   });
 });
 
@@ -492,7 +490,7 @@ describe('v2-proactivity-engine — identity growth detector (B2 D2)', () => {
     expect(body).toContain('getBotTraitsStore');
     expect(body).toContain('snapshotHistory');
   });
-  it('30-day dedup via Insight kind=identity_growth', () => {
+  it('30-day dedup via Insight scopeKey identity_growth:*', () => {
     const start = SRC.indexOf('detectIdentityGrowth');
     const body = SRC.slice(start, start + 2500);
     expect(body).toContain('identity_growth');

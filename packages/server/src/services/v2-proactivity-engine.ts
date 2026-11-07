@@ -90,8 +90,12 @@ export function scoreSignificance(c: NudgeCandidate): number {
       return Math.max(0, Math.min(1, consistency * 0.8));
     }
     case 'goal_no_progress': {
+      // Раньше min(1, дни/14): с 14-го дня ровно 1.0 у каждой цели — всегда
+      // первый в очереди и душил остальные нуджи. Теперь проходит порог 0.6
+      // с 14-го дня и медленно растёт, но не выше 0.7.
       const daysSilent = Number(c.payload.daysSilent ?? 0);
-      return Math.min(1, daysSilent / 14);
+      if (daysSilent < 14) return (daysSilent / 14) * 0.6;
+      return Math.min(0.7, 0.6 + (daysSilent - 14) / 140);
     }
     case 'weekly_goal_stall': {
       // Чем больше незакрытых целей недели к её концу — тем значимее.
@@ -893,9 +897,11 @@ async function detectIdentityGrowth(userId: string): Promise<NudgeCandidate[]> {
     if (history.length < 2) return [];
     const current = await store.getTraits(userId);
 
-    // 30-day dedup: last identity_growth comment.
+    // 30-day dedup: last identity_growth comment. Нудж пишется kind 'v2_nudge'
+    // с ключом 'identity_growth:global' (runForUser) — раньше искали
+    // kind 'identity_growth', не находили и пауза не работала.
     const lastComment = await prisma.insight.findFirst({
-      where: { userId, source: 'v2-proactivity', kind: 'identity_growth' },
+      where: { userId, source: 'v2-proactivity', kind: 'v2_nudge', scopeKey: { startsWith: 'identity_growth:' } },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true },
     });
@@ -927,8 +933,9 @@ async function detectIdentityGrowth(userId: string): Promise<NudgeCandidate[]> {
 
 async function detectGoalNoProgress(userId: string): Promise<NudgeCandidate[]> {
   try {
+    // Только цели текущего года и не выполненные: прошлогодние «молчат» вечно.
     const goals = await prisma.yearlyGoal.findMany({
-      where: { userId },
+      where: { userId, year: new Date().getUTCFullYear(), progress: { lt: 1 } },
       select: { id: true, goalText: true, updatedAt: true },
     });
     if (goals.length === 0) return [];
@@ -940,6 +947,8 @@ async function detectGoalNoProgress(userId: string): Promise<NudgeCandidate[]> {
       if (daysSilent < 14) continue;
       const cand: NudgeCandidate = {
         source: 'goal_no_progress',
+        // Своя цель — свой ключ дедупа (раньше все цели делили 'global').
+        entityId: g.id,
         significance: 0,
         payload: { goal: g.goalText, daysSilent },
         toneHint: 'curious',
@@ -1184,7 +1193,7 @@ async function pickDealNudge(
 // Сделки: «шаг просрочен» = шаг просрочен ≥ 3 дней (просрочка 1–2 дня — deal_next_step_due).
 // Ревью-3 N7: это обещание клиенту — НЕ в PRESSURE_SOURCES (переживает спад настроения).
 // Каденс — неделя на сделку (ключ deal_step_overdue:<dealId>, смахнутые тоже считаем) +
-// 2 дня на источник; R10 стора — 3 дня, gate4 не матчит (TODO(gate4)).
+// 2 дня на источник; gate4 и R10 стора — 3 дня на ключ (короче недели — не мешают).
 async function detectDealStepOverdue(userId: string): Promise<NudgeCandidate[]> {
   try {
     const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
@@ -1269,8 +1278,7 @@ async function sourceNudgedWithin(userId: string, source: NudgeSource, days: num
 }
 
 // План продаж: отстаём (с 7-го дня). Не чаще раза в 7 дней — каденс держим
-// ЗДЕСЬ (ревью I1): gate4_Dedup ничего не матчит (см. TODO(gate4)), а R10-кулдаун
-// стора — 3 дня и не видит смахнутых.
+// ЗДЕСЬ (ревью I1): gate4_Dedup и R10-кулдаун стора — только 3 дня.
 async function detectSalesPlanBehind(userId: string): Promise<NudgeCandidate[]> {
   try {
     const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
@@ -1393,29 +1401,24 @@ async function gate2_RateLimit(userId: string, now: Date): Promise<boolean> {
   }
 }
 
+/** Сколько дней не повторяем нудж с тем же ключом (= R10-кулдаун стора). */
+export const NUDGE_DEDUP_DAYS = 3;
+
+/**
+ * Этап 2 (2026-11-06): раньше искали scope.entityId, а runForUser пишет
+ * scope = { key, kind } + scopeKey `<source>:<entityId|patternId|global>` —
+ * матча не было никогда, гейт пропускал всех. R10 стора смотрит только
+ * АКТИВНЫЕ ряды, поэтому смахнутый нудж возвращался на следующем тике.
+ * Теперь — тот же ключ, что пишет runForUser, и считаются ЛЮБЫЕ ряды за окно
+ * (смахнул ≠ «напомни ещё раз через 10 минут»).
+ */
 async function gate4_Dedup(
   userId: string,
   candidate: NudgeCandidate,
   now: Date,
 ): Promise<boolean> {
-  if (!candidate.entityId) return true;
-  // TODO(gate4): известная дыра, не чиним глобально — runForUser/persistCandidates
-  // пишут scope = { key, kind } (+ scopeKey `<source>:<entityId>`), а здесь ищем
-  // scope.entityId → матча нет НИКОГДА, гейт пропускает всех. Починка поменяет
-  // каденс всех источников — отдельная задача. Кому нужен ритм — держит его в
-  // детекторе (см. nudgedWithin / detectSalesPlanBehind).
   try {
-    const cutoff = new Date(now.getTime() - 7 * DAY_MS);
-    const recent = await prisma.insight.findFirst({
-      where: {
-        userId,
-        source: 'v2-proactivity',
-        scope: { path: ['entityId'], equals: candidate.entityId },
-        createdAt: { gte: cutoff },
-      },
-      select: { id: true },
-    });
-    return recent === null;
+    return !(await nudgedWithin(userId, nudgeScopeKey(candidate), NUDGE_DEDUP_DAYS, now));
   } catch (err) {
     console.warn('[v2-proactivity] gate4_Dedup failed:', err);
     return false;
@@ -1452,6 +1455,9 @@ export function suppressPressureNudges(
 }
 
 // ---- Engine class — placeholders (filled in A2-A6) -----------------------
+
+/** Сколько кандидатов пробовать за тик, если верхний не создан стором. */
+const MAX_NUDGE_ATTEMPTS = 3;
 
 export class V2ProactivityEngine implements ProactivityEngine {
   async detectCandidates(userId: string): Promise<NudgeCandidate[]> {
@@ -1504,38 +1510,43 @@ export class V2ProactivityEngine implements ProactivityEngine {
       };
     }
     passed.sort((a, b) => b.significance - a.significance);
-    const top = passed[0];
-    const message = await this.generateNudge(userId, top);
-    const scope = nudgeScopeKey(top);
-    const candidate: InsightCandidate = {
-      kind: 'v2_nudge',
-      scope,
-      source: 'v2-proactivity' as any,
-      severity: Math.round(top.significance * 10),
-      message,
-      rationale: `v2-proactivity:${top.source}`,
-      suggestedAction: {
-        entityId: top.entityId,
-        patternId: top.patternId,
-        payload: top.payload,
-        toneHint: top.toneHint,
-      },
-    };
-    try {
-      const res = await persistCandidates(userId, [candidate]);
-      return {
-        candidatesFound: all.length,
-        candidatesAfterFilter: passed.length,
-        nudgesDelivered: res.created,
+    // Раньше брали только top-1: если стор его не создал (R10-кулдаун), тик
+    // не доставлял ничего, и «вечный первый» душил все остальные нуджи.
+    // Теперь — по убыванию значимости до первого созданного (не больше 3,
+    // чтобы не жечь генерацию текста).
+    let delivered = 0;
+    for (const top of passed.slice(0, MAX_NUDGE_ATTEMPTS)) {
+      const message = await this.generateNudge(userId, top);
+      const candidate: InsightCandidate = {
+        kind: 'v2_nudge',
+        scope: nudgeScopeKey(top),
+        source: 'v2-proactivity' as any,
+        severity: Math.round(top.significance * 10),
+        message,
+        rationale: `v2-proactivity:${top.source}`,
+        suggestedAction: {
+          entityId: top.entityId,
+          patternId: top.patternId,
+          payload: top.payload,
+          toneHint: top.toneHint,
+        },
       };
-    } catch (err) {
-      console.warn('[v2-proactivity] persistCandidates failed:', err);
-      return {
-        candidatesFound: all.length,
-        candidatesAfterFilter: passed.length,
-        nudgesDelivered: 0,
-      };
+      try {
+        const res = await persistCandidates(userId, [candidate]);
+        if (res.created > 0) {
+          delivered = res.created;
+          break;
+        }
+      } catch (err) {
+        console.warn('[v2-proactivity] persistCandidates failed:', err);
+        break;
+      }
     }
+    return {
+      candidatesFound: all.length,
+      candidatesAfterFilter: passed.length,
+      nudgesDelivered: delivered,
+    };
   }
   async filterCandidates(
     userId: string,
