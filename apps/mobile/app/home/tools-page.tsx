@@ -19,9 +19,9 @@ import type { ToolKey } from '@/services/room-tools';
 import { spacing, fontSize, borderRadius } from '@/constants';
 
 const ROBOT = 52;
-/** Своя полоса робота внизу: раньше он висел поверх инструмента и закрывал строки
- *  («Пн 2» в планере, легенды графиков, «Жильё» в финансах). */
-const ROBOT_STRIP = ROBOT + spacing.xs * 2;
+/* Своей полосы под робота больше нет (Berik 2026-11-07: «пусть он будет поверх,
+ * без отдельной рамки — бросается в глаза»). Цена: в углу он может прикрыть
+ * край нижней строки инструмента (раньше так закрывал «Пн 2», «Жильё»). */
 /** Ответ/подсказка робота лежит поверх инструмента — сам уходит, чтобы не закрывать данные. */
 const BUBBLE_MS = 9000;
 const FRESH_REPLY_MS = 90_000;
@@ -195,7 +195,7 @@ export const ToolsPage = memo(function ToolsPage({
         })}
       </ScrollView>
 
-      <View style={[styles.body, !kbOpen && styles.bodyAboveRobot]}>
+      <View style={styles.body}>
         <ContentWidthContext.Provider value={width}>
           {visited.map((k) => {
             const S = TOOL_SCREEN[k];
@@ -246,7 +246,6 @@ function createStyles(c: ReturnType<typeof useColors>) {
     tabTextOn: { color: c.text },
     body: { flex: 1 },
     hidden: { display: 'none' },
-    bodyAboveRobot: { marginBottom: ROBOT_STRIP },
     robot: { position: 'absolute', left: spacing.sm, bottom: spacing.xs },
     bubble: { position: 'absolute', left: ROBOT + spacing.sm, right: spacing.sm, bottom: spacing.xs },
   });

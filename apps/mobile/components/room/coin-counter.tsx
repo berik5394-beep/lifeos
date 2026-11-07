@@ -2,6 +2,7 @@ import React, { memo, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSequence, withTiming } from 'react-native-reanimated';
 import { COMIC } from '@/constants/comic';
+import { ROOM_INK, ROOM_INK_HALO } from '@/constants/room-ui';
 
 /**
  * Робот-эпик, Часть 6: счётчик монет в углу комнаты. Заработал — над ним
@@ -44,14 +45,9 @@ export const CoinCounter = memo(function CoinCounter({
 });
 
 const styles = StyleSheet.create({
-  pill: {
-    paddingHorizontal: 10,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  text: { color: '#FDE68A', fontSize: 15, fontWeight: '700' },
+  // Без подложки — просто «🪙 200» поверх комнаты.
+  pill: { height: 36, justifyContent: 'center' },
+  text: { color: ROOM_INK, fontSize: 16, fontWeight: '800', ...ROOM_INK_HALO },
   gain: {
     position: 'absolute',
     top: 38,

@@ -19,10 +19,13 @@ describe('один голос при входе', () => {
   });
 });
 
-describe('робот не перекрывает инструмент', () => {
-  it('у робота своя полоса внизу, контент над ней', () => {
+describe('робот поверх инструмента, без своей полосы', () => {
+  // Berik 2026-11-07: отдельная полоса под робота «бросается в глаза» — робот
+  // висит в углу поверх инструмента, контент идёт до низа.
+  it('у контента нет отступа под робота, робот — абсолютно в углу', () => {
     const page = src('app/home/tools-page.tsx');
-    expect(page).toMatch(/bodyAboveRobot: \{ marginBottom: ROBOT_STRIP \}/);
+    expect(page).not.toMatch(/ROBOT_STRIP|bodyAboveRobot/);
+    expect(page).toMatch(/robot: \{ position: 'absolute'/);
   });
 });
 

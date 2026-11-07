@@ -56,8 +56,8 @@ export const RoomBottomBar = memo(function RoomBottomBar({
           accessibilityRole="button"
           accessibilityLabel="Обставить комнату"
         >
-          <Feather name="home" size={15} color={c.text} />
-          <Text style={styles.toggleText}>Обставить</Text>
+          <Feather name="home" size={15} color={shelf === 'furnish' ? c.primary : c.text} />
+          <Text style={[styles.toggleText, shelf === 'furnish' && styles.toggleTextOn]}>Обставить</Text>
         </Pressable>
       </View>
       {shelf === 'furnish' && <View>{shop}</View>}
@@ -79,9 +79,10 @@ function createStyles(c: ReturnType<typeof useColors>) {
       paddingHorizontal: spacing.md,
       paddingVertical: 7,
       borderRadius: borderRadius.lg,
-      backgroundColor: c.surface,
     },
-    toggleOn: { backgroundColor: c.surfaceLight },
+    // Просто кнопки, без плашек; открытая полка — подчёркнутый цвет текста.
+    toggleOn: {},
+    toggleTextOn: { color: c.primary },
     // Подсветка на знакомстве — яркая рамка, как маркер в комиксе.
     glow: { borderWidth: 3, borderColor: c.warning },
     toggleText: { fontSize: fontSize.sm, color: c.text, fontWeight: '600' },

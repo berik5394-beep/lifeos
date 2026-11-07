@@ -21,6 +21,7 @@ import { RoomBottomBar } from '@/components/room/room-bottom-bar';
 import { RoomShop } from '@/components/room/room-shop';
 import { SlotGrid } from '@/components/room/slot-grid';
 import { CoinCounter } from '@/components/room/coin-counter';
+import { ROOM_INK, ROOM_INK_HALO } from '@/constants/room-ui';
 import { RoomTilt } from '@/components/room/room-tilt';
 import { SoftSpot, Vignette } from '@/components/room/face-light';
 import { useScheduleStore } from '@/stores/schedule-store';
@@ -43,7 +44,7 @@ import { RENDER_SCALE as R, ZOOM_IN, clampPan, zoomOffset } from '@/services/roo
 import { toolsInItem, type ToolKey } from '@/services/room-tools';
 import { TOOL_TITLE } from '@/components/room/tool-screens';
 import { INTRO_STEPS, furnitureBadge, isIntroDone, markIntroDone } from '@/services/room-intro';
-import { spacing, borderRadius } from '@/constants';
+import { spacing } from '@/constants';
 
 /**
  * Комната робота — отдельный экран (свайп от инструментов). 3D-диорама квартиры
@@ -589,7 +590,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
               accessibilityRole="button"
               accessibilityLabel="История разговора"
             >
-              <Feather name="message-circle" size={18} color="#FFFFFF" />
+              <Feather name="message-circle" size={22} color={ROOM_INK} style={ROOM_INK_HALO} />
             </Pressable>
             <Pressable
               style={styles.iconBtn}
@@ -597,7 +598,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
               accessibilityRole="button"
               accessibilityLabel="Настройки"
             >
-              <Feather name="settings" size={18} color="#FFFFFF" />
+              <Feather name="settings" size={22} color={ROOM_INK} style={ROOM_INK_HALO} />
             </Pressable>
             <Pressable
               style={styles.iconBtn}
@@ -605,7 +606,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
               accessibilityRole="button"
               accessibilityLabel="Что я о тебе помню"
             >
-              <Feather name="heart" size={18} color="#FFFFFF" />
+              <Feather name="heart" size={22} color={ROOM_INK} style={ROOM_INK_HALO} />
             </Pressable>
             <Pressable
               style={styles.iconBtn}
@@ -613,7 +614,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
               accessibilityRole="button"
               accessibilityLabel="Дневник робота"
             >
-              <Feather name="book-open" size={18} color="#FFFFFF" />
+              <Feather name="book-open" size={22} color={ROOM_INK} style={ROOM_INK_HALO} />
             </Pressable>
             <Pressable
               style={styles.iconBtn}
@@ -621,7 +622,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
               accessibilityRole="button"
               accessibilityLabel="Показать подсказки ещё раз"
             >
-              <Feather name="help-circle" size={18} color="#FFFFFF" />
+              <Feather name="help-circle" size={22} color={ROOM_INK} style={ROOM_INK_HALO} />
             </Pressable>
           </View>
           {!zoomed && (
@@ -641,7 +642,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
               accessibilityRole="button"
               accessibilityLabel="Отдалить комнату"
             >
-              <Feather name="minimize-2" size={18} color="#FFFFFF" />
+              <Feather name="minimize-2" size={22} color={ROOM_INK} style={ROOM_INK_HALO} />
             </Pressable>
           )}
         </View>
@@ -688,15 +689,9 @@ function createStyles(c: ReturnType<typeof useColors>) {
     robotShadow: { position: 'absolute', bottom: -16, left: '50%', marginLeft: -ROBOT_SIZE * 0.45, width: ROBOT_SIZE * 0.9, height: 32 },
     topLeft: { position: 'absolute', top: spacing.sm, left: spacing.sm, flexDirection: 'row', gap: spacing.sm },
     topRight: { position: 'absolute', top: spacing.sm, right: spacing.sm, alignItems: 'flex-end', gap: 6 },
-    friendPill: { paddingHorizontal: 10, height: 26, borderRadius: 13, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
-    friendPillText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-    iconBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: borderRadius.lg,
-      backgroundColor: 'rgba(0,0,0,0.45)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
+    friendPill: { height: 22, justifyContent: 'center' },
+    friendPillText: { color: ROOM_INK, fontSize: 13, fontWeight: '700', ...ROOM_INK_HALO },
+    // Просто иконка, без кружка-подложки; зона нажатия прежняя 36×36.
+    iconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   });
 }
