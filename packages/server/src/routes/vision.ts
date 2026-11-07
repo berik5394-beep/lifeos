@@ -8,6 +8,24 @@ import { prisma } from '../lib/prisma.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { AppError, AiModelError } from '../lib/errors.js';
 import { analyzeFinancePhoto, buildFinancePending } from '../services/finance-vision.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
+
+/** День задач из фото: присланный телефоном или «сегодня» по календарю юзера (не UTC сервера). */
+async function captureDay(userId: string, dateISO?: string): Promise<Date> {
+  if (dateISO) {
+    const d = new Date(dateISO);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  return dateOnlyUTC(civilDayRefs(await getUserTimezone(userId)).today);
+}
+
+function titlesPreview(titles: string[]): string {
+  const head = titles.slice(0, 3).map((t) => `«${t}»`).join(', ');
+  return titles.length > 3 ? `${head} и ещё ${titles.length - 3}` : head;
+}
 
 // Vision endpoints hit Claude Vision API (expensive per call) — tight cap
 const visionRateLimit = rateLimiter({ max: 15, windowMs: 60_000, keyPrefix: 'vision' });
@@ -307,8 +325,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
     const userId = request.userId;
 
     try {
-      const baseDate = dateISO ? new Date(dateISO) : new Date();
-      baseDate.setHours(0, 0, 0, 0);
+      const baseDate = await captureDay(userId, dateISO);
 
       const result = await prisma.task.createMany({
         data: tasks.map((t) => ({
@@ -322,6 +339,12 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
         })),
       });
 
+      if (result.count > 0) {
+        captureActivity(userId, {
+          type: 'tasks_captured',
+          content: `Снял задачи с фото (${result.count}): ${titlesPreview(tasks.map((t) => t.title))}`,
+        });
+      }
       return reply.send({ ok: true, created: result.count });
     } catch (err) {
       app.log.error({ err }, 'Save captured tasks error');
@@ -340,8 +363,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      const baseDate = dateISO ? new Date(dateISO) : new Date();
-      baseDate.setHours(0, 0, 0, 0);
+      const baseDate = await captureDay(userId, dateISO);
 
       // BUG FIX: Task model has `notes` and `time`, not `description`/`timeBlock`.
       // Previous version used `as any` + swallowed errors → feature was silently broken.
@@ -360,6 +382,12 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
         })),
       });
 
+      if (result.count > 0) {
+        captureActivity(userId, {
+          type: 'schedule_imported',
+          content: `Загрузил расписание (${result.count} пар): ${titlesPreview(items.map((i) => i.subject))}`,
+        });
+      }
       return reply.send({
         ok: true,
         created: result.count,

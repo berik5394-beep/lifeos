@@ -6,8 +6,14 @@ import { validate } from '../middleware/validate.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import {
   createDeal, updateDeal, listDeals, recordDealIncome, setSalesPlan, salesPlanStatus, isDealStage, type DealStage,
-  describePossibleDuplicate,
+  describePossibleDuplicate, STAGE_LABEL, fmtMoneyExact,
 } from '../services/deals/index.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
+
+/** «Сделка «Окна» (Серик)» — для памяти мозга. */
+function dealHead(d: { title: string; personName: string }): string {
+  return `«${d.title}» (${d.personName})`;
+}
 import { MAX_MONEY_AMOUNT } from '../lib/money.js';
 
 const civil = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD');
@@ -62,6 +68,15 @@ export async function dealRoutes(app: FastifyInstance): Promise<void> {
   app.post('/deals', { preHandler: validate(createSchema) }, async (request, reply) => {
     const body = request.body as z.infer<typeof createSchema>;
     const r = await createDeal(request.userId, { ...body, stage: body.stage as DealStage | undefined });
+    // Сделка с экрана — в память мозга (раньше сделки мозг не «помнил» вовсе).
+    captureActivity(request.userId, {
+      type: 'deal_created',
+      content:
+        `Новая сделка ${dealHead(r.deal)}` +
+        (r.deal.amount != null ? ` на ${fmtMoneyExact(r.deal.amount)}` : '') +
+        `, стадия «${STAGE_LABEL[r.deal.stage as DealStage] ?? r.deal.stage}»`,
+      importance: 6,
+    });
     return reply.status(201).send({ deal: r.deal, step: r.step, taggedClient: r.taggedClient, incomeOffer: r.incomeOffer });
   });
 
@@ -70,6 +85,16 @@ export async function dealRoutes(app: FastifyInstance): Promise<void> {
     const body = request.body as z.infer<typeof updateSchema>;
     try {
       const r = await updateDeal(request.userId, id, { ...body, stage: body.stage as DealStage | undefined });
+      captureActivity(
+        request.userId,
+        r.stageChanged
+          ? {
+              type: 'deal_stage_changed',
+              content: `Сделка ${dealHead(r.deal)} → «${STAGE_LABEL[r.deal.stage as DealStage] ?? r.deal.stage}»`,
+              importance: r.deal.stage === 'won' || r.deal.stage === 'lost' ? 7 : 5,
+            }
+          : { type: 'deal_updated', content: `Обновил сделку ${dealHead(r.deal)}` },
+      );
       return { deal: r.deal, step: r.step, incomeOffer: r.incomeOffer };
     } catch (err) {
       if (err instanceof Error && err.message === 'not_found') return reply.status(404).send({ message: 'Сделка не найдена' });
@@ -87,6 +112,15 @@ export async function dealRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(409).send({ message: describePossibleDuplicate(r.amount, r.personName, r.existingDate), reason: r.reason });
     }
     if (!r.ok) return reply.status(422).send({ message: r.reason === 'no_amount' ? 'У сделки нет суммы' : 'Сделка ещё не выиграна' });
+    if (!r.already) {
+      // Доход по сделке идёт мимо /finance/incomes — пишем в память здесь.
+      const d = await prisma.deal.findFirst({ where: { id, userId: request.userId }, select: { title: true, personName: true } });
+      captureActivity(request.userId, {
+        type: 'income_added',
+        content: `Доход ${fmtMoneyExact(r.amount)} по сделке ${d ? dealHead(d) : ''}`.trim(),
+        importance: 6,
+      });
+    }
     return r;
   });
 
@@ -101,6 +135,11 @@ export async function dealRoutes(app: FastifyInstance): Promise<void> {
   app.put('/sales-plan', { preHandler: validate(planSchema) }, async (request) => {
     const { amount, month } = request.body as z.infer<typeof planSchema>;
     await setSalesPlan(request.userId, amount, new Date(), month);
+    captureActivity(request.userId, {
+      type: 'sales_plan_set',
+      content: `План продаж${month ? ` на ${month}` : ' на месяц'}: ${fmtMoneyExact(amount)}`,
+      importance: 5,
+    });
     return { plan: await salesPlanStatus(request.userId, new Date(), month) };
   });
 }

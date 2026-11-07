@@ -70,6 +70,10 @@ export async function obligationRoutes(app: FastifyInstance): Promise<void> {
     const { id } = request.params as { id: string };
     const o = await cancelObligation(request.userId, id);
     if (!o) return reply.status(404).send({ message: 'Долг не найден' });
+    captureActivity(request.userId, {
+      type: 'obligation_cancelled',
+      content: `Убрал долг ${o.direction === 'i_owe' ? 'перед' : 'от'} ${o.personName}${o.amount ? ` ${o.amount} ₸` : ''} (не актуален)`,
+    });
     return { obligation: o };
   });
 }

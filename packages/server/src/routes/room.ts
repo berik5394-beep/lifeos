@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { captureActivity } from '../services/tool-activity-summary.js';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
@@ -144,6 +145,11 @@ export async function roomRoutes(app: FastifyInstance): Promise<void> {
         }
         return { item, balance: balance - v.price };
       });
+      // Робот должен знать, что ему купили (можно поблагодарить/вспомнить).
+      captureActivity(userId, {
+        type: 'room_item_bought',
+        content: `Купил в комнату робота «${v.label}»${v.price > 0 ? ` за ${v.price} 🪙` : ''}`,
+      });
       return result;
     } catch (err) {
       if (err instanceof RoomError) return reply.code(err.status).send({ error: err.message });
@@ -155,6 +161,7 @@ export async function roomRoutes(app: FastifyInstance): Promise<void> {
   app.put('/room', { preHandler: validate(putRoomSchema) }, async (request, reply) => {
     const { placements } = request.body as z.infer<typeof putRoomSchema>;
     const userId = request.userId;
+    let movedCount = 0;
     try {
       const items = await prisma.$transaction(async (tx) => {
         await lockRoom(tx, userId);
@@ -180,6 +187,7 @@ export async function roomRoutes(app: FastifyInstance): Promise<void> {
         // Сначала всех переставляемых — в кладовку, потом по местам (иначе обмен
         // местами споткнётся об уникальность ячейки посередине).
         const moved = placements.filter((p) => byId.get(p.id)?.slot !== p.slot);
+        movedCount = moved.length;
         if (moved.length > 0) {
           await tx.roomItem.updateMany({ where: { userId, id: { in: moved.map((p) => p.id) } }, data: { slot: null } });
           for (const p of moved) {
@@ -188,6 +196,9 @@ export async function roomRoutes(app: FastifyInstance): Promise<void> {
         }
         return listItems(tx, userId);
       });
+      if (movedCount > 0) {
+        captureActivity(userId, { type: 'room_rearranged', content: `Переставил мебель в комнате робота (${movedCount})`, importance: 2 });
+      }
       return { items };
     } catch (err) {
       if (err instanceof RoomError) return reply.code(err.status).send({ error: err.message });

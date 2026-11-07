@@ -1,5 +1,5 @@
 import { storage } from '@/services/storage';
-import { loadWeekNotes, weekNotesKey, mondayKey } from '@/hooks/use-week-notes';
+import { loadWeekNotes, weekNotesKey, mondayKey, mergeWeekNotes } from '@/hooks/use-week-notes';
 
 describe('заметки недели хранятся на телефоне', () => {
   it('сохранённое за неделю читается обратно; другая неделя — пусто', () => {
@@ -18,5 +18,23 @@ describe('ключ недели', () => {
     expect(mondayKey(new Date(2026, 10, 7))).toBe('2026-11-02'); // суббота
     expect(mondayKey(new Date(2026, 10, 8))).toBe('2026-11-02'); // воскресенье
     expect(mondayKey(new Date(2026, 10, 9))).toBe('2026-11-09'); // понедельник
+  });
+});
+
+describe('синхронизация заметок недели с сервером (мозг их видит)', () => {
+  const E = { notes: '', improve: '', gratitude: '', wins: '' };
+  it('набранное на телефоне главнее; разница уезжает на сервер', () => {
+    const { merged, toPush } = mergeWeekNotes({ ...E, wins: 'новое' }, { ...E, wins: 'старое' });
+    expect(merged.wins).toBe('новое');
+    expect(toPush).toEqual({ wins: 'новое' });
+  });
+  it('новый телефон / после выхода: пустые поля заполняет сервер, отправлять нечего', () => {
+    const { merged, toPush } = mergeWeekNotes(E, { ...E, improve: 'ложиться до 23', gratitude: 'маме' });
+    expect(merged).toEqual({ ...E, improve: 'ложиться до 23', gratitude: 'маме' });
+    expect(toPush).toEqual({});
+  });
+  it('заметки, написанные до синхронизации, уезжают к мозгу', () => {
+    const { toPush } = mergeWeekNotes({ ...E, notes: 'сдать отчёт' }, null);
+    expect(toPush).toEqual({ notes: 'сдать отчёт' });
   });
 });

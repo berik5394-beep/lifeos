@@ -5,6 +5,8 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { AiModelError } from '../lib/errors.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { civilDayRefs } from '../lib/tz.js';
 
 // Same fix as quick-add.ts: проект использует ENV `CLAUDE_API_KEY`, а не
 // дефолтный `ANTHROPIC_API_KEY` — без явного apiKey клиент 500-ит.
@@ -53,7 +55,8 @@ export async function prioritizationRoutes(app: FastifyInstance): Promise<void> 
       time: t.time,
     }));
 
-    const today = new Date().toISOString().slice(0, 10);
+    // Просрочка считается от «сегодня» юзера, не от UTC сервера.
+    const { today } = civilDayRefs(await getUserTimezone(request.userId));
 
     const systemPrompt = `Ты — AI-планировщик задач. Проанализируй задачи пользователя и оцени каждую по матрице Эйзенхауэра.
 

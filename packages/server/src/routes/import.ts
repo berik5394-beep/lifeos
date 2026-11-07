@@ -8,6 +8,9 @@ import ExcelJS from 'exceljs';
 import { createAnthropic } from '../lib/anthropic.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { AppError, NotFoundError, ValidationError } from '../lib/errors.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
 
 // Import calls Claude API + parses files — tight cap per IP
 const importRateLimit = rateLimiter({ max: 5, windowMs: 60_000, keyPrefix: 'import' });
@@ -251,9 +254,6 @@ function str(v: unknown, max: number): string | null {
   const s = String(v).trim();
   return s ? s.slice(0, max) : null;
 }
-function startOfTodayUTC(): Date {
-  return new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
-}
 
 export interface MaterializeResult {
   events: number;
@@ -269,6 +269,8 @@ export async function materializeImport(
 ): Promise<MaterializeResult> {
   const r: MaterializeResult = { events: 0, tasks: 0, expenses: 0, habits: 0 };
   if (!['meetings', 'tasks', 'expenses', 'habits'].includes(purpose)) return r;
+  // Строка без даты — «сегодня» по календарю юзера (раньше UTC сервера).
+  const today = dateOnlyUTC(civilDayRefs(await getUserTimezone(userId)).today);
 
   for (const raw of items.slice(0, 200)) {
     if (!raw || typeof raw !== 'object') continue;
@@ -298,7 +300,7 @@ export async function materializeImport(
           data: {
             userId,
             title,
-            date: safeDate(it.date) ?? startOfTodayUTC(),
+            date: safeDate(it.date) ?? today,
             time: hhmm(it.time),
             category: (str(it.category, 32) ?? 'personal').toLowerCase(),
             priority: (str(it.priority, 16) ?? 'medium').toLowerCase(),
@@ -312,7 +314,7 @@ export async function materializeImport(
         await prisma.expense.create({
           data: {
             userId,
-            date: safeDate(it.date) ?? startOfTodayUTC(),
+            date: safeDate(it.date) ?? today,
             amount,
             category: (str(it.category, 32) ?? 'other').toLowerCase(),
             description: str(it.description, 500) ?? '',
@@ -472,6 +474,18 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
       materialized.tasks +
       materialized.expenses +
       materialized.habits;
+    if (createdTotal > 0) {
+      const parts = [
+        materialized.events && `встреч ${materialized.events}`,
+        materialized.tasks && `задач ${materialized.tasks}`,
+        materialized.expenses && `расходов ${materialized.expenses}`,
+        materialized.habits && `привычек ${materialized.habits}`,
+      ].filter(Boolean);
+      captureActivity(request.userId, {
+        type: 'file_imported',
+        content: `Импортировал файл «${safeName}»: ${parts.join(', ')}`,
+      });
+    }
 
     return reply.status(201).send({
       id: imported.id,

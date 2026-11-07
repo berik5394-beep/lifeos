@@ -505,7 +505,7 @@ export async function persistPlan(
     tree = await generatePlanTree(
       g,
       decision,
-      new Date().toISOString().slice(0, 10),
+      localDateStr(tz), // «сегодня» юзера, не UTC сервера
     );
   } catch {
     tree = null;

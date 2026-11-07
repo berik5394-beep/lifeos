@@ -1,6 +1,7 @@
 import type { ToolSideEffects } from '../tools/_types.js';
 import { recordEvent } from './episodic-memory.js';
 import { isV2MemoryEnabled } from '../lib/feature-flags.js';
+import { STAGE_LABEL } from './deals/stages.js';
 
 /**
  * ОДНА ПАМЯТЬ M1 — гибрид-захват, общий хелпер.
@@ -40,6 +41,109 @@ function num(obj: unknown, key: string): number | undefined {
 }
 
 /**
+ * Инструмент НЕ сделал дело: ошибка, «не найдено», ok:false, выключен флагом.
+ * Такое в память не пишем — раньше «закрой задачу X» без задачи X записывало
+ * «Выполнил задачу «X»», и мозг «помнил» несделанное.
+ */
+function isFailedResult(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false;
+  const r = result as Record<string, unknown>;
+  return (
+    (typeof r.error === 'string' && r.error.length > 0) ||
+    r.notFound === true ||
+    r.ok === false
+  );
+}
+
+const DIRECTION: Record<string, string> = { i_owe: 'я должен', owed_to_me: 'мне должны' };
+const money = (n: number | undefined) => (n === undefined ? '' : ` ${Math.round(n).toLocaleString('ru-RU').replace(/\u00a0/g, ' ')} ₸`);
+const q = (v: string | undefined) => (v ? ` «${v}»` : '');
+
+/**
+ * Остальные write-инструменты (раньше в память попадали только 8 из 43 —
+ * лимиты, цели, сделки, долги, решения, баланс мозг «не помнил»).
+ * Инструменты графа людей (remember_entity/link_relationship/end_relationship)
+ * пишут в память сами — здесь не дублируем.
+ */
+function summarizeOtherWrite(name: string, input: unknown, result: unknown): ActivitySummary | null {
+  switch (name) {
+    case 'cancel_task':
+      return { type: 'task_cancelled', content: `Отменил задачу${q(str(input, 'title'))}` };
+    case 'create_habit':
+      return { type: 'habit_created', content: `Завёл привычку${q(str(input, 'name'))}` };
+    case 'create_weekly_goal':
+      return { type: 'weekly_goal_created', content: `Цель на неделю${q(str(input, 'goalText'))}` };
+    case 'create_monthly_goal':
+      return { type: 'monthly_goal_created', content: `Цель на месяц${q(str(input, 'goalText'))}` };
+    case 'suggest_goal':
+      return { type: 'yearly_goal_created', content: `Цель на год${q(str(input, 'goalText'))}`, importance: 6 };
+    case 'decompose_goal':
+      return { type: 'goal_decomposed', content: `Разложил цель на шаги${q(str(input, 'goal'))}` };
+    case 'log_goal_progress':
+    case 'update_goal_progress': {
+      const pct = num(input, 'percent') ?? (input && (input as { valueIsPercent?: boolean }).valueIsPercent ? num(input, 'value') : undefined);
+      const val = pct === undefined ? num(input, 'value') : undefined;
+      return {
+        type: 'goal_progress',
+        content: `Прогресс цели${q(str(input, 'goalQuery'))}` + (pct !== undefined ? `: ${pct}%` : val !== undefined ? `: ${val}` : ''),
+      };
+    }
+    case 'edit_expense':
+      return { type: 'expense_edited', content: `Исправил расход${money(num(input, 'amount'))} → ${money(num(input, 'newAmount')).trim() || '?'}` };
+    case 'delete_expense':
+      return { type: 'expense_deleted', content: `Убрал расход${money(num(input, 'amount'))}${str(input, 'category') ? ` · ${str(input, 'category')}` : ''}` };
+    case 'delete_income':
+      return { type: 'income_deleted', content: `Убрал доход${money(num(input, 'amount'))}${str(input, 'source') ? ` · ${str(input, 'source')}` : ''}` };
+    case 'set_budget':
+      return { type: 'budget_set', content: `Лимит бюджета · ${str(input, 'category') ?? 'всего'}:${money(num(input, 'monthlyLimit'))}`, importance: 5 };
+    case 'set_balance':
+      return { type: 'balance_set', content: `Баланс на руках:${money(num(input, 'balance'))}`, importance: 6 };
+    case 'create_deal':
+      return {
+        type: 'deal_created',
+        content: `Сделка${q(str(input, 'title'))}${str(input, 'personName') ? ` с ${str(input, 'personName')}` : ''}${money(num(input, 'amount'))}`,
+        importance: 6,
+      };
+    case 'update_deal':
+      return {
+        type: 'deal_updated',
+        content: `Сделка${q(str(input, 'title') ?? str(input, 'personName'))}${str(input, 'stage') ? ` → «${(STAGE_LABEL as Record<string, string>)[str(input, 'stage') as string] ?? str(input, 'stage')}»` : ' обновлена'}`,
+      };
+    case 'set_sales_plan':
+      return { type: 'sales_plan_set', content: `План продаж${str(input, 'month') ? ` на ${str(input, 'month')}` : ''}:${money(num(input, 'amount'))}`, importance: 5 };
+    case 'create_obligation': {
+      const who = str(input, 'personName') ?? 'кто-то';
+      const dir = DIRECTION[str(input, 'direction') ?? ''] ?? 'долг';
+      return { type: 'obligation_added', content: `Долг (${dir}): ${who}${money(num(input, 'amount'))}${str(input, 'dueDate') ? ` до ${str(input, 'dueDate')}` : ''}`, importance: 6 };
+    }
+    case 'settle_obligation': {
+      const fin = result && typeof result === 'object' ? (result as { proposeFinance?: { who?: string; amount?: number } }).proposeFinance : undefined;
+      return { type: 'obligation_settled', content: `Закрыл долг${fin?.who ? ` · ${fin.who}` : ''}${money(fin?.amount)}` };
+    }
+    case 'cancel_obligation':
+      return { type: 'obligation_cancelled', content: 'Отменил долг' };
+    case 'log_decision':
+      return { type: 'decision_logged', content: `Решение${q(str(input, 'title'))}`, importance: 6 };
+    case 'review_decision':
+      return { type: 'decision_reviewed', content: `Итог решения${q(str(input, 'title'))}${str(input, 'verdict') ? `: ${str(input, 'verdict')}` : ''}` };
+    case 'set_birthday':
+      return { type: 'birthday_set', content: `День рождения${q(str(input, 'person'))}` };
+    case 'set_person_type':
+      return { type: 'person_type_set', content: `${str(input, 'person') ?? 'Человек'} — ${str(input, 'type') ?? 'тип'}` };
+    case 'clear_overdue':
+      return { type: 'overdue_cleared', content: 'Разгрёб просроченные задачи' };
+    case 'defer_overdue':
+      return { type: 'overdue_deferred', content: 'Перенёс просроченные задачи' };
+    case 'apply_insight':
+      return { type: 'insight_applied', content: 'Применил совет робота' };
+    case 'create_skill':
+      return { type: 'skill_created', content: `Новый навык${q(str(input, 'request'))}` };
+    default:
+      return null;
+  }
+}
+
+/**
  * Чистый маппер: имя write-инструмента + распарсенный input + результат
  * → {type, content}. null когда:
  *   - sideEffects !== 'write' (read/external не захватываем);
@@ -54,6 +158,7 @@ export function summarizeToolAction(
   sideEffects: ToolSideEffects,
 ): ActivitySummary | null {
   if (sideEffects !== 'write') return null;
+  if (isFailedResult(result)) return null;
 
   try {
     switch (name) {
@@ -111,12 +216,23 @@ export function summarizeToolAction(
           input && typeof input === 'object'
             ? (input as Record<string, unknown>).habitNames
             : undefined;
+        // Ненайденные привычки не «отмечены» — в память только реально отмеченные.
+        const notFoundRaw =
+          result && typeof result === 'object'
+            ? (result as Record<string, unknown>).notFoundNames
+            : undefined;
+        const missed = new Set(
+          Array.isArray(notFoundRaw)
+            ? notFoundRaw.filter((n): n is string => typeof n === 'string').map((n) => n.trim().toLowerCase())
+            : [],
+        );
         const list = Array.isArray(raw)
           ? raw
               .filter(
                 (n): n is string => typeof n === 'string' && n.trim().length > 0,
               )
               .map((n) => n.trim())
+              .filter((n) => !missed.has(n.toLowerCase()))
           : [];
         return {
           type: 'habit_logged',
@@ -153,7 +269,7 @@ export function summarizeToolAction(
         };
       }
       default:
-        return null;
+        return summarizeOtherWrite(name, input, result);
     }
   } catch {
     // Маппер НЕ должен ронять горячий путь tool-исполнения.

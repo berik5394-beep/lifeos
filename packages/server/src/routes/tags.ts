@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
 
 const createTagSchema = z.object({
   name: z.string().min(1, 'Название тега обязательно'),
@@ -38,6 +39,7 @@ export async function tagRoutes(app: FastifyInstance): Promise<void> {
         userId: request.userId,
       },
     });
+    captureActivity(request.userId, { type: 'tag_created', content: `Новый тег «${tag.name}»`, importance: 2 });
     return reply.status(201).send(tag);
   });
 
@@ -74,6 +76,7 @@ export async function tagRoutes(app: FastifyInstance): Promise<void> {
     }
 
     await prisma.tag.delete({ where: { id } });
+    captureActivity(request.userId, { type: 'tag_deleted', content: `Убрал тег «${tag.name}»`, importance: 2 });
     return reply.send({ success: true });
   });
 
@@ -98,6 +101,7 @@ export async function tagRoutes(app: FastifyInstance): Promise<void> {
     const taskTag = await prisma.taskTag.create({
       data: { tagId, taskId },
     });
+    captureActivity(request.userId, { type: 'task_tagged', content: `Задача «${task.title}» — тег «${tag.name}»`, importance: 2 });
     return reply.status(201).send(taskTag);
   });
 

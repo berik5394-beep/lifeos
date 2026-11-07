@@ -7,6 +7,9 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { proposeReschedule } from '../services/reschedule.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { civilDayRefs } from '../lib/tz.js';
 
 const quickAddSchema = z.object({
   // Quick-add — короткие фразы для парсинга в задачу. 500 chars с запасом.
@@ -30,8 +33,9 @@ export async function quickAddRoutes(app: FastifyInstance): Promise<void> {
   }, async (request, reply) => {
     const { text } = request.body as z.infer<typeof quickAddSchema>;
 
-    const today = new Date().toISOString().slice(0, 10);
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    // «Сегодня/завтра» — по календарю юзера (раньше UTC сервера: в Алматы
+    // 00:00–05:00 задача «на сегодня» уезжала во вчера).
+    const { today, tomorrow } = civilDayRefs(await getUserTimezone(request.userId));
 
     const systemPrompt = `Ты — парсер задач для приложения LifeOS. Пользователь вводит текст на русском, ты извлекаешь структурированные данные задачи.
 
@@ -89,6 +93,12 @@ export async function quickAddRoutes(app: FastifyInstance): Promise<void> {
           estimatedMinutes: parsed.estimatedMinutes,
           userId: request.userId,
         },
+      });
+
+      // Быстрое добавление — главный путь TapToAdd: в память мозга, как POST /tasks.
+      captureActivity(request.userId, {
+        type: 'task_created',
+        content: `Создал задачу «${task.title}» на ${parsed.date}${parsed.time ? ` в ${parsed.time}` : ''}`,
       });
 
       // Перегруз дня (флаг): быстрое добавление — тот же движок, что POST /tasks.

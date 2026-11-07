@@ -7,6 +7,7 @@ import { validate } from '../middleware/validate.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimiter, validatePassword, getClientIp } from '../middleware/security.js';
 import { disclaimerShort, disclaimerFull } from '../data/disclaimer.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
 
 // Приватный сентинел для обозначения race condition внутри транзакции —
 // выбрасывается из $transaction callback и ловится снаружи, чтобы сделать
@@ -494,6 +495,17 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(400).send({ message: 'Нет данных для обновления' });
     }
 
+    // Мозгу важно знать, что человек сменил стиль/время подъёма — иначе
+    // «почему ты вдруг строгий?» без следа в памяти.
+    const STYLE_RU: Record<string, string> = { friendly: 'дружелюбный', strict: 'строгий', calm: 'спокойный', toxic: 'токсичный' };
+    const changes = [
+      body.name !== undefined && `имя → ${body.name}`,
+      body.assistantStyle !== undefined && `стиль ассистента → ${STYLE_RU[body.assistantStyle] ?? body.assistantStyle}`,
+      body.assistantGender !== undefined && `голос → ${body.assistantGender === 'male' ? 'мужской' : 'женский'}`,
+      body.wakeUpTime !== undefined && `подъём → ${body.wakeUpTime}`,
+      body.currency !== undefined && `валюта → ${body.currency}`,
+      body.therapeuticMode !== undefined && `режим поддержки ${body.therapeuticMode ? 'вкл' : 'выкл'}`,
+    ].filter(Boolean);
     const user = await prisma.user.update({
       where: { id: userId },
       data: dataToUpdate,
@@ -508,6 +520,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         therapeuticMode: true,
       },
     });
+    // После успешной записи — в память (не пишем «сменил», если не сменилось).
+    captureActivity(userId, { type: 'profile_updated', content: `Настройки: ${changes.join(', ')}` });
 
     return reply.send({ user });
   });

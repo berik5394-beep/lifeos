@@ -107,6 +107,7 @@ model User {
   coinTransactions       CoinTransaction[]
   deals                  Deal[]
   salesPlans             SalesPlan[]
+  weekNotes              WeekNote[]
 }
 
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
@@ -405,6 +406,23 @@ model JournalEntry {
   notes      String?
 
   @@unique([userId, date])
+}
+
+/// Заметки недели из планера: заметки / что улучшить / благодарность / победы.
+/// Раньше жили только на телефоне — мозг рефлексию юзера не видел.
+model WeekNote {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekStart DateTime @db.Date
+  notes     String   @default("")
+  improve   String   @default("")
+  gratitude String   @default("")
+  wins      String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, weekStart])
 }
 
 model StepLog {

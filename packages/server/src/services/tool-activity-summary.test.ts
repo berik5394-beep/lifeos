@@ -162,3 +162,32 @@ describe('captureActivity — fire-and-forget structural', () => {
     expect(SRC).not.toMatch(/await recordEvent\(/);
   });
 });
+
+describe('summarizeToolAction — все write-инструменты и честность', () => {
+  it('инструмент не сделал дело (error / notFound / ok:false / выключен) → в память НЕ пишем', () => {
+    expect(summarizeToolAction('complete_task', { title: 'отчёт' }, { message: 'Задача не найдена', notFound: true }, 'write')).toBeNull();
+    expect(summarizeToolAction('log_decision', { title: 'x' }, { error: 'функция отключена' }, 'write')).toBeNull();
+    expect(summarizeToolAction('cancel_obligation', { id: '1' }, { error: 'обязательство не найдено' }, 'write')).toBeNull();
+    expect(summarizeToolAction('set_budget', { category: 'food', monthlyLimit: 1 }, { ok: false }, 'write')).toBeNull();
+  });
+  it('complete_multiple_habits: ненайденные привычки не попадают в «отметил»', () => {
+    const s = summarizeToolAction('complete_multiple_habits', { habitNames: ['зарядка', 'полёт на луну'] }, { notFoundNames: ['полёт на луну'] }, 'write');
+    expect(s?.content).toBe('Отметил привычки: зарядка');
+  });
+  it('лимиты, сделки, долги, цели, решения, баланс — теперь в памяти', () => {
+    expect(summarizeToolAction('set_budget', { category: 'food', monthlyLimit: 90000 }, { ok: true }, 'write')?.content).toBe('Лимит бюджета · food: 90 000 ₸');
+    expect(summarizeToolAction('create_deal', { title: 'Окна', personName: 'Серик', amount: 500000 }, {}, 'write')?.content).toBe('Сделка «Окна» с Серик 500 000 ₸');
+    expect(summarizeToolAction('update_deal', { personName: 'Серик', stage: 'won' }, {}, 'write')?.content).toBe('Сделка «Серик» → «Выиграна»');
+    expect(summarizeToolAction('create_obligation', { personName: 'Айдар', direction: 'i_owe', amount: 20000 }, {}, 'write')?.content).toBe('Долг (я должен): Айдар 20 000 ₸');
+    expect(summarizeToolAction('settle_obligation', { id: '1' }, { ok: true, settled: true, proposeFinance: { who: 'Айдар', amount: 20000 } }, 'write')?.content).toBe('Закрыл долг · Айдар 20 000 ₸');
+    expect(summarizeToolAction('create_weekly_goal', { goalText: 'прочитать книгу' }, {}, 'write')?.type).toBe('weekly_goal_created');
+    expect(summarizeToolAction('log_goal_progress', { goalQuery: 'книги', percent: 40 }, {}, 'write')?.content).toBe('Прогресс цели «книги»: 40%');
+    expect(summarizeToolAction('log_decision', { title: 'сменить работу' }, { ok: true }, 'write')?.type).toBe('decision_logged');
+    expect(summarizeToolAction('set_balance', { balance: 350000 }, { ok: true }, 'write')?.content).toBe('Баланс на руках: 350 000 ₸');
+    expect(summarizeToolAction('cancel_task', { title: 'купить хлеб' }, {}, 'write')?.content).toBe('Отменил задачу «купить хлеб»');
+  });
+  it('граф людей пишет память сам — здесь не дублируем', () => {
+    expect(summarizeToolAction('remember_entity', { name: 'мама' }, {}, 'write')).toBeNull();
+    expect(summarizeToolAction('link_relationship', { fromName: 'я', toName: 'мама' }, {}, 'write')).toBeNull();
+  });
+});

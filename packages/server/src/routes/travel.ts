@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify';
+import { getUserTimezone } from '../lib/user-context.js';
+import { civilDayRefs } from '../lib/tz.js';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -94,7 +96,8 @@ export async function travelRoutes(app: FastifyInstance): Promise<void> {
       const { text } = request.body as z.infer<typeof smartBookSchema>;
       const userId = request.userId;
 
-      const todayIso = new Date().toISOString().slice(0, 10);
+      // «Сегодня» по календарю юзера (раньше UTC: ночью «завтра» сдвигалось).
+      const todayIso = civilDayRefs(await getUserTimezone(userId)).today;
       const intent = await parseBookingIntent(text, todayIso);
 
       // Дата(ы) для подтягивания событий — для авиа берём departDate, для
