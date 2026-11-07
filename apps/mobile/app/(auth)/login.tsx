@@ -72,6 +72,14 @@ export default function LoginScreen() {
             autoCapitalize="none"
           />
 
+          <TouchableOpacity
+            onPress={() => (navigation as unknown as { navigate: (r: string, p?: object) => void }).navigate('ForgotPassword', { email: email.trim() })}
+            style={styles.forgot}
+            accessibilityRole="button"
+          >
+            <Text style={styles.link}>Забыли пароль?</Text>
+          </TouchableOpacity>
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Button
@@ -128,6 +136,7 @@ function createStyles(c: ReturnType<typeof useColors>) {
       fontSize: 14,
       textAlign: 'center',
     },
+    forgot: { alignSelf: 'flex-end', paddingVertical: 4 },
     footer: {
       flexDirection: 'row',
       justifyContent: 'center',

@@ -9,6 +9,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { rateLimiter, validatePassword, getClientIp } from '../middleware/security.js';
 import { disclaimerShort, disclaimerFull } from '../data/disclaimer.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
+import { requestPasswordReset, resetPassword, ResetError } from '../services/password-reset.js';
 
 // Приватный сентинел для обозначения race condition внутри транзакции —
 // выбрасывается из $transaction callback и ловится снаружи, чтобы сделать
@@ -31,6 +32,16 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email().max(254),
   password: z.string().max(128),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Некорректный email').max(254),
+});
+
+const resetPasswordSchema = z.object({
+  email: z.string().email('Некорректный email').max(254),
+  code: z.string().regex(/^\s*\d{6}\s*$/, 'Код — 6 цифр'),
+  newPassword: z.string().min(8, 'Пароль минимум 8 символов').max(128),
 });
 
 const refreshSchema = z.object({
@@ -475,6 +486,37 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       accessToken,
       refreshToken,
     });
+  });
+
+  // ----- FORGOT / RESET PASSWORD ------------------------------------------
+  // «Забыли пароль?»: код на почту (и в Telegram, если подключён) → новый пароль.
+  const forgotLimiter = rateLimiter({ max: 3, windowMs: 60_000, keyPrefix: 'forgot-password' });
+  const resetLimiter = rateLimiter({ max: 10, windowMs: 60_000, keyPrefix: 'reset-password' });
+
+  app.post('/auth/forgot-password', {
+    preHandler: [forgotLimiter, validate(forgotPasswordSchema)],
+  }, async (request) => {
+    const { email } = request.body as z.infer<typeof forgotPasswordSchema>;
+    await requestPasswordReset(email).catch((err) => {
+      console.warn('[auth] forgot-password failed:', err instanceof Error ? err.message : err);
+    });
+    // Ответ одинаковый, есть такой аккаунт или нет — почты не перебрать.
+    return {
+      message: 'Если аккаунт с этой почтой есть, мы отправили код на почту (и в Telegram, если он подключён). Код действует 15 минут.',
+    };
+  });
+
+  app.post('/auth/reset-password', {
+    preHandler: [resetLimiter, validate(resetPasswordSchema)],
+  }, async (request, reply) => {
+    const { email, code, newPassword } = request.body as z.infer<typeof resetPasswordSchema>;
+    try {
+      await resetPassword(email, code, newPassword);
+    } catch (err) {
+      if (err instanceof ResetError) return reply.status(err.status).send({ message: err.message });
+      throw err;
+    }
+    return { message: 'Пароль изменён. Войдите с новым паролем.' };
   });
 
   // ----- PROFILE UPDATE ----------------------------------------------------

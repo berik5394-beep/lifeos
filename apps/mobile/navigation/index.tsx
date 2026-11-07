@@ -27,6 +27,7 @@ import FinanceScreen from '@/screens/finance';
 // Auth screens
 import LoginScreen from '@/screens/login';
 import RegisterScreen from '@/screens/register';
+import ForgotPasswordScreen from '@/screens/forgot-password';
 
 // Other screens — lazy loaded for faster startup
 const OnboardingScreen = React.lazy(() => import('@/screens/onboarding'));
@@ -88,6 +89,7 @@ function AuthNavigator() {
     >
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
+      <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
     </AuthStack.Navigator>
   );
 }

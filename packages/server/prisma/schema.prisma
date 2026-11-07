@@ -54,6 +54,7 @@ model User {
   integrations           Integration[]
   interests              UserInterest[]
   refreshTokens          RefreshToken[]
+  passwordResetCodes     PasswordResetCode[]
   conversationSessions   ConversationSession[]
   travelPlans            TravelPlan[]
   contactCache           ContactCache[]
@@ -133,6 +134,21 @@ model SentNotification {
 // При выходе пользователя — все его токены отзываются.
 // Если кто-то попытается использовать уже отозванный токен → отозвать ВСЕ
 // (это значит refresh-токен утёк, нужно разлогинить пользователя везде).
+// «Забыли пароль?»: одноразовый 6-значный код (на почту / в Telegram).
+// Храним HMAC кода, не сам код. 15 минут, до 5 попыток, новый код гасит старый.
+model PasswordResetCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int       @default(0)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
+
 model RefreshToken {
   id         String   @id @default(cuid())
   userId     String
@@ -1147,18 +1163,18 @@ model Obligation {
 /// Робот-эпик, Часть 4: мебель в комнате робота (бесплатный набор, ключи —
 /// services/room-context.ts). x/y — доли комнаты 0..1. PUT /room заменяет целиком.
 model RoomItem {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  itemKey   String
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemKey    String
   /// Часть 6: вариант каталога «<класс>:<вид>» (room-catalog.ts); null — старый предмет Части 4.
   variantKey String?
   /// Часть 6: ячейка комнаты; null — в кладовке. Одна ячейка — один предмет.
-  slot      String?
+  slot       String?
   /// Часть 4 (свободная расстановка) — с Части 6 не используется.
-  x         Float    @default(0.5)
-  y         Float    @default(0.5)
-  createdAt DateTime @default(now())
+  x          Float    @default(0.5)
+  y          Float    @default(0.5)
+  createdAt  DateTime @default(now())
 
   @@unique([userId, slot])
   @@index([userId])

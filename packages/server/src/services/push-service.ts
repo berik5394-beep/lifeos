@@ -111,7 +111,7 @@ export function isTelegramChatGone(message: string | null | undefined): boolean 
 }
 
 /** Найти telegram chatId юзера (для зеркала). */
-async function getTelegramChatId(userId: string): Promise<string | null> {
+export async function getTelegramChatId(userId: string): Promise<string | null> {
   const integ = await prisma.integration.findFirst({
     where: { userId, provider: 'telegram', active: true },
     select: { settings: true },
