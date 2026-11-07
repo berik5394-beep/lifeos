@@ -12,18 +12,14 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { cacheDirectory, writeAsStringAsync } from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { Card } from '@/components/ui';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { AnimatedPress } from '@/components/ui/animated-press';
 import { hapticSuccess, hapticError } from '@/services/haptics';
-import { api } from '@/services/api';
+import { exportCSV, exportReport, progressStoryText, type ExportModule, type ReportPeriod } from '@/services/export';
 import type { Theme } from '@/constants/themes';
-import { useAuthStore } from '@/stores/auth-store';
-import { pluralN, DAYS } from '@/utils/plural';
 
 const CSV_MODULES = [
   { key: 'finance', label: 'Финансы', icon: '💰', desc: 'Все расходы и доходы' },
@@ -42,99 +38,41 @@ export default function ExportScreen() {
   const navigation = useNavigation();
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
 
-  const handleExportCsv = useCallback(async (module: string) => {
-    setLoadingKey(`csv_${module}`);
+  // Одна логика на все экраны — services/export (файл → «Поделиться»).
+  const run = useCallback(async (key: string, job: () => Promise<void>, fail: string) => {
+    setLoadingKey(key);
     try {
-      const response = await api.postRaw(`/export/csv/${module}`, undefined, useAuthStore.getState().token);
-      if (!response.ok) throw new Error('Ошибка экспорта');
-      const csvText = await response.text();
-
-      const filePath = `${cacheDirectory}${module}_export.csv`;
-      await writeAsStringAsync(filePath, csvText);
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(filePath, {
-          mimeType: 'text/csv',
-          UTI: 'public.comma-separated-values-text',
-        });
-      }
+      await job();
       hapticSuccess();
     } catch (err) {
       hapticError();
-      Alert.alert('Ошибка', 'Не удалось экспортировать данные');
+      Alert.alert('Ошибка', err instanceof Error && err.message ? err.message : fail);
     } finally {
       setLoadingKey(null);
     }
   }, []);
 
-  const handleExportReport = useCallback(async (period: string) => {
-    setLoadingKey(`report_${period}`);
-    try {
-      const data = await api.post<{ reportData: any; message: string }>('/export/pdf/report', { period }, useAuthStore.getState().token);
-      const report = data.reportData;
+  const handleExportCsv = useCallback(
+    (module: string) => run(`csv_${module}`, () => exportCSV(module as ExportModule), 'Не удалось экспортировать данные'),
+    [run],
+  );
 
-      const text = [
-        `📊 Отчёт LifeOS (${period === 'month' ? 'месяц' : 'год'})`,
-        `📅 ${report.startDate} — ${report.endDate}`,
-        '',
-        `✅ Задачи: ${report.tasks.completed}/${report.tasks.total} (${report.tasks.completionRate}%)`,
-        `🏃 Привычки: ${report.habits.totalCompletions} выполнений (${report.habits.activeCount} активных)`,
-        '',
-        `💰 Доходы: ${formatMoney(report.finance.totalIncomes)}`,
-        `💸 Расходы: ${formatMoney(report.finance.totalExpenses)}`,
-        `📈 Баланс: ${formatMoney(report.finance.balance)}`,
-        '',
-        '🏆 Топ расходов:',
-        ...report.finance.topCategories.map(
-          (cat: { category: string; amount: number }, i: number) =>
-            `  ${i + 1}. ${cat.category}: ${formatMoney(cat.amount)}`
-        ),
-      ].join('\n');
+  const handleExportReport = useCallback(
+    (period: string) => run(`report_${period}`, () => exportReport(period as ReportPeriod), 'Не удалось создать отчёт'),
+    [run],
+  );
 
-      await Share.share({
-        message: text,
-        title: 'Отчёт LifeOS',
-      });
-      hapticSuccess();
-    } catch (err) {
-      hapticError();
-      Alert.alert('Ошибка', 'Не удалось создать отчёт');
-    } finally {
-      setLoadingKey(null);
-    }
-  }, []);
-
-  const handleShareStory = useCallback(async () => {
-    setLoadingKey('story');
-    try {
-      const data = await api.post<{ stats: any; title: string; style: string }>('/export/story', {}, useAuthStore.getState().token);
-      const stats = data.stats;
-
-      const storyText = [
-        '🚀 Мой прогресс в LifeOS',
-        '',
-        `✅ Задачи сегодня: ${stats.tasksCompletedToday}/${stats.tasksTotalToday}`,
-        `🏃 Привычки: ${stats.habitsCompletedToday}/${stats.habitsTotalToday}`,
-        `🔥 Серия: ${pluralN(stats.habitsStreak, DAYS)}`,
-        `👟 Шаги: ${stats.stepsToday.toLocaleString()}`,
-        '',
-        `📊 За неделю: ${stats.tasksCompletedWeek}/${stats.tasksTotalWeek} задач`,
-        '',
-        '#LifeOS #Productivity',
-      ].join('\n');
-
-      await Share.share({
-        message: storyText,
-        title: 'Мой прогресс в LifeOS',
-      });
-      hapticSuccess();
-    } catch (err) {
-      hapticError();
-      Alert.alert('Ошибка', 'Не удалось создать историю');
-    } finally {
-      setLoadingKey(null);
-    }
-  }, []);
+  const handleShareStory = useCallback(
+    () =>
+      run(
+        'story',
+        async () => {
+          await Share.share({ message: await progressStoryText(), title: 'Мой прогресс в LifeOS' });
+        },
+        'Не удалось создать историю',
+      ),
+    [run],
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -233,10 +171,6 @@ export default function ExportScreen() {
       </ScrollView>
     </SafeAreaView>
   );
-}
-
-function formatMoney(amount: number): string {
-  return `${amount.toLocaleString('ru-RU')} ₸`;
 }
 
 function createStyles(c: Theme) {

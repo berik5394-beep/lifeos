@@ -11,7 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import { storage } from '@/services/storage';
 import { resyncDailyDigests, DEFAULT_WAKE_UP } from '@/services/daily-digests';
 import { saveAssistantProfile, loadAssistantProfile, type AssistantProfile } from '@/services/assistant-profile';
-import { exportCSV, saveCSVToFile } from '@/services/export';
+import { exportCSV } from '@/services/export';
 import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore } from '@/stores/theme-store';
 import { themeLabels, themeIcons, type ThemeName } from '@/constants/themes';
@@ -462,16 +462,9 @@ export default function SettingsScreen() {
   const handleExportModule = useCallback(async (mod: 'finance' | 'habits' | 'tasks') => {
     const labels = { finance: 'Финансы', habits: 'Привычки', tasks: 'Задачи' };
     try {
-      const csv = await exportCSV(mod);
-      const filename = `lifeos_${mod}_${new Date().toISOString().split('T')[0]}.csv`;
-      const path = await saveCSVToFile(csv, filename);
-      if (path) {
-        Alert.alert('Экспорт готов', `Файл сохранён: ${filename}`);
-      } else {
-        Alert.alert('Готово', `${labels[mod]} экспортированы`);
-      }
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось экспортировать данные');
+      await exportCSV(mod);
+    } catch (err) {
+      Alert.alert('Ошибка', err instanceof Error && err.message ? err.message : `Не удалось выгрузить: ${labels[mod]}`);
     }
   }, []);
 

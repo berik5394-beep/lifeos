@@ -8,6 +8,7 @@ import PDFDocument from 'pdfkit';
 import { join } from 'node:path';
 import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
+import { expenseCategoryLabel, frequencyLabel, habitCategoryLabel, priorityLabel, taskCategoryLabel } from '../lib/ru-labels.js';
 
 // A.6: реальный экспорт. Раньше /export/pdf и /export/story
 // возвращали JSON («success»), а файла не было — обман. Теперь —
@@ -79,7 +80,7 @@ export function renderReportPdf(rd: ReportData): Promise<Buffer> {
       section(
         'Топ категорий трат',
         rd.finance.topCategories.map(
-          (c) => `— ${c.category}: ${Math.round(c.amount)} ₸`,
+          (c) => `— ${expenseCategoryLabel(c.category)}: ${Math.round(c.amount)} ₸`,
         ),
       );
     }
@@ -126,7 +127,12 @@ export function renderStorySvg(
 const pdfReportSchema = z.object({
   period: z.enum(['month', 'year']),
   date: z.string().optional(),
+  // Телефону удобнее base64 в JSON: бинарный ответ fetch в RN читать ненадёжно.
+  format: z.enum(['pdf', 'base64']).optional(),
 });
+
+/** BOM: без него Excel открывает UTF-8 CSV кракозябрами вместо кириллицы. */
+const CSV_BOM = '\uFEFF';
 
 function escapeCsvField(value: string | number | boolean | null | undefined): string {
   if (value === null || value === undefined) return '';
@@ -140,7 +146,7 @@ function escapeCsvField(value: string | number | boolean | null | undefined): st
 function toCsv(headers: string[], rows: (string | number | boolean | null | undefined)[][]): string {
   const headerLine = headers.map(escapeCsvField).join(',');
   const dataLines = rows.map((row) => row.map(escapeCsvField).join(','));
-  return [headerLine, ...dataLines].join('\n');
+  return CSV_BOM + [headerLine, ...dataLines].join('\n');
 }
 
 export async function exportRoutes(app: FastifyInstance): Promise<void> {
@@ -172,7 +178,7 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
           ...expenses.map((e) => [
             'Расход' as string,
             e.date.toISOString().split('T')[0],
-            e.category,
+            expenseCategoryLabel(e.category),
             e.description,
             -e.amount,
           ]),
@@ -205,13 +211,13 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
 
         for (const habit of habits) {
           if (habit.logs.length === 0) {
-            rows.push([habit.name, habit.category, habit.frequency, habit.active ? 'Да' : 'Нет', '', '']);
+            rows.push([habit.name, habitCategoryLabel(habit.category), frequencyLabel(habit.frequency), habit.active ? 'Да' : 'Нет', '', '']);
           } else {
             for (const log of habit.logs) {
               rows.push([
                 habit.name,
-                habit.category,
-                habit.frequency,
+                habitCategoryLabel(habit.category),
+                frequencyLabel(habit.frequency),
                 habit.active ? 'Да' : 'Нет',
                 log.date.toISOString().split('T')[0],
                 log.autoCompleted ? 'Да' : 'Нет',
@@ -233,8 +239,8 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
         const headers = ['Задача', 'Категория', 'Приоритет', 'Дата', 'Время', 'Выполнена', 'Заметки'];
         const rows = tasks.map((t) => [
           t.title,
-          t.category,
-          t.priority,
+          taskCategoryLabel(t.category),
+          priorityLabel(t.priority),
           t.date.toISOString().split('T')[0],
           t.time ?? '',
           t.completed ? 'Да' : 'Нет',
@@ -262,7 +268,7 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
   app.post('/export/pdf/report', {
     preHandler: validate(pdfReportSchema),
   }, async (request, reply) => {
-    const { period, date } = request.body as z.infer<typeof pdfReportSchema>;
+    const { period, date, format } = request.body as z.infer<typeof pdfReportSchema>;
     const userId = request.userId;
 
     const refDate = date ? new Date(date) : new Date();
@@ -343,6 +349,9 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
     };
 
     const pdf = await renderReportPdf(reportData);
+    if (format === 'base64') {
+      return { filename: `lifeos-report-${reportData.startDate}.pdf`, base64: pdf.toString('base64') };
+    }
     return reply
       .header('Content-Type', 'application/pdf')
       .header(
@@ -377,7 +386,6 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
       weekCompletedTasks,
       todayHabitLogs,
       activeHabits,
-      todaySteps,
     ] = await Promise.all([
       prisma.task.count({
         where: { userId, date: today },
@@ -397,22 +405,23 @@ export async function exportRoutes(app: FastifyInstance): Promise<void> {
       prisma.habit.count({
         where: { userId, active: true },
       }),
-      prisma.stepLog.findUnique({
-        where: { userId_date: { userId, date: today } },
-        select: { steps: true, distanceKm: true },
-      }),
     ]);
 
     // Streak — delegated to streak-service (single findMany vs 365 counts)
     const streak = await calculateStreak(userId);
 
-    const svg = renderStorySvg('Мой прогресс', [
+    // Шагомер убран из приложения — шагов в истории нет (было вечное «0»).
+    const stats = [
       { label: 'Задачи сегодня', value: `${todayCompletedTasks}/${todayTasks}` },
       { label: 'Задачи за неделю', value: `${weekCompletedTasks}/${weekTasks}` },
       { label: 'Привычки сегодня', value: `${todayHabitLogs}/${activeHabits}` },
       { label: 'Серия', value: `${streak} дн` },
-      { label: 'Шаги сегодня', value: `${todaySteps?.steps ?? 0}` },
-    ]);
+    ];
+    // Телефон делится текстом (Instagram/Telegram SVG не принимают).
+    if ((request.body as { format?: string } | undefined)?.format === 'json') {
+      return { title: 'Мой прогресс в LifeOS', stats };
+    }
+    const svg = renderStorySvg('Мой прогресс', stats);
     return reply
       .header('Content-Type', 'image/svg+xml; charset=utf-8')
       .header('Content-Disposition', 'inline; filename="lifeos-story.svg"')

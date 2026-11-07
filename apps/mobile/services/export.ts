@@ -1,84 +1,64 @@
+import { cacheDirectory, EncodingType, writeAsStringAsync } from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
-import { File, Paths } from 'expo-file-system';
 
-// TODO: Add expo-sharing for native share sheet support when needed.
+/**
+ * Экспорт данных — один сервис для всех экранов (Экспорт, Интеграции,
+ * Настройки). Раньше экраны ждали от сервера JSON, а сервер отдаёт CSV-текст,
+ * PDF и SVG: «Отчёт» и «История» всегда падали, а в Интеграциях кнопки
+ * писали «Готово», ничего не создав.
+ */
+export type ExportModule = 'finance' | 'habits' | 'tasks';
+export type ReportPeriod = 'month' | 'year';
 
-type ExportModule = 'finance' | 'habits' | 'tasks';
+const today = (): string => {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 
-interface ExportReport {
-  title: string;
-  period: string;
-  data: Record<string, unknown>;
-  generatedAt: string;
+function token(): string {
+  const t = useAuthStore.getState().token;
+  if (!t) throw new Error('Войдите в аккаунт, чтобы выгрузить данные');
+  return t;
 }
 
-interface ExportStory {
-  imageUrl?: string;
-  text: string;
-  stats: Record<string, unknown>;
+async function share(uri: string, mimeType: string, UTI: string, dialogTitle: string): Promise<void> {
+  if (!(await Sharing.isAvailableAsync())) throw new Error('На этом устройстве нельзя поделиться файлом');
+  await Sharing.shareAsync(uri, { mimeType, UTI, dialogTitle });
 }
 
-export async function exportCSV(module: ExportModule): Promise<string> {
-  const token = useAuthStore.getState().token;
-  if (!token) throw new Error('Не авторизован');
-
-  try {
-    const data = await api.post<{ csv: string }>(
-      `/export/csv/${module}`,
-      {},
-      token,
-    );
-    return data.csv;
-  } catch (err) {
-    console.error(`Ошибка экспорта ${module} в CSV:`, err);
-    throw err;
-  }
+/** CSV модуля → файл → меню «Поделиться» (сохранить в Файлы, отправить). */
+export async function exportCSV(module: ExportModule): Promise<void> {
+  const res = await api.postRaw(`/export/csv/${module}`, undefined, token());
+  if (!res.ok) throw new Error('Сервер не отдал файл, попробуйте ещё раз');
+  const uri = `${cacheDirectory}lifeos_${module}_${today()}.csv`;
+  await writeAsStringAsync(uri, await res.text());
+  await share(uri, 'text/csv', 'public.comma-separated-values-text', 'Экспорт LifeOS');
 }
 
-export async function exportPDFReport(
-  period: 'month' | 'year',
-  date?: string,
-): Promise<ExportReport> {
-  const token = useAuthStore.getState().token;
-  if (!token) throw new Error('Не авторизован');
-
-  try {
-    const data = await api.post<ExportReport>(
-      '/export/pdf/report',
-      { period, date },
-      token,
-    );
-    return data;
-  } catch (err) {
-    console.error('Ошибка экспорта PDF отчёта:', err);
-    throw err;
-  }
+/** PDF-отчёт за месяц/год → файл → «Поделиться». */
+export async function exportReport(period: ReportPeriod): Promise<void> {
+  // base64 в JSON: читать бинарный ответ fetch в React Native ненадёжно.
+  const data = await api.post<{ filename?: string; base64?: string }>(
+    '/export/pdf/report',
+    { period, format: 'base64' },
+    token(),
+  );
+  if (!data.base64) throw new Error('Сервер не прислал отчёт, попробуйте ещё раз');
+  const uri = `${cacheDirectory}${data.filename ?? `lifeos-report-${today()}.pdf`}`;
+  await writeAsStringAsync(uri, data.base64, { encoding: EncodingType.Base64 });
+  await share(uri, 'application/pdf', 'com.adobe.pdf', 'Отчёт LifeOS');
 }
 
-export async function exportStory(): Promise<ExportStory> {
-  const token = useAuthStore.getState().token;
-  if (!token) throw new Error('Не авторизован');
-
-  try {
-    const data = await api.post<ExportStory>('/export/story', {}, token);
-    return data;
-  } catch (err) {
-    console.error('Ошибка генерации Stories:', err);
-    throw err;
-  }
-}
-
-export function saveCSVToFile(
-  csv: string,
-  filename: string,
-): string | null {
-  try {
-    const file = new File(Paths.document, filename);
-    file.write(csv);
-    return file.uri;
-  } catch (err) {
-    console.error('Ошибка сохранения CSV файла:', err);
-    return null;
-  }
+/** Текст «мой прогресс» для сторис/мессенджера (SVG они не принимают). */
+export async function progressStoryText(): Promise<string> {
+  const data = await api.post<{ title?: string; stats?: Array<{ label: string; value: string }> }>(
+    '/export/story',
+    { format: 'json' },
+    token(),
+  );
+  if (!data.stats || data.stats.length === 0) throw new Error('Не удалось собрать прогресс, попробуйте ещё раз');
+  return [`🚀 ${data.title ?? 'Мой прогресс в LifeOS'}`, '', ...data.stats.map((s) => `${s.label}: ${s.value}`), '', '#LifeOS'].join('\n');
 }

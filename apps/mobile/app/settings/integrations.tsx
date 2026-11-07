@@ -20,7 +20,7 @@ import { useColors } from '@/hooks/use-colors';
 import { useCalendarSync } from '@/hooks/use-calendar-sync';
 import { AnimatedPress } from '@/components/ui/animated-press';
 import { FadeInView } from '@/components/ui/fade-in-view';
-import { exportCSV, exportPDFReport, exportStory, saveCSVToFile } from '@/services/export';
+import { exportCSV, exportReport, progressStoryText } from '@/services/export';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -619,17 +619,10 @@ function ExportSection() {
 
     setExporting(true);
     try {
-      const csv = await exportCSV(module);
-      const filename = `lifeos_${module}_${new Date().toISOString().split('T')[0]}.csv`;
-      const path = await saveCSVToFile(csv, filename);
-
-      if (path) {
-        Alert.alert('Экспорт готов', `Файл сохранён: ${filename}`);
-      } else {
-        Alert.alert('Готово', `${labels[module]} экспортированы`);
-      }
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось экспортировать данные');
+      // Файл → меню «Поделиться» (раньше писали «Готово», ничего не создав).
+      await exportCSV(module);
+    } catch (err) {
+      Alert.alert('Ошибка', err instanceof Error && err.message ? err.message : `Не удалось выгрузить: ${labels[module]}`);
     } finally {
       setExporting(false);
     }
@@ -638,10 +631,9 @@ function ExportSection() {
   const handleMonthReport = useCallback(async () => {
     setExporting(true);
     try {
-      await exportPDFReport('month');
-      Alert.alert('Готово', 'Отчёт за месяц сформирован');
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось сформировать отчёт');
+      await exportReport('month');
+    } catch (err) {
+      Alert.alert('Ошибка', err instanceof Error && err.message ? err.message : 'Не удалось сформировать отчёт');
     } finally {
       setExporting(false);
     }
@@ -650,46 +642,12 @@ function ExportSection() {
   const handleStory = useCallback(async () => {
     setExporting(true);
     try {
-      const story = await exportStory();
-      // Open native share sheet: user picks Instagram / Telegram / WhatsApp.
-      const shareMessage = story.text
-        ? story.text
-        : 'Мой прогресс в LifeOS 🎯';
-
-      const result = await Share.share(
-        {
-          title: 'LifeOS — мой прогресс',
-          message: shareMessage,
-          ...(story.imageUrl ? { url: story.imageUrl } : {}),
-        },
-        {
-          dialogTitle: 'Поделиться прогрессом',
-          subject: 'LifeOS Stories',
-        },
+      // Текстом: Instagram/Telegram SVG не принимают. Без перехода в
+      // instagram-stories:// — он открывал пустую сторис, ничего не вставляя.
+      await Share.share(
+        { title: 'LifeOS — мой прогресс', message: await progressStoryText() },
+        { dialogTitle: 'Поделиться прогрессом', subject: 'LifeOS' },
       );
-
-      if (result.action === Share.dismissedAction) {
-        // User cancelled — no-op.
-        return;
-      }
-
-      // Offer direct Instagram Stories deep link (iOS only, and only if app installed).
-      if (Platform.OS === 'ios') {
-        const canOpenIG = await Linking.canOpenURL('instagram-stories://share');
-        if (canOpenIG) {
-          Alert.alert(
-            'Открыть в Instagram Stories?',
-            'Вставить текст прямо в сторис Instagram?',
-            [
-              { text: 'Нет', style: 'cancel' },
-              {
-                text: 'Открыть',
-                onPress: () => Linking.openURL('instagram-stories://share'),
-              },
-            ],
-          );
-        }
-      }
     } catch (err) {
       console.error('Share story error:', err);
       Alert.alert('Ошибка', 'Не удалось поделиться');
