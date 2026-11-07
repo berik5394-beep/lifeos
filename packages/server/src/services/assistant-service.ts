@@ -261,6 +261,25 @@ export async function gatherAssistantContext(
     therapeuticMode: user.therapeuticMode,
   };
 
+  // Подсказки робота за 2 дня (не смахнутые): чат знает, о чём он сам
+  // напомнил. Best-effort — сбой не роняет ответ.
+  try {
+    const nudges = await prisma.insight.findMany({
+      where: {
+        userId,
+        source: 'v2-proactivity',
+        dismissed: false,
+        createdAt: { gte: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+      select: { message: true },
+    });
+    if (nudges.length > 0) context.recentNudges = nudges.map((n) => n.message);
+  } catch {
+    /* не критично */
+  }
+
   // Проактивная погода: ТОЛЬКО если сегодня есть событие — тогда
   // «одевайся легко / выезжай раньше» рождается само, без случайного
   // web_search. Best-effort: сеть не должна валить/тормозить чат

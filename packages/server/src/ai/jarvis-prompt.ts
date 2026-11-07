@@ -93,6 +93,9 @@ export interface AssistantContext {
    *  сегодня (проактивно: «одевайся легко / выезжай раньше»). */
   weatherToday?: string;
   memories?: { type: string; content: string; importance: number }[];
+  /** Что робот сам недавно подсказал (нуджи за 2 дня, не смахнутые) — чтобы
+   *  «да, давай» в ответ на подсказку не уходило в пустоту. */
+  recentNudges?: string[];
   /** Phase 6 C5 — opt-out тёплого режима. false → orchestrator
    *  принудительно therapeuticMode=false в buildJarvisPrompt
    *  (даже если эмо-классификатор сработал). По умолчанию true. */
@@ -235,6 +238,13 @@ export function renderContext(
       '',
       'Что ты помнишь о пользователе:',
       ...ctx.memories.slice(0, 15).map((m) => `- ${m.content}`),
+    );
+  }
+  if (ctx.recentNudges && ctx.recentNudges.length > 0) {
+    L.push(
+      '',
+      'Ты сам недавно подсказал пользователю (если он отвечает на это — продолжай с этого места, не повторяй дословно):',
+      ...ctx.recentNudges.slice(0, 3).map((n) => `- ${n}`),
     );
   }
   return L.join('\n');
