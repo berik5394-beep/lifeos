@@ -39,6 +39,9 @@ import { hapticLight, hapticSelection } from '@/services/haptics';
 import { MOOD_LEVELS, moodLevel } from '@/constants/mood';
 import { useInTools } from '@/hooks/use-content-width';
 import { pluralN, DAYS } from '@/utils/plural';
+import { useWeekNotes, mondayKey } from '@/hooks/use-week-notes';
+import { storage } from '@/services/storage';
+import { formatDate } from '@/utils/dates';
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -276,11 +279,12 @@ const HabitCard = React.memo(function HabitCard({
     <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
       <TouchableOpacity
         activeOpacity={0.7}
+        onPress={handleToggle}
         onLongPress={handleLongPress}
         style={styles.container}
         accessibilityRole="button"
         accessibilityLabel={`${name}, ${isCompleted ? 'выполнено' : 'не выполнено'}${streak > 0 ? `, серия ${pluralN(streak, DAYS)}` : ''}`}
-        accessibilityHint="Удерживайте, чтобы изменить; сдвиньте влево, чтобы удалить"
+        accessibilityHint="Нажми — отметить; удерживай — изменить; сдвинь влево — удалить"
       >
         <TouchableOpacity
           activeOpacity={0.6}
@@ -319,6 +323,11 @@ interface WeeklyHabitRowProps {
   completedThisWeek: number;
   target: number;
   c: C;
+  /** Отмечена сегодня. */
+  doneToday?: boolean;
+  /** Тап — отметить/снять за сегодня (раньше строка не нажималась). */
+  onToggle?: () => void;
+  onLongPress?: () => void;
 }
 
 const WeeklyHabitRow = React.memo(function WeeklyHabitRow({
@@ -327,20 +336,32 @@ const WeeklyHabitRow = React.memo(function WeeklyHabitRow({
   completedThisWeek,
   target,
   c,
+  doneToday,
+  onToggle,
+  onLongPress,
 }: WeeklyHabitRowProps) {
   const cat = habitCategories[category as keyof typeof habitCategories] ?? habitCategories.personal;
   const progress = target > 0 ? Math.min((completedThisWeek / target) * 100, 100) : 0;
 
   return (
-    <View style={{
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={onToggle}
+      onLongPress={onLongPress}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: !!doneToday }}
+      accessibilityLabel={`${name}: ${completedThisWeek} из ${target} на неделе. Нажми — отметить сегодня`}
+      style={{
       backgroundColor: c.surface,
       borderRadius: borderRadius.md,
       padding: spacing.md,
       marginBottom: spacing.sm,
       flexDirection: 'row',
       alignItems: 'center',
+      borderWidth: doneToday ? 1 : 0,
+      borderColor: cat.color,
     }}>
-      <Text style={{ fontSize: 20, marginRight: spacing.sm }}>{cat.icon}</Text>
+      <Text style={{ fontSize: 20, marginRight: spacing.sm }}>{doneToday ? '✓' : cat.icon}</Text>
       <View style={{ flex: 1 }}>
         <Text style={{ fontSize: fontSize.sm, fontWeight: '600', color: c.text, marginBottom: 4 }}>
           {name}
@@ -362,7 +383,7 @@ const WeeklyHabitRow = React.memo(function WeeklyHabitRow({
       }}>
         {completedThisWeek}/{target}
       </Text>
-    </View>
+    </TouchableOpacity>
   );
 });
 
@@ -854,10 +875,21 @@ export default function HabitsScreen() {
   const [calYear, setCalYear] = useState(todayDate.getFullYear());
 
   // Analytics state (Slide 3)
-  const [waterGlasses, setWaterGlasses] = useState(0);
+  // Вода и рефлексия раньше жили только в памяти экрана и обнулялись.
+  const [waterGlasses, setWaterGlassesRaw] = useState(() => Number(storage.getString(`water:${formatDate(new Date())}`) ?? 0) || 0);
+  const setWaterGlasses = useCallback((f: (g: number) => number) => {
+    setWaterGlassesRaw((g) => {
+      const next = f(g);
+      storage.set(`water:${formatDate(new Date())}`, String(next));
+      return next;
+    });
+  }, []);
   const waterTarget = 8;
-  const [reflectionGood, setReflectionGood] = useState('');
-  const [reflectionImprove, setReflectionImprove] = useState('');
+  const [weekNoteFields, setWeekNote] = useWeekNotes(mondayKey());
+  const reflectionGood = weekNoteFields.wins;
+  const reflectionImprove = weekNoteFields.improve; // то же поле, что «Что можно сделать лучше?» в планере
+  const setReflectionGood = useCallback((v: string) => setWeekNote('wins', v), [setWeekNote]);
+  const setReflectionImprove = useCallback((v: string) => setWeekNote('improve', v), [setWeekNote]);
 
   // ─── Computed ─────────────────────────────────────────────────────────────
 
@@ -1304,12 +1336,12 @@ export default function HabitsScreen() {
   const handleAddWater = useCallback(() => {
     hapticLight();
     setWaterGlasses((g) => Math.min(g + 1, waterTarget + 4));
-  }, []);
+  }, [setWaterGlasses]);
 
   const handleRemoveWater = useCallback(() => {
     hapticLight();
     setWaterGlasses((g) => Math.max(g - 1, 0));
-  }, []);
+  }, [setWaterGlasses]);
 
   const handleOpenCreateModal = useCallback(() => setShowCreateModal(true), []);
   // Как задачи и цели: тап по строке, пишешь название, «Готово» — привычка есть
@@ -1475,6 +1507,9 @@ export default function HabitsScreen() {
                 completedThisWeek={weeklyCompletionMap[habit.id] ?? 0}
                 target={3}
                 c={c}
+                doneToday={todayLogs.some((l) => l.habitId === habit.id && l.completed)}
+                onToggle={() => void handleToggleHabit(habit.id, !todayLogs.some((l) => l.habitId === habit.id && l.completed))}
+                onLongPress={() => handleEditHabit(habit.id)}
               />
             </FadeInView>
           ))}

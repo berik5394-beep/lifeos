@@ -5,9 +5,19 @@ export interface WeekNotes {
   notes: string;
   improve: string;
   gratitude: string;
+  /** «Что получилось на этой неделе?» (рефлексия в «Привычках»). */
+  wins: string;
 }
 
-const EMPTY: WeekNotes = { notes: '', improve: '', gratitude: '' };
+const EMPTY: WeekNotes = { notes: '', improve: '', gratitude: '', wins: '' };
+
+/** Понедельник недели даты — ключ заметок (тот же, что в планере «Задач»). */
+export function mondayKey(d: Date = new Date()): string {
+  const m = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const wd = m.getDay();
+  m.setDate(m.getDate() + (wd === 0 ? -6 : 1 - wd));
+  return `${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}-${String(m.getDate()).padStart(2, '0')}`;
+}
 export const weekNotesKey = (weekStart: string) => `week_notes:${weekStart}`;
 
 export function loadWeekNotes(weekStart: string): WeekNotes {

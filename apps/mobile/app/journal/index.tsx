@@ -198,9 +198,11 @@ interface NotesCardProps {
   onChange: (text: string) => void;
   /** Поле в фокусе — экран докручивает его и «Сохранить» над клавиатурой. */
   onFocus?: () => void;
+  /** Ушёл с поля — заметка сохраняется. */
+  onBlur?: () => void;
 }
 
-const NotesCard = React.memo(function NotesCard({ value, onChange, onFocus }: NotesCardProps) {
+const NotesCard = React.memo(function NotesCard({ value, onChange, onFocus, onBlur }: NotesCardProps) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
   return (
@@ -218,6 +220,7 @@ const NotesCard = React.memo(function NotesCard({ value, onChange, onFocus }: No
         value={value}
         onChangeText={onChange}
         onFocus={onFocus}
+        onBlur={onBlur}
         textAlignVertical="top"
       />
     </Card>
@@ -298,6 +301,37 @@ export default function JournalScreen() {
     setSelectedDate((prev) => addDays(prev, 1));
   }, []);
 
+  // Каждое нажатие сохраняется сразу (раньше без «Сохранить» пропадало при смене
+  // даты). Повторный тап по выбранному — очистить.
+  const saveField = useCallback(
+    async (patch: { sleepHours?: number | null; energy?: number | null; mood?: number | null; notes?: string | null }) => {
+      try {
+        await saveEntry({ date: dateString, ...patch });
+      } catch (err) {
+        Alert.alert('Не сохранилось', err instanceof Error ? err.message : 'Попробуй ещё раз.');
+      }
+    },
+    [dateString, saveEntry],
+  );
+  const pickSleep = useCallback((v: number) => {
+    const next = sleepHours === v ? null : v;
+    setSleepHours(next);
+    void saveField({ sleepHours: next });
+  }, [sleepHours, saveField]);
+  const pickEnergy = useCallback((v: number) => {
+    const next = energy === v ? null : v;
+    setEnergy(next);
+    void saveField({ energy: next });
+  }, [energy, saveField]);
+  const pickMood = useCallback((v: number) => {
+    const next = mood === v ? null : v;
+    setMood(next);
+    void saveField({ mood: next });
+  }, [mood, saveField]);
+  const saveNotesOnBlur = useCallback(() => {
+    void saveField({ notes: notes.trim() || null });
+  }, [notes, saveField]);
+
   const handleSave = useCallback(async () => {
     try {
       await saveEntry({
@@ -331,10 +365,10 @@ export default function JournalScreen() {
           onNext={handleNextDay}
         />
 
-        <SleepCard value={sleepHours} onChange={setSleepHours} />
-        <EnergyCard value={energy} onChange={setEnergy} />
-        <MoodCard value={mood} onChange={setMood} />
-        <NotesCard value={notes} onChange={setNotes} onFocus={scrollNotesIntoView} />
+        <SleepCard value={sleepHours} onChange={pickSleep} />
+        <EnergyCard value={energy} onChange={pickEnergy} />
+        <MoodCard value={mood} onChange={pickMood} />
+        <NotesCard value={notes} onChange={setNotes} onFocus={scrollNotesIntoView} onBlur={saveNotesOnBlur} />
 
         <Button
           title="Сохранить"
