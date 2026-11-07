@@ -345,3 +345,27 @@ describe('buildInsights — сортировка и лимит', () => {
     expect(out[0].severity).toBe('critical');
   });
 });
+
+describe('buildInsights — пояс юзера (сервер в UTC, юзер в Алматы)', () => {
+  it('встреча в 14:00 по Алматы, сейчас 13:30 по Алматы → «через 30 мин»', () => {
+    const now = new Date('2026-11-06T08:30:00Z'); // 13:30 Алматы
+    const out = buildInsights(
+      {
+        ...emptyInput(),
+        tz: 'Asia/Almaty',
+        upcomingEvents: [{ title: 'Поставщик', date: new Date('2026-11-06T00:00:00Z'), startTime: '14:00' }],
+      },
+      now,
+    );
+    expect(out.find((i) => i.title === 'Скоро событие')?.message).toContain('через 30 мин');
+  });
+
+  it('вечер по Алматы (19:00), на сервере 14:00 UTC → вечерняя подсказка про привычки есть', () => {
+    const now = new Date('2026-11-06T14:00:00Z');
+    const out = buildInsights(
+      { ...emptyInput(), tz: 'Asia/Almaty', activeHabits: [{ id: 'h1', name: 'Чтение' }, { id: 'h2', name: 'Бег' }, { id: 'h3', name: 'Вода' }, { id: 'h4', name: 'Сон' }] },
+      now,
+    );
+    expect(out.map((i) => i.id)).toContain('habits_evening_lag');
+  });
+});

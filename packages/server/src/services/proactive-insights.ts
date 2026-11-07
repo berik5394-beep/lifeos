@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { getUserTimezone } from '../lib/user-context.js';
-import { localDateOnlyUTC } from '../lib/tz.js';
+import { localDateOnlyUTC, localDayStartUTC, localHour } from '../lib/tz.js';
 import { isV2GoalSlotEnabled } from '../lib/feature-flags.js';
 import { persistFlatInsights } from './insight-store.js';
 import { planVsFact } from './plan-vs-fact.js';
@@ -68,12 +68,30 @@ export interface InsightInput {
   yearlyGoals: Array<{ area: string; goalText: string; progress: number }>;
   /** Phase 4.4: дисмиссы инсайтов за окно (адаптация частоты/severity). */
   dismissals: Array<{ dismissKey: string }>;
+  /** Пояс юзера: час («вечер», «утро») и момент события — по нему. Без него
+   *  (старые тесты) — часы сервера; на Railway это UTC, т.е. в Алматы
+   *  «скоро событие» приходило на 5 часов позже. */
+  tz?: string;
+}
+
+/** Момент «дата события + ЧЧ:ММ» в поясе юзера (без tz — по часам сервера). */
+function eventInstant(date: Date, hh: number, mm: number, tz?: string): Date {
+  if (!tz) {
+    const t = new Date(date);
+    t.setHours(hh, mm, 0, 0);
+    return t;
+  }
+  // @db.Date — полночь UTC календарной даты; середина дня гарантирует тот же
+  // местный день в любом поясе, от него — местная полночь.
+  const midday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12));
+  return new Date(localDayStartUTC(tz, midday).getTime() + (hh * 60 + mm) * 60_000);
 }
 
 export async function generateInsights(userId: string): Promise<Insight[]> {
   // habit-day (2026-11-05): «сегодня» для @db.Date (задачи, отметки привычек) =
   // календарная дата юзера, не полночь сервера.
-  const today = localDateOnlyUTC(await getUserTimezone(userId));
+  const tz = await getUserTimezone(userId);
+  const today = localDateOnlyUTC(tz);
   const now = new Date();
   const currentMonth = now.getMonth() + 1;
   const currentYear = now.getFullYear();
@@ -189,6 +207,7 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
       upcomingTrip,
       yearlyGoals,
       dismissals,
+      tz,
     },
     now,
   );
@@ -243,7 +262,9 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
     upcomingTrip,
     yearlyGoals,
     dismissals,
+    tz,
   } = input;
+  const hourNow = tz ? localHour(tz, now) : now.getHours();
 
   const insights: Insight[] = [];
 
@@ -280,7 +301,7 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
     const doneToday = todayHabitLogs.length;
     const total = activeHabits.length;
     const ratio = doneToday / total;
-    const hour = now.getHours();
+    const hour = hourNow;
 
     // После 18:00 если меньше 30% сделано — мягкий пинок
     if (hour >= 18 && ratio < 0.3) {
@@ -344,8 +365,7 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
     for (const e of upcomingEvents) {
       if (!e.startTime) continue;
       const [hh, mm] = e.startTime.split(':').map(Number);
-      const eventTime = new Date(e.date);
-      eventTime.setHours(hh || 0, mm || 0, 0, 0);
+      const eventTime = eventInstant(e.date, hh || 0, mm || 0, tz);
       const minsUntil = (eventTime.getTime() - now.getTime()) / 60_000;
       if (minsUntil > 0 && minsUntil <= 60) {
         insights.push({
@@ -362,7 +382,7 @@ export function buildInsights(input: InsightInput, now: Date): Insight[] {
   }
 
   // ===== EVENTS BRIEF (если есть события на сегодня) =====
-  if (todayEvents.length > 0 && now.getHours() < 12) {
+  if (todayEvents.length > 0 && hourNow < 12) {
     const first = todayEvents[0];
     insights.push({
       id: 'today_events_brief',

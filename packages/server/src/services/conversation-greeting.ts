@@ -24,8 +24,8 @@ function timeGreeting(
   pendingTasks: number,
   events: number,
   streak: number,
+  hour: number,
 ): string {
-  const hour = new Date().getHours();
 
   if (hour >= 5 && hour < 12) {
     const g: Record<'female' | 'male', Record<AssistantStyle, string>> = {
@@ -53,9 +53,8 @@ function timeGreeting(
   return `Доброй ночи, ${name}. Поздновато, не пора ли отдохнуть?`;
 }
 
-function suggestionsFor(ctx: AssistantContext): string[] {
+function suggestionsFor(ctx: AssistantContext, hour: number): string[] {
   const s: string[] = [];
-  const hour = new Date().getHours();
   const pendingTasks = ctx.todayTasks.filter((t) => !t.completed).length;
   const pendingHabits =
     ctx.habitsProgress.total - ctx.habitsProgress.completed;
@@ -89,6 +88,9 @@ function suggestionsFor(ctx: AssistantContext): string[] {
 export function buildStartGreeting(
   gathered: GatheredContext,
   firstSessionToday: boolean,
+  /** Час в поясе пользователя (lib/tz localHour). Раньше брался час
+   *  сервера (Railway — UTC): в Алматы в 8 утра выходило «Доброй ночи». */
+  localHourNow: number,
 ): { text: string; suggestions: string[] } | null {
   if (!firstSessionToday) return null;
   const ctx: AssistantContext = gathered.context;
@@ -101,6 +103,7 @@ export function buildStartGreeting(
     c.tasksToday - c.tasksCompleted,
     ctx.upcomingEvents.length,
     c.currentStreak,
+    localHourNow,
   );
   // Phase 6 C1 — зеркало дисклеймера в боте (app-first-mirror-bot:
   // Telegram сейчас единственный живой канал). Показывается в первом
@@ -110,6 +113,6 @@ export function buildStartGreeting(
   // seen-флаг (малый аддитив схемы), НЕ строю вперёд твоего суждения.
   return {
     text: `${text}\n\n${disclaimerShort()}`,
-    suggestions: suggestionsFor(ctx),
+    suggestions: suggestionsFor(ctx, localHourNow),
   };
 }

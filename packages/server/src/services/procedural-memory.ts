@@ -17,6 +17,8 @@
  */
 
 import { prisma } from '../lib/prisma.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { localHour } from '../lib/tz.js';
 import type { Pattern } from '@prisma/client';
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
@@ -471,6 +473,9 @@ export async function extractTimeOfDayPatterns(userId: string): Promise<Pattern[
   });
 
   if (habits.length === 0) return patterns;
+  // Час — в поясе юзера: getHours() на Railway (UTC) давал «обычно в 4:00»
+  // вместо 9:00 по Алматы, и бриф/нуджи ссылались на неверное время.
+  const tz = await getUserTimezone(userId);
 
   for (const habit of habits) {
     try {
@@ -487,7 +492,7 @@ export async function extractTimeOfDayPatterns(userId: string): Promise<Pattern[
         select: { validAt: true },
       });
 
-      const hours = memRows.map((r) => r.validAt.getHours());
+      const hours = memRows.map((r) => localHour(tz, r.validAt));
       if (hours.length < 14) continue;
 
       const { peakHour, pct } = hourHistogramWindow(hours, 2);

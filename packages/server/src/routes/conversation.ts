@@ -31,6 +31,8 @@ import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { handleMessage } from '../services/jarvis-orchestrator.js';
 import { gatherAssistantContext } from '../services/assistant-service.js';
 import { buildStartGreeting } from '../services/conversation-greeting.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { localDayStartUTC, localHour } from '../lib/tz.js';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY || '',
@@ -128,16 +130,18 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
 
       // Первая ли это сессия за сегодня — гейт приветствия (1:1 с
       // прежним generateGreeting: не первая → greeting = null).
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
+      // «Сегодня» и час — в поясе пользователя (сервер живёт в UTC: граница
+      // дня в Алматы была в 05:00, а утром приветствие говорило «Доброй ночи»).
+      const tz = await getUserTimezone(userId);
+      const now = new Date();
+      const today = localDayStartUTC(tz, now);
+      const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
       const existingSession = await prisma.conversationSession.findFirst({
         where: { userId, createdAt: { gte: today, lt: tomorrow } },
         select: { id: true },
       });
 
-      const greeting = buildStartGreeting(gathered, !existingSession);
+      const greeting = buildStartGreeting(gathered, !existingSession, localHour(tz, now));
 
       const session = await prisma.conversationSession.create({
         data: {
