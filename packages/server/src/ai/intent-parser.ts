@@ -1,5 +1,5 @@
 import { MODELS } from '../lib/models.js';
-import { createAnthropic } from '../lib/anthropic.js';
+import { createAnthropic, QUICK_CALL } from '../lib/anthropic.js';
 import { civilDayRefs } from '../lib/tz.js';
 import { MAX_MONEY_AMOUNT } from '../lib/money.js';
 import { cachedSystem } from '../lib/prompt-cache.js';
@@ -484,7 +484,7 @@ export async function parseIntent(
       // Кэш: промпт парсера одинаков весь день (меняются только даты).
       system: cachedSystem(systemPrompt),
       messages: [{ role: 'user', content: text }],
-    });
+    }, QUICK_CALL);
 
     const content = response.content[0];
     if (content.type !== 'text') {

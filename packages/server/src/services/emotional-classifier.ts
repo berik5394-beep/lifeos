@@ -1,5 +1,5 @@
 import { MODELS } from '../lib/models.js';
-import { createAnthropic } from '../lib/anthropic.js';
+import { createAnthropic, QUICK_CALL } from '../lib/anthropic.js';
 
 /**
  * Phase 6 C3.1 — классификатор эмоциональных сообщений.
@@ -82,7 +82,7 @@ export async function classifyEmotional(text: string): Promise<boolean> {
         'отвечай НЕТ (транзакция). Эмоция должна быть ЯВНО про ' +
         'чувства. Ответь РОВНО одним словом: ДА или НЕТ.',
       messages: [{ role: 'user', content: text.slice(0, 500) }],
-    });
+    }, QUICK_CALL);
     const block = resp.content.find((b) => b.type === 'text');
     if (!block || block.type !== 'text') return false;
     // \b ASCII-only с кириллицей — мёртвый match. Haiku инструктирован

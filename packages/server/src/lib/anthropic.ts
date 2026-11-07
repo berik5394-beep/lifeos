@@ -25,3 +25,10 @@ export function createAnthropic(apiKey?: string): Anthropic {
     maxRetries: ANTHROPIC_MAX_RETRIES,
   });
 }
+
+/**
+ * Быстрые классификаторы хода (намерение, эмоция, кризис — Haiku, ~1 с):
+ * свой короткий предел вместо общих 60 с ×3, иначе при сбое Claude они
+ * съедали весь ход до главного ответа. У каждого есть запасной путь.
+ */
+export const QUICK_CALL = { timeout: 8_000, maxRetries: 1 } as const;

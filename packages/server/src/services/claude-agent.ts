@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { AiModelError } from '../lib/errors.js';
+import { AgentDeadlineError, callBudget, isPastDeadline } from '../lib/agent-deadline.js';
 // SSOT 9A.8: агент-цикл больше НЕ ходит в legacy LOCAL_TOOLS/
 // runLocalTool. Источник правды — реестр. agentToolSchemas =
 // проекция реестра БЕЗ confirm-tools (security-инвариант там же).
@@ -119,6 +120,12 @@ export interface AgentOptions {
    * MONEY-SAFETY: confirm-tool в цикле НИКОГДА не доходит до runRegistryTool.
    */
   onConfirmTool?: (tool: string, args: Record<string, unknown>) => Promise<string>;
+  /**
+   * Предел хода (epoch ms): каждый вызов Claude получает остаток времени,
+   * повторы SDK обрываются. Кончилось → AgentDeadlineError (не AiModelError),
+   * чтобы оркестратор не запускал запасные пути, а честно сказал «не успел».
+   */
+  deadlineAt?: number;
 }
 
 /**
@@ -142,7 +149,19 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     // worst-case вдвое. Полный учёт раундов в дневной лимит — отдельно.
     maxToolRounds = 3,
     onConfirmTool,
+    deadlineAt,
   } = opts;
+
+  // Один вызов Claude в пределах хода. Таймаут/обрыв по сроку → AgentDeadlineError.
+  const create = async (body: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> => {
+    const budget = callBudget(deadlineAt);
+    try {
+      return await anthropic.messages.create(body, budget);
+    } catch (err) {
+      if (isPastDeadline(deadlineAt)) throw new AgentDeadlineError();
+      throw new AiModelError(err instanceof Error ? err : new Error(String(err)));
+    }
+  };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const messages: any[] = [
@@ -191,17 +210,13 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
       ? await confirmToolNamesForUser(userId)
       : new Set<string>();
   for (let round = 0; round <= maxToolRounds; round++) {
-    try {
-      response = await anthropic.messages.create({
-        model,
-        max_tokens: maxTokens,
-        system: cachedSystem(system),
-        messages,
-        ...(tools ? { tools } : {}),
-      });
-    } catch (err) {
-      throw new AiModelError(err instanceof Error ? err : new Error(String(err)));
-    }
+    response = await create({
+      model,
+      max_tokens: maxTokens,
+      system: cachedSystem(system),
+      messages,
+      ...(tools ? { tools } : {}),
+    });
 
     // Fix A: web_search может вернуть stop_reason 'pause_turn' (длинный
     // server-side поиск) — это НЕ конец, надо переслать ответ чтобы
@@ -344,20 +359,14 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
       }
       messages.push({ role: 'user', content: realResults });
     }
-    try {
-      response = await anthropic.messages.create({
-        model,
-        max_tokens: 400,
-        system: cachedSystem(system),
-        messages,
-        // NO tools — заставляем выдать чистый текст (никаких новых
-        // tool_use; модель суммирует РЕАЛЬНЫЕ результаты выше).
-      });
-    } catch (err) {
-      throw new AiModelError(
-        err instanceof Error ? err : new Error(String(err)),
-      );
-    }
+    response = await create({
+      model,
+      max_tokens: 400,
+      system: cachedSystem(system),
+      messages,
+      // NO tools — заставляем выдать чистый текст (никаких новых
+      // tool_use; модель суммирует РЕАЛЬНЫЕ результаты выше).
+    });
   }
 
   // Финальный текст — из последнего ответа (после отработки инструментов).

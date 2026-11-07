@@ -1,5 +1,5 @@
 import { MODELS } from '../lib/models.js';
-import { createAnthropic } from '../lib/anthropic.js';
+import { createAnthropic, QUICK_CALL } from '../lib/anthropic.js';
 
 /**
  * Phase 6 C1 Safety — распознавание кризисных сигналов.
@@ -119,7 +119,7 @@ export async function classifyCrisis(text: string): Promise<boolean> {
         'Гипербола («умираю от смеха») — НЕТ. Ответь РОВНО одним ' +
         'словом: ДА или НЕТ.',
       messages: [{ role: 'user', content: text.slice(0, 1000) }],
-    });
+    }, QUICK_CALL);
     const block = resp.content.find((b) => b.type === 'text');
     if (!block || block.type !== 'text') return false;
     // \b ASCII-only → не работает с кириллицей. Haiku инструктирован

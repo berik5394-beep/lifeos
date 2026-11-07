@@ -15,6 +15,7 @@ import {
   type BookingContext,
 } from './smart-booking.js';
 import { runAgent } from './claude-agent.js';
+import { AgentDeadlineError, TURN_DEADLINE_MS, deadlineReplyText } from '../lib/agent-deadline.js';
 import { buildConfirmPrompt } from './confirm-prompt.js';
 import { matchesCrisisPhrase, classifyCrisis } from './safety-classifier.js';
 import { buildSafetyResponse } from './safety-response.js';
@@ -790,6 +791,16 @@ async function handleMessageCore(
   // SSOT Step 7: засекаем начало хода — бейдж считаем из ToolCall,
   // созданных за этот ход (факт), а не из NLP-выдумки.
   const turnStart = new Date();
+  // Предел на весь ход: телефон ждёт 60 с, робот укладывается раньше и честно
+  // говорит «не успел», а не висит минутами (каждый вызов Claude — до 60 с ×3).
+  const deadlineAt = turnStart.getTime() + TURN_DEADLINE_MS;
+  const deadlineReply = async (): Promise<string> => {
+    const acted = await getToolCounts(userId, turnStart)
+      .then((rows) => rows.some((r) => r.count > 0))
+      .catch(() => true); // не знаем — безопаснее «не повторяй сразу»
+    console.warn(`[jarvis] user=${userId} ход не уложился в ${TURN_DEADLINE_MS} мс (acted=${acted})`);
+    return deadlineReplyText(acted);
+  };
 
   // ---- Phase 6 C1 SAFETY GATE (САМЫЙ ПЕРВЫЙ, до всего) ----
   // Детерминированная сеть (matchesCrisisPhrase) — instant, zero-cost,
@@ -1259,6 +1270,7 @@ async function handleMessageCore(
             userId,
             maxTokens: 700,
             maxToolRounds: 3,
+            deadlineAt,
           });
         } catch {
           resolved = '';
@@ -1608,6 +1620,7 @@ async function handleMessageCore(
         webSearch: true,
         maxSearches: 3,
         maxTokens: 900,
+        deadlineAt,
         // Fix D: localTools НЕ на каждом сообщении. Для явной болтовни
         // («расскажи анекдот») они только грузят запрос (7 схем + риск
         // web_search+tools combo) без пользы. Включаем когда сообщение
@@ -1636,6 +1649,7 @@ async function handleMessageCore(
             webSearch: true,
             maxSearches: 3,
             maxTokens: 900,
+            deadlineAt,
             localTools: true,
             userId,
             onConfirmTool: async (tool, args) => {
@@ -1645,6 +1659,7 @@ async function handleMessageCore(
             },
           });
         } catch (retryErr) {
+          if (retryErr instanceof AgentDeadlineError) throw retryErr;
           console.warn(
             `[jarvis] повтор с инструментами упал user=${userId}:`,
             retryErr instanceof Error ? retryErr.message : retryErr,
@@ -1653,54 +1668,64 @@ async function handleMessageCore(
         }
       }
     } catch (agentErr) {
-      // Fix B/A: раньше этот catch был немой — отказ агентного цикла
-      // (в т.ч. возможная несовместимость web_search + custom tools)
-      // был невидим. Теперь логируем И деградируем ступенчато:
-      // 1) повтор БЕЗ localTools (чистый web_search-чат) — изолирует,
-      //    виноват ли tool-combo, и всё равно даёт умный ответ;
-      // 2) только если и это упало — не-агентный getAssistantReply.
-      console.warn(
-        `[jarvis] runAgent(localTools) failed user=${userId}: ${
-          agentErr instanceof Error ? agentErr.message : agentErr
-        } — retry without localTools`,
-      );
-      // ISSUE-1: если сообщение требовало инструментов юзера (данные/
-      // действие — mayNeedLocalTools=true), а tool-путь упал, то
-      // деградированный (web_search-only / не-агентный) ответ ЭТИХ
-      // инструментов НЕ имеет и МОЖЕТ выдумать «нашёл/записал/сделал».
-      // Это страховка перед 9A.8: при поломке агент-цикла честный
-      // отказ, а не тихая фабрикация. Чистая болтовня/инфо (tools не
-      // нужны) деградирует как раньше — web_search легитимен.
-      if (wantTools) {
-        // hermesForceTools: навык подсеян в system, но без localTools агент
-        // не сможет вызвать его инструменты — честный отказ лучше, чем
-        // ответ с «использовал инструмент X», которого в наборе нет.
-        console.warn(
-          `[jarvis] degraded+actionable user=${userId} → честный отказ (ISSUE-1), не фабрикуем`,
-        );
-        reply = DEGRADED_ACTIONABLE_REFUSAL;
+      if (agentErr instanceof AgentDeadlineError) {
+        // Время хода вышло — запасные пути (ещё вызовы Claude) не запускаем.
+        reply = await deadlineReply();
       } else {
-        try {
-          reply = await runAgent({
-            system,
-            userMessage: text,
-            history,
-            webSearch: true,
-            maxSearches: 3,
-            maxTokens: 900,
-          });
+        // Fix B/A: раньше этот catch был немой — отказ агентного цикла
+        // (в т.ч. возможная несовместимость web_search + custom tools)
+        // был невидим. Теперь логируем И деградируем ступенчато:
+        // 1) повтор БЕЗ localTools (чистый web_search-чат) — изолирует,
+        //    виноват ли tool-combo, и всё равно даёт умный ответ;
+        // 2) только если и это упало — не-агентный getAssistantReply.
+        console.warn(
+          `[jarvis] runAgent(localTools) failed user=${userId}: ${
+            agentErr instanceof Error ? agentErr.message : agentErr
+          } — retry without localTools`,
+        );
+        // ISSUE-1: если сообщение требовало инструментов юзера (данные/
+        // действие — mayNeedLocalTools=true), а tool-путь упал, то
+        // деградированный (web_search-only / не-агентный) ответ ЭТИХ
+        // инструментов НЕ имеет и МОЖЕТ выдумать «нашёл/записал/сделал».
+        // Это страховка перед 9A.8: при поломке агент-цикла честный
+        // отказ, а не тихая фабрикация. Чистая болтовня/инфо (tools не
+        // нужны) деградирует как раньше — web_search легитимен.
+        if (wantTools) {
+          // hermesForceTools: навык подсеян в system, но без localTools агент
+          // не сможет вызвать его инструменты — честный отказ лучше, чем
+          // ответ с «использовал инструмент X», которого в наборе нет.
           console.warn(
-            `[jarvis] degraded OK user=${userId}: web_search-only ответ сработал ` +
-              `(сообщение не требовало tools — фабрикации нет)`,
+            `[jarvis] degraded+actionable user=${userId} → честный отказ (ISSUE-1), не фабрикуем`,
           );
-        } catch (webErr) {
-          console.warn(
-            `[jarvis] runAgent(web_search-only) тоже упал user=${userId}: ${
-              webErr instanceof Error ? webErr.message : webErr
-            } — fallback getAssistantReply`,
-          );
-          const r = await getAssistantReply(userId, text, finalTherapeutic);
-          reply = r.text;
+          reply = DEGRADED_ACTIONABLE_REFUSAL;
+        } else {
+          try {
+            reply = await runAgent({
+              system,
+              userMessage: text,
+              history,
+              webSearch: true,
+              maxSearches: 3,
+              maxTokens: 900,
+              deadlineAt,
+            });
+            console.warn(
+              `[jarvis] degraded OK user=${userId}: web_search-only ответ сработал ` +
+                `(сообщение не требовало tools — фабрикации нет)`,
+            );
+          } catch (webErr) {
+            console.warn(
+              `[jarvis] runAgent(web_search-only) тоже упал user=${userId}: ${
+                webErr instanceof Error ? webErr.message : webErr
+              } — fallback getAssistantReply`,
+            );
+            if (webErr instanceof AgentDeadlineError) {
+              reply = await deadlineReply();
+            } else {
+              const r = await getAssistantReply(userId, text, finalTherapeutic);
+              reply = r.text;
+            }
+          }
         }
       }
     }
