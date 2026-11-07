@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { generateProactiveNotifications } from './proactive-notifications.js';
+import { withTimeout } from '../lib/with-timeout.js';
+import { composeMorningBrief } from './morning-brief.js';
 import { deliverNotification } from './push-service.js';
 import { deliverTopInsight } from './insight-store.js';
 import { runReflectorDaily } from './reflector-service.js';
@@ -178,7 +180,14 @@ async function tick(): Promise<void> {
           continue;
         }
 
-        const res = await deliverNotification(userId, n.title, n.body, {
+        // Этап 4: утренний бриф пересказывает мозг (стиль, бюджет, долги,
+        // перегруз, темп целей) — раз в день, уже после дедупа. Сбой/долго —
+        // честный шаблон из тех же фактов.
+        const body =
+          n.type === 'morning_briefing'
+            ? await withTimeout(composeMorningBrief(userId, n.body), 10_000, n.body).catch(() => n.body)
+            : n.body;
+        const res = await deliverNotification(userId, n.title, body, {
           type: n.type,
         });
         if (res.push || res.telegram) {
