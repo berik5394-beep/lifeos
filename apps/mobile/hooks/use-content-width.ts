@@ -22,3 +22,9 @@ export function useContentWidth(): number {
 export function useInTools(): boolean {
   return useContext(ContentWidthContext) != null;
 }
+
+/** Вкладка инструмента сейчас видна (спрятанные живут, но окна поверх не показывают). */
+export const ToolActiveContext = createContext<boolean>(true);
+export function useToolActive(): boolean {
+  return useContext(ToolActiveContext);
+}

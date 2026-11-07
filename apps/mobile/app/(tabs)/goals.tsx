@@ -35,6 +35,7 @@ import { hapticLight, hapticSelection } from '@/services/haptics';
 import { goalPercent, GOAL_STEP_PCT } from '@/utils/goal-progress';
 import { useInTools } from '@/hooks/use-content-width';
 import { pluralN, HABITS } from '@/utils/plural';
+import { useScheduleStore } from '@/stores/schedule-store';
 
 // Enable LayoutAnimation on Android
 if (
@@ -1105,9 +1106,11 @@ export default function GoalsScreen() {
     }
   }, [year, currentMonthStr, fetchYearlyGoals, fetchHabits, fetchStats]);
 
+  // Робот что-то записал или вернулись на вкладку после паузы — перечитать.
+  const scheduleRevision = useScheduleStore((st) => st.revision);
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [loadData, scheduleRevision]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);

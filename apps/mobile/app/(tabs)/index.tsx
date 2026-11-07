@@ -38,6 +38,7 @@ import { hapticLight, hapticSelection, hapticSuccess } from '@/services/haptics'
 import { moodEmoji } from '@/constants/mood';
 import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
 import { useYearActivity } from '@/hooks/use-year-activity';
+import { useToolActive } from '@/hooks/use-content-width';
 import { useRoomToolStore } from '@/stores/room-tool-store';
 
 function getGreeting(): string {
@@ -191,6 +192,8 @@ export default function PlannerScreen() {
   // Цитата звучит только по кнопке: раньше — сама при каждом открытии «Сегодня»,
   // поверх утреннего приветствия (два голоса сразу).
   const [quotePlaying, setQuotePlaying] = useState(false);
+  // Спрятанная вкладка не показывает окна поверх (приветствие догружается с сервера).
+  const toolActive = useToolActive();
   const [refreshing, setRefreshing] = useState(false);
 
   const { tasks, isLoading: tasksLoading, fetchTasks, toggleComplete, deleteTask } = useTaskStore();
@@ -222,10 +225,16 @@ export default function PlannerScreen() {
   const quote = useMemo(() => getRandomQuote(), []);
   const greeting = useMemo(() => getGreeting(), []);
 
-  // Ушёл с экрана — цитату не дочитываем.
+  // Ушёл с экрана или вкладка спрятана — цитату не дочитываем.
   useEffect(() => () => {
     Speech.stop();
   }, []);
+  useEffect(() => {
+    if (!toolActive && quotePlaying) {
+      Speech.stop();
+      setQuotePlaying(false);
+    }
+  }, [toolActive, quotePlaying]);
   const userName = user?.name ?? '';
 
   const currentMonday = useMemo(() => {
@@ -734,7 +743,7 @@ export default function PlannerScreen() {
 
       {/* Morning Greeting */}
       <MorningGreeting
-        visible={shouldShowGreeting}
+        visible={shouldShowGreeting && toolActive}
         onDismiss={dismissGreeting}
         greeting={morningGreeting}
         onChipPress={handleMorningChipPress}
@@ -742,7 +751,7 @@ export default function PlannerScreen() {
 
       {/* Evening Ritual */}
       <EveningRitual
-        visible={showEveningRitual}
+        visible={showEveningRitual && toolActive}
         onDismiss={handleDismissEveningRitual}
         message={eveningMessage}
         dayProgress={dayProgress}

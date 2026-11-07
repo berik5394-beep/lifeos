@@ -41,3 +41,18 @@ describe('без дубля шапки внутри дома', () => {
     expect(hits.some((i) => /inTools/.test(s.slice(Math.max(0, i - 200), i)))).toBe(true);
   });
 });
+
+describe('вкладки инструментов живут, а не создаются заново', () => {
+  const page = src('app/home/tools-page.tsx');
+  it('открытые вкладки остаются смонтированными и прячутся', () => {
+    expect(page).toMatch(/visited\.map/);
+    expect(page).toMatch(/hidden: \{ display: 'none' \}/);
+    expect(page).not.toMatch(/<Screen key=\{tab\} \/>/);
+  });
+  it('возврат после паузы — перечитать данные; окна поверх — только на активной', () => {
+    expect(page).toMatch(/STALE_TAB_MS[\s\S]*bump\(\)/);
+    expect(page).toMatch(/ToolActiveContext\.Provider value=\{k === tab\}/);
+    const dash = src('app/(tabs)/index.tsx');
+    expect(dash).toMatch(/visible=\{shouldShowGreeting && toolActive\}/);
+  });
+});

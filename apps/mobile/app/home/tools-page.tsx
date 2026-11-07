@@ -6,11 +6,12 @@ import { RobotAvatar } from '@/components/robot/robot-avatar';
 import { RobotSpeechBubble } from '@/components/robot/robot-speech-bubble';
 import { ChatReplyBubble } from '@/components/room/chat-reply-bubble';
 import { TOOL_SCREEN } from '@/components/room/tool-screens';
-import { ContentWidthContext } from '@/hooks/use-content-width';
+import { ContentWidthContext, ToolActiveContext } from '@/hooks/use-content-width';
 import { useColors } from '@/hooks/use-colors';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
 import { useSharedVoice } from '@/hooks/shared-voice';
 import { useChatStore } from '@/stores/chat-store';
+import { useScheduleStore } from '@/stores/schedule-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/services/api';
 import type { PanelDef } from '@/services/panels';
@@ -25,6 +26,8 @@ const ROBOT_STRIP = ROBOT + spacing.xs * 2;
 const BUBBLE_MS = 9000;
 const FRESH_REPLY_MS = 90_000;
 const VOICE_NOTE_MS = 4000;
+/** Вкладка простояла дольше — при возврате перечитать данные. */
+const STALE_TAB_MS = 30_000;
 
 /**
  * Экран инструментов (Berik: «комнату отдельно, инструменты отдельно»).
@@ -120,7 +123,19 @@ export const ToolsPage = memo(function ToolsPage({
     return () => clearTimeout(t);
   }, [explain]);
 
-  const Screen = TOOL_SCREEN[tab];
+  // Открытые вкладки живут и прячутся (раньше экран создавался заново на каждое
+  // переключение: 3–5 запросов, сброс прокрутки и под-вкладки). Вернулся на
+  // вкладку после 30+ с — экраны перечитывают данные (сигнал schedule-store).
+  const [visited, setVisited] = useState<ToolKey[]>([tab]);
+  const lastActive = useRef<Partial<Record<ToolKey, number>>>({});
+  useEffect(() => {
+    setVisited((v) => (v.includes(tab) ? v : [...v, tab]));
+    const was = lastActive.current[tab];
+    if (was != null && Date.now() - was > STALE_TAB_MS) useScheduleStore.getState().bump();
+    return () => {
+      lastActive.current[tab] = Date.now();
+    };
+  }, [tab]);
   const bubble = voiceBubble ? (
     <ChatReplyBubble text={voiceBubble} tail="left" />
   ) : showReply ? (
@@ -163,7 +178,16 @@ export const ToolsPage = memo(function ToolsPage({
 
       <View style={[styles.body, !kbOpen && styles.bodyAboveRobot]}>
         <ContentWidthContext.Provider value={width}>
-          <Screen key={tab} />
+          {visited.map((k) => {
+            const S = TOOL_SCREEN[k];
+            return (
+              <View key={k} style={[StyleSheet.absoluteFill, k !== tab && styles.hidden]} pointerEvents={k === tab ? 'auto' : 'none'}>
+                <ToolActiveContext.Provider value={k === tab}>
+                  <S />
+                </ToolActiveContext.Provider>
+              </View>
+            );
+          })}
         </ContentWidthContext.Provider>
       </View>
 
@@ -202,6 +226,7 @@ function createStyles(c: ReturnType<typeof useColors>) {
     tabText: { fontSize: fontSize.sm, color: c.textSecondary, fontWeight: '600' },
     tabTextOn: { color: c.text },
     body: { flex: 1 },
+    hidden: { display: 'none' },
     bodyAboveRobot: { marginBottom: ROBOT_STRIP },
     robot: { position: 'absolute', left: spacing.sm, bottom: spacing.xs },
     bubble: { position: 'absolute', left: ROBOT + spacing.sm, right: spacing.sm, bottom: spacing.xs },

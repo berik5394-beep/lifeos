@@ -14,6 +14,7 @@ import {
 import { KbScrollView } from '@/components/shared/kb-scroll-view';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useFinanceStore } from '@/stores/finance-store';
+import { useScheduleStore } from '@/stores/schedule-store';
 import { useBudgetStore } from '@/stores/budget-store';
 import { useDebtStore, parseDueDate, pickMoneyGoal, type Debt } from '@/stores/debt-store';
 import { useGoalStore } from '@/stores/goal-store';
@@ -643,9 +644,11 @@ export default function FinanceScreen() {
     ]);
   }, [monthKey, fetchSummary, fetchExpenses, fetchIncomes, fetchBudgets, fetchDebts, fetchYearlyGoals]);
 
+  // Робот что-то записал или вернулись на вкладку после паузы — перечитать.
+  const scheduleRevision = useScheduleStore((st) => st.revision);
   useEffect(() => {
     void loadData();
-  }, [loadData]);
+  }, [loadData, scheduleRevision]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
