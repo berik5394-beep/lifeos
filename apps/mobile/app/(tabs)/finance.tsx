@@ -15,6 +15,8 @@ import { KbScrollView } from '@/components/shared/kb-scroll-view';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useFinanceStore } from '@/stores/finance-store';
 import { useBudgetStore } from '@/stores/budget-store';
+import { useDebtStore, parseDueDate, pickMoneyGoal, type Debt } from '@/stores/debt-store';
+import { useGoalStore } from '@/stores/goal-store';
 import { Card, Button, Input, Modal, SlideTabs, SwipeableRow, TapToAdd } from '@/components/ui';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { expenseCategories } from '@/constants/categories';
@@ -96,18 +98,6 @@ function getBudgetStatusColor(
   if (pct >= 1) return c.danger;
   if (pct >= 0.8) return c.warning;
   return c.success;
-}
-
-// ---------------------------------------------------------------------------
-// Debt interface (local state, not persisted via store yet)
-// ---------------------------------------------------------------------------
-
-interface Debt {
-  id: string;
-  creditor: string;
-  amount: number;
-  paid: number;
-  deadline: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -351,56 +341,38 @@ const JournalIncomeRow = React.memo(function JournalIncomeRow({
 const DebtRow = React.memo(function DebtRow({
   debt,
   onDelete,
+  onSettle,
 }: {
   debt: Debt;
   onDelete: (id: string) => void;
+  onSettle: (id: string) => void;
 }) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
-  const progress = debt.amount > 0 ? Math.min(debt.paid / debt.amount, 1) : 0;
-  const remaining = Math.max(0, debt.amount - debt.paid);
+  const iOwe = debt.direction === 'i_owe';
+  const due = debt.dueDate ? debt.dueDate.slice(0, 10).split('-').reverse().join('.') : 'без срока';
 
-  // Сдвиг влево + красный минус — удаление без лишнего Alert.
-  const handleDelete = useCallback(() => {
-    onDelete(debt.id);
-  }, [debt.id, onDelete]);
+  // Сдвиг влево + красный минус — убрать (ошибся); «Вернули/Отдал» — закрыть.
+  const handleDelete = useCallback(() => onDelete(debt.id), [debt.id, onDelete]);
+  const handleSettle = useCallback(() => onSettle(debt.id), [debt.id, onSettle]);
 
   return (
-    <SwipeableRow onDelete={handleDelete} deleteLabel="Удалить долг">
+    <SwipeableRow onDelete={handleDelete} deleteLabel="Убрать долг">
       <View style={styles.debtRow}>
         <View style={styles.debtHeader}>
           <Text style={styles.debtCreditor} numberOfLines={1}>
-            {debt.creditor}
+            {iOwe ? `Я должен: ${debt.personName}` : `Мне должен: ${debt.personName}`}
           </Text>
-          <Text style={styles.debtDeadline}>{debt.deadline}</Text>
+          <Text style={styles.debtDeadline}>{due}</Text>
         </View>
         <View style={styles.debtAmounts}>
-          <Text style={styles.debtPaid}>
-            Выплачено: {formatMoney(debt.paid)}
+          <Text style={[styles.debtRemaining, { color: iOwe ? c.danger : c.success }]}>
+            {debt.amount != null ? formatMoney(debt.amount) : '—'}
           </Text>
-          <Text style={styles.debtRemaining}>
-            Осталось: {formatMoney(remaining)}
-          </Text>
+          <TouchableOpacity onPress={handleSettle} hitSlop={8} accessibilityRole="button" accessibilityLabel={iOwe ? 'Отдал долг' : 'Вернули долг'}>
+            <Text style={styles.debtSettle}>{iOwe ? 'Отдал' : 'Вернули'}</Text>
+          </TouchableOpacity>
         </View>
-        <View style={styles.debtProgressTrack}>
-          <View
-            style={[
-              styles.debtProgressFill,
-              {
-                width: `${progress * 100}%`,
-                backgroundColor:
-                  progress >= 1
-                    ? c.success
-                    : progress >= 0.5
-                      ? c.warning
-                      : c.danger,
-              },
-            ]}
-          />
-        </View>
-        <Text style={styles.debtProgressText}>
-          {Math.round(progress * 100)}% выплачено
-        </Text>
       </View>
     </SwipeableRow>
   );
@@ -510,24 +482,24 @@ export default function FinanceScreen() {
   // --- Debt form ---
   const [formCreditor, setFormCreditor] = useState('');
   const [formDeadline, setFormDeadline] = useState('');
+  const [formDirection, setFormDirection] = useState<Debt['direction']>('i_owe');
 
   // --- Budget form ---
   const [budgetCategory, setBudgetCategory] = useState('food');
   const [budgetLimit, setBudgetLimit] = useState('');
 
-  // --- Local debts (not persisted to backend yet) ---
-  const [debts, setDebts] = useState<Debt[]>([]);
+  // --- Долги — с сервера (те же, что голосом «Ахмет должен мне 500 000») ---
+  const debts = useDebtStore((s) => s.debts);
+  const fetchDebts = useDebtStore((s) => s.fetchDebts);
+  const addDebt = useDebtStore((s) => s.addDebt);
+  const settleDebt = useDebtStore((s) => s.settleDebt);
+  const removeDebt = useDebtStore((s) => s.removeDebt);
 
-  // --- Planned income (local state for tables) ---
-  const [plannedIncome, setPlannedIncome] = useState<Record<string, number>>({
-    salary: 0,
-    freelance: 0,
-    investments: 0,
-    other: 0,
-  });
-
-  // --- Savings goal (local) ---
-  const [savingsGoal, setSavingsGoal] = useState(500000);
+  // --- Цель накоплений — годовая финансовая цель с суммой; нет — честно «не задана»
+  //     (раньше здесь были зашитые 500 000 ₸) ---
+  const yearlyGoals = useGoalStore((s) => s.yearlyGoals);
+  const fetchYearlyGoals = useGoalStore((s) => s.fetchYearlyGoals);
+  const moneyGoal = useMemo(() => pickMoneyGoal(yearlyGoals), [yearlyGoals]);
 
   // --- Derived values ---
   const monthKey = useMemo(() => getMonthKey(currentDate), [currentDate]);
@@ -625,10 +597,6 @@ export default function FinanceScreen() {
     return srcMap;
   }, [incomes]);
 
-  const incomeTotalPlanned = useMemo(
-    () => Object.values(plannedIncome).reduce((s, v) => s + v, 0),
-    [plannedIncome],
-  );
 
   // Journal: filter by selected date
   const journalDateStr = useMemo(() => formatDate(journalDate), [journalDate]);
@@ -666,8 +634,10 @@ export default function FinanceScreen() {
       fetchExpenses(monthKey),
       fetchIncomes(monthKey),
       fetchBudgets(monthKey),
+      fetchDebts().catch(() => {}),
+      fetchYearlyGoals().catch(() => {}),
     ]);
-  }, [monthKey, fetchSummary, fetchExpenses, fetchIncomes, fetchBudgets]);
+  }, [monthKey, fetchSummary, fetchExpenses, fetchIncomes, fetchBudgets, fetchDebts, fetchYearlyGoals]);
 
   useEffect(() => {
     void loadData();
@@ -725,6 +695,7 @@ export default function FinanceScreen() {
     setFormDate('');
     setFormCreditor('');
     setFormDeadline('');
+    setFormDirection('i_owe');
     setBudgetCategory('food');
     setBudgetLimit('');
   }, []);
@@ -803,30 +774,42 @@ export default function FinanceScreen() {
     }
   }, [formAmount, formSource, journalDate, createIncome, loadData]);
 
-  const handleCreateDebt = useCallback(() => {
+  const handleCreateDebt = useCallback(async () => {
     const amount = parseFloat(formAmount);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert('Ошибка', 'Введите корректную сумму');
       return;
     }
     if (!formCreditor.trim()) {
-      Alert.alert('Ошибка', 'Укажите кредитора');
+      Alert.alert('Ошибка', formDirection === 'i_owe' ? 'Кому должен?' : 'Кто должен?');
       return;
     }
-    const newDebt: Debt = {
-      id: Date.now().toString(),
-      creditor: formCreditor.trim(),
-      amount,
-      paid: 0,
-      deadline: formDeadline || 'Не указан',
-    };
-    setDebts((prev) => [...prev, newDebt]);
-    setModalType(null);
-  }, [formAmount, formCreditor, formDeadline]);
+    const due = parseDueDate(formDeadline);
+    if (!due.ok) {
+      Alert.alert('Срок', due.error);
+      return;
+    }
+    try {
+      await addDebt({ personName: formCreditor.trim(), direction: formDirection, amount, dueDate: due.date });
+      setModalType(null);
+    } catch (err) {
+      Alert.alert('Не сохранилось', err instanceof Error ? err.message : 'Попробуй ещё раз.');
+    }
+  }, [formAmount, formCreditor, formDeadline, formDirection, addDebt]);
 
-  const handleDeleteDebt = useCallback((id: string) => {
-    setDebts((prev) => prev.filter((d) => d.id !== id));
-  }, []);
+  const handleDeleteDebt = useCallback(
+    (id: string) => {
+      removeDebt(id).catch((err) => Alert.alert('Не получилось', err instanceof Error ? err.message : 'Попробуй ещё раз.'));
+    },
+    [removeDebt],
+  );
+
+  const handleSettleDebt = useCallback(
+    (id: string) => {
+      settleDebt(id).catch((err) => Alert.alert('Не получилось', err instanceof Error ? err.message : 'Попробуй ещё раз.'));
+    },
+    [settleDebt],
+  );
 
   const handleSetBudget = useCallback(async () => {
     const limit = parseFloat(budgetLimit);
@@ -1112,34 +1095,23 @@ export default function FinanceScreen() {
 
           {/* Header */}
           <View style={styles.tableContainer}>
-            <TableRow
-              cells={['Категория', 'Планируемый', 'Фактический']}
-              isHeader
-            />
+            {/* Колонка «Планируемый» убрана: план нигде не задавался и всегда был «—». */}
+            <TableRow cells={['Категория', 'Получено']} isHeader />
 
             {/* Income rows */}
             {INCOME_SOURCES.map((src) => {
               const actual = incomeBySource[src.key] ?? 0;
-              const planned = plannedIncome[src.key] ?? 0;
               return (
                 <TableRow
                   key={src.key}
-                  cells={[
-                    `${src.icon} ${src.label}`,
-                    planned > 0 ? formatMoney(planned) : '—',
-                    actual > 0 ? formatMoney(actual) : '—',
-                  ]}
+                  cells={[`${src.icon} ${src.label}`, actual > 0 ? formatMoney(actual) : '—']}
                 />
               );
             })}
 
             {/* Total */}
             <TableRow
-              cells={[
-                'Итого',
-                incomeTotalPlanned > 0 ? formatMoney(incomeTotalPlanned) : '—',
-                formatMoney(totalIncomes),
-              ]}
+              cells={['Итого', formatMoney(totalIncomes)]}
               isTotal
             />
           </View>
@@ -1213,61 +1185,43 @@ export default function FinanceScreen() {
           </View>
 
           <View style={styles.savingsContainer}>
+            {/* Только то, что знаем: остаток месяца и годовая цель с суммой.
+                Раньше: зашитая цель 500 000 ₸ и «среднемесячное» из одного месяца. */}
             <View style={styles.savingsRow}>
-              <Text style={styles.savingsLabel}>Текущие накопления</Text>
-              <Text
-                style={[
-                  styles.savingsAmount,
-                  { color: savings > 0 ? c.success : c.danger },
-                ]}
-              >
-                {formatMoney(savings)}
+              <Text style={styles.savingsLabel}>Отложено в этом месяце</Text>
+              <Text style={[styles.savingsAmount, { color: balance >= 0 ? c.success : c.danger }]}>
+                {formatMoney(balance)}
               </Text>
             </View>
 
-            <View style={styles.savingsRow}>
-              <Text style={styles.savingsLabel}>Цель накоплений</Text>
-              <Text style={[styles.savingsAmount, { color: c.primary }]}>
-                {formatMoney(savingsGoal)}
+            {moneyGoal ? (
+              <>
+                <View style={styles.savingsRow}>
+                  <Text style={styles.savingsLabel} numberOfLines={2}>
+                    Цель «{moneyGoal.goalText}»
+                  </Text>
+                  <Text style={[styles.savingsAmount, { color: c.primary }]}>
+                    {formatMoney(moneyGoal.target ?? 0)}
+                  </Text>
+                </View>
+                <View style={styles.savingsProgressTrack}>
+                  <View
+                    style={[
+                      styles.savingsProgressFill,
+                      {
+                        width: `${Math.min(Math.max(moneyGoal.progress, 0), 1) * 100}%`,
+                        backgroundColor: moneyGoal.progress >= 1 ? c.success : c.primary,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.savingsProgressText}>{Math.round(moneyGoal.progress * 100)}% от цели</Text>
+              </>
+            ) : (
+              <Text style={styles.savingsProgressText}>
+                Цели с суммой пока нет — задай её в «Целях», например «Накопить 1 000 000».
               </Text>
-            </View>
-
-            <View style={styles.savingsProgressTrack}>
-              <View
-                style={[
-                  styles.savingsProgressFill,
-                  {
-                    width: `${Math.min(
-                      savingsGoal > 0 ? (savings / savingsGoal) * 100 : 0,
-                      100,
-                    )}%`,
-                    backgroundColor:
-                      savings >= savingsGoal ? c.success : c.primary,
-                  },
-                ]}
-              />
-            </View>
-            <Text style={styles.savingsProgressText}>
-              {savingsGoal > 0
-                ? Math.round((savings / savingsGoal) * 100)
-                : 0}
-              % от цели
-            </Text>
-
-            <View style={styles.savingsTrend}>
-              <Text style={styles.savingsTrendLabel}>
-                Среднемесячное накопление
-              </Text>
-              <Text
-                style={[
-                  styles.savingsTrendValue,
-                  { color: balance >= 0 ? c.success : c.danger },
-                ]}
-              >
-                {balance >= 0 ? '+' : ''}
-                {formatMoney(balance)} / мес
-              </Text>
-            </View>
+            )}
           </View>
         </Card>
 
@@ -1289,6 +1243,7 @@ export default function FinanceScreen() {
                 key={debt.id}
                 debt={debt}
                 onDelete={handleDeleteDebt}
+                onSettle={handleSettleDebt}
               />
             ))
           )}
@@ -1305,18 +1260,16 @@ export default function FinanceScreen() {
       c,
       styles,
       incomeBySource,
-      plannedIncome,
-      incomeTotalPlanned,
       totalIncomes,
       budgetTableData,
       budgetTotals,
-      savings,
-      savingsGoal,
+      moneyGoal,
       balance,
       debts,
       openBudgetModal,
       openDebtModal,
       handleDeleteDebt,
+      handleSettleDebt,
     ],
   );
 
@@ -1699,9 +1652,25 @@ export default function FinanceScreen() {
         title="Новый долг"
       >
         <ScrollView keyboardShouldPersistTaps="handled">
+          <View style={styles.debtDirRow}>
+            {(['i_owe', 'owed_to_me'] as const).map((d) => {
+              const on = formDirection === d;
+              return (
+                <TouchableOpacity
+                  key={d}
+                  style={[styles.debtDirChip, on && { backgroundColor: c.primary + '30', borderColor: c.primary }]}
+                  onPress={() => setFormDirection(d)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                >
+                  <Text style={[styles.debtDirText, on && { color: c.primary }]}>{d === 'i_owe' ? 'Я должен' : 'Мне должны'}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
           <Input
-            label="Кредитор"
-            placeholder="Кому должен"
+            label={formDirection === 'i_owe' ? 'Кому' : 'Кто'}
+            placeholder={formDirection === 'i_owe' ? 'Банк, Серик…' : 'Ахмет…'}
             value={formCreditor}
             onChangeText={setFormCreditor}
           />
@@ -1716,7 +1685,7 @@ export default function FinanceScreen() {
           />
 
           <Input
-            label="Срок возврата"
+            label="Срок возврата (можно пусто)"
             placeholder="Например: 01.06.2026"
             value={formDeadline}
             onChangeText={setFormDeadline}
@@ -1725,7 +1694,7 @@ export default function FinanceScreen() {
 
           <Button
             title="Добавить долг"
-            onPress={handleCreateDebt}
+            onPress={() => void handleCreateDebt()}
             style={styles.submitButton}
           />
         </ScrollView>
@@ -2188,6 +2157,18 @@ function createStyles(c: C) {
       justifyContent: 'space-between',
       marginBottom: spacing.xs,
     },
+    debtSettle: { color: c.primary, fontSize: fontSize.sm, fontWeight: '600' },
+    debtDirRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
+    debtDirChip: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.xl,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surfaceLight,
+    },
+    debtDirText: { color: c.textSecondary, fontSize: fontSize.sm, fontWeight: '600' },
     debtPaid: {
       color: c.success,
       fontSize: fontSize.xs,

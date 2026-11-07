@@ -37,6 +37,7 @@ import { FadeInView } from '@/components/ui/fade-in-view';
 import { hapticLight, hapticSelection, hapticSuccess } from '@/services/haptics';
 import { moodEmoji } from '@/constants/mood';
 import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
+import { useYearActivity } from '@/hooks/use-year-activity';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -305,22 +306,10 @@ export default function PlannerScreen() {
     return tasks.filter((t) => t.date.slice(0, 10) === dayDate);
   }, [tasks, selectedDayIndex, weekDays]);
 
-  // Heatmap data: compute completion % per day from tasks
-  const heatmapData = useMemo(() => {
-    const map: Record<string, number> = {};
-    const byDate: Record<string, { total: number; done: number }> = {};
-    tasks.forEach((t) => {
-      // Сервер отдаёт дату ISO-строкой ('…T00:00:00.000Z') — сравниваем по дню.
-      const d = t.date.slice(0, 10);
-      if (!byDate[d]) byDate[d] = { total: 0, done: 0 };
-      byDate[d].total++;
-      if (t.completed) byDate[d].done++;
-    });
-    Object.entries(byDate).forEach(([date, { total, done }]) => {
-      map[date] = total > 0 ? Math.round((done / total) * 100) : 0;
-    });
-    return map;
-  }, [tasks]);
+  // «Активность за год» — с сервера за весь год (раньше — по задачам одной
+  // недели). Ключ перечитывания — отметки задач на экране.
+  const activityKey = useMemo(() => tasks.map((t) => `${t.id}:${t.completed ? 1 : 0}`).join(','), [tasks]);
+  const heatmapData = useYearActivity(activityKey);
 
   const analytics = useMemo(() => {
     const total = tasks.length;

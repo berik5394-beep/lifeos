@@ -35,6 +35,8 @@ import { getWeekDays, isToday } from '@/utils/dates';
 import { useColors } from '@/hooks/use-colors';
 import { TagChip } from '@/components/ui/tag-chip';
 import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
+import { bestWeekday } from '@/utils/task-stats';
+import { useWeekNotes } from '@/hooks/use-week-notes';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -163,26 +165,6 @@ function toDateString(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-function getBestDay(tasks: TaskItem[]): string {
-  const dayMap: Record<number, { total: number; done: number }> = {};
-  for (const t of tasks) {
-    const d = new Date(t.date).getDay();
-    const idx = d === 0 ? 6 : d - 1;
-    if (!dayMap[idx]) dayMap[idx] = { total: 0, done: 0 };
-    dayMap[idx].total++;
-    if (t.completed) dayMap[idx].done++;
-  }
-  let bestIdx = 0;
-  let bestRate = 0;
-  for (const [idx, val] of Object.entries(dayMap)) {
-    const rate = val.total > 0 ? val.done / val.total : 0;
-    if (rate > bestRate) {
-      bestRate = rate;
-      bestIdx = Number(idx);
-    }
-  }
-  return RUSSIAN_DAYS_FULL[bestIdx];
-}
 
 // ─── Memoized Sub-Components ─────────────────────────────────────────────────
 
@@ -549,9 +531,6 @@ export default function TasksScreen() {
   // Edit modal form state
 
   // Week planner notes
-  const [weekNotes, setWeekNotes] = useState('');
-  const [weekImprove, setWeekImprove] = useState('');
-  const [weekGratitude, setWeekGratitude] = useState('');
 
   // Перегруз дня: «Подтвердить» сдвинул график → перечитать месяц.
   const scheduleRevision = useScheduleStore((s) => s.revision);
@@ -589,6 +568,12 @@ export default function TasksScreen() {
   }, [monthTasks]);
 
   const weekDays = useMemo(() => getWeekDays(currentWeek), [currentWeek]);
+  // Заметки недели хранятся на телефоне по неделям (раньше пропадали при уходе с экрана).
+  const [weekNoteFields, setWeekNote] = useWeekNotes(toDateString(weekDays[0].date));
+  const { notes: weekNotes, improve: weekImprove, gratitude: weekGratitude } = weekNoteFields;
+  const setWeekNotes = useCallback((v: string) => setWeekNote('notes', v), [setWeekNote]);
+  const setWeekImprove = useCallback((v: string) => setWeekNote('improve', v), [setWeekNote]);
+  const setWeekGratitude = useCallback((v: string) => setWeekNote('gratitude', v), [setWeekNote]);
 
   const weekTasks = useMemo(() => {
     const monday = getMonday(currentWeek);
@@ -721,7 +706,11 @@ export default function TasksScreen() {
   }, [tasks]);
 
   // Best day
-  const bestDay = useMemo(() => getBestDay(tasks), [tasks]);
+  // Лучший день — по задачам загруженного месяца; данных мало — так и пишем.
+  const bestDay = useMemo(() => {
+    const idx = bestWeekday(tasks);
+    return idx == null ? 'мало данных' : RUSSIAN_DAYS_FULL[idx];
+  }, [tasks]);
 
   // Habit mini tracker data
   const allHabitLogs = useMemo(() => {
@@ -1178,7 +1167,7 @@ export default function TasksScreen() {
           />
           <InsightRow
             icon={'\u2B50'}
-            label="Лучший день"
+            label="Лучший день месяца"
             value={bestDay}
             colors={c}
           />

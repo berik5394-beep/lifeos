@@ -18,6 +18,8 @@ interface YearlyGoal {
   area: string;
   goalText: string;
   progress: number;
+  /** Числовая величина цели (1 000 000 ₸, 50 книг); null — без числа. */
+  target?: number | null;
   habits?: { id: string; name: string; category: string }[];
 }
 
