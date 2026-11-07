@@ -32,6 +32,7 @@ import RegisterScreen from '@/screens/register';
 const OnboardingScreen = React.lazy(() => import('@/screens/onboarding'));
 const JournalScreen = React.lazy(() => import('@/screens/journal'));
 const SettingsScreen = React.lazy(() => import('@/screens/settings'));
+const RobotMemoryScreen = React.lazy(() => import('@/screens/robot-memory'));
 const IntegrationsScreen = React.lazy(() => import('@/screens/integrations'));
 const ImportScreen = React.lazy(() => import('@/screens/import'));
 const ScheduleImportScreen = React.lazy(() => import('@/screens/schedule-import'));
@@ -247,6 +248,18 @@ export default function Navigation() {
             <RootStack.Screen name="Export" component={ExportScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="LifeInsights" component={LifeInsightsScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="Legal" component={LegalScreen} options={{ headerShown: false }} />
+            {/* Робот-друг, пункт 1: что робот о тебе помнит (с «неправда»). */}
+            <RootStack.Screen
+              name="RobotMemory"
+              component={RobotMemoryScreen}
+              options={{
+                headerShown: true,
+                title: 'Что я о тебе помню',
+                headerStyle: { backgroundColor: theme.background },
+                headerTintColor: theme.text,
+                headerTitleStyle: { fontWeight: '600' },
+              }}
+            />
           </>
         )}
       </RootStack.Navigator>

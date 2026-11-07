@@ -28,6 +28,7 @@ export type RootStackParamList = {
   Export: undefined;
   LifeInsights: undefined;
   Legal: undefined;
+  RobotMemory: undefined;
 };
 
 export type AuthStackParamList = {
