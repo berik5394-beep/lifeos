@@ -16,6 +16,7 @@ import {
 } from './smart-booking.js';
 import { runAgent } from './claude-agent.js';
 import { AgentDeadlineError, TURN_DEADLINE_MS, deadlineReplyText } from '../lib/agent-deadline.js';
+import { userNumberClaims, ungroundedClaims } from '../lib/chat-number-claims.js';
 import { buildConfirmPrompt } from './confirm-prompt.js';
 import { matchesCrisisPhrase, classifyCrisis } from './safety-classifier.js';
 import { buildSafetyResponse } from './safety-response.js';
@@ -749,6 +750,23 @@ export async function runConfirmedAction(
       err instanceof Error ? err.message : err,
     );
     return 'Не получилось выполнить — попробуй ещё раз?';
+  }
+}
+
+/** Замер выдуманных чисел в ответе чата (только лог, ответ не меняется). */
+async function logUngroundedNumbers(userId: string, reply: string, sources: string[], since: Date): Promise<void> {
+  try {
+    if (userNumberClaims(reply).length === 0) return;
+    const calls = await prisma.toolCall.findMany({
+      where: { userId, createdAt: { gte: since } },
+      select: { inputJson: true, outputJson: true },
+    });
+    const bad = ungroundedClaims(reply, [...sources, JSON.stringify(calls)]);
+    if (bad.length > 0) {
+      console.warn(`[numguard] user=${userId} ungrounded=${bad.join(',')} tools=${calls.length} reply="${reply.slice(0, 160).replace(/\n/g, ' ')}"`);
+    }
+  } catch {
+    /* замер — не ломает ход */
   }
 }
 
@@ -1730,6 +1748,11 @@ async function handleMessageCore(
       }
     }
   }
+
+  // Числа о делах пользователя («осталось 12 000 ₸», «3 задачи»), которых нет
+  // ни в контексте, ни в словах пользователя, ни в инструментах хода, —
+  // пока только пишем в лог (замер перед тем, как исправлять ответ). В фоне.
+  void logUngroundedNumbers(userId, reply, [system, text, ...history.map((h) => h.content)], turnStart);
 
   // Фоновое извлечение задач/фактов (ambient-фича). Возврат НЕ
   // используем для бейджа — SSOT Step 7: бейдж только из аудита.
