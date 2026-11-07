@@ -27,7 +27,7 @@ export interface PersonMeetingBrief {
 }
 
 const TYPE_LABEL: Record<PersonType, string> = {
-  client: 'клиент', investor: 'инвестор', partner: 'партнёр', family: 'семья', friend: 'друг',
+  client: 'клиент', investor: 'инвестор', partner: 'партнёр', family: 'семья', friend: 'друг', team: 'команда',
 };
 
 /**

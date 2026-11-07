@@ -18,7 +18,7 @@ const MAX_FACTS = 80;
 const MAX_PEOPLE = 30;
 
 const PERSON_TYPE: Record<string, string> = {
-  client: 'клиент', investor: 'инвестор', partner: 'партнёр', family: 'семья', friend: 'друг',
+  client: 'клиент', investor: 'инвестор', partner: 'партнёр', family: 'семья', friend: 'друг', team: 'команда',
 };
 const REL_LABEL: Record<string, string> = {
   family: 'семья', friend: 'друг', colleague: 'коллега', partner: 'партнёр',

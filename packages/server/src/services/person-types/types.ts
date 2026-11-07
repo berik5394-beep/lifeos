@@ -1,4 +1,4 @@
-export type PersonType = 'client' | 'partner' | 'investor' | 'family' | 'friend';
+export type PersonType = 'client' | 'partner' | 'investor' | 'family' | 'friend' | 'team';
 
 export interface TypedPerson {
   id: string;
@@ -22,6 +22,7 @@ const WEIGHTS: Record<PersonType, number> = {
   partner: 0.9,
   family: 0.7,
   friend: 0.55,
+  team: 0.5, // с командой видишься и так — «давно не связывался» не спамим
 };
 
 /** Единый источник веса типа. Не задан/неизвестен → 0.6 (нейтрально между business и личным). */
@@ -53,6 +54,7 @@ export function pickNeglectedKeyPerson(
 
 const TYPE_LABEL: Record<PersonType, string> = {
   client: 'клиент', investor: 'инвестор', partner: 'партнёр', family: 'семья', friend: 'друг',
+  team: 'команда',
 };
 
 /** Текст нуджа. Деньги-aware: с owed добавляет сумму долга тебе. */

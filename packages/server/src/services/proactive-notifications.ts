@@ -4,6 +4,7 @@ import { countOverduePending } from './task-overdue.js';
 import { isV2PersonTypesEnabled, isV2TaskReminderEnabled } from '../lib/feature-flags.js';
 import { buildPersonMeetingBriefs } from './person-types/meeting-impl.js';
 import { meetingPushBody } from './person-types/meeting.js';
+import { delegationHints, delegationLine, durationMin, getHourRate, listTeam, LONG_MEETING_MIN, meetingCostLine } from './time-value.js';
 import { calculateStreak } from './streak-service.js';
 import { listDealStepsForDay } from './deals/service.js';
 import { dealStepLabel, plural } from './deals/format.js';
@@ -56,8 +57,8 @@ function getToday(tz: string, at: Date = new Date()): Date {
  * 19:00 локально, а evening 21:00 = 02:00 ночи. `tz` обязателен.
  * Симметрия с timeToDate(time, tz) — без default'а на server local.
  */
-export function daySlot(hour: number, tz: string): Date {
-  return localDaySlot(hour, tz);
+export function daySlot(hour: number, tz: string, at: Date = new Date()): Date {
+  return localDaySlot(hour, tz, at);
 }
 
 function getMonthRange(): { start: Date; end: Date } {
@@ -596,6 +597,29 @@ export function tomorrowPreviewText(name: string, events: PreviewEvent[], taskCo
   return `${name}, ${parts.join(' ')}.${early ? ' Начало раннее — ложись пораньше.' : ''}`;
 }
 
+/** Строки «время = деньги»: самая длинная встреча с ценой + до 2 «передать?». */
+export async function timeValueLines(
+  userId: string,
+  events: Array<{ title: string; startTime: string | null; endTime?: string | null }>,
+  taskTitles: string[],
+  now: Date = new Date(),
+): Promise<string[]> {
+  const out: string[] = [];
+  const longest = events
+    .map((e) => ({ title: e.title, min: durationMin(e.startTime, e.endTime) }))
+    .filter((e) => e.min !== null)
+    .sort((a, b) => (b.min ?? 0) - (a.min ?? 0))[0];
+  if (longest && (longest.min ?? 0) >= LONG_MEETING_MIN) {
+    const line = meetingCostLine(longest.title, longest.min, await getHourRate(userId, now));
+    if (line) out.push(line);
+  }
+  if (taskTitles.length > 0) {
+    const team = await listTeam(userId);
+    if (team.length > 0) out.push(...delegationHints(taskTitles, team).map(delegationLine));
+  }
+  return out;
+}
+
 /**
  * Предупредить заранее: в 20:00 по местному времени — что ждёт завтра.
  * Пусто завтра — ничего не шлём. Без 20:00 не собираем впустую.
@@ -606,16 +630,19 @@ export async function generateTomorrowPreview(
   name: string,
   now: Date = new Date(),
 ): Promise<ProactiveNotification[]> {
-  const scheduledFor = daySlot(20, tz);
+  const scheduledFor = daySlot(20, tz, now);
   if (now < scheduledFor) return [];
-  const tomorrow = new Date(getToday(tz).getTime() + 86_400_000);
-  const [events, taskCount] = await Promise.all([
-    prisma.calendarEvent.findMany({ where: { userId, date: tomorrow }, select: { title: true, startTime: true } }),
-    prisma.task.count({ where: { userId, date: tomorrow, completed: false, cancelled: false } }),
+  const tomorrow = new Date(getToday(tz, now).getTime() + 86_400_000);
+  const [events, tasks] = await Promise.all([
+    prisma.calendarEvent.findMany({ where: { userId, date: tomorrow }, select: { title: true, startTime: true, endTime: true } }),
+    prisma.task.findMany({ where: { userId, date: tomorrow, completed: false, cancelled: false }, select: { title: true }, take: 50 }),
   ]);
-  const body = tomorrowPreviewText(name, events, taskCount);
+  const body = tomorrowPreviewText(name, events, tasks.length);
   if (!body) return [];
-  return [{ title: 'Завтра', body, type: 'tomorrow_preview', scheduledFor }];
+  // Время = деньги и команда (jarvis-roadmap №3): сколько стоит самая длинная
+  // встреча и какие дела по части кого-то из команды. Нет цены часа / команды — без строк.
+  const extra = await timeValueLines(userId, events, tasks.map((t) => t.title), now).catch(() => []);
+  return [{ title: 'Завтра', body: [body, ...extra].join(' '), type: 'tomorrow_preview', scheduledFor }];
 }
 
 // ---------------------------------------------------------------------------

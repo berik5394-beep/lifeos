@@ -29,7 +29,8 @@ describe('generateTomorrowPreview (тест-БД)', () => {
   async function mk() {
     return (await prisma.user.create({ data: { email: `tp-${Date.now()}-${Math.random()}@a.test`, name: 'Лейла', passwordHash: 'x', timezone: tz } })).id;
   }
-  const late = new Date(Date.now() + 24 * 3_600_000); // точно после 20:00 сегодняшнего слота
+  // Сегодня 20:30 по Алматы (UTC+5) — после слота «Завтра»; «завтра» считается от него.
+  const late = new Date(localDateOnlyUTC(tz).getTime() + 15.5 * 3_600_000);
 
   it('после 20:00 — встреча завтра в тексте; до 20:00 — пусто', async () => {
     const u = await mk();
