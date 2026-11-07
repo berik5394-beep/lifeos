@@ -1,7 +1,9 @@
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localDateOnlyUTC, localDaySlot, localHour, localDayOfWeek } from '../lib/tz.js';
 import { countOverduePending } from './task-overdue.js';
-import { isV2TaskReminderEnabled } from '../lib/feature-flags.js';
+import { isV2PersonTypesEnabled, isV2TaskReminderEnabled } from '../lib/feature-flags.js';
+import { buildPersonMeetingBriefs } from './person-types/meeting-impl.js';
+import { meetingPushBody } from './person-types/meeting.js';
 import { calculateStreak } from './streak-service.js';
 import { listDealStepsForDay } from './deals/service.js';
 import { dealStepLabel, plural } from './deals/format.js';
@@ -34,9 +36,9 @@ export interface ProactiveNotification {
  * для юзера в Almaty после 19:00 UTC server думал "завтра", DB query
  * `date: today` возвращал not юзерский день. Bug-class.
  */
-function getToday(tz: string): Date {
+function getToday(tz: string, at: Date = new Date()): Date {
   // FIX 2026-06-06: @db.Date task/event queries → UTC-полночь календарной даты.
-  return localDateOnlyUTC(tz);
+  return localDateOnlyUTC(tz, at);
 }
 
 /**
@@ -76,9 +78,9 @@ function getMonthRange(): { start: Date; end: Date } {
  * tz УБРАН специально — каждый caller обязан подумать о зоне юзера
  * (User.timezone). НЕТ tz → передавай "UTC" явно с обоснованием.
  */
-export function timeToDate(time: string, tz: string): Date {
+export function timeToDate(time: string, tz: string, at: Date = new Date()): Date {
   const [hours, minutes] = time.split(':').map(Number);
-  const dayStart = localDayStartUTC(tz);
+  const dayStart = localDayStartUTC(tz, at);
   return new Date(dayStart.getTime() + ((hours * 60 + minutes) * 60_000));
 }
 
@@ -97,11 +99,11 @@ function isSundayLocal(tz: string): boolean {
 // ---------------------------------------------------------------------------
 // 1. Event reminders — 1 hour and 30 minutes before upcoming CalendarEvents
 // ---------------------------------------------------------------------------
-async function generateEventReminders(
+export async function generateEventReminders(
   userId: string,
+  now: Date = new Date(),
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
-  const now = new Date();
 
   // Phase 7 P4 (E): fetch tz first → today корректно по локальному дню.
   const user = await prisma.user.findUnique({
@@ -109,7 +111,7 @@ async function generateEventReminders(
     select: { timezone: true },
   });
   const tz = user?.timezone || 'UTC';
-  const today = getToday(tz);
+  const today = getToday(tz, now);
 
   // W11-фикс: event.startTime — HH:MM в локальной TZ юзера; чтобы
   // «за 1ч/30мин» считать корректно, конвертируем в UTC через tz.
@@ -118,17 +120,26 @@ async function generateEventReminders(
     select: { id: true, title: true, startTime: true },
   });
 
+  // Джарвис-бриф (docs/plan/jarvis-roadmap.md №1): встреча с известным человеком —
+  // за час не голое «подготовься», а что обещал ты/тебе, долги, сделка, что помню.
+  const briefs =
+    events.some((e) => e.startTime) && isV2PersonTypesEnabled(userId)
+      ? await buildPersonMeetingBriefs(userId, now).catch(() => [])
+      : [];
+
   for (const event of events) {
     if (!event.startTime) continue;
 
-    const eventTime = timeToDate(event.startTime, tz);
+    const eventTime = timeToDate(event.startTime, tz, now);
 
     // 1 hour before
     const oneHourBefore = new Date(eventTime.getTime() - 60 * 60 * 1000);
     if (oneHourBefore > now) {
+      const brief = briefs.find((b) => b.startTime === event.startTime && b.eventTitle === event.title);
+      const briefBody = brief ? meetingPushBody(brief) : null;
       notifications.push({
-        title: 'Скоро встреча',
-        body: `Через час встреча: ${event.title}. Подготовься!`,
+        title: briefBody ? `Через час: ${event.title}` : 'Скоро встреча',
+        body: briefBody ?? `Через час встреча: ${event.title}. Подготовься!`,
         type: 'event_reminder_1h',
         scheduledFor: oneHourBefore,
       });

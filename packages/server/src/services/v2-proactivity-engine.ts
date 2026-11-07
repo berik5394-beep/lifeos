@@ -1181,7 +1181,9 @@ async function detectPersonMeeting(userId: string): Promise<NudgeCandidate[]> {
     if (!isV2PersonTypesEnabled(userId)) return [];
     const { buildPersonMeetingBriefs } = await import('./person-types/index.js');
     const briefs = await buildPersonMeetingBriefs(userId);
-    const soon = briefs.find((b) => b.minutesUntil <= 120); // ближайшая в окне (briefs сорт по времени)
+    // Ранний бриф — за 3 ч … 75 мин: за час тот же бриф придёт пушем «Через час: …»
+    // (proactive-notifications), без двух сообщений об одной встрече.
+    const soon = briefs.find((b) => b.minutesUntil > 75 && b.minutesUntil <= 180);
     if (!soon) return [];
     const cand: NudgeCandidate = {
       source: 'person_meeting',

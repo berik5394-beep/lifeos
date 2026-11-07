@@ -8,8 +8,20 @@ export interface PersonMeetingBrief {
   startTime: string; // 'HH:MM' локальное
   minutesUntil: number;
   daysSince: number;
+  /** Первое открытое дело (любое направление) — для совместимости. */
   obligation?: string;
+  /** Тебе должны деньгами (сумма открытых). */
   owed?: number;
+  /** Ты должен деньгами (сумма открытых). */
+  iOwe?: number;
+  /** Твоё обещание этому человеку (дело, не деньги). */
+  iPromised?: string;
+  /** Что обещали тебе (дело, не деньги). */
+  theyPromised?: string;
+  /** Что помню о человеке — последняя запись памяти о нём. */
+  remembered?: string;
+  /** Название события в календаре. */
+  eventTitle?: string;
   insightText?: string;
   deal?: string;
 }
@@ -47,13 +59,41 @@ export function minutesUntil(nowHHMM: string, startHHMM: string): number {
   return toMin(startHHMM) - toMin(nowHHMM);
 }
 
-/** Богатый бриф: тип + каденс + открытое дело + долг тебе. Чистый. */
+const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU').replace(/\u00a0/g, ' ')} ₸`;
+const quote = (t: string, max = 90) => {
+  const s = t.trim().replace(/\s+/g, ' ').replace(/[.!…]+$/u, '');
+  return `«${s.length > max ? `${s.slice(0, max - 1)}…` : s}»`;
+};
+
+/**
+ * Что важно знать перед встречей — фразами (Джарвис: «ты обещал ему прайс,
+ * он должен тебе 200 000, в прошлый раз обсуждали турникеты»). Без рода:
+ * пол человека и пользователя неизвестен. Только факты из БД.
+ */
+export function meetingBriefParts(b: PersonMeetingBrief): string[] {
+  const out: string[] = [];
+  if (b.iPromised) out.push(`Твоё обещание: ${quote(b.iPromised)}.`);
+  if (b.theyPromised) out.push(`Обещали тебе: ${quote(b.theyPromised)}.`);
+  if (!b.iPromised && !b.theyPromised && b.obligation) out.push(`Открыто: ${quote(b.obligation)}.`);
+  if (b.owed && b.owed > 0) out.push(`Тебе должны ${money(b.owed)}.`);
+  if (b.iOwe && b.iOwe > 0) out.push(`За тобой долг ${money(b.iOwe)}.`);
+  if (b.deal) out.push(b.deal);
+  if (b.remembered) out.push(`Помню: ${quote(b.remembered)}.`);
+  return out;
+}
+
+/** Богатый бриф (облачко/инсайт): когда + кто + тип + каденс + факты. Чистый. */
 export function describeMeetingBrief(b: PersonMeetingBrief): string {
   const label = b.type ? `[${TYPE_LABEL[b.type]}] ` : '';
   const when = b.minutesUntil <= 75 ? `через ~${b.minutesUntil} мин` : `сегодня в ${b.startTime}`;
-  let s = `📅 ${when} — встреча с ${label}${b.name}. Последний контакт ${b.daysSince} дн.`;
-  if (b.obligation) s += ` Открыто: «${b.obligation}».`;
-  if (b.owed && b.owed > 0) s += ` Должен тебе ${b.owed}₸.`;
-  if (b.deal) s += ` ${b.deal}`;
-  return s;
+  const head = `📅 ${when} — встреча с ${label}${b.name}. Последний контакт ${b.daysSince} дн.`;
+  return [head, ...meetingBriefParts(b)].join(' ');
+}
+
+/** Текст пуша «через час встреча» с брифом; null — сказать нечего (обычное напоминание). */
+export function meetingPushBody(b: PersonMeetingBrief): string | null {
+  const parts = meetingBriefParts(b);
+  if (parts.length === 0) return null;
+  const who = b.type ? `${b.name} (${TYPE_LABEL[b.type]})` : b.name;
+  return `${who}. ${parts.join(' ')}`;
 }

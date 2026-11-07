@@ -6,6 +6,37 @@ import type { PersonType } from './types.js';
 
 const DAY_MS = 86_400_000;
 
+/** Типы памяти, которые говорят о человеке (не журнал действий и не сообщения). */
+const ABOUT_TYPES = ['fact', 'preference', 'person', 'decision', 'event', 'emotion'];
+
+/**
+ * Последнее, что помню о человеке: запись памяти со ссылкой на него или с его
+ * именем. Действующая (не «Неправда», не истекла). Свой try — без памяти бриф
+ * всё равно строится.
+ */
+async function lastMemoryAbout(userId: string, entityId: string, name: string, now: Date): Promise<string | undefined> {
+  try {
+    const row = await prisma.memory.findFirst({
+      where: {
+        userId,
+        type: { in: ABOUT_TYPES },
+        source: { not: 'v2-episodic' },
+        OR: [{ entityRefs: { has: entityId } }, { content: { contains: name, mode: 'insensitive' } }],
+        AND: [
+          { OR: [{ invalidAt: null }, { invalidAt: { gt: now } }] },
+          { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { content: true },
+    });
+    return row?.content?.trim() || undefined;
+  } catch (err) {
+    console.warn('[person-types] meeting brief: memory lookup failed:', err instanceof Error ? err.message : err);
+    return undefined;
+  }
+}
+
 /**
  * Бриф перед встречей: сегодняшние ВНУТРЕННИЕ CalendarEvent × person-сущности
  * (консервативный матч имени) × тип/каденс/обязательство/owed-деньги. READ-ONLY.
@@ -34,13 +65,21 @@ export async function buildPersonMeetingBriefs(
     const obls = await prisma.obligation.findMany({
       where: { userId, status: 'open', personEntityId: { in: people.map((p) => p.id) } },
       select: { personEntityId: true, kind: true, direction: true, amount: true, description: true },
+      orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { createdAt: 'desc' }],
     });
-    const oblByEntity = new Map<string, { desc?: string; owed?: number }>();
+    type Obl = { desc?: string; owed?: number; iOwe?: number; iPromised?: string; theyPromised?: string };
+    const oblByEntity = new Map<string, Obl>();
     for (const o of obls) {
       if (!o.personEntityId) continue;
       const cur = oblByEntity.get(o.personEntityId) ?? {};
       if (!cur.desc) cur.desc = o.description;
-      if (o.kind === 'money' && o.direction === 'owed_to_me' && o.amount) cur.owed = (cur.owed ?? 0) + o.amount;
+      if (o.kind === 'money' && o.amount) {
+        if (o.direction === 'owed_to_me') cur.owed = (cur.owed ?? 0) + o.amount;
+        else if (o.direction === 'i_owe') cur.iOwe = (cur.iOwe ?? 0) + o.amount;
+      } else if (o.kind === 'action') {
+        if (o.direction === 'i_owe' && !cur.iPromised) cur.iPromised = o.description;
+        else if (o.direction === 'owed_to_me' && !cur.theyPromised) cur.theyPromised = o.description;
+      }
       oblByEntity.set(o.personEntityId, cur);
     }
 
@@ -77,7 +116,9 @@ export async function buildPersonMeetingBriefs(
       const type = typeof attrs.personType === 'string' ? (attrs.personType as PersonType) : undefined;
       const ob = oblByEntity.get(person.id);
       const deal = dealByEntity.get(person.id);
-      if (!type && !ob?.desc && !ob?.owed && !deal) continue; // D1-гейт: только с CRM-контекстом
+      const remembered = await lastMemoryAbout(userId, person.id, person.name, now);
+      // D1-гейт: только с контекстом (тип/дело/деньги/сделка/память) — иначе обычное напоминание.
+      if (!type && !ob?.desc && !ob?.owed && !ob?.iOwe && !deal && !remembered) continue;
       const daysSince = Math.max(0, Math.floor((now.getTime() - person.lastSeenAt.getTime()) / DAY_MS));
       const brief: PersonMeetingBrief = {
         entityId: person.id,
@@ -88,6 +129,11 @@ export async function buildPersonMeetingBriefs(
         daysSince,
         obligation: ob?.desc,
         owed: ob?.owed,
+        iOwe: ob?.iOwe,
+        iPromised: ob?.iPromised,
+        theyPromised: ob?.theyPromised,
+        remembered,
+        eventTitle: e.title,
         deal,
       };
       brief.insightText = describeMeetingBrief(brief);

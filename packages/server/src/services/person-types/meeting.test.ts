@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchPersonInText, minutesUntil, describeMeetingBrief, type PersonMeetingBrief } from './meeting.js';
+import { matchPersonInText, minutesUntil, describeMeetingBrief, meetingPushBody, type PersonMeetingBrief } from './meeting.js';
 
 describe('matchPersonInText', () => {
   it('точный токен', () => { expect(matchPersonInText('Ахмет', [], 'встреча Ахмет договор')).toBe(true); });
@@ -21,7 +21,7 @@ describe('describeMeetingBrief', () => {
   it('богатый кросс-домен: тип + контакт + дело + деньги', () => {
     const s = describeMeetingBrief({ ...base, obligation: 'договор', owed: 200000 });
     expect(s).toContain('Ахмет'); expect(s).toContain('клиент'); expect(s).toContain('12 дн');
-    expect(s).toContain('договор'); expect(s).toContain('200000');
+    expect(s).toContain('договор'); expect(s).toContain('Тебе должны 200 000 ₸');
   });
   it('далёкая встреча → «сегодня в HH:MM»', () => {
     expect(describeMeetingBrief({ ...base, minutesUntil: 200 })).toContain('сегодня в 14:00');
@@ -32,5 +32,31 @@ describe('describeMeetingBrief', () => {
       deal: 'Сделка «оборудование» 2 млн ₸, КП отправлено 4 дн назад.',
     });
     expect(t).toBe('📅 через ~50 мин — встреча с [клиент] Ахмет. Последний контакт 3 дн. Сделка «оборудование» 2 млн ₸, КП отправлено 4 дн назад.');
+  });
+});
+
+describe('meetingPushBody — Джарвис-бриф за час', () => {
+  const base: PersonMeetingBrief = { entityId: 'e', name: 'Серик', type: 'client', startTime: '15:00', minutesUntil: 60, daysSince: 5 };
+  it('обещания в обе стороны, долги в обе стороны, сделка, память', () => {
+    expect(
+      meetingPushBody({
+        ...base,
+        iPromised: 'отправить прайс',
+        theyPromised: 'подписать договор',
+        owed: 200000,
+        iOwe: 15000,
+        deal: 'Сделка «турникеты» 2 млн ₸, КП отправлено 4 дн назад.',
+        remembered: 'Обсуждали с Сериком турникеты для склада.',
+      }),
+    ).toBe(
+      'Серик (клиент). Твоё обещание: «отправить прайс». Обещали тебе: «подписать договор». Тебе должны 200 000 ₸. ' +
+        'За тобой долг 15 000 ₸. Сделка «турникеты» 2 млн ₸, КП отправлено 4 дн назад. Помню: «Обсуждали с Сериком турникеты для склада».',
+    );
+  });
+  it('только память — тоже бриф', () => {
+    expect(meetingPushBody({ ...base, type: undefined, remembered: 'Любит кофе без сахара' })).toBe('Серик. Помню: «Любит кофе без сахара».');
+  });
+  it('сказать нечего — null (обычное напоминание)', () => {
+    expect(meetingPushBody(base)).toBeNull();
   });
 });
