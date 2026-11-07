@@ -364,6 +364,20 @@ const DEAL_PROPOSAL = /предложени/i;
 const DEAL_PROPOSAL_SENT = /(отправ|выслал|скинул)/i;
 
 /**
+ * Этап 3: ответ агента БЕЗ инструментов, который на деле про действие —
+ * «не могу записать» (словарь не узнал фразу) или «записал/добавил»
+ * (без инструментов это выдумка). Такой ответ не отдаём — повторяем заход
+ * с инструментами.
+ */
+const NEEDS_TOOLS_REFUSAL =
+  /не\s+(?:могу|получается|получилось|смогу|умею)\s+(?:это\s+|тебе\s+|сейчас\s+)?(?:записать|сохранить|добавить|отметить|создать|запомнить|поставить|удалить|изменить|перенести|внести)/i;
+const NEEDS_TOOLS_CLAIM =
+  /(?:^|[^а-яё])(?:записал|добавил|сохранил|отметил|создал|запомнил|поставил|внёс|внес|перенёс|перенес|удалил)[аи]?(?![а-яё])/i;
+export function replyNeedsTools(reply: string): boolean {
+  return NEEDS_TOOLS_REFUSAL.test(reply) || NEEDS_TOOLS_CLAIM.test(reply);
+}
+
+/**
  * ISSUE-1: честный отказ когда tool-путь упал, а запрос требовал
  * инструментов. Лучше «не смог», чем тихая выдумка «нашёл/записал».
  */
@@ -1541,6 +1555,35 @@ async function handleMessageCore(
           return prompt;
         },
       });
+      // Словарь не узнал фразу, а ответ — про действие («не могу записать» /
+      // выдуманное «записал») → тот же запрос с инструментами. Сбой повтора —
+      // честный отказ, а не выдумка.
+      if (!wantTools && replyNeedsTools(reply)) {
+        console.log(`[jarvis] user=${userId} ответ без инструментов про действие → повтор с инструментами`);
+        try {
+          reply = await runAgent({
+            system,
+            userMessage: text,
+            history,
+            webSearch: true,
+            maxSearches: 3,
+            maxTokens: 900,
+            localTools: true,
+            userId,
+            onConfirmTool: async (tool, args) => {
+              const prompt = buildConfirmPrompt(tool, args);
+              await setPendingAction(userId, tool, args, prompt);
+              return prompt;
+            },
+          });
+        } catch (retryErr) {
+          console.warn(
+            `[jarvis] повтор с инструментами упал user=${userId}:`,
+            retryErr instanceof Error ? retryErr.message : retryErr,
+          );
+          reply = DEGRADED_ACTIONABLE_REFUSAL;
+        }
+      }
     } catch (agentErr) {
       // Fix B/A: раньше этот catch был немой — отказ агентного цикла
       // (в т.ч. возможная несовместимость web_search + custom tools)
