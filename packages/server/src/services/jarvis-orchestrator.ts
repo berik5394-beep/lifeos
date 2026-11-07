@@ -42,6 +42,8 @@ import { captureV2InBackground } from './v2-capture.js';
 import {
   buildV2EnrichmentBlock,
   fetchV2EnrichmentData,
+  fetchV2EnrichmentAxesSection,
+  fetchV2EnrichmentToneSection,
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
@@ -147,6 +149,20 @@ const PANEL_REPLY: Record<string, string> = {
  * осмысленный ambient-capture («купи продукты», «надо позвонить»).
  * Лучше пропустить сомнительное (не плодить мусор), чем извлечь.
  */
+/**
+ * Этап 4: стоит ли после выполненного действия вытащить факты/людей.
+ * Задачи на этом пути не создаются, поэтому фильтр looksCaptureWorthy
+ * (он против мусорных задач и денежные фразы отсекает) тут не подходит.
+ * Берём фразы с именем собственным не в начале предложения («ужин с
+ * Сериком», «подарок для Даны») — без лишнего вызова модели на каждое
+ * «добавь задачу купить хлеб».
+ */
+export function looksPeopleWorthy(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 12 || t.endsWith('?')) return false;
+  return /[^.!?\s]\s+[А-ЯЁ][а-яё]{2,}/.test(t);
+}
+
 export function looksCaptureWorthy(text: string): boolean {
   const t = text.trim();
   if (t.length < 12) return false; // «да», «спасибо», «ок», приветствия
@@ -194,6 +210,9 @@ async function captureInBackground(
   userId: string,
   text: string,
   msgId?: string,
+  /** Действие уже выполнено (трата/задача записаны) — берём только факты и
+   *  людей, задачи не создаём (иначе дубль «созданной» задачи). */
+  opts: { memoriesOnly?: boolean } = {},
 ): Promise<{ tasks: number; memories: number }> {
   try {
     const user = await prisma.user.findUnique({
@@ -208,7 +227,7 @@ async function captureInBackground(
       : await extractFromTranscript(text, user?.name || 'друг', tz);
     let tasks = 0;
     let memories = 0;
-    if (extracted.tasks.length > 0) {
+    if (!opts.memoriesOnly && extracted.tasks.length > 0) {
       await prisma.$transaction(async (tx) => {
         for (const t of extracted.tasks) {
           await tx.task.create({
@@ -1308,6 +1327,11 @@ async function handleMessageCore(
         `[jarvis] user=${userId} intent=${intent.action} PENDING (awaiting confirm)`,
       );
       await saveTurn(userId, text, ctext);
+      // Факты и люди из фразы — сразу (ужин с Сериком был, даже если запись
+      // траты отменят). Только память — без задач.
+      if (looksPeopleWorthy(text)) {
+        void captureInBackground(userId, text, String(Date.now()), { memoriesOnly: true }).catch(() => {});
+      }
       return {
         reply: ctext,
         pendingAction: { action: intent.action, input },
@@ -1337,6 +1361,14 @@ async function handleMessageCore(
       );
       void trackInterests(userId, text);
       await saveTurn(userId, text, replyText);
+      // Этап 4: «потратил 5000 на ужин с Сериком» — трата записана, но факты и
+      // люди из фразы раньше терялись (захват жил только на пути чата).
+      // Только память/люди — задачи тут не извлекаем (действие уже сделано).
+      if (looksPeopleWorthy(text)) {
+        void captureInBackground(userId, text, String(Date.now()), { memoriesOnly: true }).catch((err) => {
+          console.warn('[captureInBackground:action] failed:', err instanceof Error ? err.message : err);
+        });
+      }
       // Перегруз дня: create_task положил предложение переноса в pending →
       // отдаём его, чтобы под облачком были «Подтвердить / Отмена».
       const staged = (out as { rescheduleStaged?: boolean }).rescheduleStaged
@@ -1470,9 +1502,23 @@ async function handleMessageCore(
       // bug 2026-06-04). Внутри fetchV2EnrichmentData каждый тяжёлый билдер уже
       // капается своим withTimeout(1500), + reflector-факты дедуплены, так что
       // зависший тиер всё равно не блокирует дольше ~1.5с.
-      const v2Data = await withTimeout(fetchV2EnrichmentData(userId), 2500, null);
+      // Этап 4: оси пользователя и тон бота были написаны, но не вызывались
+      // нигде — писались в БД и не читались. Теперь — тем же заходом.
+      const [v2Data, axesSection, toneSection] = await Promise.all([
+        withTimeout(fetchV2EnrichmentData(userId), 2500, null),
+        withTimeout(fetchV2EnrichmentAxesSection(userId), 1500, ''),
+        withTimeout(fetchV2EnrichmentToneSection(userId), 1500, ''),
+      ]);
       if (v2Data) {
         system = system + '\n\n' + buildV2EnrichmentBlock(v2Data);
+      }
+      if (axesSection) system = system + '\n\n' + axesSection;
+      if (toneSection) {
+        system =
+          system +
+          '\n\n' +
+          toneSection +
+          '\n(Стиль, который выбрал пользователь, главнее этих оттенков.)';
       }
     } catch (err) {
       console.warn('[v2-enrichment] hook failed:', err);

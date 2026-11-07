@@ -78,7 +78,11 @@ export type V2EnrichmentData = {
     name: string;
     importance: number;
     daysSinceLastSeen: number;
+    /** Этап 4: что известно о человеке (атрибуты из памяти) — раньше писалось, не читалось. */
+    facts?: string;
   }>;
+  /** Этап 4: связи между людьми («Серик — брат Даны»), раньше не читались. */
+  relationships?: string[];
   obligations: Array<{
     direction: string;
     personName: string;
@@ -128,6 +132,44 @@ export function formatRecentActivitySection(
   return `📌 Недавно (память):\n${items}`;
 }
 
+/** Атрибуты сущности → «работа: Казахтелеком, город: Астана» (ДР и тип — в своих секциях). */
+const SKIP_ATTRS = new Set(['birthday', 'personType', 'type', 'aliases', 'deathDate', 'memorial']);
+export function entityFacts(attributes: unknown): string {
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return '';
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(attributes as Record<string, unknown>)) {
+    if (SKIP_ATTRS.has(k) || k.startsWith('_')) continue;
+    if (typeof v !== 'string' && typeof v !== 'number') continue;
+    const val = String(v).trim();
+    if (!val || val.length > 60) continue;
+    parts.push(`${k}: ${val}`);
+    if (parts.length === 3) break;
+  }
+  return parts.join(', ');
+}
+
+const REL_LABEL: Record<string, string> = {
+  family: 'семья',
+  friend: 'друг',
+  colleague: 'коллега',
+  partner: 'партнёр',
+  works_at: 'работает в',
+  lives_in: 'живёт в',
+  connected_to: 'связан с',
+};
+
+/** Действующие связи вокруг ключевых людей → «Серик — брат — Дана». */
+export async function entityRelationshipLines(userId: string, entityIds: string[]): Promise<string[]> {
+  if (entityIds.length === 0) return [];
+  const rows = await prisma.entityRelationship.findMany({
+    where: { userId, invalidAt: null, OR: [{ fromId: { in: entityIds } }, { toId: { in: entityIds } }] },
+    orderBy: { strength: 'desc' },
+    take: 8,
+    select: { type: true, label: true, from: { select: { name: true } }, to: { select: { name: true } } },
+  });
+  return rows.map((r) => `${r.from.name} — ${r.label?.trim() || REL_LABEL[r.type] || r.type} — ${r.to.name}`);
+}
+
 export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   const lines: string[] = ['[v2-память]'];
   const id = data.identity;
@@ -154,6 +196,11 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
       )
       .join('; ');
     lines.push(`ключевые люди/места: ${top}`);
+    const facts = data.entities.filter((e) => e.facts).map((e) => `${e.name}: ${e.facts}`);
+    if (facts.length > 0) lines.push(`что знаешь о людях: ${facts.join('; ')}`);
+  }
+  if (data.relationships && data.relationships.length > 0) {
+    lines.push(`связи между людьми: ${data.relationships.join('; ')}`);
   }
   const obl = formatObligationsSection(data.obligations ?? []);
   if (obl) lines.push(obl);
@@ -395,7 +442,7 @@ export async function fetchV2EnrichmentData(
                 where: { userId },
                 orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
                 take: 25,
-                select: { name: true, importance: true, lastSeenAt: true },
+                select: { id: true, name: true, importance: true, lastSeenAt: true, attributes: true },
               })
               .then((wide) =>
                 wide
@@ -414,7 +461,7 @@ export async function fetchV2EnrichmentData(
                 where: { userId },
                 orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
                 take: 5,
-                select: { name: true, importance: true, lastSeenAt: true },
+                select: { id: true, name: true, importance: true, lastSeenAt: true, attributes: true },
               })
               .catch(() => []),
             BASE_MEMBER_BUDGET_MS,
@@ -552,7 +599,13 @@ export async function fetchV2EnrichmentData(
           0,
           Math.floor((now - (e.lastSeenAt?.getTime() ?? now)) / DAY_MS),
         ),
+        facts: entityFacts((e as { attributes?: unknown }).attributes) || undefined,
       })),
+      relationships: await withTimeout(
+        entityRelationshipLines(userId, entityRows.map((e) => (e as { id?: string }).id).filter((x): x is string => !!x)),
+        BASE_MEMBER_BUDGET_MS,
+        [],
+      ).catch(() => []),
       obligations: obligationRows.map((o) => ({
         direction: o.direction,
         personName: o.personName,
