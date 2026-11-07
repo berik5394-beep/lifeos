@@ -21,6 +21,7 @@ import { RoomBottomBar } from '@/components/room/room-bottom-bar';
 import { RoomShop } from '@/components/room/room-shop';
 import { SlotGrid } from '@/components/room/slot-grid';
 import { CoinCounter } from '@/components/room/coin-counter';
+import { RoomTilt } from '@/components/room/room-tilt';
 import { SoftSpot, Vignette } from '@/components/room/face-light';
 import { useScheduleStore } from '@/stores/schedule-store';
 import { RoomIntro } from '@/components/room/room-intro';
@@ -71,7 +72,7 @@ const ROBOT_SIDE_SCALE = 0.68;
 /** Ответ робота показываем, если он свежий (пришёл в этой сессии). */
 const FRESH_REPLY_MS = 90_000;
 
-export const RoomPage = memo(function RoomPage() {
+export const RoomPage = memo(function RoomPage({ active = true }: { active?: boolean }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(c), [c]);
@@ -449,6 +450,7 @@ export const RoomPage = memo(function RoomPage() {
 
   return (
     <View style={styles.container}>
+      {active && !zoomed && <RoomTilt tiltX={tiltX} tiltY={tiltY} />}
       <GestureDetector gesture={sceneGesture}>
         <View style={styles.roomOuter} onLayout={onLayout}>
           <View style={styles.room}>

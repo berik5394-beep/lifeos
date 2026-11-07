@@ -107,7 +107,7 @@ function HomePager() {
           <ToolsPage tools={tools} tab={shownTab} onTab={setTab} width={width} />
         </View>
         <View style={{ width }}>
-          <RoomPage />
+          <RoomPage active={page === ROOM_PAGE} />
         </View>
       </ScrollView>
       {/* Две точки: где ты — инструменты или комната. */}
