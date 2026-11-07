@@ -31,6 +31,8 @@ import { TagChip } from '@/components/ui/tag-chip';
 import { TapToAdd } from '@/components/ui/tap-to-add';
 import { hapticMedium, hapticLight } from '@/services/haptics';
 import type { Theme } from '@/constants/themes';
+import { formatDate } from '@/utils/dates';
+import { useContentWidth } from '@/hooks/use-content-width';
 
 const COLUMNS = [
   { id: 'backlog', label: 'Бэклог', color: '#6B7280' },
@@ -46,7 +48,6 @@ const PRIORITY_COLORS: Record<string, string> = {
   critical: '#EF4444',
 };
 
-const COLUMN_WIDTH = 280;
 const SPRING_CONFIG = { damping: 20, stiffness: 200, mass: 0.8 };
 
 type DragState = {
@@ -224,11 +225,20 @@ export default function KanbanBoardScreen() {
   const loading = useTaskStore((s) => s.isLoading);
   const fetchTasks = useTaskStore((s) => s.fetchTasks);
   const quickAdd = useTaskStore((s) => s.quickAdd);
-  const handleQuickAdd = useCallback(
-    // Ошибку покажет сама строка (текст не пропадёт).
-    (text: string) => quickAdd(text),
-    [quickAdd],
+  const createTask = useTaskStore((s) => s.createTask);
+  // «Новая задача» в КАЖДОЙ колонке (раньше только во второй — «К выполнению»,
+  // а открывался «Бэклог» с «Пусто», и писать было негде). «К выполнению» —
+  // разбор фразы («завтра в 15:00»); остальные — сразу в эту колонку на сегодня.
+  // Ошибку покажет сама строка (текст не пропадёт).
+  const handleAddToColumn = useCallback(
+    (columnId: string, text: string) =>
+      columnId === 'todo'
+        ? quickAdd(text)
+        : createTask({ title: text, category: 'personal', priority: 'medium', date: formatDate(new Date()), kanbanStatus: columnId }),
+    [quickAdd, createTask],
   );
+  // Колонка — ширина экрана без полей: листается ровно по колонке, без обрезки.
+  const columnWidth = useContentWidth() - spacing.md * 2;
   const updateKanbanStatus = useTaskStore((s) => s.updateKanbanStatus);
   const token = useAuthStore((s) => s.token);
   const [draggingTask, setDraggingTask] = useState<string | null>(null);
@@ -324,8 +334,10 @@ export default function KanbanBoardScreen() {
         {/* Columns */}
         <ScrollView
           horizontal
-          pagingEnabled
+          snapToInterval={columnWidth + spacing.xs * 2}
+          decelerationRate="fast"
           showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.columnsContent}
           scrollEnabled={!draggingTask}
           onScroll={handleScroll}
@@ -336,7 +348,7 @@ export default function KanbanBoardScreen() {
             return (
               <View
                 key={col.id}
-                style={styles.column}
+                style={[styles.column, { width: columnWidth }]}
                 onLayout={handleColumnLayout(col.id)}
               >
                 <View style={[styles.columnHeader, { borderTopColor: col.color }]}>
@@ -365,18 +377,12 @@ export default function KanbanBoardScreen() {
                       scrollOffset={scrollOffset}
                     />
                   )}
-                  // Добавление тапом по бледной строке (без плюсиков) — в «К выполнению».
+                  keyboardShouldPersistTaps="handled"
+                  // Добавление тапом по бледной строке (без плюсиков) — в любой колонке.
                   ListFooterComponent={
-                    col.id === 'todo' ? <TapToAdd hint="Новая задача" onSubmit={handleQuickAdd} /> : null
+                    <TapToAdd hint="Новая задача" onSubmit={(t) => handleAddToColumn(col.id, t)} />
                   }
                 />
-
-                {colTasks.length === 0 && col.id !== 'todo' && (
-                  <View style={styles.emptyColumn}>
-                    <Feather name="inbox" size={24} color={c.textMuted} />
-                    <Text style={styles.emptyText}>Пусто</Text>
-                  </View>
-                )}
               </View>
             );
           })}
@@ -429,9 +435,8 @@ function createStyles(c: Theme) {
       fontSize: 10,
       fontWeight: '600',
     },
-    columnsContent: { paddingHorizontal: spacing.sm },
+    columnsContent: { paddingHorizontal: spacing.md - spacing.xs },
     column: {
-      width: COLUMN_WIDTH,
       marginHorizontal: spacing.xs,
       backgroundColor: c.surface,
       borderRadius: borderRadius.md,

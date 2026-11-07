@@ -56,3 +56,15 @@ describe('вкладки инструментов живут, а не созда
     expect(dash).toMatch(/visible=\{shouldShowGreeting && toolActive\}/);
   });
 });
+
+describe('канбан: писать можно в любой колонке', () => {
+  const kb = src('app/kanban-board.tsx');
+  it('строка «Новая задача» в каждой колонке, не только в «К выполнению»', () => {
+    expect(kb).toMatch(/ListFooterComponent=\{\s*<TapToAdd hint="Новая задача" onSubmit=\{\(t\) => handleAddToColumn\(col\.id, t\)\} \/>/);
+    expect(kb).not.toMatch(/col\.id === 'todo' \? <TapToAdd/);
+  });
+  it('колонка — по ширине экрана, листание ровно по колонке', () => {
+    expect(kb).toMatch(/snapToInterval=\{columnWidth/);
+    expect(kb).not.toMatch(/COLUMN_WIDTH = 280/);
+  });
+});

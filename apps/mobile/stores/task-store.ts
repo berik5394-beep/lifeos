@@ -36,6 +36,8 @@ interface Task {
 }
 
 interface CreateTaskData {
+  /** Колонка канбана (по умолчанию «К выполнению»). */
+  kanbanStatus?: string;
   title: string;
   category: string;
   priority: string;

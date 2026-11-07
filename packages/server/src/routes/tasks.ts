@@ -159,6 +159,8 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         time: data.time ?? null,
         notes: data.notes ?? null,
         kanbanStatus: data.kanbanStatus ?? 'todo',
+        // Как PATCH /kanban: записал сразу в «Готово» — задача выполнена.
+        ...(data.kanbanStatus === 'done' ? { completed: true } : {}),
         parentId: data.parentId ?? null,
         estimatedMinutes: data.estimatedMinutes ?? null,
         recurrence: data.recurrence ?? null,
