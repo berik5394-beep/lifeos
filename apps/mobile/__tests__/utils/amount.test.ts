@@ -10,3 +10,23 @@ describe('сумма с пометкой', () => {
   ])('«%s»', (raw, want) => expect(parseAmountNote(raw)).toEqual(want));
   it.each(['обед', '', '0', '-5'])('«%s» → не сумма', (raw) => expect(parseAmountNote(raw)).toBeNull());
 });
+
+import { parseCategoryEntry, entryDateForMonth } from '@/utils/amount';
+
+describe('строка категории трат', () => {
+  it('сумма — трата, «лимит N» — лимит', () => {
+    expect(parseCategoryEntry('5000 обед')).toEqual({ kind: 'expense', amount: 5000, note: 'обед' });
+    expect(parseCategoryEntry('лимит 50 000')).toEqual({ kind: 'limit', amount: 50000 });
+    expect(parseCategoryEntry('Лимит 50к')).toEqual({ kind: 'limit', amount: 50000 });
+    expect(parseCategoryEntry('лимит')).toBeNull();
+  });
+});
+
+describe('дата записи из таблиц месяца', () => {
+  const today = new Date(2026, 10, 7);
+  it('текущий месяц — сегодня; прошлый — последний день; будущий — первый', () => {
+    expect(entryDateForMonth(new Date(2026, 10, 1), today)).toBe(today);
+    expect(entryDateForMonth(new Date(2026, 9, 15), today)).toEqual(new Date(2026, 9, 31));
+    expect(entryDateForMonth(new Date(2026, 11, 3), today)).toEqual(new Date(2026, 11, 1));
+  });
+});

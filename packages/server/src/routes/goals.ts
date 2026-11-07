@@ -26,6 +26,9 @@ const createYearlyGoalSchema = z.object({
   year: z.number().int().min(2000).max(2100),
   area: GOAL_AREA,
   goalText: z.string().min(1, 'Текст цели обязателен'),
+  // Измеримая цель («накопить 1 000 000») — сумма сразу при создании
+  // (тап «цель накоплений» прямо в «Финансах»).
+  target: z.number().positive().max(1_000_000_000).optional(),
 });
 
 const updateYearlyGoalSchema = z.object({
@@ -169,6 +172,7 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
         year: data.year,
         area: data.area,
         goalText: data.goalText,
+        ...(data.target != null ? { target: data.target } : {}),
       },
     });
     captureActivity(request.userId, {

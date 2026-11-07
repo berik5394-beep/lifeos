@@ -32,7 +32,7 @@ interface GoalState {
   updateWeeklyGoal: (id: string, data: Partial<WeeklyGoal>) => Promise<void>;
   deleteWeeklyGoal: (id: string) => Promise<void>;
   fetchYearlyGoals: (year?: number) => Promise<void>;
-  createYearlyGoal: (data: { year: number; area: string; goalText: string }) => Promise<void>;
+  createYearlyGoal: (data: { year: number; area: string; goalText: string; target?: number }) => Promise<void>;
   updateYearlyGoal: (id: string, data: Partial<YearlyGoal>) => Promise<void>;
   deleteYearlyGoal: (id: string) => Promise<void>;
 }
@@ -110,7 +110,7 @@ export const useGoalStore = create<GoalState>((set) => ({
     }
   },
 
-  createYearlyGoal: async (data: { year: number; area: string; goalText: string }) => {
+  createYearlyGoal: async (data: { year: number; area: string; goalText: string; target?: number }) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 

@@ -18,7 +18,7 @@ import { useScheduleStore } from '@/stores/schedule-store';
 import { useBudgetStore } from '@/stores/budget-store';
 import { useDebtStore, parseDueDate, pickMoneyGoal, type Debt } from '@/stores/debt-store';
 import { useGoalStore } from '@/stores/goal-store';
-import { Card, Button, Input, Modal, SlideTabs, SwipeableRow, TapToAdd } from '@/components/ui';
+import { Card, Button, Input, Modal, SlideTabs, SwipeableRow, TapToAdd, InlineEntry } from '@/components/ui';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { expenseCategories } from '@/constants/categories';
 import { FadeInView } from '@/components/ui/fade-in-view';
@@ -29,6 +29,7 @@ import { useNavigation } from '@react-navigation/native';
 import { goalPercent } from '@/utils/goal-progress';
 import { useInTools } from '@/hooks/use-content-width';
 import { pluralN, RECORDS } from '@/utils/plural';
+import { parseAmountNote, parseCategoryEntry, entryDateForMonth } from '@/utils/amount';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -102,6 +103,12 @@ function getBudgetStatusColor(
   if (pct >= 1) return c.danger;
   if (pct >= 0.8) return c.warning;
   return c.success;
+}
+
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+/** «7 ноября» — в заголовке формы видно, за какой день запись. */
+function formatDayTitle(d: Date): string {
+  return `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -650,6 +657,47 @@ export default function FinanceScreen() {
     void loadData();
   }, [loadData, scheduleRevision]);
 
+  // ─── Тап по строке таблицы — запись прямо здесь (Berik: «всё нажимается») ───
+  // Дата: смотришь текущий месяц — сегодня; прошлый — его последний день.
+  const tableEntryDate = useCallback(() => formatDate(entryDateForMonth(currentDate)), [currentDate]);
+  const handleIncomeRow = useCallback(
+    async (src: (typeof INCOME_SOURCES)[number], text: string) => {
+      const p = parseAmountNote(text);
+      if (!p) throw new Error('Напиши сумму, например «350000» или «50к».');
+      const source = src.key === 'other' ? p.note || src.label : p.note ? `${src.label}: ${p.note}` : src.label;
+      await createIncome({ date: tableEntryDate(), source, amount: p.amount });
+      void loadData();
+    },
+    [createIncome, tableEntryDate, loadData],
+  );
+  const handleCategoryRow = useCallback(
+    async (key: string, label: string, text: string) => {
+      const p = parseCategoryEntry(text);
+      if (!p) throw new Error('Сумма траты («5000 обед») или лимит («лимит 50000»).');
+      if (p.kind === 'limit') {
+        await setBudget({ category: key, monthlyLimit: p.amount, month: currentDate.getMonth() + 1, year: currentDate.getFullYear() });
+      } else {
+        await createExpense({ date: tableEntryDate(), category: key, description: p.note || label, amount: p.amount });
+      }
+      void loadData();
+    },
+    [createExpense, setBudget, currentDate, tableEntryDate, loadData],
+  );
+  const handleCreateSavingsGoal = useCallback(
+    async (text: string) => {
+      const p = parseAmountNote(text.replace(/^накопить\s+/i, ''));
+      if (!p) throw new Error('Напиши сумму цели, например «1 000 000 на машину».');
+      await useGoalStore.getState().createYearlyGoal({
+        year: currentDate.getFullYear(),
+        area: 'finance',
+        goalText: p.note ? `Накопить ${formatMoney(p.amount)} — ${p.note}` : `Накопить ${formatMoney(p.amount)}`,
+        target: p.amount,
+      });
+      await fetchYearlyGoals().catch(() => {});
+    },
+    [currentDate, fetchYearlyGoals],
+  );
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
@@ -928,21 +976,21 @@ export default function FinanceScreen() {
                 </Text>
               </View>
               <View style={styles.summaryDivider} />
-              <View style={styles.summaryItem}>
+              <TouchableOpacity style={styles.summaryItem} onPress={openIncomeModal} activeOpacity={0.6} accessibilityRole="button" accessibilityLabel="Записать доход">
                 <Text style={styles.summaryIcon}>📈</Text>
                 <Text style={styles.summaryLabel}>Доход</Text>
                 <Text style={[styles.summaryValue, { color: c.success }]}>
                   {formatMoney(totalIncomes)}
                 </Text>
-              </View>
+              </TouchableOpacity>
               <View style={styles.summaryDivider} />
-              <View style={styles.summaryItem}>
+              <TouchableOpacity style={styles.summaryItem} onPress={openExpenseModal} activeOpacity={0.6} accessibilityRole="button" accessibilityLabel="Записать расход">
                 <Text style={styles.summaryIcon}>📉</Text>
                 <Text style={styles.summaryLabel}>Расход</Text>
                 <Text style={[styles.summaryValue, { color: c.danger }]}>
                   {formatMoney(totalExpenses)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
           )}
         </Card>
@@ -1106,13 +1154,18 @@ export default function FinanceScreen() {
             <TableRow cells={['Категория', 'Получено']} isHeader />
 
             {/* Income rows */}
+            {/* Тап по источнику — сумма прямо здесь («350000», «50к премия»). */}
             {INCOME_SOURCES.map((src) => {
               const actual = incomeBySource[src.key] ?? 0;
               return (
-                <TableRow
+                <InlineEntry
                   key={src.key}
-                  cells={[`${src.icon} ${src.label}`, actual > 0 ? formatMoney(actual) : '—']}
-                />
+                  placeholder={src.key === 'other' ? 'Сумма и откуда: «20000 возврат»' : `Сумма — ${src.label}`}
+                  onSubmit={(t) => handleIncomeRow(src, t)}
+                  accessibilityLabel={`${src.label}: ${actual > 0 ? formatMoney(actual) : 'пусто'}. Нажми, чтобы записать доход`}
+                >
+                  <TableRow cells={[`${src.icon} ${src.label}`, actual > 0 ? formatMoney(actual) : '—']} />
+                </InlineEntry>
               );
             })}
 
@@ -1147,17 +1200,24 @@ export default function FinanceScreen() {
                 row.limit,
                 c,
               );
+              // Тап по категории: «5000 обед» — трата, «лимит 50000» — лимит месяца.
               return (
-                <TableRow
+                <InlineEntry
                   key={row.key}
-                  cells={[
-                    `${row.icon} ${row.label}`,
-                    row.limit > 0 ? formatMoney(row.limit) : '—',
-                    row.spent > 0 ? formatMoney(row.spent) : '—',
-                    row.limit > 0 ? formatMoney(row.remaining) : '—',
-                  ]}
-                  statusColor={statusColor}
-                />
+                  placeholder={`«5000 обед» или «лимит 50000» — ${row.label}`}
+                  onSubmit={(t) => handleCategoryRow(row.key, row.label, t)}
+                  accessibilityLabel={`${row.label}: потрачено ${formatMoney(row.spent)}. Нажми, чтобы записать трату или лимит`}
+                >
+                  <TableRow
+                    cells={[
+                      `${row.icon} ${row.label}`,
+                      row.limit > 0 ? formatMoney(row.limit) : '—',
+                      row.spent > 0 ? formatMoney(row.spent) : '—',
+                      row.limit > 0 ? formatMoney(row.remaining) : '—',
+                    ]}
+                    statusColor={statusColor}
+                  />
+                </InlineEntry>
               );
             })}
 
@@ -1225,9 +1285,13 @@ export default function FinanceScreen() {
                 <Text style={styles.savingsProgressText}>{goalPercent(moneyGoal.progress)}% от цели</Text>
               </>
             ) : (
-              <Text style={styles.savingsProgressText}>
-                Цели с суммой пока нет — задай её в «Целях», например «Накопить 1 000 000».
-              </Text>
+              <InlineEntry
+                placeholder="«1 000 000 на машину»"
+                onSubmit={handleCreateSavingsGoal}
+                accessibilityLabel="Цели накоплений нет. Нажми, чтобы задать сумму"
+              >
+                <Text style={styles.savingsProgressText}>Цели накоплений пока нет — нажми и напиши сумму.</Text>
+              </InlineEntry>
             )}
           </View>
         </Card>
@@ -1533,7 +1597,7 @@ export default function FinanceScreen() {
       <Modal
         visible={modalType === 'expense'}
         onClose={() => setModalType(null)}
-        title="Новый расход"
+        title={`Расход за ${formatDayTitle(journalDate)}`}
       >
         <ScrollView keyboardShouldPersistTaps="handled">
           <Input
@@ -1596,7 +1660,7 @@ export default function FinanceScreen() {
       <Modal
         visible={modalType === 'income'}
         onClose={() => setModalType(null)}
-        title="Новый доход"
+        title={`Доход за ${formatDayTitle(journalDate)}`}
       >
         <ScrollView keyboardShouldPersistTaps="handled">
           <Input
