@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../middleware/auth.js';
 import { gatherAboutMe, forgetMemory, restoreMemory } from '../services/about-me.js';
 import { readDiary } from '../services/robot-diary.js';
+import { FRIEND_LEVELS, getFriendship, takeLevelUp } from '../services/friendship.js';
 
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -13,6 +14,13 @@ export async function aboutMeRoutes(app: FastifyInstance) {
 
   /** Дневник робота (робот-друг №3): записи по дням; вчера/сегодня-вечер дописываются при открытии. */
   app.get('/robot/diary', async (request) => ({ entries: await readDiary(request.userId) }));
+
+  /** Уровень дружбы (робот-друг №4) + фраза о новом уровне, если робот о нём ещё не сказал. */
+  app.get('/robot/friendship', async (request) => {
+    const f = await getFriendship(request.userId);
+    const levelUp = await takeLevelUp(request.userId, f).catch(() => null);
+    return { ...f, levels: FRIEND_LEVELS, levelUp };
+  });
 
   /** «Это неправда» — робот забывает (обратимо). */
   app.post('/memory/:id/forget', async (request, reply) => {

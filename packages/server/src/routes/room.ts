@@ -16,6 +16,7 @@ import {
   slotsFor,
   variantByKey,
 } from '../services/room-catalog.js';
+import { getFriendship, titleOfLevel } from '../services/friendship.js';
 
 /**
  * Робот-эпик: комната робота.
@@ -110,6 +111,10 @@ export async function roomRoutes(app: FastifyInstance): Promise<void> {
     if (wanted && !fitsSlot(v, wanted)) {
       return reply.code(400).send({ error: v.spot === 'wall' ? 'Это вешается на стену' : 'Это ставится на пол' });
     }
+    // Подарок дружбы — только когда уровень дружбы дорос (уровень не падает).
+    if (v.minLevel && (await getFriendship(userId)).level < v.minLevel) {
+      return reply.code(403).send({ error: `Откроется, когда мы станем «${titleOfLevel(v.minLevel)}»` });
+    }
     try {
       const result = await prisma.$transaction(async (tx) => {
         // Тот же замок, что у начислений: баланс не уйдёт в минус при гонке покупок.
@@ -118,7 +123,7 @@ export async function roomRoutes(app: FastifyInstance): Promise<void> {
         await upgradeLegacy(tx, userId);
         const owned = await tx.roomItem.findMany({ where: { userId }, select: { variantKey: true, slot: true, id: true } });
         if (owned.length >= ROOM_MAX_OWNED) throw new RoomError(409, 'Кладовка переполнена');
-        if (v.price > 0 && owned.some((o) => o.variantKey === v.key)) {
+        if ((v.price > 0 || v.tier === 'friend') && owned.some((o) => o.variantKey === v.key)) {
           throw new RoomError(409, 'Это уже есть — загляни в кладовку');
         }
         const sum = await tx.coinTransaction.aggregate({ where: { userId }, _sum: { amount: true } });

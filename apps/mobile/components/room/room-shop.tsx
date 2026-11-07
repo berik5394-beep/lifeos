@@ -12,20 +12,23 @@ import {
   type RoomVariant,
   type RoomVariantTier,
 } from '@/services/room-catalog';
+import { levelTitle, nextLine, type Friendship } from '@/services/friendship';
 
 type Tab = RoomVariantTier | 'storage';
-const TABS: Tab[] = [...ROOM_TIERS, 'free', 'storage'];
+const TABS: Tab[] = [...ROOM_TIERS, 'free', 'friend', 'storage'];
 const TAB_LABEL: Record<Tab, string> = { ...TIER_LABEL, storage: 'Кладовка' };
 
 /**
  * Робот-эпик, Часть 6: «Обставить» — магазин ремонта за монеты. Вкладки по
  * классам (по 10 вариантов), бесплатный декор и кладовка (убранное — вернуть
- * бесплатно). Цены — с сервера.
+ * бесплатно). Цены — с сервера. «Дружба» — подарки, которые открывает
+ * уровень дружбы (робот-друг №4).
  */
 export const RoomShop = memo(function RoomShop({
   catalog,
   owned,
   coins,
+  friendship = null,
   busy,
   onBuy,
   onPlace,
@@ -33,6 +36,7 @@ export const RoomShop = memo(function RoomShop({
   catalog: RoomVariant[];
   owned: OwnedItem[];
   coins: number | null;
+  friendship?: Friendship | null;
   /** Ключ варианта, покупка которого идёт. */
   busy: string | null;
   onBuy: (v: RoomVariant) => void;
@@ -51,7 +55,7 @@ export const RoomShop = memo(function RoomShop({
           <Pressable
             key={t}
             onPress={() => setTab(t)}
-            style={[styles.tab, tab === t && styles.tabOn, t !== 'free' && t !== 'storage' && { borderColor: TIER_COLOR[t].frame }]}
+            style={[styles.tab, tab === t && styles.tabOn, t !== 'free' && t !== 'friend' && t !== 'storage' && { borderColor: TIER_COLOR[t].frame }]}
             accessibilityRole="tab"
             accessibilityState={{ selected: tab === t }}
           >
@@ -83,26 +87,42 @@ export const RoomShop = memo(function RoomShop({
         )
       ) : catalog.length === 0 ? (
         <Text style={styles.empty}>Магазин загрузится, когда будет связь.</Text>
+      ) : tab === 'friend' && !catalog.some((v) => v.tier === 'friend') ? (
+        <Text style={styles.empty}>Подарки дружбы появятся после перезапуска приложения.</Text>
+      ) : tab === 'friend' && friendship === null ? (
+        <Text style={styles.empty}>Узнаю наш уровень дружбы…</Text>
       ) : (
+        <>
+        {tab === 'friend' && friendship && (
+          <View style={styles.friendHead} accessibilityLabel={`Уровень дружбы: ${friendship.title}`}>
+            <Text style={styles.friendTitle}>
+              💛 Мы — «{friendship.title}» · {nextLine(friendship)}
+            </Text>
+            <View style={styles.bar}>
+              <View style={[styles.barFill, { width: `${Math.round(friendship.progress * 100)}%` }]} />
+            </View>
+            <Text style={styles.friendHint}>Растёт, когда мы разговариваем и закрываются дела. Не падает.</Text>
+          </View>
+        )}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards}>
           {catalog
             .filter((v) => v.tier === tab)
             .map((v) => {
-              const st = shopState(v, owned, coins);
-              const color = v.tier !== 'free' ? TIER_COLOR[v.tier].frame : c.border;
+              const st = shopState(v, owned, coins, friendship?.level ?? null);
+              const color = v.tier !== 'free' && v.tier !== 'friend' ? TIER_COLOR[v.tier].frame : c.border;
               return (
                 <View key={v.key} style={[styles.card, { borderColor: color }]}>
-                  <Text style={styles.emoji}>{v.emoji}</Text>
+                  <Text style={[styles.emoji, st.kind === 'locked' && styles.lockedEmoji]}>{st.kind === 'locked' ? '🔒' : v.emoji}</Text>
                   <Text style={styles.label} numberOfLines={2}>
                     {v.label}
                   </Text>
-                  <Text style={styles.price}>{v.price > 0 ? `🪙 ${v.price}` : 'бесплатно'}</Text>
+                  <Text style={styles.price}>{v.tier === 'friend' ? 'подарок' : v.price > 0 ? `🪙 ${v.price}` : 'бесплатно'}</Text>
                   <Pressable
                     style={[styles.btn, st.kind === 'buy' ? styles.btnBuy : styles.btnOff]}
                     disabled={st.kind !== 'buy' || busy !== null}
                     onPress={() => onBuy(v)}
                     accessibilityRole="button"
-                    accessibilityLabel={`${v.label}: ${st.kind === 'buy' ? 'купить' : st.kind === 'owned' ? 'уже есть' : 'не хватает монет'}`}
+                    accessibilityLabel={`${v.label}: ${st.kind === 'buy' ? 'взять' : st.kind === 'owned' ? 'уже есть' : st.kind === 'locked' ? `откроется на уровне «${levelTitle(friendship, st.minLevel)}»` : 'не хватает монет'}`}
                   >
                     <Text style={styles.btnText}>
                       {busy === v.key
@@ -113,13 +133,16 @@ export const RoomShop = memo(function RoomShop({
                             : 'Взять'
                           : st.kind === 'owned'
                             ? 'Есть'
-                            : `Не хватает ${st.need} 🪙`}
+                            : st.kind === 'locked'
+                              ? `С «${levelTitle(friendship, st.minLevel)}»`
+                              : `Не хватает ${st.need} 🪙`}
                     </Text>
                   </Pressable>
                 </View>
               );
             })}
         </ScrollView>
+        </>
       )}
     </View>
   );
@@ -158,6 +181,12 @@ function createStyles(c: ReturnType<typeof useColors>) {
     btnBuy: { backgroundColor: c.primary },
     btnOff: { backgroundColor: c.surfaceLight },
     btnText: { fontSize: 11, color: c.text, textAlign: 'center', fontWeight: '600' },
+    lockedEmoji: { opacity: 0.7 },
+    friendHead: { paddingHorizontal: spacing.md, gap: 4 },
+    friendTitle: { fontSize: fontSize.sm, color: c.text, fontWeight: '600' },
+    friendHint: { fontSize: fontSize.xs, color: c.textSecondary },
+    bar: { height: 6, borderRadius: 3, backgroundColor: c.surfaceLight, overflow: 'hidden' },
+    barFill: { height: 6, borderRadius: 3, backgroundColor: c.primary },
     empty: { fontSize: fontSize.sm, color: c.textSecondary, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   });
 }

@@ -9,12 +9,13 @@
 export const ROOM_TIERS = ['budget', 'mid', 'premium', 'luxury'] as const;
 export type RoomTier = (typeof ROOM_TIERS)[number];
 
-export const TIER_LABEL: Record<RoomTier | 'free', string> = {
+export const TIER_LABEL: Record<RoomTier | 'free' | 'friend', string> = {
   budget: 'Бюджет',
   mid: 'Средний',
   premium: 'Премиум',
   luxury: 'Люкс',
   free: 'Декор',
+  friend: 'Дружба',
 };
 
 export type RoomSpot = 'floor' | 'wall' | 'finish';
@@ -43,7 +44,20 @@ export const FREE_KINDS = {
 } as const satisfies Record<string, { label: string; emoji: string; spot: RoomSpot }>;
 export type FreeKind = keyof typeof FREE_KINDS;
 
-export type RoomKind = PaidKind | FreeKind;
+/**
+ * Робот-друг №4: подарки дружбы — не покупаются, открываются уровнем дружбы
+ * (services/friendship.ts). По одному каждого.
+ */
+export const FRIEND_KINDS = {
+  aquarium: { label: 'Аквариум', emoji: '🐠', spot: 'floor', minLevel: 2 },
+  guitar: { label: 'Гитара', emoji: '🎸', spot: 'floor', minLevel: 3 },
+  telescope: { label: 'Телескоп', emoji: '🔭', spot: 'floor', minLevel: 4 },
+  trophy: { label: 'Кубок дружбы', emoji: '🏆', spot: 'floor', minLevel: 5 },
+  star: { label: 'Звезда дружбы', emoji: '🌟', spot: 'wall', minLevel: 6 },
+} as const satisfies Record<string, { label: string; emoji: string; spot: RoomSpot; minLevel: number }>;
+export type FriendKind = keyof typeof FRIEND_KINDS;
+
+export type RoomKind = PaidKind | FreeKind | FriendKind;
 
 /** Название и цена варианта по классам (обзоры ремонта: см. спеку Части 6). */
 const TABLE: Record<PaidKind, Record<RoomTier, [string, number]>> = {
@@ -112,11 +126,13 @@ const TABLE: Record<PaidKind, Record<RoomTier, [string, number]>> = {
 export interface RoomVariant {
   key: string;
   kind: RoomKind;
-  tier: RoomTier | 'free';
+  tier: RoomTier | 'free' | 'friend';
   label: string;
   emoji: string;
   price: number;
   spot: RoomSpot;
+  /** Только у подарков дружбы: с какого уровня дружбы открыт. */
+  minLevel?: number;
 }
 
 export const ROOM_VARIANTS: readonly RoomVariant[] = [
@@ -139,6 +155,16 @@ export const ROOM_VARIANTS: readonly RoomVariant[] = [
     emoji: FREE_KINDS[kind].emoji,
     price: 0,
     spot: FREE_KINDS[kind].spot,
+  })),
+  ...(Object.keys(FRIEND_KINDS) as FriendKind[]).map((kind) => ({
+    key: `friend:${kind}`,
+    kind,
+    tier: 'friend' as const,
+    label: FRIEND_KINDS[kind].label,
+    emoji: FRIEND_KINDS[kind].emoji,
+    price: 0,
+    spot: FRIEND_KINDS[kind].spot,
+    minLevel: FRIEND_KINDS[kind].minLevel,
   })),
 ];
 

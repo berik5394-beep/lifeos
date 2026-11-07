@@ -21,12 +21,18 @@ export const ROOM_CATALOG = [
   { key: 'picture', emoji: '🖼️', label: 'Картина', acc: 'картину', spot: 'wall' },
   { key: 'books', emoji: '📚', label: 'Книги', acc: 'книги', spot: 'floor' },
   { key: 'plush', emoji: '🧸', label: 'Игрушка', acc: 'игрушку', spot: 'floor' },
+  // Робот-друг №4: подарки дружбы (открываются уровнем дружбы, не покупаются).
+  { key: 'aquarium', emoji: '🐠', label: 'Аквариум', acc: 'аквариум', spot: 'floor' },
+  { key: 'guitar', emoji: '🎸', label: 'Гитара', acc: 'гитару', spot: 'floor' },
+  { key: 'telescope', emoji: '🔭', label: 'Телескоп', acc: 'телескоп', spot: 'floor' },
+  { key: 'trophy', emoji: '🏆', label: 'Кубок дружбы', acc: 'кубок дружбы', spot: 'floor' },
+  { key: 'star', emoji: '🌟', label: 'Звезда дружбы', acc: 'звезду дружбы', spot: 'wall' },
 ] as const;
 
 export type RoomItemKey = (typeof ROOM_CATALOG)[number]['key'];
 export type RoomSpot = 'floor' | 'wall' | 'finish';
 export type RoomTier = 'budget' | 'mid' | 'premium' | 'luxury';
-export type RoomVariantTier = RoomTier | 'free';
+export type RoomVariantTier = RoomTier | 'free' | 'friend';
 
 export const ROOM_TIERS: readonly RoomTier[] = ['budget', 'mid', 'premium', 'luxury'];
 export const TIER_LABEL: Record<RoomVariantTier, string> = {
@@ -35,6 +41,7 @@ export const TIER_LABEL: Record<RoomVariantTier, string> = {
   premium: 'Премиум',
   luxury: 'Люкс',
   free: 'Декор',
+  friend: 'Дружба',
 };
 
 /** Цвет «класса» вокруг предмета: серый, синий, золотой, фиолетово-золотой. */
@@ -54,6 +61,8 @@ export interface RoomVariant {
   emoji: string;
   price: number;
   spot: RoomSpot;
+  /** Подарок дружбы: с какого уровня дружбы открыт. */
+  minLevel?: number;
 }
 
 export const FLOOR_SLOTS = [
@@ -128,7 +137,7 @@ export function spotOf(key: RoomItemKey): RoomSpot {
 /** Класс варианта по ключу 'mid:sofa' / 'free:plant' (null — без варианта). */
 export function tierOf(variantKey: string | null | undefined): RoomVariantTier | null {
   const t = variantKey?.split(':')[0];
-  return t === 'budget' || t === 'mid' || t === 'premium' || t === 'luxury' || t === 'free' ? t : null;
+  return t === 'budget' || t === 'mid' || t === 'premium' || t === 'luxury' || t === 'free' || t === 'friend' ? t : null;
 }
 
 export function isPlaceSlot(slot: string | null | undefined): slot is PlaceSlot {
@@ -200,16 +209,18 @@ export function placedItems(owned: readonly OwnedItem[]): RoomItem[] {
 export function finishTier(owned: readonly OwnedItem[], kind: 'walls' | 'floor'): RoomTier | null {
   const it = owned.find((o) => o.slot === `finish-${kind}`);
   const t = tierOf(it?.variantKey);
-  return t && t !== 'free' ? t : null;
+  return t && t !== 'free' && t !== 'friend' ? t : null;
 }
 
-/** Состояние кнопки в магазине: купить / не хватает / уже есть. */
+/** Состояние кнопки в магазине: купить / не хватает / уже есть / закрыт уровнем дружбы. */
 export function shopState(
   v: RoomVariant,
   owned: readonly OwnedItem[],
   coins: number | null,
-): { kind: 'buy' } | { kind: 'short'; need: number } | { kind: 'owned' } {
-  if (v.price > 0 && owned.some((o) => o.variantKey === v.key)) return { kind: 'owned' };
+  friendLevel: number | null = null,
+): { kind: 'buy' } | { kind: 'short'; need: number } | { kind: 'owned' } | { kind: 'locked'; minLevel: number } {
+  if ((v.price > 0 || v.tier === 'friend') && owned.some((o) => o.variantKey === v.key)) return { kind: 'owned' };
+  if (v.minLevel && (friendLevel ?? 1) < v.minLevel) return { kind: 'locked', minLevel: v.minLevel };
   if (coins != null && coins < v.price) return { kind: 'short', need: v.price - coins };
   return { kind: 'buy' };
 }

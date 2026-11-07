@@ -21,6 +21,12 @@ export const ROOM_ITEM_LABELS = {
   // Часть 6: отделка.
   walls: 'стены',
   floor: 'пол',
+  // Робот-друг №4: подарки дружбы.
+  aquarium: 'аквариум',
+  guitar: 'гитара',
+  telescope: 'телескоп',
+  trophy: 'кубок дружбы',
+  star: 'звезда дружбы',
 } as const;
 
 export type RoomItemKey = keyof typeof ROOM_ITEM_LABELS;
@@ -66,7 +72,7 @@ export function roomContextFromItems(
       continue;
     }
     if (!r.slot) continue; // в кладовке
-    const tier = v.tier === 'free' ? '' : ` (${lower(TIER_LABEL[v.tier])})`;
+    const tier = v.tier === 'free' ? '' : v.tier === 'friend' ? ' (подарок дружбы)' : ` (${lower(TIER_LABEL[v.tier])})`;
     if (v.spot === 'finish') finish.push(`${ROOM_ITEM_LABELS[v.kind as RoomItemKey] ?? v.kind} — ${lower(v.label)}${tier}`);
     else furniture.push(`${lower(v.label)}${tier}`);
   }

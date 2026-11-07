@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Keyboard, type LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Keyboard, type LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -96,6 +96,8 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   const catalog = useRoomStore((s) => s.catalog);
   const coins = useRoomStore((s) => s.coins);
   const coinGain = useRoomStore((s) => s.coinGain);
+  const friendship = useRoomStore((s) => s.friendship);
+  const fetchFriendship = useRoomStore((s) => s.fetchFriendship);
   const fetchRoom = useRoomStore((s) => s.fetchRoom);
   const fetchCatalog = useRoomStore((s) => s.fetchCatalog);
   const fetchCoins = useRoomStore((s) => s.fetchCoins);
@@ -186,7 +188,9 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   const latestId = messages[0]?.id;
   useEffect(() => {
     fetchCoins();
-  }, [fetchCoins, latestId, scheduleRevision]);
+    // Робот-друг №4: уровень дружбы растёт от тех же разговоров и дел.
+    fetchFriendship();
+  }, [fetchCoins, fetchFriendship, latestId, scheduleRevision]);
 
   // Робот иногда мягко поворачивает голову, пока ничего не происходит.
   useEffect(() => {
@@ -414,9 +418,10 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
       if (shelf === 'furnish') {
         fetchCatalog();
         fetchCoins();
+        fetchFriendship();
       }
     },
-    [fetchCatalog, fetchCoins],
+    [fetchCatalog, fetchCoins, fetchFriendship],
   );
 
   const introTarget = introStep == null ? null : INTRO_STEPS[introStep].target;
@@ -622,6 +627,11 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
           {!zoomed && (
             <View style={[styles.topRight, { top: topInset }]} pointerEvents="none">
               <CoinCounter coins={coins} gain={coinGain} />
+              {friendship && (
+                <View style={styles.friendPill} accessibilityLabel={`Уровень дружбы: ${friendship.title}`}>
+                  <Text style={styles.friendPillText}>💛 {friendship.title}</Text>
+                </View>
+              )}
             </View>
           )}
           {zoomed && (
@@ -644,6 +654,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
             catalog={catalog}
             owned={owned}
             coins={coins}
+            friendship={friendship}
             busy={buying}
             onBuy={(v) => void onBuy(v)}
             onPlace={onPlace}
@@ -676,7 +687,9 @@ function createStyles(c: ReturnType<typeof useColors>) {
     mirror: { transform: [{ scaleX: -1 }] },
     robotShadow: { position: 'absolute', bottom: -16, left: '50%', marginLeft: -ROBOT_SIZE * 0.45, width: ROBOT_SIZE * 0.9, height: 32 },
     topLeft: { position: 'absolute', top: spacing.sm, left: spacing.sm, flexDirection: 'row', gap: spacing.sm },
-    topRight: { position: 'absolute', top: spacing.sm, right: spacing.sm },
+    topRight: { position: 'absolute', top: spacing.sm, right: spacing.sm, alignItems: 'flex-end', gap: 6 },
+    friendPill: { paddingHorizontal: 10, height: 26, borderRadius: 13, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
+    friendPillText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
     iconBtn: {
       width: 36,
       height: 36,

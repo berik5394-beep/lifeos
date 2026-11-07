@@ -18,14 +18,14 @@ describe('каталог ремонта (Часть 6)', () => {
   it('цены в диапазонах спеки и растут по классам для каждого вида', () => {
     const range = { budget: [40, 120], mid: [200, 450], premium: [700, 1400], luxury: [2500, 6000] } as const;
     for (const v of ROOM_VARIANTS) {
-      if (v.tier === 'free') {
+      if (v.tier === 'free' || v.tier === 'friend') {
         expect(v.price).toBe(0);
         continue;
       }
       expect(v.price).toBeGreaterThanOrEqual(range[v.tier][0]);
       expect(v.price).toBeLessThanOrEqual(range[v.tier][1]);
     }
-    const kinds = new Set(ROOM_VARIANTS.filter((v) => v.tier !== 'free').map((v) => v.kind));
+    const kinds = new Set(ROOM_VARIANTS.filter((v) => v.tier !== 'free' && v.tier !== 'friend').map((v) => v.kind));
     for (const k of kinds) {
       const prices = ROOM_TIERS.map((t) => variantByKey(`${t}:${k}`)!.price);
       expect([...prices].sort((a, b) => a - b)).toEqual(prices);

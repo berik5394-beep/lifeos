@@ -23,8 +23,8 @@ const own = (id: string, itemKey: OwnedItem['itemKey'], slot: OwnedItem['slot'],
 });
 
 describe('room-catalog — виды и ячейки', () => {
-  it('14 видов: 10 платных + 4 бесплатных; у каждого значок и падеж', () => {
-    expect(ROOM_CATALOG).toHaveLength(14);
+  it('19 видов: 10 платных + 4 бесплатных + 5 подарков дружбы; у каждого значок и падеж', () => {
+    expect(ROOM_CATALOG).toHaveLength(19);
     for (const k of ROOM_CATALOG) {
       expect(k.emoji).toBeTruthy();
       expect(k.acc).toBeTruthy();

@@ -11,6 +11,7 @@
  */
 
 import { roomContextFromItems } from './room-context.js';
+import { friendshipContextLine } from './friendship.js';
 import { prisma } from '../lib/prisma.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { getProceduralMemory } from './procedural-memory.singleton.js';
@@ -413,6 +414,11 @@ export async function fetchV2EnrichmentData(
           select: { itemKey: true, variantKey: true, slot: true },
         })
         .then(roomContextFromItems)
+        // Робот-друг №4: робот знает уровень дружбы (не выдумывает «мы лучшие друзья»).
+        .then(async (room) => {
+          const friend = await friendshipContextLine(userId).catch(() => null);
+          return [room, friend].filter(Boolean).join('\n') || null;
+        })
         .catch(() => null),
       BASE_MEMBER_BUDGET_MS,
       null,

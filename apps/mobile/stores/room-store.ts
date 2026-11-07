@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { useChatStore } from '@/stores/chat-store';
+import { isFriendship, type Friendship } from '@/services/friendship';
 import {
   applyPlacements,
   firstFreeSlot,
@@ -35,7 +37,11 @@ interface RoomState {
   coins: number | null;
   /** Последнее начисление (+N) — всплывашка у счётчика. */
   coinGain: { amount: number; seq: number } | null;
+  /** Робот-друг №4: уровень дружбы (null — ещё не загружен). */
+  friendship: Friendship | null;
   fetchRoom: () => Promise<void>;
+  /** Уровень дружбы; новый уровень робот скажет облачком (один раз). */
+  fetchFriendship: () => Promise<void>;
   fetchCatalog: () => Promise<void>;
   fetchCoins: () => Promise<void>;
   buy: (variantKey: string) => Promise<BuyResult>;
@@ -104,6 +110,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
     catalog: [],
     coins: null,
     coinGain: null,
+    friendship: null,
 
     fetchRoom: async () => {
       const token = useAuthStore.getState().token;
@@ -126,6 +133,20 @@ export const useRoomStore = create<RoomState>((set, get) => {
         if (Array.isArray(res?.variants)) set({ catalog: res.variants.filter((v) => isRoomItemKey(v.kind)) });
       } catch {
         // Магазин откроется, когда будет сеть.
+      }
+    },
+
+    fetchFriendship: async () => {
+      const token = useAuthStore.getState().token;
+      if (!token) return;
+      const mySession = session;
+      try {
+        const res = await api.get<unknown>('/robot/friendship', token);
+        if (mySession !== session || !isFriendship(res)) return; // вышел из аккаунта, пока летел
+        set({ friendship: res });
+        if (res.levelUp) useChatStore.getState().showNudge(`friend-level-${res.level}`, res.levelUp);
+      } catch {
+        // Без сети — покажем в следующий раз.
       }
     },
 
@@ -208,7 +229,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
       session += 1;
       pending = 0;
       queue = Promise.resolve();
-      set({ owned: [], items: [], coins: null, coinGain: null });
+      set({ owned: [], items: [], coins: null, coinGain: null, friendship: null });
     },
   };
 });

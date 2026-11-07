@@ -69,7 +69,7 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   // Ячейки, куда можно защёлкнуть этот предмет (доли сцены) — для ворклета.
   const targets = slotsFor(item.itemKey).map((s) => SLOT_POS[s]);
   const tier = tierOf(item.variantKey);
-  const tierColor = tier && tier !== 'free' ? TIER_COLOR[tier] : null;
+  const tierColor = tier && tier !== 'free' && tier !== 'friend' ? TIER_COLOR[tier] : null;
   const onWall = spotOf(item.itemKey) === 'wall';
   const badgeScale = useSharedValue(1);
   useEffect(() => {
