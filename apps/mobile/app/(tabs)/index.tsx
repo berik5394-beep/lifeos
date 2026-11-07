@@ -26,7 +26,7 @@ import { useGoalStore } from '@/stores/goal-store';
 import { useHabitStore } from '@/stores/habit-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { useJournalStore } from '@/stores/journal-store';
-import { api } from '@/services/api';
+import { useChatStore } from '@/stores/chat-store';
 import { getRandomQuote } from '@/utils/quotes';
 import { formatDate, getWeekDays } from '@/utils/dates';
 import { spacing, fontSize, borderRadius } from '@/constants';
@@ -390,16 +390,15 @@ export default function PlannerScreen() {
 
   const handleGoodnight = useCallback(async () => {
     if (!token) return;
-    try {
-      const response = await api.post<{ reply: string }>(
-        '/voice/assistant',
-        { text: 'спокойной ночи' },
-        token,
-      );
-      setEveningMessage(response.reply);
-    } catch {
-      setEveningMessage('Спокойной ночи! Отличный день позади.');
-    }
+    // «Отбой» — та же команда роботу через чат-стор (история, облачко,
+    // перечитка экранов, подтверждения), а не отдельный запрос мимо него.
+    await useChatStore.getState().sendMessage('спокойной ночи');
+    const latest = useChatStore.getState().messages[0];
+    setEveningMessage(
+      latest && latest.role === 'assistant' && !latest.id.startsWith('error')
+        ? latest.content
+        : 'Спокойной ночи! Отличный день позади.',
+    );
     setDayProgress(overallTotal > 0 ? Math.round((overallCompleted / overallTotal) * 100) : 0);
     setShowEveningRitual(true);
   }, [token, overallTotal, overallCompleted]);

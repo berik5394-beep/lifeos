@@ -21,7 +21,7 @@
  * injection.
  *
  * Best-effort: any error logs + returns; never throws to caller.
- * Fired weekly via withCronLock('mood-retention', 24h) — runs at most once
+ * Fired daily via withCronLock('mood-retention', 24h) — runs at most once
  * per 24h regardless of scheduler tick count (every 10 min).
  */
 
@@ -96,11 +96,14 @@ export async function runMoodRetention(): Promise<void> {
     // Parameterized via Prisma template-tag (safe from injection).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const aggregated = await (prisma.$executeRaw as any)`
-      INSERT INTO "MoodSnapshot" (id, "userId", source, valence, arousal, emotion, "recordedAt")
+      INSERT INTO "MoodSnapshot" (id, "userId", source, valence, arousal, emotion, "recordedAt", "updatedAt")
       SELECT gen_random_uuid()::text, "userId", 'daily_agg',
              AVG(valence), AVG(arousal),
              MODE() WITHIN GROUP (ORDER BY emotion),
-             date_trunc('day', "recordedAt")
+             date_trunc('day', "recordedAt"),
+             -- @updatedAt — поле Prisma, у колонки в проде нет DB-default:
+             -- без него крон падал каждый день с 23502 (с 2026-05-30).
+             NOW()
       FROM "MoodSnapshot"
       WHERE source = 'message' AND "recordedAt" < ${cutoff}
       GROUP BY "userId", date_trunc('day', "recordedAt")

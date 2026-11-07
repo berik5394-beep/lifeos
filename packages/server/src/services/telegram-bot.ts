@@ -745,13 +745,17 @@ export async function startBot(): Promise<Telegraf | null> {
 export async function sendTelegramTo(
   chatId: string | number,
   text: string,
+  /** Текст ошибки отправки — вызывающий решает, что делать (напр. выключить зеркало). */
+  onError?: (message: string) => void,
 ): Promise<boolean> {
   if (!activeBot) return false;
   try {
     await activeBot.telegram.sendMessage(chatId, text);
     return true;
   } catch (err) {
-    console.warn('[push] telegram mirror failed:', err instanceof Error ? err.message : err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[push] telegram mirror failed:', message);
+    onError?.(message);
     return false;
   }
 }

@@ -14,7 +14,8 @@ const INSIGHT = readFileSync(
 describe('proactivity delivery — внутренний лейбл НЕ просачивается в текст', () => {
   it('push-service: пустой title → Telegram шлёт ТОЛЬКО body (без префикса)', () => {
     expect(PUSH).toContain('title ? `${title}');
-    expect(PUSH).toContain('` : body)');
+    // После body может идти колбэк ошибок Telegram (выключение зеркала на 403).
+    expect(PUSH).toMatch(/` : body[,)]/);
   });
 
   it('insight-store: deliverTopInsight НЕ передаёт row.rationale как заголовок', () => {

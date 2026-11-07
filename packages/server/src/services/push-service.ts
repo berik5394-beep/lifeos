@@ -95,6 +95,21 @@ async function sendExpoPush(
   }
 }
 
+/**
+ * Чат в Telegram недоступен навсегда: бота заблокировали, аккаунт удалён,
+ * чат не найден. Такое зеркало надо выключить — иначе каждый нудж повторял
+ * попытку и сыпал 403 в логи (прод 2026-11-07: ×10 за сутки).
+ */
+export function isTelegramChatGone(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return (
+    message.includes('bot was blocked by the user') ||
+    message.includes('user is deactivated') ||
+    message.includes('chat not found') ||
+    message.includes('bot was kicked')
+  );
+}
+
 /** Найти telegram chatId юзера (для зеркала). */
 async function getTelegramChatId(userId: string): Promise<string | null> {
   const integ = await prisma.integration.findFirst({
@@ -160,7 +175,13 @@ export async function deliverNotification(
     // В Telegram заголовок + тело одним сообщением (у бота нет «title»).
     // Пустой title → шлём ТОЛЬКО тело (без префикса) — чтобы внутренние
     // лейблы (provenance инсайта) не просачивались в текст юзеру.
-    telegram = await sendTelegramTo(chatId, title ? `${title}\n\n${body}` : body);
+    telegram = await sendTelegramTo(chatId, title ? `${title}\n\n${body}` : body, (message) => {
+      if (!isTelegramChatGone(message)) return;
+      void prisma.integration
+        .updateMany({ where: { userId, provider: 'telegram', active: true }, data: { active: false } })
+        .then(() => console.warn(`[push] telegram mirror disabled for user=${userId}: ${message}`))
+        .catch((e) => console.warn('[push] telegram mirror disable failed:', e instanceof Error ? e.message : e));
+    });
   }
 
   return { push, telegram };

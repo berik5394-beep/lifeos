@@ -266,8 +266,19 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!token) return;
 
     try {
-      const prioritized = await api.post<Task[]>('/tasks/ai-prioritize', {}, token);
-      set({ tasks: prioritized });
+      // Путь на сервере — /tasks/prioritize (раньше /tasks/ai-prioritize → 404).
+      // Ответ: массив невыполненных с оценками ИЛИ { tasks: [] }, если их нет.
+      // Оценки вливаем в стор, а не заменяем им список: иначе выполненные
+      // задачи пропадали бы с экранов.
+      const res = await api.post<Task[] | { tasks: Task[] }>('/tasks/prioritize', {}, token);
+      const scored = Array.isArray(res) ? res : res.tasks ?? [];
+      const byId = new Map(scored.map((t) => [t.id, t]));
+      set((state) => ({
+        tasks: state.tasks.map((t) => {
+          const s = byId.get(t.id);
+          return s ? { ...t, urgency: s.urgency, importance: s.importance, aiScore: s.aiScore } : t;
+        }),
+      }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Ошибка AI-приоритизации';
       throw new Error(msg);
@@ -279,7 +290,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!token) return;
 
     try {
-      await api.post(`/tasks/${taskId}/dependencies`, { prerequisiteId }, token);
+      // Сервер ждёт prerequisiteTaskId (раньше слали prerequisiteId → 400 всегда).
+      await api.post(`/tasks/${taskId}/dependencies`, { prerequisiteTaskId: prerequisiteId }, token);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Ошибка при добавлении зависимости';
       throw new Error(msg);

@@ -3,6 +3,7 @@ import { storage } from '@/services/storage';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { formatDate } from '@/utils/dates';
+import { useChatStore } from '@/stores/chat-store';
 
 interface AssistantResponse {
   reply: string;
@@ -63,19 +64,19 @@ export function useMorningGreeting(): UseMorningGreetingResult {
     setShouldShowGreeting(false);
   }, []);
 
+  /**
+   * Чип — обычная команда роботу через общий чат-стор (как строка «Скажи
+   * роботу»): ответ облачком у робота + в истории, экраны перечитываются,
+   * деньги приходят с кнопками «Подтвердить». Раньше чип ходил в
+   * /voice/assistant мимо стора, и ответ просто выбрасывался.
+   * «Спросить голосом» — ничего не шлёт: микрофон ниже, у строки ввода.
+   */
   const handleChipPress = useCallback(
     async (action: string, text: string): Promise<string | null> => {
-      if (!token) return null;
-      try {
-        const response = await api.post<AssistantResponse>(
-          '/voice/assistant',
-          { text },
-          token,
-        );
-        return response.reply;
-      } catch {
-        return null;
-      }
+      if (!token || action === 'voice_ask') return null;
+      await useChatStore.getState().sendMessage(text);
+      const latest = useChatStore.getState().messages[0];
+      return latest && latest.role === 'assistant' ? latest.content : null;
     },
     [token],
   );
