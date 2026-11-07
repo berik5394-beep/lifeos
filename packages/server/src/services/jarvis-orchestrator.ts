@@ -97,6 +97,8 @@ import {
 // чанкинг гигантских — позже (YAGNI). Стоимость токенов ограничена
 // дневным AI-лимитом (security.aiDailyLimiter).
 const MAX_USER_TEXT = 16000;
+/** Голосовой ответ (≤3 предложения, озвучивается) — короче лимит: быстрее приходит. */
+const VOICE_MAX_TOKENS = 400;
 
 export interface JarvisResponse {
   reply: string;
@@ -1673,7 +1675,7 @@ async function handleMessageCore(
         history,
         webSearch: true,
         maxSearches: 3,
-        maxTokens: 900,
+        maxTokens: channel === 'voice' ? VOICE_MAX_TOKENS : 900,
         deadlineAt,
         // Fix D: localTools НЕ на каждом сообщении. Для явной болтовни
         // («расскажи анекдот») они только грузят запрос (7 схем + риск
@@ -1702,7 +1704,7 @@ async function handleMessageCore(
             history,
             webSearch: true,
             maxSearches: 3,
-            maxTokens: 900,
+            maxTokens: channel === 'voice' ? VOICE_MAX_TOKENS : 900,
             deadlineAt,
             localTools: true,
             userId,
@@ -1760,7 +1762,7 @@ async function handleMessageCore(
               history,
               webSearch: true,
               maxSearches: 3,
-              maxTokens: 900,
+              maxTokens: channel === 'voice' ? VOICE_MAX_TOKENS : 900,
               deadlineAt,
             });
             console.warn(

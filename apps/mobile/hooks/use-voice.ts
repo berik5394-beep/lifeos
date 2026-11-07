@@ -15,49 +15,9 @@ import {
 } from '@/services/voice-followup';
 import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
 
-// ==========================================================
-// TTS VOICE RESOLUTION (gender-aware)
-// ==========================================================
-// Picks a russian voice matching the user's assistantGender preference
-// stored in MMKV-like storage by onboarding / settings screens.
-// Cached per-session; re-resolves when gender changes.
-let cachedVoiceId: string | undefined;
-let cachedFor: string | undefined;
-
-export async function getPreferredVoiceIdentifier(): Promise<string | undefined> {
-  try {
-    const gender = (storage.getString('assistantGender') as 'female' | 'male' | undefined) ?? 'female';
-    if (cachedFor === gender && cachedVoiceId !== undefined) {
-      return cachedVoiceId;
-    }
-    const voices = await Speech.getAvailableVoicesAsync();
-    const russian = voices.filter((v) => v.language?.startsWith('ru'));
-    // iOS voices sometimes expose gender via name; Android rarely does.
-    // Fall back to name heuristics.
-    const byGender = russian.find((v) => {
-      const name = (v.name || v.identifier || '').toLowerCase();
-      if (gender === 'male') {
-        return (
-          name.includes('male') ||
-          name.includes('мужск') ||
-          name.includes('yuri') ||
-          name.includes('milena-m')
-        );
-      }
-      return (
-        name.includes('female') ||
-        name.includes('женск') ||
-        name.includes('milena') ||
-        name.includes('katya')
-      );
-    });
-    cachedVoiceId = byGender?.identifier ?? russian[0]?.identifier;
-    cachedFor = gender;
-    return cachedVoiceId;
-  } catch {
-    return undefined;
-  }
-}
+// Выбор голоса (по полу ассистента) — services/tts-voice.ts, общий с ответами чата.
+export { getPreferredVoiceIdentifier } from '@/services/tts-voice';
+import { getPreferredVoiceIdentifier } from '@/services/tts-voice';
 
 // ---------------------------------------------------------------
 // Lazy-load expo-speech-recognition.
@@ -258,10 +218,14 @@ export interface UseVoiceOptions {
    *  Для экранов, которые сами шлют текст в мозг (чат → /voice/chat),
    *  иначе команда исполнится дважды. */
   transcribeOnly?: boolean;
+  /** Короткий тап вместо удержания — вместо подсказки «удерживай» (Джарвис: тап = разговор без рук). */
+  onTap?: () => void;
 }
 
 export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
   const transcribeOnly = options.transcribeOnly === true;
+  const onTapRef = useRef(options.onTap);
+  onTapRef.current = options.onTap;
   const [state, setState] = useState<VoiceState>('idle');
   // Удержание кнопки (push-to-talk): колбэки живут дольше рендера, поэтому
   // правду о состоянии держим в ref-ах, а не в замыкании `state`. Иначе
@@ -789,7 +753,10 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
         isRecording: () => stateRef.current === 'recording',
         now: () => Date.now(),
         minHoldMs: MIN_HOLD_MS,
-        onTooShort: () => setError('Удерживай кнопку, пока говоришь, и отпусти, когда закончишь.'),
+        onTooShort: () => {
+          if (onTapRef.current) onTapRef.current();
+          else setError('Удерживай кнопку, пока говоришь, и отпусти, когда закончишь.');
+        },
       }),
     [],
   );

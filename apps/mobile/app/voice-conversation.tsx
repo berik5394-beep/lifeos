@@ -98,9 +98,11 @@ export default function VoiceConversationScreen() {
     }
   }, [amplitude, state, pulseAnim]);
 
-  // Auto-start conversation on mount
+  // Сразу без рук (Джарвис, jarvis-roadmap №5): говоришь — робот отвечает
+  // голосом и снова слушает. Открывается тапом по микрофону, фразой «давай
+  // поговорим» или ссылкой lifeos://talk (команда Siri «Привет, ЛайфОС»).
   useEffect(() => {
-    startConversation();
+    startConversation('continuous');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

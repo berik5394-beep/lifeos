@@ -56,6 +56,7 @@ import { ErrorBoundary } from '@/components/shared/error-boundary';
 import { OfflineBanner } from '@/components/shared/offline-banner';
 import type { RootStackParamList, AuthStackParamList } from './types';
 import { rehydrateStores } from '@/services/rehydrate-stores';
+import { startTalkLinks } from '@/services/talk-link';
 
 function useNavigationTheme() {
   const theme = useThemeStore((s) => s.theme);
@@ -136,6 +137,8 @@ export default function Navigation() {
       startOfflineSync().catch(() => {});
       // Обновления «по воздуху»: проверка при возврате в приложение, применение в фоне.
       startOtaUpdates();
+      // lifeos://talk (команда Siri «Привет, ЛайфОС») → сразу разговор без рук.
+      startTalkLinks();
 
       return () => {
         cleanupVoiceAlarm();

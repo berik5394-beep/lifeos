@@ -2,6 +2,13 @@ import React, { createContext, useContext, useEffect, useMemo, useState, type Re
 import { useVoice } from '@/hooks/use-voice';
 import { useUtterance } from '@/hooks/use-utterance';
 import { DictationModal } from '@/components/voice';
+import { stopSpeaking } from '@/services/tts-voice';
+import { navigateTo } from '@/navigation/ref';
+
+function openConversation(): void {
+  stopSpeaking();
+  navigateTo('VoiceConversation');
+}
 
 /**
  * Один микрофон на весь дом (инструменты ↔ комната). Два useVoice на двух
@@ -30,11 +37,14 @@ const Ctx = createContext<SharedVoice | null>(null);
 export function SharedVoiceProvider({ children }: { children: ReactNode }) {
   const { isRecording, isProcessing, lastResult, liveTranscript, error, startRecording, stopRecording } = useVoice({
     transcribeOnly: true,
+    // Тап по микрофону — разговор без рук (говоришь, робот отвечает голосом и
+    // снова слушает); удержание — как раньше, «держи и говори».
+    onTap: openConversation,
   });
   const utterance = useUtterance();
   const handle = utterance.handle;
   useEffect(() => {
-    if (lastResult?.transcript) handle(lastResult.transcript);
+    if (lastResult?.transcript) handle(lastResult.transcript, true);
   }, [lastResult, handle]);
   const [typing, setTyping] = useState(false);
   const [inputHighlight, setInputHighlight] = useState(false);
@@ -45,9 +55,13 @@ export function SharedVoiceProvider({ children }: { children: ReactNode }) {
       isProcessing,
       liveTranscript: liveTranscript ?? '',
       error: error ?? null,
-      startRecording,
+      // Заговорил снова — робот замолкает (не перебивать человека своим ответом).
+      startRecording: () => {
+        stopSpeaking();
+        return startRecording();
+      },
       stopRecording,
-      send: handle,
+      send: (text: string) => handle(text, false),
       typing,
       setTyping,
       inputHighlight,

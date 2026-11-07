@@ -15,6 +15,8 @@ const chatSchema = z.object({
   // Cap protects Claude billing: 4000 chars ≈ 1000 tokens на запрос юзера —
   // больше не имеет смысла для диалога (модель усечёт контекст).
   text: z.string().min(1, 'Текст обязателен').max(4000, 'Сообщение слишком длинное'),
+  // Сказано голосом (микрофон) — ответ будет озвучен: короткий режим для голоса.
+  voice: z.boolean().optional(),
 });
 
 const historyQuerySchema = z.object({
@@ -34,9 +36,9 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
   app.post('/voice/chat', {
     preHandler: [chatRateLimit, aiDailyLimiter, validate(chatSchema)],
   }, async (request, reply) => {
-    const { text } = request.body as z.infer<typeof chatSchema>;
+    const { text, voice } = request.body as z.infer<typeof chatSchema>;
     try {
-      const res = await handleMessage(request.userId, text);
+      const res = await handleMessage(request.userId, text, voice ? 'voice' : undefined);
       let message = res.reply;
       if (res.bookingUrl) message += `\n\n\u{1F517} ${res.bookingUrl}`;
       // SSOT Step 7: бейдж — ТОЛЬКО реальные исполненные инструменты

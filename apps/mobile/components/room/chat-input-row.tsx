@@ -46,7 +46,7 @@ export const ChatInputRow = memo(function ChatInputRow() {
         onPressIn={() => void v.startRecording()}
         onPressOut={() => void v.stopRecording()}
         accessibilityRole="button"
-        accessibilityLabel="Сказать голосом (удерживать)"
+        accessibilityLabel="Голос: тап — разговор без рук, удерживать — сказать фразу"
       >
         {v.isProcessing ? (
           <ActivityIndicator size="small" color={c.primary} />

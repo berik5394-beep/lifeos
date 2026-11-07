@@ -5,6 +5,7 @@ import { confirmPendingVoiceAction, isConfirmable, type PendingActionInfo } from
 import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
 import { useScheduleStore, RESCHEDULE_ACTION, type RescheduleProposal } from '@/stores/schedule-store';
 import { formatDate } from '@/utils/dates';
+import { speakReply } from '@/services/tts-voice';
 
 export interface ChatAction {
   type: string;
@@ -40,7 +41,8 @@ interface ChatState {
   messages: ChatMessage[];
   isLoading: boolean;
   hasMore: boolean;
-  sendMessage: (text: string, webSearch?: boolean) => Promise<void>;
+  /** spoken — сказано голосом: ответ короче и озвучивается. */
+  sendMessage: (text: string, webSearch?: boolean, opts?: { spoken?: boolean }) => Promise<void>;
   /** Текст, который не дошёл до робота (нет сети, сбой) — строка ввода вернёт его. */
   failedDraft: string | null;
   /** Какая строка ввода отправила последней — ей и вернуть текст. */
@@ -82,7 +84,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }));
   },
 
-  sendMessage: async (text: string, webSearch?: boolean) => {
+  sendMessage: async (text: string, webSearch?: boolean, opts?: { spoken?: boolean }) => {
+    const spoken = opts?.spoken === true;
     const token = useAuthStore.getState().token;
     if (!token) return;
 
@@ -107,7 +110,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       const data = await api.post<{ message: string; actions?: ChatAction[]; pendingAction?: PendingActionInfo | null; emotion?: string; openPanel?: string | null }>(
         '/voice/chat',
-        { text, webSearch: webSearch ?? false },
+        { text, webSearch: webSearch ?? false, ...(spoken ? { voice: true } : {}) },
         token,
         // Мозг думает дольше 15 с (поиск, инструменты): раньше телефон обрывал
         // ожидание, писал «нет интернета», а сервер доделывал — повтор = дубль.
@@ -130,6 +133,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: [assistantMessage, ...state.messages],
         isLoading: false,
       }));
+      // Сказали голосом — робот отвечает вслух (Джарвис, jarvis-roadmap №5).
+      if (spoken) void speakReply(data.message);
       // Мозг мог что-то сделать (отметил привычку, добавил задачу) — открытая
       // панель перечитает свои данные. Микрофон теперь один, у поля ввода.
       useScheduleStore.getState().bump();
@@ -147,6 +152,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Напечатанное не пропадает: строка ввода вернёт его, можно отправить ещё
       // раз. Кроме 408 — сервер ещё думает и может выполнить, повтор = дубль.
       const retryable = !(err instanceof ApiError && err.status === 408);
+      if (spoken) void speakReply(errorMessage.content);
       set((state) => ({
         messages: [errorMessage, ...state.messages],
         isLoading: false,

@@ -13,12 +13,13 @@ export function useUtterance() {
   const [dictationOpen, setDictationOpen] = useState(false);
 
   const handle = useCallback(
-    (raw: string) => {
+    // spoken — пришло с микрофона: ответ будет вслух и коротким.
+    (raw: string, spoken = false) => {
       const route = routeVoice(raw);
       if (route.kind === 'dictation') setDictationOpen(true);
       // Через общий ref: голос теперь живёт над всем стеком, а не внутри экрана.
       else if (route.kind === 'conversation') navigateTo('VoiceConversation');
-      else if (route.text) void sendMessage(route.text, true);
+      else if (route.text) void sendMessage(route.text, true, { spoken });
     },
     [sendMessage],
   );
