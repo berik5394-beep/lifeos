@@ -37,6 +37,33 @@ const kanbanStatusSchema = z.object({
 export async function taskRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
+  /**
+   * Этап 3 (честность): «Активность за год» на «Сегодня» рисовалась по задачам
+   * одной загруженной недели — остальной год пустой, как будто ничего не было.
+   * Здесь — % выполнения по каждому дню года (без отменённых), из всей базы.
+   */
+  app.get('/tasks/activity', async (request, reply) => {
+    const { year } = request.query as { year?: string };
+    const y = year ? Number(year) : new Date().getUTCFullYear();
+    if (!Number.isInteger(y) || y < 2000 || y > 2100) return invalidDateReply(reply, 'year', 'YYYY');
+    const where = {
+      userId: request.userId,
+      cancelled: false,
+      date: { gte: new Date(Date.UTC(y, 0, 1)), lt: new Date(Date.UTC(y + 1, 0, 1)) },
+    };
+    const [all, done] = await Promise.all([
+      prisma.task.groupBy({ by: ['date'], where, _count: { _all: true } }),
+      prisma.task.groupBy({ by: ['date'], where: { ...where, completed: true }, _count: { _all: true } }),
+    ]);
+    const doneBy = new Map(done.map((r) => [r.date.toISOString().slice(0, 10), r._count._all]));
+    const days: Record<string, number> = {};
+    for (const r of all) {
+      const key = r.date.toISOString().slice(0, 10);
+      days[key] = Math.round(((doneBy.get(key) ?? 0) / r._count._all) * 100);
+    }
+    return { year: y, days };
+  });
+
   app.get('/tasks', async (request, reply) => {
     const { date, week, month } = request.query as { date?: string; week?: string; month?: string };
 
