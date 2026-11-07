@@ -18,11 +18,9 @@ function resolveTheme(name: ThemeName): Theme {
   return themes[name] ?? themes.dark;
 }
 
+/** Тем нет (решение Berik): всегда тёмная. Выбор «Планер/Розовая» из настроек убран,
+ *  ранее выбранные возвращаются на тёмную. */
 function readStoredThemeName(): ThemeName {
-  const stored = storage.getString('themeName');
-  if (stored === 'dark' || stored === 'planner' || stored === 'pink') {
-    return stored;
-  }
   return 'dark';
 }
 

@@ -13,8 +13,6 @@ import { resyncDailyDigests, DEFAULT_WAKE_UP } from '@/services/daily-digests';
 import { saveAssistantProfile, loadAssistantProfile, type AssistantProfile } from '@/services/assistant-profile';
 import { exportCSV, saveCSVToFile } from '@/services/export';
 import { useAuthStore } from '@/stores/auth-store';
-import { useThemeStore } from '@/stores/theme-store';
-import { themeLabels, themeIcons, type ThemeName } from '@/constants/themes';
 import { Card, Button, SectionHeader, Modal, Input } from '@/components/ui';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
@@ -22,7 +20,6 @@ import { useUIStore, type UIComplexity } from '@/stores/ui-store';
 import { AnimatedPress } from '@/components/ui/animated-press';
 import { FadeInView } from '@/components/ui/fade-in-view';
 
-const THEME_OPTIONS: ThemeName[] = ['dark', 'planner', 'pink'];
 
 const UI_COMPLEXITY_OPTIONS: { key: UIComplexity; label: string; icon: string; desc: string }[] = [
   { key: 'simple', label: 'Простой', icon: '🌱', desc: 'Задачи и привычки' },
@@ -298,7 +295,6 @@ export default function SettingsScreen() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const { themeName, setTheme } = useThemeStore();
   const uiComplexity = useUIStore((s) => s.complexity);
   const setUIComplexity = useUIStore((s) => s.setComplexity);
   const c = useColors();
@@ -611,34 +607,6 @@ export default function SettingsScreen() {
               </AnimatedPress>
             </View>
           )}
-        </Card>
-      </FadeInView>
-
-      <FadeInView delay={160}>
-        <Text style={styles.sectionTitle}>Оформление</Text>
-        <Card>
-          {THEME_OPTIONS.map((key, index) => (
-            <View key={key}>
-              {index > 0 && <View style={styles.separator} />}
-              <AnimatedPress
-                style={styles.row}
-                onPress={() => setTheme(key)}
-              >
-                <View style={styles.rowLeft}>
-                  <Text style={styles.rowIcon}>{themeIcons[key]}</Text>
-                  <Text style={styles.rowLabel}>{themeLabels[key]}</Text>
-                </View>
-                <View
-                  style={[
-                    styles.radio,
-                    themeName === key && styles.radioSelected,
-                  ]}
-                >
-                  {themeName === key && <View style={styles.radioInner} />}
-                </View>
-              </AnimatedPress>
-            </View>
-          ))}
         </Card>
       </FadeInView>
 
