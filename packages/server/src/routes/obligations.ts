@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { MAX_MONEY_AMOUNT } from '../lib/money.js';
+import { captureActivity } from '../services/tool-activity-summary.js';
 import { createObligation, listObligations, settleObligation, cancelObligation } from '../services/obligations/index.js';
 
 /**
@@ -40,6 +41,15 @@ export async function obligationRoutes(app: FastifyInstance): Promise<void> {
       dueDate: b.dueDate ? new Date(`${b.dueDate}T00:00:00Z`) : null,
       source: 'manual',
     });
+    // Как у трат/задач: запись с экрана — в память мозга (раньше только голосом).
+    captureActivity(request.userId, {
+      type: 'obligation_added',
+      content:
+        b.direction === 'i_owe'
+          ? `Долг: я должен ${b.personName} ${b.amount} ₸${b.dueDate ? ` до ${b.dueDate}` : ''}`
+          : `Долг: ${b.personName} должен мне ${b.amount} ₸${b.dueDate ? ` до ${b.dueDate}` : ''}`,
+      importance: 6,
+    });
     return reply.status(201).send({ obligation: o });
   });
 
@@ -48,6 +58,10 @@ export async function obligationRoutes(app: FastifyInstance): Promise<void> {
     const { id } = request.params as { id: string };
     const o = await settleObligation(request.userId, id);
     if (!o) return reply.status(404).send({ message: 'Долг не найден' });
+    captureActivity(request.userId, {
+      type: 'obligation_settled',
+      content: o.direction === 'i_owe' ? `Отдал долг ${o.personName}${o.amount ? ` ${o.amount} ₸` : ''}` : `${o.personName} вернул долг${o.amount ? ` ${o.amount} ₸` : ''}`,
+    });
     return { obligation: o };
   });
 
