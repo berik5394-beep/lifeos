@@ -15,7 +15,7 @@ import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { useNavigation } from '@react-navigation/native';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ProgressRing, SwipeableRow, TapToAdd } from '@/components/ui';
+import { ProgressRing, SwipeableRow, TapToAdd, InlineEntry } from '@/components/ui';
 import { Heatmap } from '@/components/charts';
 import { Confetti } from '@/components/shared';
 import { MorningGreeting, EveningRitual } from '@/components/voice';
@@ -35,7 +35,7 @@ import { taskCategories } from '@/constants/categories';
 import { useColors } from '@/hooks/use-colors';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { hapticLight, hapticSelection, hapticSuccess } from '@/services/haptics';
-import { moodEmoji } from '@/constants/mood';
+import { moodEmoji, MOOD_LEVELS } from '@/constants/mood';
 import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
 import { useYearActivity } from '@/hooks/use-year-activity';
 import { useToolActive } from '@/hooks/use-content-width';
@@ -157,11 +157,18 @@ const SummaryCard = React.memo(function SummaryCard({
   value,
   color,
   progress,
-}: SummaryCardProps) {
+  onPress,
+}: SummaryCardProps & { onPress?: () => void }) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
   return (
-    <View style={styles.summaryCard}>
+    <Pressable
+      style={({ pressed }) => [styles.summaryCard, pressed && { opacity: 0.6 }]}
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${value}`}
+    >
       {progress != null && (
         <View style={styles.miniProgress}>
           <View
@@ -174,7 +181,7 @@ const SummaryCard = React.memo(function SummaryCard({
       )}
       <Text style={[styles.summaryValue, { color }]}>{value}</Text>
       <Text style={styles.summaryLabel}>{label}</Text>
-    </View>
+    </Pressable>
   );
 });
 
@@ -184,6 +191,8 @@ export default function PlannerScreen() {
   const navigation = useNavigation();
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
+  // Тап по «Настроению» — ряд смайликов прямо на экране.
+  const [moodOpen, setMoodOpen] = useState(false);
   // voiceModalVisible removed — hold-to-record replaces modal
   const [showConfetti, setShowConfetti] = useState(false);
   const [showEveningRitual, setShowEveningRitual] = useState(false);
@@ -196,7 +205,7 @@ export default function PlannerScreen() {
   const toolActive = useToolActive();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { tasks, isLoading: tasksLoading, fetchTasks, toggleComplete, deleteTask } = useTaskStore();
+  const { tasks, isLoading: tasksLoading, fetchTasks, toggleComplete, deleteTask, createTask } = useTaskStore();
   // Карточка задачи: id, а не копия — после сохранения показываем свежую задачу из стора.
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const editingTask = useMemo(() => tasks.find((t) => t.id === editingTaskId) ?? null, [tasks, editingTaskId]);
@@ -404,12 +413,12 @@ export default function PlannerScreen() {
 
   const handleDismissEveningRitual = useCallback(() => setShowEveningRitual(false), []);
 
-  const handleNavigateJournal = useCallback(() => navigation.navigate('Journal' as never), [navigation]);
+  const handleNavigateJournal = useCallback(() => useRoomToolStore.getState().openTool('journal'), []);
   const handleNavigateTaskCapture = useCallback(() => navigation.navigate('TaskCapture' as never), [navigation]);
   const handleNavigateFocusMode = useCallback(() => navigation.navigate('FocusMode' as never), [navigation]);
   const handleNavigateKanbanBoard = useCallback(() => navigation.navigate('KanbanBoard' as never), [navigation]);
   const handleNavigateLifeInsights = useCallback(() => navigation.navigate('LifeInsights' as never), [navigation]);
-  const handleNavigateCalendar = useCallback(() => navigation.navigate('Calendar' as never), [navigation]);
+  const handleNavigateCalendar = useCallback(() => useRoomToolStore.getState().openTool('calendar'), []);
 
   const handleQuoteSpeak = useCallback(() => {
     if (quotePlaying) {
@@ -430,7 +439,38 @@ export default function PlannerScreen() {
 
   // Пустая строка под задачами: дату из текста («завтра в 15:00») разбирает сервер.
   // Ошибку покажет сама строка «Новая задача» (текст не пропадёт).
-  const handleQuickAddSubmit = useCallback((text: string) => useTaskStore.getState().quickAdd(text), []);
+  // Выбран день в планере — задача на ЭТОТ день (раньше уходила на «сегодня»
+  // или на дату из текста). Не выбран — сервер разбирает фразу («завтра в 15:00»).
+  const handleQuickAddSubmit = useCallback(
+    (text: string) =>
+      selectedDayIndex !== null
+        ? createTask({ title: text, category: 'personal', priority: 'medium', date: formatDate(weekDays[selectedDayIndex].date) })
+        : useTaskStore.getState().quickAdd(text),
+    [selectedDayIndex, weekDays, createTask],
+  );
+
+  // Тап по карточке «Задачи» / кольцу дня — сегодня в планере (задачи дня + строка ввода).
+  const showToday = useCallback(() => {
+    setWeekOffset(0);
+    const idx = getWeekDays(getMonday(new Date())).findIndex((d) => formatDate(d.date) === todayStr);
+    setSelectedDayIndex(idx >= 0 ? idx : null);
+  }, [todayStr]);
+  const openHabitsTool = useCallback(() => useRoomToolStore.getState().openTool('habits'), []);
+  const handleMoodPick = useCallback(
+    async (mood: number) => {
+      setMoodOpen(false);
+      try {
+        await useJournalStore.getState().saveEntry({ date: todayStr, mood });
+      } catch (err) {
+        Alert.alert('Не сохранилось', err instanceof Error ? err.message : 'Попробуй ещё раз.');
+      }
+    },
+    [todayStr],
+  );
+  const handleRenameGoal = useCallback(
+    (id: string, goalText: string) => updateWeeklyGoal(id, { goalText }),
+    [updateWeeklyGoal],
+  );
 
   // Сдвиг строки влево + красный минус — уже осознанное действие, без диалога.
   const handleDeleteTask = useCallback(async (id: string) => {
@@ -477,7 +517,12 @@ export default function PlannerScreen() {
         </Card>
 
         {/* Day Progress Ring */}
-        <View style={styles.dayProgressRow}>
+        <Pressable
+          style={({ pressed }) => [styles.dayProgressRow, pressed && { opacity: 0.7 }]}
+          onPress={showToday}
+          accessibilityRole="button"
+          accessibilityLabel="Показать задачи на сегодня"
+        >
           <ProgressRing
             progress={overallProgress}
             size={80}
@@ -493,7 +538,7 @@ export default function PlannerScreen() {
               {overallCompleted} из {overallTotal} выполнено
             </Text>
           </View>
-        </View>
+        </Pressable>
 
         {/* Today's Summary */}
         <FadeInView delay={100}>
@@ -503,19 +548,37 @@ export default function PlannerScreen() {
               value={`${todayTasksCompleted}/${todayTasksTotal}`}
               color={c.primary}
               progress={taskProgress}
+              onPress={showToday}
             />
             <SummaryCard
               label="Привычки"
               value={`${habitsCompletedToday}/${habitsTotal}`}
               color={c.success}
               progress={habitProgress}
+              onPress={openHabitsTool}
             />
             <SummaryCard
               label="Настроение"
               value={moodEmoji(todayEntry?.mood)}
               color={c.secondary}
+              onPress={() => setMoodOpen((v) => !v)}
             />
           </View>
+          {moodOpen && (
+            <View style={styles.moodPickRow}>
+              {MOOD_LEVELS.map((m) => (
+                <Pressable
+                  key={m.value}
+                  onPress={() => void handleMoodPick(m.value)}
+                  style={({ pressed }) => [styles.moodPick, pressed && { opacity: 0.5 }]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Настроение: ${m.label}`}
+                >
+                  <Text style={styles.moodPickEmoji}>{m.emoji}</Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
         </FadeInView>
 
         {/* Quick Actions */}
@@ -581,7 +644,9 @@ export default function PlannerScreen() {
           <TouchableOpacity onPress={handlePrevWeek} hitSlop={12}>
             <Text style={styles.navArrow}>{'<'}</Text>
           </TouchableOpacity>
-          <Text style={styles.weekLabel}>Неделя: {weekLabel}</Text>
+          <Pressable onPress={() => setWeekOffset(0)} accessibilityRole="button" accessibilityLabel="Вернуться к текущей неделе">
+            <Text style={styles.weekLabel}>Неделя: {weekLabel}</Text>
+          </Pressable>
           <TouchableOpacity onPress={handleNextWeek} hitSlop={12}>
             <Text style={styles.navArrow}>{'>'}</Text>
           </TouchableOpacity>
@@ -664,15 +729,23 @@ export default function PlannerScreen() {
                     onToggle={() => handleToggleGoal(goal.id, goal.completed)}
                     size={20}
                   />
-                  <Text
-                    style={[
-                      styles.goalText,
-                      goal.completed && styles.goalTextCompleted,
-                    ]}
-                    numberOfLines={2}
+                  {/* Тап по тексту — переписать цель прямо в строке. */}
+                  <InlineEntry
+                    style={styles.goalTextWrap}
+                    placeholder={goal.goalText}
+                    onSubmit={(t) => handleRenameGoal(goal.id, t)}
+                    accessibilityLabel={`Цель: ${goal.goalText}. Нажми, чтобы переписать`}
                   >
-                    {goal.goalText}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.goalText,
+                        goal.completed && styles.goalTextCompleted,
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {goal.goalText}
+                    </Text>
+                  </InlineEntry>
                 </View>
               </SwipeableRow>
             </FadeInView>
@@ -839,6 +912,10 @@ function createStyles(c: C) {
       gap: spacing.sm,
       marginBottom: spacing.md,
     },
+    moodPickRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: spacing.sm, backgroundColor: c.surface, borderRadius: borderRadius.md, paddingVertical: spacing.sm },
+    moodPick: { padding: spacing.xs },
+    moodPickEmoji: { fontSize: 28 },
+    goalTextWrap: { flex: 1 },
     summaryCard: {
       flex: 1,
       backgroundColor: c.surface,

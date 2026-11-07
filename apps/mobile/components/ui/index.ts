@@ -9,6 +9,7 @@ export { ProgressRing } from './progress-ring';
 export { ProgressCircle } from './progress-circle';
 export { SwipeableRow } from './swipeable-row';
 export { TapToAdd } from './tap-to-add';
+export { InlineEntry } from './inline-entry';
 export { SectionHeader } from './section-header';
 export { OverviewCard, type OverviewStat } from './overview-card';
 export { WeekGrid, type WeekDay } from './week-grid';
