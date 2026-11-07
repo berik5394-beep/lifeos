@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { authMiddleware } from '../middleware/auth.js';
 import { gatherAboutMe, forgetMemory, restoreMemory } from '../services/about-me.js';
 import { readDiary } from '../services/robot-diary.js';
+import { getPortrait } from '../services/portrait.js';
 import { FRIEND_LEVELS, getFriendship, takeLevelUp } from '../services/friendship.js';
 
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -11,6 +12,9 @@ export async function aboutMeRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authMiddleware);
 
   app.get('/memory/about-me', async (request) => gatherAboutMe(request.userId));
+
+  /** «Каким я тебя вижу» — портрет по фактам со всего приложения (services/portrait.ts). */
+  app.get('/memory/portrait', async (request) => getPortrait(request.userId));
 
   /** Дневник робота (робот-друг №3): записи по дням; вчера/сегодня-вечер дописываются при открытии. */
   app.get('/robot/diary', async (request) => ({ entries: await readDiary(request.userId) }));

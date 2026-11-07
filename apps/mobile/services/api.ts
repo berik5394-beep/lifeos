@@ -275,8 +275,8 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 type MaybeToken = string | null | undefined;
 
 export const api = {
-  get: <T>(endpoint: string, token?: MaybeToken) =>
-    request<T>(endpoint, { token: token ?? undefined }),
+  get: <T>(endpoint: string, token?: MaybeToken, opts?: { timeoutMs?: number }) =>
+    request<T>(endpoint, { token: token ?? undefined, ...opts }),
 
   post: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean; timeoutMs?: number }) =>
     request<T>(endpoint, { method: 'POST', body, token: token ?? undefined, ...opts }),

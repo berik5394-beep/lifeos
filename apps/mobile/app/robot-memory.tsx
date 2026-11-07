@@ -9,6 +9,7 @@ import { formatDate } from '@/utils/dates';
 import { hapticLight } from '@/services/haptics';
 import { useSharedVoice } from '@/hooks/shared-voice';
 import { useChatStore } from '@/stores/chat-store';
+import { PortraitCard } from '@/components/memory/portrait-card';
 import {
   factsAbout,
   groupFacts,
@@ -45,6 +46,8 @@ export default function RobotMemoryScreen() {
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const today = formatDate(new Date());
 
+  // Портрет перечитывается вместе с памятью (потянул вниз / робот что-то запомнил).
+  const [portraitKey, setPortraitKey] = useState(0);
   const load = useCallback(async () => {
     if (!token) return;
     setError(null);
@@ -66,7 +69,10 @@ export default function RobotMemoryScreen() {
   useEffect(() => {
     if (!lastReply || lastReply === seenReply.current) return;
     seenReply.current = lastReply;
-    const t = setTimeout(() => void load(), RELOAD_AFTER_REPLY_MS);
+    const t = setTimeout(() => {
+      setPortraitKey((k) => k + 1);
+      void load();
+    }, RELOAD_AFTER_REPLY_MS);
     return () => clearTimeout(t);
   }, [lastReply, load]);
   const tellAboutMe = useCallback(() => {
@@ -125,7 +131,16 @@ export default function RobotMemoryScreen() {
     <View style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={() => void load()} tintColor={c.primary} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={false}
+            onRefresh={() => {
+              setPortraitKey((k) => k + 1);
+              void load();
+            }}
+            tintColor={c.primary}
+          />
+        }
       >
         <View style={styles.intro}>
           <Text style={styles.introText}>
@@ -144,6 +159,8 @@ export default function RobotMemoryScreen() {
             <Text style={styles.tellText}>Рассказать о себе</Text>
           </Pressable>
         </View>
+
+        <PortraitCard token={token} reloadKey={portraitKey} />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
