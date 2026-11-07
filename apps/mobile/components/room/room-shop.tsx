@@ -57,7 +57,9 @@ export const RoomShop = memo(function RoomShop({
             onPress={() => setTab(t)}
             style={[styles.tab, tab === t && styles.tabOn, t !== 'free' && t !== 'friend' && t !== 'storage' && { borderColor: TIER_COLOR[t].frame }]}
             accessibilityRole="tab"
+            accessibilityLabel={TAB_LABEL[t]}
             accessibilityState={{ selected: tab === t }}
+            hitSlop={4}
           >
             <Text style={[styles.tabText, tab === t && styles.tabTextOn]}>
               {TAB_LABEL[t]}
@@ -69,7 +71,7 @@ export const RoomShop = memo(function RoomShop({
 
       {tab === 'storage' ? (
         stored.length === 0 ? (
-          <Text style={styles.empty}>Кладовка пуста. Убери предмет долгим нажатием — он появится здесь.</Text>
+          <Text style={styles.empty}>Кладовка пуста. Пока открыто «Обставить», убери предмет долгим нажатием — он появится здесь.</Text>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards}>
             {stored.map((o) => (
@@ -118,8 +120,10 @@ export const RoomShop = memo(function RoomShop({
                   </Text>
                   <Text style={styles.price}>{v.tier === 'friend' ? 'подарок' : v.price > 0 ? `🪙 ${v.price}` : 'бесплатно'}</Text>
                   <Pressable
-                    style={[styles.btn, st.kind === 'buy' ? styles.btnBuy : styles.btnOff]}
+                    // Идёт покупка — все «Купить» серые, а не «живые, но не жмутся».
+                    style={[styles.btn, st.kind === 'buy' && busy === null ? styles.btnBuy : styles.btnOff]}
                     disabled={st.kind !== 'buy' || busy !== null}
+                    hitSlop={6}
                     onPress={() => onBuy(v)}
                     accessibilityRole="button"
                     accessibilityLabel={`${v.label}: ${st.kind === 'buy' ? 'взять' : st.kind === 'owned' ? 'уже есть' : st.kind === 'locked' ? `откроется на уровне «${levelTitle(friendship, st.minLevel)}»` : 'не хватает монет'}`}
@@ -158,16 +162,19 @@ function createStyles(c: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     wrap: { gap: spacing.xs },
     tabs: { gap: 6, paddingHorizontal: spacing.md },
+    // Крупнее пальца (было ~24pt): вкладки и кнопки нажимаются с первого раза.
     tab: {
-      paddingHorizontal: spacing.sm + 2,
-      paddingVertical: 5,
+      minHeight: 36,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.md,
+      paddingVertical: 6,
       borderRadius: borderRadius.lg,
       backgroundColor: c.surface,
       borderWidth: 1.5,
       borderColor: c.surface,
     },
     tabOn: { backgroundColor: c.surfaceLight },
-    tabText: { fontSize: fontSize.xs, color: c.textSecondary, fontWeight: '600' },
+    tabText: { fontSize: fontSize.sm, color: c.textSecondary, fontWeight: '600' },
     tabTextOn: { color: c.text },
     cards: { gap: spacing.sm, paddingHorizontal: spacing.md },
     card: {
@@ -183,7 +190,7 @@ function createStyles(c: ReturnType<typeof useColors>) {
     emoji: { fontSize: 26 },
     label: { fontSize: fontSize.xs, color: c.text, textAlign: 'center', minHeight: 30 },
     price: { fontSize: fontSize.xs, color: c.warning, fontWeight: '700' },
-    btn: { marginTop: 4, paddingVertical: 5, paddingHorizontal: 6, borderRadius: borderRadius.sm, alignSelf: 'stretch' },
+    btn: { marginTop: 4, minHeight: 34, justifyContent: 'center', paddingVertical: 6, paddingHorizontal: 6, borderRadius: borderRadius.sm, alignSelf: 'stretch' },
     btnBuy: { backgroundColor: c.primary },
     btnOff: { backgroundColor: c.surfaceLight },
     btnText: { fontSize: 11, color: c.text, textAlign: 'center', fontWeight: '600' },

@@ -51,3 +51,23 @@ export function toolSource(
   }
   return best;
 }
+
+/**
+ * Тап по мебели, в которой нет видимого инструмента: раньше — тишина. Робот
+ * объясняет: вкладка скрыта в настройках, или предмет просто для уюта.
+ * titles — названия инструментов (TOOL_TITLE), label — название предмета.
+ */
+export function furnitureTapNote(
+  itemKey: RoomItemKey,
+  label: string,
+  visible: readonly string[],
+  titles: Record<ToolKey, string>,
+): string | null {
+  const inside = toolsInItem(itemKey);
+  if (inside.some((t) => visible.includes(t))) return null;
+  if (inside.length > 0) {
+    const names = inside.map((t) => `«${titles[t]}»`).join(' и ');
+    return `Здесь — ${names}, но вкладка скрыта. Включить можно в Настройках.`;
+  }
+  return `${label} — просто для уюта. Инструменты лежат в шкафу, столе, тумбочке, комоде и часах.`;
+}

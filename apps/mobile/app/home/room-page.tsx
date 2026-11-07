@@ -39,9 +39,9 @@ import { storage } from '@/services/storage';
 import { thanksFor } from '@/services/robot-thanks';
 import { visiblePanels } from '@/services/panels';
 import { ROBOT_SIDE_W, planPurchaseView, type SpeechLayout } from '@/services/speech-layout';
-import { SLOT_POS, finishTier, isPlaceSlot, spotOf, type RoomSpot, type RoomVariant } from '@/services/room-catalog';
+import { SLOT_POS, finishTier, isPlaceSlot, roomItemLabel, spotOf, type RoomSpot, type RoomVariant } from '@/services/room-catalog';
 import { RENDER_SCALE as R, ZOOM_IN, clampPan, zoomOffset } from '@/services/room-geometry';
-import { toolsInItem, type ToolKey } from '@/services/room-tools';
+import { furnitureTapNote, toolsInItem, type ToolKey } from '@/services/room-tools';
 import { TOOL_TITLE } from '@/components/room/tool-screens';
 import { INTRO_STEPS, furnitureBadge, isIntroDone, markIntroDone } from '@/services/room-intro';
 import { spacing } from '@/constants';
@@ -72,6 +72,8 @@ const VOICE_NOTE_MS = 4000;
 const ROBOT_SIDE_SCALE = 0.68;
 /** Ответ робота показываем, если он свежий (пришёл в этой сессии). */
 const FRESH_REPLY_MS = 90_000;
+/** Ответ робота без «Подтвердить» сам уходит (как на экране инструментов). */
+const REPLY_BUBBLE_MS = 9000;
 
 export const RoomPage = memo(function RoomPage({ active = true }: { active?: boolean }) {
   const c = useColors();
@@ -355,6 +357,12 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
       const it = useRoomStore.getState().items.find((i) => i.id === id);
       if (!it) return;
       const inside = toolsInItem(it.itemKey).filter((t) => tools.some((p) => p.key === t));
+      if (inside.length === 0) {
+        // Раньше — тишина: непонятно, сломано или так задумано.
+        const note = furnitureTapNote(it.itemKey, roomItemLabel(it.itemKey), visibleToolKeys, TOOL_TITLE);
+        if (note) setThanks(note);
+        return;
+      }
       if (inside.length === 1) showTool(inside[0]);
       else if (inside.length > 1) {
         Alert.alert('Что достать?', undefined, [
@@ -363,7 +371,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
         ]);
       }
     },
-    [tools, showTool],
+    [tools, showTool, visibleToolKeys],
   );
 
   const onBuy = useCallback(
@@ -434,6 +442,12 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   const nextIntro = useCallback(() => {
     setIntroStep((s) => (s == null || s >= INTRO_STEPS.length - 1 ? (markIntroDone(), null) : s + 1));
   }, []);
+  useEffect(() => {
+    if (!reply || reply.pendingAction) return;
+    const t = setTimeout(() => setDismissedReply(reply.id), REPLY_BUBBLE_MS);
+    return () => clearTimeout(t);
+  }, [reply]);
+
   const onConfirm = useCallback(
     (yes: boolean) => {
       if (reply) void confirmPendingAction(reply.id, yes);
@@ -497,6 +511,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
                       onMove={moveItem}
                       onRemove={onRemove}
                       onTap={onItemTap}
+                      editable={furnishing}
                       highlight={item.id === newItemId}
                       badge={furnitureBadge(item.itemKey, visibleToolKeys)}
                       pulseBadge={introTarget === 'furniture'}
@@ -525,7 +540,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
             </View>
           )}
           {showReply && !chatMode && !voiceBubble && (
-            <View style={[styles.bubbleReply, { bottom: size.h * 0.04 + ROBOT_SIZE + 6 }]}>
+            <View style={[styles.bubbleReply, { bottom: size.h * 0.04 + ROBOT_SIZE + 6 }]} pointerEvents="box-none">
               <ChatReplyBubble
                 text={reply?.content ?? ''}
                 thinking={chatLoading}

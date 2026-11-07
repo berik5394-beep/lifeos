@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { Card } from '@/components/ui';
 import { spacing, fontSize } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
+import { useRobotDodge } from '@/hooks/use-robot-dodge';
 import { getMonthKey, RU_MONTHS } from '@/utils/dates';
 import { useTaskStore } from '@/stores/task-store';
 import { useEventStore } from '@/stores/event-store';
@@ -89,10 +90,14 @@ export default function CalendarScreen() {
   const toggle = useCallback((t: { id: string }) => void Promise.resolve(toggleComplete(t.id)).catch(fail), [toggleComplete]);
   const remove = useCallback((t: { id: string }) => void deleteTask(t.id).catch(fail), [deleteTask]);
 
+  const dodge = useRobotDodge();
+
   return (
-    <ScreenSafeArea style={[styles.container, { backgroundColor: colors.background }]}>
+    // Внутри дома мини-робот висит в углу поверх — снизу место под него
+    // (календарь не листается, поэтому отступ, а не пустое место в прокрутке).
+    <ScreenSafeArea style={[styles.container, { backgroundColor: colors.background, paddingBottom: dodge?.inset ?? 0 }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={prevMonth} hitSlop={12}>
+        <TouchableOpacity onPress={prevMonth} hitSlop={12} accessibilityRole="button" accessibilityLabel="Предыдущий месяц">
           <Feather name="chevron-left" size={24} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -104,7 +109,7 @@ export default function CalendarScreen() {
           {/* Сбоку от заголовка, не сдвигая его: месяц всегда ровно по центру. */}
           {isLoadingTasks && <ActivityIndicator size="small" color={colors.primary} style={styles.headerSpinner} />}
         </View>
-        <TouchableOpacity onPress={nextMonth} hitSlop={12}>
+        <TouchableOpacity onPress={nextMonth} hitSlop={12} accessibilityRole="button" accessibilityLabel="Следующий месяц">
           <Feather name="chevron-right" size={24} color={colors.text} />
         </TouchableOpacity>
       </View>

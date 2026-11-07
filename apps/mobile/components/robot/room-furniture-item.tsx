@@ -13,7 +13,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { RENDER_SCALE as R, itemDepthScale, pointDepth, type Pt } from '@/services/room-geometry';
-import { TIER_COLOR, roomItemEmoji, slotsFor, SLOT_POS, spotOf, tierOf, type RoomItem } from '@/services/room-catalog';
+import { TIER_COLOR, roomItemEmoji, roomItemLabel, slotsFor, SLOT_POS, spotOf, tierOf, type RoomItem } from '@/services/room-catalog';
 import { SoftSpot } from '@/components/room/face-light';
 import { hapticLight, hapticMedium } from '@/services/haptics';
 
@@ -38,6 +38,11 @@ interface RoomFurnitureItemProps {
   highlight?: boolean;
   /** Тап по предмету (Часть 5: мебель с инструментом — робот достаёт его). */
   onTap?: (id: string) => void;
+  /**
+   * Двигать/убирать можно только в «Обставить». Иначе свайп по мебели
+   * двигал её вместо листания назад, а долгое нажатие случайно убирало.
+   */
+  editable?: boolean;
   /** Маленький значок: что лежит внутри (📅🎯…). Пусто — без значка. */
   badge?: string;
   /** Знакомство: значок пульсирует, привлекая внимание. */
@@ -62,6 +67,7 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   onRemove,
   highlight = false,
   onTap,
+  editable = true,
   badge = '',
   pulseBadge = false,
   onDragState,
@@ -97,6 +103,7 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   }, [highlight, lift]);
 
   let pan = Gesture.Pan()
+    .enabled(editable)
     .minDistance(4)
     .onStart(() => {
       lift.value = withSpring(1.15, SPRING);
@@ -140,6 +147,7 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   if (blockGestures && blockGestures.length > 0) pan = pan.blocksExternalGesture(...blockGestures);
 
   const longPress = Gesture.LongPress()
+    .enabled(editable)
     .minDuration(600)
     .onStart(() => {
       runOnJS(hapticMedium)();
@@ -169,7 +177,8 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
 
   return (
     <GestureDetector gesture={Gesture.Race(pan, longPress, tap)}>
-      <Animated.View style={[styles.item, style]} accessibilityLabel={`Предмет: ${item.itemKey}`}>
+      <Animated.View style={[styles.item, style]} accessibilityLabel={badge ? `${roomItemLabel(item.itemKey)}: открыть ${badge}` : roomItemLabel(item.itemKey)}
+        accessibilityRole="button">
         {/* Объём: предмет на полу отбрасывает мягкую тень, «класс» — подиум под ним. */}
         {!onWall && (
           <View style={styles.contact} pointerEvents="none">

@@ -125,6 +125,11 @@ export function roomItemEmoji(key: string): string {
   return KIND.get(key)?.emoji ?? '';
 }
 
+/** Название предмета по-русски («Шкаф»); незнакомый — «Предмет». */
+export function roomItemLabel(key: string): string {
+  return KIND.get(key)?.label ?? 'Предмет';
+}
+
 /** «спасибо за …» — винительный падеж. */
 export function roomItemAcc(key: RoomItemKey): string {
   return KIND.get(key)?.acc ?? 'подарок';

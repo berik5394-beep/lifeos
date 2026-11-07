@@ -5,7 +5,7 @@ describe('room-intro — знакомство и значки на мебели'
     expect(INTRO_STEPS.length).toBeLessThanOrEqual(7);
     expect(INTRO_STEPS[0].target).toBe('none');
     const targets = INTRO_STEPS.map((s) => s.target);
-    for (const t of ['input', 'tools', 'furniture', 'furnish'] as const) expect(targets).toContain(t);
+    for (const t of ['input', 'tools', 'furniture', 'furnish', 'icons'] as const) expect(targets).toContain(t);
     for (const s of INTRO_STEPS) expect(s.text.length).toBeLessThan(160);
   });
   it('флаг «тур пройден» сохраняется', () => {

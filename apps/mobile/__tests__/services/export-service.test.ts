@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 
 it('CSV: текст ответа → файл → «Поделиться»', async () => {
-  mockApi.postRaw = jest.fn(async () => ({ ok: true, text: async () => '﻿Тип,Дата' }) as unknown as Response);
+  (mockApi as unknown as { postRaw: jest.Mock }).postRaw = jest.fn(async () => ({ ok: true, text: async () => '\uFEFFТип,Дата' }));
   await exportCSV('finance');
   expect(write.mock.calls[0][1]).toBe('﻿Тип,Дата');
   expect(share.mock.calls[0][0]).toMatch(/lifeos_finance_.*\.csv$/);

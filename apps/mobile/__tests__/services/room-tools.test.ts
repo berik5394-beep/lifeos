@@ -30,3 +30,18 @@ describe('room-tools — инструменты живут в мебели', () 
     expect(isToolKey(null)).toBe(false);
   });
 });
+
+describe('furnitureTapNote — отклик на мебель без инструмента', () => {
+  const { furnitureTapNote } = jest.requireActual('@/services/room-tools') as typeof import('@/services/room-tools');
+  const titles = { today: 'Сегодня', tasks: 'Задачи', deals: 'Сделки', habits: 'Привычки', goals: 'Цели', finance: 'Финансы', calendar: 'Календарь', journal: 'Дневник' };
+  const all = ['today', 'tasks', 'deals', 'habits', 'goals', 'finance', 'calendar', 'journal'];
+  it('инструмент виден — молчим (откроется он)', () => {
+    expect(furnitureTapNote('dresser', 'Комод', all, titles)).toBeNull();
+  });
+  it('вкладка скрыта — говорим, где включить', () => {
+    expect(furnitureTapNote('dresser', 'Комод', ['tasks'], titles)).toBe('Здесь — «Финансы», но вкладка скрыта. Включить можно в Настройках.');
+  });
+  it('предмет без инструментов — для уюта', () => {
+    expect(furnitureTapNote('sofa', 'Диван', all, titles)).toMatch(/^Диван — просто для уюта/);
+  });
+});

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { KeyboardAvoidingView, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useColors } from '@/hooks/use-colors';
@@ -15,6 +15,8 @@ import { isToolKey, type ToolKey } from '@/services/room-tools';
 import { RoomPage } from './room-page';
 import { ToolsPage } from './tools-page';
 import { startRobotNudges } from '@/services/robot-nudges';
+import { storage } from '@/services/storage';
+import { isIntroDone } from '@/services/room-intro';
 
 const TOOLS_PAGE = 0;
 const ROOM_PAGE = 1;
@@ -45,6 +47,13 @@ function HomePager() {
   const { width } = useWindowDimensions();
   const pager = useRef<ScrollView>(null);
   const [page, setPage] = useState(TOOLS_PAGE);
+  // Хоть раз открывал комнату? Нет — у точек подсказка, где она.
+  const [roomSeen, setRoomSeen] = useState(() => storage.getBoolean('room_seen') === true || isIntroDone());
+  useEffect(() => {
+    if (page !== ROOM_PAGE || roomSeen) return;
+    storage.setBoolean('room_seen', true);
+    setRoomSeen(true);
+  }, [page, roomSeen]);
   const [tab, setTab] = useState<ToolKey>('today');
 
   const token = useAuthStore((s) => s.token);
@@ -122,6 +131,13 @@ function HomePager() {
           <RoomPage active={page === ROOM_PAGE} />
         </View>
       </ScrollView>
+      {/* Новичок не знает про комнату робота (тур живёт там): одна строка у
+          точек, пока он ни разу туда не заходил. */}
+      {!roomSeen && page === TOOLS_PAGE && (
+        <Text style={[styles.roomHint, { color: c.textSecondary }]} pointerEvents="none">
+          Смахни влево — там комната робота 🤖
+        </Text>
+      )}
       {/* Две точки: где ты — инструменты или комната. */}
       <View style={styles.dots} pointerEvents="none">
         {[TOOLS_PAGE, ROOM_PAGE].map((p) => (
@@ -136,5 +152,6 @@ function HomePager() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   dots: { flexDirection: 'row', justifyContent: 'center', gap: 6, paddingTop: 4 },
+  roomHint: { textAlign: 'center', fontSize: 12, paddingTop: 4 },
   dot: { width: 6, height: 6, borderRadius: 3 },
 });

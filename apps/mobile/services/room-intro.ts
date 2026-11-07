@@ -7,7 +7,7 @@ import type { RoomItemKey } from '@/services/room-catalog';
  * умеет приложение, подсвечивая место на экране. И маленькие значки на мебели:
  * что лежит внутри. Чистые функции + флаг «тур пройден» (jest).
  */
-export type IntroTarget = 'none' | 'input' | 'tools' | 'furniture' | 'furnish' | 'room';
+export type IntroTarget = 'none' | 'input' | 'tools' | 'furniture' | 'furnish' | 'icons' | 'room';
 
 export interface IntroStep {
   target: IntroTarget;
@@ -29,6 +29,10 @@ export const INTRO_STEPS: readonly IntroStep[] = [
     text: 'Инструменты живут в мебели: значок на предмете показывает, что внутри. Нажми на шкаф — достану календарь.',
   },
   { target: 'furnish', text: '«Обставить» — ремонт за монеты 🪙. Монеты — за дела: задача +10, привычка +5. От бюджета до люкса — заработаем!' },
+  {
+    target: 'icons',
+    text: 'Сверху: ❤️ — что я о тебе помню, 📖 — мой дневник о наших днях, ⚙️ — настройки. 💛 под монетами — наша дружба.',
+  },
   { target: 'room', text: 'Двойное нажатие на комнату — приблизить, ещё раз — отдалить. Ну что, начнём?' },
 ];
 
