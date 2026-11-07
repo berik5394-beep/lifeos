@@ -52,6 +52,7 @@ const LifeInsightsScreen = React.lazy(() => import('@/screens/life-insights'));
 const LegalScreen = React.lazy(() => import('@/screens/legal'));
 
 import { ErrorBoundary } from '@/components/shared/error-boundary';
+import { jsBackOptions } from '@/components/shared/header-back';
 import { OfflineBanner } from '@/components/shared/offline-banner';
 import type { RootStackParamList, AuthStackParamList } from './types';
 
@@ -203,35 +204,38 @@ export default function Navigation() {
             <RootStack.Screen
               name="Settings"
               component={SettingsScreen}
-              options={{
+              options={({ navigation }) => ({
                 headerShown: true,
                 title: 'Настройки',
                 headerStyle: { backgroundColor: theme.background },
                 headerTintColor: theme.text,
                 headerTitleStyle: { fontWeight: '600' },
-              }}
+                ...jsBackOptions(navigation),
+              })}
             />
             <RootStack.Screen
               name="Integrations"
               component={IntegrationsScreen}
-              options={{
+              options={({ navigation }) => ({
                 headerShown: true,
                 title: 'Интеграции',
                 headerStyle: { backgroundColor: theme.background },
                 headerTintColor: theme.text,
                 headerTitleStyle: { fontWeight: '600' },
-              }}
+                ...jsBackOptions(navigation),
+              })}
             />
             <RootStack.Screen
               name="Import"
               component={ImportScreen}
-              options={{
+              options={({ navigation }) => ({
                 headerShown: true,
                 title: 'Импорт файлов',
                 headerStyle: { backgroundColor: theme.background },
                 headerTintColor: theme.text,
                 headerTitleStyle: { fontWeight: '600' },
-              }}
+                ...jsBackOptions(navigation),
+              })}
             />
             <RootStack.Screen name="ScheduleImport" component={ScheduleImportScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="TaskCapture" component={TaskCaptureScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
@@ -253,25 +257,27 @@ export default function Navigation() {
             <RootStack.Screen
               name="RobotMemory"
               component={RobotMemoryScreen}
-              options={{
+              options={({ navigation }) => ({
                 headerShown: true,
                 title: 'Что я о тебе помню',
                 headerStyle: { backgroundColor: theme.background },
                 headerTintColor: theme.text,
                 headerTitleStyle: { fontWeight: '600' },
-              }}
+                ...jsBackOptions(navigation),
+              })}
             />
             {/* Робот-друг, пункт 3: дневник робота о наших днях. */}
             <RootStack.Screen
               name="RobotDiary"
               component={RobotDiaryScreen}
-              options={{
+              options={({ navigation }) => ({
                 headerShown: true,
                 title: 'Дневник робота',
                 headerStyle: { backgroundColor: theme.background },
                 headerTintColor: theme.text,
                 headerTitleStyle: { fontWeight: '600' },
-              }}
+                ...jsBackOptions(navigation),
+              })}
             />
           </>
         )}

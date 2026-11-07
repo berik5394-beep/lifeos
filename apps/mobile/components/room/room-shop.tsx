@@ -124,7 +124,13 @@ export const RoomShop = memo(function RoomShop({
                     accessibilityRole="button"
                     accessibilityLabel={`${v.label}: ${st.kind === 'buy' ? 'взять' : st.kind === 'owned' ? 'уже есть' : st.kind === 'locked' ? `откроется на уровне «${levelTitle(friendship, st.minLevel)}»` : 'не хватает монет'}`}
                   >
-                    <Text style={styles.btnText}>
+                    <Text
+                      style={styles.btnText}
+                      // «с уровня» / «Хорошие друзья» — две строки; длинное название ужимается, а не рвётся.
+                      numberOfLines={st.kind === 'locked' ? 2 : undefined}
+                      adjustsFontSizeToFit={st.kind === 'locked'}
+                      minimumFontScale={0.8}
+                    >
                       {busy === v.key
                         ? '…'
                         : st.kind === 'buy'
@@ -134,7 +140,7 @@ export const RoomShop = memo(function RoomShop({
                           : st.kind === 'owned'
                             ? 'Есть'
                             : st.kind === 'locked'
-                              ? `С «${levelTitle(friendship, st.minLevel)}»`
+                              ? `с уровня\n«${levelTitle(friendship, st.minLevel)}»`
                               : `Не хватает ${st.need} 🪙`}
                     </Text>
                   </Pressable>
