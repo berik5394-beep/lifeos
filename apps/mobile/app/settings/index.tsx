@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { storage } from '@/services/storage';
+import { saveAssistantProfile, loadAssistantProfile, type AssistantProfile } from '@/services/assistant-profile';
 import { exportCSV, saveCSVToFile } from '@/services/export';
 import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore } from '@/stores/theme-store';
@@ -324,6 +325,29 @@ export default function SettingsScreen() {
   const [editingWakeUpTime, setEditingWakeUpTime] = useState(false);
   const [wakeUpTimeInput, setWakeUpTimeInput] = useState('');
 
+  // Сервер — источник правды для стиля/пола/подъёма (раньше жили только в
+  // телефоне, и мозг отвечал не в выбранном стиле).
+  useEffect(() => {
+    let alive = true;
+    loadAssistantProfile().then((p) => {
+      if (!alive || !p) return;
+      if (p.assistantStyle) setAssistantStyle(p.assistantStyle as AssistantStyleKey);
+      if (p.assistantGender) setAssistantGender(p.assistantGender);
+      if (p.wakeUpTime) setWakeUpTime(p.wakeUpTime);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /** Сохранить на сервере; не вышло — вернуть как было и сказать. */
+  const persistProfile = useCallback((patch: AssistantProfile, revert: () => void) => {
+    saveAssistantProfile(patch).catch((err) => {
+      revert();
+      Alert.alert('Не сохранилось', err instanceof Error ? err.message : 'Попробуй ещё раз.');
+    });
+  }, []);
+
   const handleToggleMorning = useCallback(() => {
     const next = !morningReminder;
     setMorningReminder(next);
@@ -352,22 +376,28 @@ export default function SettingsScreen() {
           {
             text: 'Понятно',
             onPress: () => {
+              const prev = assistantStyle;
               setAssistantStyle(key);
-              storage.set('assistantStyle', key);
+              persistProfile({ assistantStyle: key }, () => setAssistantStyle(prev));
             },
           },
         ],
       );
     } else {
+      const prev = assistantStyle;
       setAssistantStyle(key);
-      storage.set('assistantStyle', key);
+      persistProfile({ assistantStyle: key }, () => setAssistantStyle(prev));
     }
-  }, []);
+  }, [assistantStyle, persistProfile]);
 
-  const handleGenderChange = useCallback((gender: 'female' | 'male') => {
-    setAssistantGender(gender);
-    storage.set('assistantGender', gender);
-  }, []);
+  const handleGenderChange = useCallback(
+    (gender: 'female' | 'male') => {
+      const prev = assistantGender;
+      setAssistantGender(gender);
+      persistProfile({ assistantGender: gender }, () => setAssistantGender(prev));
+    },
+    [assistantGender, persistProfile],
+  );
 
   const handleWakeUpTimeEdit = useCallback(() => {
     setWakeUpTimeInput(wakeUpTime);
@@ -381,11 +411,13 @@ export default function SettingsScreen() {
       Alert.alert('Ошибка', 'Введите время в формате ЧЧ:ММ (например, 07:00)');
       return;
     }
+    const prev = wakeUpTime;
     setWakeUpTime(trimmed);
-    storage.set('wakeUpTime', trimmed);
     setEditingWakeUpTime(false);
     scheduleWakeUpNotification(trimmed);
-  }, [wakeUpTimeInput]);
+    // Утренний бриф с сервера приходит по этому времени.
+    persistProfile({ wakeUpTime: trimmed }, () => setWakeUpTime(prev));
+  }, [wakeUpTimeInput, wakeUpTime, persistProfile]);
 
   const handleImport = useCallback(() => {
     navigation.navigate('Import' as never);
