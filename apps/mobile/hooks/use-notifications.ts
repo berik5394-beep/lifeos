@@ -5,6 +5,7 @@ import {
   requestPermissions,
   scheduleStreakReminder,
   rescheduleAllEventReminders,
+  cancelAllEventReminders,
   setBadgeCount,
 } from '@/services/notifications';
 import { useTaskStore } from '@/stores/task-store';
@@ -54,6 +55,10 @@ export function useNotifications(): UseNotificationsResult {
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [notification, setNotification] = useState<Notifications.Notification | null>(null);
   const [briefing, setBriefing] = useState<BriefingResponse | null>(null);
+  // Пуш-токен на сервере → напоминания о встречах/задачах шлёт сервер.
+  // Локальные тогда не ставим, иначе одно и то же приходило дважды.
+  // null — ещё не знаем (ждём регистрацию).
+  const [serverPush, setServerPush] = useState<boolean | null>(null);
 
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
@@ -93,19 +98,20 @@ export function useNotifications(): UseNotificationsResult {
       // Регистрируем push-токен на сервере — primary канал проактивных
       // уведомлений (app-first). Сервер шлёт сюда напоминания через
       // Expo Push, даже когда приложение закрыто.
-      let serverPush = false;
+      let pushed = false;
       if (token) {
         const authToken = useAuthStore.getState().token;
         if (authToken) {
-          serverPush = await api
+          pushed = await api
             .post('/notifications/register-token', { token }, authToken)
             .then(() => true)
             .catch(() => false); // не критично — повторим при следующем запуске
         }
       }
 
+      if (mounted) setServerPush(pushed);
       // Одна сводка утром/вечером/в неделю: есть пуш с сервера — он, иначе локальная.
-      await syncDailyDigests(serverPush).catch(() => {});
+      await syncDailyDigests(pushed).catch(() => {});
     }
 
     init();
@@ -146,7 +152,24 @@ export function useNotifications(): UseNotificationsResult {
             openRoomTool('tasks');
             break;
           case 'event':
+          // Пуши сервера (тип = SentNotification.type)
+          case 'event_reminder_1h':
+          case 'event_reminder_30m':
+          case 'tomorrow_preview':
             openRoomTool('calendar');
+            break;
+          case 'task_reminder_30m':
+            openRoomTool('tasks');
+            break;
+          case 'budget_alert':
+            openRoomTool('finance');
+            break;
+          case 'habit_nudge':
+            openRoomTool('habits');
+            break;
+          case 'evening_summary':
+          case 'weekly_summary':
+            openRoomTool('today');
             break;
           case 'morning_briefing':
           case 'evening_review':
@@ -177,28 +200,33 @@ export function useNotifications(): UseNotificationsResult {
   // Reschedule task reminders when tasks change
   // -------------------------------------------------------------------------
   useEffect(() => {
-    if (tasks.length === 0) return;
+    if (tasks.length === 0 || serverPush === null) return;
 
     // «Сегодня» — по местному времени (toISOString давал UTC: ночью — вчера).
     const todayStr = formatDate(new Date());
     // Пересобираем напоминания только задач из списка; задачи вне выборки
     // (другой месяц) не трогаем. Закрытые и прошедшие — снимаются.
-    syncTaskReminders(tasks).catch(() => {});
+    syncTaskReminders(tasks, Date.now(), { soft: !serverPush }).catch(() => {});
 
     // Update badge count with uncompleted task count for today
     const todayUncompleted = tasks.filter(
       (t) => !t.completed && t.date.slice(0, 10) === todayStr,
     ).length;
     setBadgeCount(todayUncompleted).catch(() => {});
-  }, [tasks]);
+  }, [tasks, serverPush]);
 
   // -------------------------------------------------------------------------
   // Reschedule event reminders on briefing data
   // -------------------------------------------------------------------------
   useEffect(() => {
+    if (serverPush === null) return;
+    if (serverPush) {
+      cancelAllEventReminders().catch(() => {});
+      return;
+    }
     if (!briefing?.events || briefing.events.length === 0) return;
     rescheduleAllEventReminders(briefing.events).catch(() => {});
-  }, [briefing]);
+  }, [briefing, serverPush]);
 
   // -------------------------------------------------------------------------
   // Streak reminder — check if today's habits are incomplete

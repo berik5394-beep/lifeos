@@ -77,11 +77,24 @@ export function remindersToCancel(scheduled: Scheduled[], taskIds: Set<string>):
     .map((n) => n.identifier);
 }
 
-export async function syncTaskReminders(tasks: ReminderTask[], now: number = Date.now()): Promise<void> {
+/**
+ * soft=false — мягкое «через 30 минут» шлёт сервер пушем (есть токен), здесь
+ * только будильник во время задачи; иначе приходило два одинаковых напоминания.
+ */
+export async function syncTaskReminders(
+  tasks: ReminderTask[],
+  now: number = Date.now(),
+  opts: { soft?: boolean } = {},
+): Promise<void> {
+  const soft = opts.soft ?? true;
   const scheduled = (await Notifications.getAllScheduledNotificationsAsync()) as unknown as Scheduled[];
   const cancel = remindersToCancel(scheduled, new Set(tasks.map((t) => t.id)));
+  if (!soft) {
+    for (const n of scheduled) if (n.identifier.startsWith(TASK_REMINDER_PREFIX) && !cancel.includes(n.identifier)) cancel.push(n.identifier);
+  }
   await Promise.all(cancel.map((id) => Notifications.cancelScheduledNotificationAsync(id)));
   for (const r of planTaskReminders(tasks, now)) {
+    if (r.kind === 'soft' && !soft) continue;
     if (r.kind === 'soft') {
       await Notifications.scheduleNotificationAsync({
         identifier: r.identifier,

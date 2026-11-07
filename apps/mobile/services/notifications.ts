@@ -393,6 +393,12 @@ interface EventForReminder {
   startTime: string | null;
 }
 
+/** Снять все локальные напоминания о встречах (их шлёт сервер пушем). */
+export async function cancelAllEventReminders(): Promise<void> {
+  await cancelByPrefix(PREFIX_EVENT_60);
+  await cancelByPrefix(PREFIX_EVENT_30);
+}
+
 export async function rescheduleAllEventReminders(
   events: EventForReminder[],
 ): Promise<void> {

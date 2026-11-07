@@ -20,7 +20,8 @@ export interface ProactiveNotification {
     | 'habit_nudge'
     | 'weekly_summary'
     | 'morning_briefing'
-    | 'evening_summary';
+    | 'evening_summary'
+    | 'tomorrow_preview';
   scheduledFor: Date;
 }
 
@@ -547,6 +548,66 @@ async function generateEveningSummary(
 }
 
 // ---------------------------------------------------------------------------
+// «Завтра» — заранее о встречах и графике (20:00 местного времени)
+// ---------------------------------------------------------------------------
+type PreviewEvent = { title: string; startTime: string | null };
+
+function meetingsWord(n: number): string {
+  const l2 = n % 100;
+  const l1 = n % 10;
+  if (l2 >= 11 && l2 <= 19) return 'встреч';
+  if (l1 === 1) return 'встреча';
+  if (l1 >= 2 && l1 <= 4) return 'встречи';
+  return 'встреч';
+}
+
+function tasksWord(n: number): string {
+  const l2 = n % 100;
+  const l1 = n % 10;
+  if (l2 >= 11 && l2 <= 19) return 'задач';
+  if (l1 === 1) return 'задача';
+  if (l1 >= 2 && l1 <= 4) return 'задачи';
+  return 'задач';
+}
+
+/** Текст «на завтра»: встречи (первая — со временем) + число задач. null — пусто. */
+export function tomorrowPreviewText(name: string, events: PreviewEvent[], taskCount: number): string | null {
+  if (events.length === 0 && taskCount === 0) return null;
+  const parts: string[] = [];
+  if (events.length > 0) {
+    const timed = events.filter((e) => e.startTime).sort((a, b) => (a.startTime! < b.startTime! ? -1 : 1));
+    const first = timed[0] ?? events[0];
+    const at = first.startTime ? ` первая в ${first.startTime} — «${first.title}»` : ` — «${first.title}»`;
+    parts.push(`завтра ${events.length} ${meetingsWord(events.length)}:${at}`);
+  }
+  if (taskCount > 0) parts.push(`${events.length > 0 ? 'и ' : 'завтра '}${taskCount} ${tasksWord(taskCount)}`);
+  const early = events.some((e) => e.startTime && e.startTime < '10:00');
+  return `${name}, ${parts.join(' ')}.${early ? ' Начало раннее — ложись пораньше.' : ''}`;
+}
+
+/**
+ * Предупредить заранее: в 20:00 по местному времени — что ждёт завтра.
+ * Пусто завтра — ничего не шлём. Без 20:00 не собираем впустую.
+ */
+export async function generateTomorrowPreview(
+  userId: string,
+  tz: string,
+  name: string,
+  now: Date = new Date(),
+): Promise<ProactiveNotification[]> {
+  const scheduledFor = daySlot(20, tz);
+  if (now < scheduledFor) return [];
+  const tomorrow = new Date(getToday(tz).getTime() + 86_400_000);
+  const [events, taskCount] = await Promise.all([
+    prisma.calendarEvent.findMany({ where: { userId, date: tomorrow }, select: { title: true, startTime: true } }),
+    prisma.task.count({ where: { userId, date: tomorrow, completed: false, cancelled: false } }),
+  ]);
+  const body = tomorrowPreviewText(name, events, taskCount);
+  if (!body) return [];
+  return [{ title: 'Завтра', body, type: 'tomorrow_preview', scheduledFor }];
+}
+
+// ---------------------------------------------------------------------------
 // Main: aggregate all proactive notifications for a user
 // ---------------------------------------------------------------------------
 export async function generateProactiveNotifications(
@@ -573,6 +634,7 @@ export async function generateProactiveNotifications(
     weeklySummary,
     morningBriefing,
     eveningSummary,
+    tomorrowPreview,
   ] = await Promise.all([
     generateEventReminders(userId),
     generateTaskReminders(userId),
@@ -583,6 +645,7 @@ export async function generateProactiveNotifications(
     generateWeeklySummary(userId, tz, name),
     generateMorningBriefing(userId),
     generateEveningSummary(userId, tz, name),
+    generateTomorrowPreview(userId, tz, name),
   ]);
 
   return [
@@ -593,5 +656,6 @@ export async function generateProactiveNotifications(
     ...weeklySummary,
     ...morningBriefing,
     ...eveningSummary,
+    ...tomorrowPreview,
   ].sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime());
 }
