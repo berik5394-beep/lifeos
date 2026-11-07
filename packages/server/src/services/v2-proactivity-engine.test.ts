@@ -261,6 +261,7 @@ describe('TEMPLATES — table', () => {
         'goal_impact',
         'goal_no_progress',
         'identity_growth',
+        'journal_low',
         'memorial_upcoming',
         'mood_shift',
         'obligation_due',

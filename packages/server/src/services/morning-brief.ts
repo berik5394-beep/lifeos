@@ -15,12 +15,15 @@
 import { prisma } from '../lib/prisma.js';
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
-import { localDateOnlyUTC, localMonthOnlyUTC } from '../lib/tz.js';
+import { localDateOnlyUTC, localMonthOnlyUTC, localWeekStartUTC } from '../lib/tz.js';
+import { isV2RunwayEnabled } from '../lib/feature-flags.js';
+import { buildRunway } from './runway/index.js';
 import { gatherDayLoad } from './day-load.js';
 import { computeCapacityFit } from './capacity-fit.js';
 import { computeGoalPace, isMoneyGoal } from './goal-pace.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { gatherKanbanSignals, formatKanbanFacts } from './kanban-signals.js';
+import { gatherReflection } from './reflection-context.js';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU').replace(/ /g, ' ');
 
@@ -31,7 +34,7 @@ export async function gatherBriefExtras(userId: string, tz: string, now: Date = 
   const nextMonth = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
   const out: string[] = [];
 
-  const [spent, limits, obligations, goals, load, kanban] = await Promise.all([
+  const [spent, limits, obligations, goals, load, kanban, reflection, income, weekGoals, monthGoals, runway] = await Promise.all([
     prisma.expense.aggregate({ where: { userId, date: { gte: monthStart, lt: nextMonth } }, _sum: { amount: true } }).catch(() => null),
     prisma.budgetLimit
       .aggregate({ where: { userId, month: monthStart.getUTCMonth() + 1, year: monthStart.getUTCFullYear() }, _sum: { monthlyLimit: true } })
@@ -44,11 +47,23 @@ export async function gatherBriefExtras(userId: string, tz: string, now: Date = 
       .catch(() => []),
     gatherDayLoad(userId, now).catch(() => null),
     gatherKanbanSignals(userId, now).catch(() => null),
+    gatherReflection(userId, now).catch(() => null),
+    // Деньги шире расходов: доход месяца + запас денег (только тревожный).
+    prisma.income.aggregate({ where: { userId, date: { gte: monthStart, lt: nextMonth } }, _sum: { amount: true } }).catch(() => null),
+    // План недели и месяца (раньше в брифе только одна годовая цель).
+    prisma.weeklyGoal.findMany({ where: { userId, weekStart: localWeekStartUTC(tz, now) }, select: { completed: true } }).catch(() => []),
+    prisma.monthlyGoal.findMany({ where: { userId, monthStart }, select: { completed: true } }).catch(() => []),
+    isV2RunwayEnabled(userId) ? buildRunway(userId, now).catch(() => null) : Promise.resolve(null),
   ]);
 
   const limit = limits?._sum.monthlyLimit ?? 0;
   const spentSum = spent?._sum.amount ?? 0;
   if (limit > 0) out.push(`бюджет месяца: потрачено ${fmt(spentSum)} из ${fmt(limit)} ₸ (${Math.round((spentSum / limit) * 100)}%)`);
+  const incomeSum = income?._sum.amount ?? 0;
+  if (incomeSum > 0) out.push(`доход за месяц: ${fmt(incomeSum)} ₸`);
+  if (runway?.insightText) out.push(runway.insightText);
+  if (weekGoals.length > 0) out.push(`цели недели: закрыто ${weekGoals.filter((g) => g.completed).length} из ${weekGoals.length}`);
+  if (monthGoals.length > 0) out.push(`цели месяца: закрыто ${monthGoals.filter((g) => g.completed).length} из ${monthGoals.length}`);
 
   for (const o of obligations) {
     const what = o.direction === 'i_owe' ? `отдать ${o.personName}` : `${o.personName} должен вернуть`;
@@ -70,6 +85,9 @@ export async function gatherBriefExtras(userId: string, tz: string, now: Date = 
     .find((x) => x.p.status === 'behind' || x.p.status === 'stalled');
   // Канбан: перебор «В работе» и зависшие задачи (робот следит за доской).
   if (kanban) out.push(...formatKanbanFacts(kanban));
+  // Дневник и заметки недели: вчерашнее самочувствие + свой фокус недели.
+  if (reflection?.briefLine) out.push(reflection.briefLine);
+  if (reflection && reflection.lowStreakDays >= 3) out.push(`${reflection.lowStreakDays} дн. подряд тяжело по дневнику — начни мягко`);
 
   if (behind) out.push(`цель «${behind.g.goalText}» отстаёт: сделано ${fmt(behind.p.done)} из ${fmt(behind.g.target!)}`);
 

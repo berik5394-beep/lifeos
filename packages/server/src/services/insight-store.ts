@@ -281,3 +281,55 @@ export async function deliverTopInsight(
   }
   return { deliveredId: row.id };
 }
+
+/** Не больше стольких нуджей в день в самом приложении (облачком робота). */
+export const IN_APP_NUDGES_PER_DAY = 3;
+
+/**
+ * Нудж в приложении (облачко робота при открытии). Раньше 25 детекторов
+ * доходили максимум ОДНИМ пушем в день, а в приложении не показывались
+ * вовсе. Человек открыл приложение — значит, он здесь: тихие часы не нужны.
+ * Берём самый важный (severity, потом свежий) живой недоставленный, метим
+ * доставленным (пуш его не повторит) и кладём в историю чата, чтобы ответ
+ * «да» пришёл мозгу с контекстом. Кап — IN_APP_NUDGES_PER_DAY.
+ */
+export async function takeInAppNudge(
+  userId: string,
+  now: Date = new Date(),
+): Promise<{ id: string; message: string } | null> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+  if (!user) return null;
+  const dayStart = localDayStartUTC(user.timezone, now);
+  const shownToday = await prisma.insight.count({
+    where: { userId, deliveredAt: { gte: dayStart }, source: { notIn: [...INLINE_REPLY_SOURCES] } },
+  });
+  if (shownToday >= IN_APP_NUDGES_PER_DAY) return null;
+
+  const row = await prisma.insight.findFirst({
+    where: {
+      userId,
+      deliveredAt: null,
+      supersededAt: null,
+      dismissed: false,
+      // source может быть NULL — `notIn` в SQL такие строки молча отбрасывает.
+      AND: [
+        { OR: [{ source: null }, { source: { notIn: [...INLINE_REPLY_SOURCES] } }] },
+        { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+      ],
+    },
+    orderBy: [{ severity: 'desc' }, { createdAt: 'desc' }],
+    select: { id: true, message: true },
+  });
+  if (!row || !row.message.trim()) return null;
+
+  // Атомарно «забрать»: два открытия приложения подряд не покажут один нудж дважды.
+  const claimed = await prisma.insight.updateMany({
+    where: { id: row.id, deliveredAt: null },
+    data: { deliveredAt: now },
+  });
+  if (claimed.count === 0) return null;
+  await prisma.chatMessage
+    .create({ data: { userId, role: 'assistant', content: row.message } })
+    .catch(() => {});
+  return row;
+}

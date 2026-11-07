@@ -62,6 +62,7 @@ const BASE_MEMBER_BUDGET_MS = 1200;
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { formatToneSection } from './bot-traits/tone-section.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
+import { gatherReflection } from './reflection-context.js';
 
 export type V2EnrichmentData = {
   identity: { botName: string; style: string } | null;
@@ -118,6 +119,10 @@ export type V2EnrichmentData = {
   deals?: string | null;
   /** Комната робота (Часть 4): «Комната робота: диван, лампа» или null. */
   room?: string | null;
+  /** Дневник за неделю: сон/энергия/настроение/тренд/последняя запись или null. */
+  journal?: string | null;
+  /** Заметки недели (что получилось / улучшить / благодарность) или null. */
+  weekNotes?: string | null;
 };
 
 /** Недавняя активность — pure render. Empty → ''. */
@@ -226,6 +231,8 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (data.recentActivity) lines.push(data.recentActivity);
   if (data.openLoops) lines.push(data.openLoops);
   if (data.deals) lines.push(data.deals);
+  if (data.journal) lines.push(data.journal);
+  if (data.weekNotes) lines.push(data.weekNotes);
   if (data.room) lines.push(data.room);
   return lines.join('\n');
 }
@@ -410,6 +417,12 @@ export async function fetchV2EnrichmentData(
       BASE_MEMBER_BUDGET_MS,
       null,
     );
+    // Рефлексия: дневник целиком + заметки недели (раньше мозг видел только сон).
+    const reflectionP = withTimeout(
+      gatherReflection(userId, nowDate).catch(() => null),
+      CROSS_DOMAIN_BUDGET_MS,
+      null,
+    );
     const dealsP: Promise<string | null> = isV2DealsEnabled(userId)
       ? withTimeout(gatherDealsSection(userId, nowDate), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
       : Promise.resolve(null);
@@ -568,6 +581,7 @@ export async function fetchV2EnrichmentData(
           'Это перекрывает выбранный стиль (даже strict/toxic).'
         : null;
     const room = await roomPromise;
+    const reflection = await reflectionP;
     const now = Date.now();
     return {
       identity: identity
@@ -627,6 +641,8 @@ export async function fetchV2EnrichmentData(
       openLoops,
       deals,
       room,
+      journal: reflection?.journal ?? null,
+      weekNotes: reflection?.weekNotes ?? null,
     };
   } catch (err) {
     console.warn('[v2-enrichment] fetch failed:', err);

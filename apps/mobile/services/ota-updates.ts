@@ -21,7 +21,7 @@ export function startOtaUpdates(deps: { updates?: typeof Updates; appState?: typ
 
   let ready = false;
   let busy = false;
-  let lastCheck = 0;
+  let lastCheck = Number.NEGATIVE_INFINITY; // первая проверка — сразу
 
   const check = async () => {
     if (busy || ready || now() - lastCheck < CHECK_EVERY_MS) return;

@@ -2,12 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { createLinkCode, telegramBotUsername } from '../services/telegram-link.js';
-import { encrypt, decrypt } from '../lib/crypto.js';
+import { encrypt } from '../lib/crypto.js';
 import {
   exchangeCode,
-  refreshAccessToken,
-  listEvents,
-  insertEvent,
   createAuthUrl,
   consumeAuthState,
   callbackUrl,
@@ -15,6 +12,7 @@ import {
   type GoogleTokens,
 } from '../services/google-calendar.js';
 import { triageInbox } from '../services/gmail.js';
+import { syncGoogleCalendar } from '../services/google-calendar-sync.js';
 import {
   getIntegration,
   listIntegrationStatus,
@@ -149,88 +147,8 @@ export async function integrationRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      // 1. Свежий access: рефрешим если протух (или нет expiresAt).
-      const settings = (integration.settings as { expiresAt?: number }) || {};
-      let accessToken: string;
-      if (
-        integration.accessToken &&
-        settings.expiresAt &&
-        settings.expiresAt > Date.now()
-      ) {
-        accessToken = decrypt(integration.accessToken);
-      } else {
-        const refreshed = await refreshAccessToken(decrypt(integration.refreshToken));
-        accessToken = refreshed.accessToken;
-        await prisma.integration.update({
-          where: { userId_provider: { userId: request.userId, provider: 'google_calendar' } },
-          data: {
-            accessToken: encrypt(refreshed.accessToken),
-            settings: { ...settings, expiresAt: refreshed.expiresAt },
-          },
-        });
-      }
-
-      const userId = request.userId;
-      const now = new Date();
-      const horizon = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-      // 2. PULL: Google → CalendarEvent (дедуп по externalId).
-      const remote = await listEvents(
-        accessToken,
-        now.toISOString(),
-        horizon.toISOString(),
-      );
-      let imported = 0;
-      for (const ev of remote) {
-        const existing = await prisma.calendarEvent.findFirst({
-          where: { userId, externalId: ev.externalId },
-          select: { id: true },
-        });
-        const evData = {
-          title: ev.title.slice(0, 512),
-          date: new Date(ev.date + 'T00:00:00Z'),
-          startTime: ev.startTime,
-          endTime: ev.endTime,
-          location: ev.location?.slice(0, 512) ?? null,
-          description: ev.description?.slice(0, 4096) ?? null,
-          source: 'google',
-        };
-        if (existing) {
-          await prisma.calendarEvent.update({ where: { id: existing.id }, data: evData });
-        } else {
-          await prisma.calendarEvent.create({
-            data: { userId, externalId: ev.externalId, ...evData },
-          });
-          imported++;
-        }
-      }
-
-      // 3. PUSH: локальные (manual/voice, ещё не в Google) → Google.
-      const localUnsynced = await prisma.calendarEvent.findMany({
-        where: {
-          userId,
-          externalId: null,
-          source: { in: ['manual', 'voice'] },
-          date: { gte: new Date(now.toISOString().slice(0, 10) + 'T00:00:00Z') },
-        },
-        take: 100,
-      });
-      let exported = 0;
-      for (const ev of localUnsynced) {
-        const gid = await insertEvent(accessToken, {
-          title: ev.title,
-          date: ev.date.toISOString().slice(0, 10),
-          startTime: ev.startTime,
-          endTime: ev.endTime,
-          location: ev.location,
-          description: ev.description,
-        });
-        await prisma.calendarEvent.update({
-          where: { id: ev.id },
-          data: { externalId: gid },
-        });
-        exported++;
-      }
+      // Одно тело с плановой синхронизацией (services/google-calendar-sync).
+      const { imported, exported } = await syncGoogleCalendar(request.userId);
 
       return reply.send({
         synced: true,

@@ -12,6 +12,10 @@ import { localDateStr } from '../lib/tz.js';
 import { getToday } from './get-today.js';
 import { getWeatherTool } from './get-weather.js';
 import { getBudgetTool } from './get-budget.js';
+import { getHabitsTool } from './get-habits.js';
+import { getJournalTool } from './get-journal.js';
+import { getBalanceTool } from './get-balance.js';
+import { listDecisionsTool } from './list-decisions.js';
 import { getFreeSlotsTool } from './get-free-slots.js';
 import { createTaskTool } from './create-task.js';
 import { completeTaskTool } from './complete-task.js';
@@ -79,6 +83,11 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   getWeatherTool,
   getBudgetTool,
   getFreeSlotsTool,
+  // чтение доменов, которых мозг не мог посмотреть (аудит 2026-11-07)
+  getHabitsTool,
+  getJournalTool,
+  getBalanceTool,
+  listDecisionsTool,
   // write, не-деньги (Шаг 5)
   createTaskTool,
   completeTaskTool,

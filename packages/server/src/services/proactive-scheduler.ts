@@ -10,6 +10,7 @@ import { isV2ProactivityEnabled, isV2CronEnabled, isV2ReflectorEnabled } from '.
 import { runWeekly, runEventCheck } from './reflector-v2/index.js';
 import { getProactivityEngine } from './v2-proactivity-engine.singleton.js';
 import { withCronLock } from './cron-runner.js';
+import { syncGoogleCalendar, GOOGLE_SYNC_INTERVAL_MS } from './google-calendar-sync.js';
 import { runMoodRetention } from './cron/mood-retention-cron.js';
 import { runPatternExtraction } from './cron/pattern-extraction-cron.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
@@ -81,6 +82,32 @@ async function tick(): Promise<void> {
     });
 
     const now = Date.now();
+
+    // Google Calendar → встречи у мозга без ручной кнопки: раз в час на юзера
+    // с активной интеграцией (раньше только «Синхронизировать» в настройках —
+    // встречу из Google мозг не видел и не напоминал о ней).
+    try {
+      const gcal = await prisma.integration.findMany({
+        where: { provider: 'google_calendar', active: true, refreshToken: { not: null } },
+        select: { userId: true },
+      });
+      for (const { userId: gUser } of gcal) {
+        try {
+          // Ошибку (отозван доступ, Google лежит) гасим ВНУТРИ — тогда запуск
+          // засчитан и следующая попытка через час, а не каждые 10 минут.
+          await withCronLock('google-calendar-sync', GOOGLE_SYNC_INTERVAL_MS, gUser, () =>
+            syncGoogleCalendar(gUser).catch((err) => {
+              console.warn(`[scheduler] google sync failed user=${gUser}:`, err instanceof Error ? err.message : err);
+              return null;
+            }),
+          );
+        } catch (err) {
+          console.warn(`[scheduler] google sync failed user=${gUser}:`, err instanceof Error ? err.message : err);
+        }
+      }
+    } catch (err) {
+      console.warn('[scheduler] google sync list failed:', err instanceof Error ? err.message : err);
+    }
 
     // v2.0 Week 6 A5 — global cron hooks (mood-retention daily,
     // pattern-extraction weekly). Run BEFORE the per-user loop so that:

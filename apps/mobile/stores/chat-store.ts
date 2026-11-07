@@ -47,6 +47,8 @@ interface ChatState {
   confirmPendingAction: (messageId: string, confirm: boolean) => Promise<void>;
   /** Перегруз дня: предложение сервера из карточки → реплика робота (+ кнопки, если ждёт подтверждения). */
   showProposal: (proposal: RescheduleProposal) => void;
+  /** Нудж робота (с сервера, при открытии приложения) → облачко у робота + история. */
+  showNudge: (insightId: string, content: string) => void;
 }
 
 let _msgSeq = 0;
@@ -58,6 +60,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isLoading: false,
   hasMore: true,
+
+  showNudge: (insightId: string, content: string) => {
+    const id = `nudge-${insightId}`;
+    if (!content.trim() || get().messages.some((m) => m.id === id)) return;
+    set((state) => ({
+      messages: [{ id, role: 'assistant', content, createdAt: new Date().toISOString() }, ...state.messages],
+    }));
+  },
 
   sendMessage: async (text: string, webSearch?: boolean) => {
     const token = useAuthStore.getState().token;

@@ -14,6 +14,7 @@ import { visiblePanels } from '@/services/panels';
 import { isToolKey, type ToolKey } from '@/services/room-tools';
 import { RoomPage } from './room-page';
 import { ToolsPage } from './tools-page';
+import { startRobotNudges } from '@/services/robot-nudges';
 
 const TOOLS_PAGE = 0;
 const ROOM_PAGE = 1;
@@ -55,6 +56,8 @@ function HomePager() {
   useEffect(() => {
     void fetchDeals();
   }, [fetchDeals, token]);
+  // Робот сам говорит, что заметил (нуджи мозга) — облачком при открытии приложения.
+  useEffect(() => (token ? startRobotNudges(token) : undefined), [token]);
   const tools = useMemo(() => visiblePanels(isFeatureVisible, { dealsAvailable }), [isFeatureVisible, dealsAvailable]);
   // Вкладку скрыли в настройках (или сделки выключены) — показываем «Сегодня».
   const shownTab: ToolKey = tools.some((t) => t.key === tab) ? tab : 'today';

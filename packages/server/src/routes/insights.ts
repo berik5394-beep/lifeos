@@ -5,7 +5,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { rateLimiter } from '../middleware/security.js';
 import { generateInsights } from '../services/proactive-insights.js';
-import { activeRowsForFeed } from '../services/insight-store.js';
+import { activeRowsForFeed, takeInAppNudge } from '../services/insight-store.js';
 import { joinFeed, tableOnlyFeed } from '../services/insight-core.js';
 
 const dismissSchema = z.object({
@@ -27,6 +27,12 @@ export async function insightsRoutes(app: FastifyInstance): Promise<void> {
   // SSOT: не superseded/dismissed/expired), UI-payload — из compute по
   // scopeKey. Пустой Set (персист упал, НЕ-фатальный) → joinFeed
   // отдаёт computed (резильентно, не прячем всё из-за сбоя стора).
+  // GET /nudges/next — один нудж робота для облачка при открытии приложения
+  // (≤3 в день, тот же нудж пушем уже не придёт). null — сказать нечего.
+  app.get('/nudges/next', { preHandler: insightsLimiter }, async (request) => {
+    return { nudge: await takeInAppNudge(request.userId) };
+  });
+
   app.get('/insights', { preHandler: insightsLimiter }, async (request) => {
     const computed = await generateInsights(request.userId);
     const rows = await activeRowsForFeed(request.userId);

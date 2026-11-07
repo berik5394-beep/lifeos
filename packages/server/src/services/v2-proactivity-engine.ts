@@ -41,7 +41,8 @@ export type NudgeSource =
   | 'deal_next_step_due'
   | 'deal_step_overdue'
   | 'deal_stale'
-  | 'sales_plan_behind';
+  | 'sales_plan_behind'
+  | 'journal_low';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -84,6 +85,11 @@ export function scoreSignificance(c: NudgeCandidate): number {
     case 'mood_shift': {
       const magnitude = Math.abs(Number(c.payload.magnitude ?? 0));
       return Math.min(1, magnitude);
+    }
+    case 'journal_low': {
+      // 3 дня подряд тяжело по дневнику — уже выше порога 0.6; дальше растёт.
+      const days = Number(c.payload.days ?? 0);
+      return Math.min(0.85, 0.65 + Math.max(0, days - 3) * 0.05);
     }
     case 'streak_break': {
       const consistency = Number(c.payload.consistency ?? 0);
@@ -305,6 +311,11 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
   sales_plan_behind: {
     gentle: '{{planText}}',
   },
+  journal_low: {
+    supportive:
+      'Вижу по дневнику: {{days}} дн. подряд тяжеловато. Не буду грузить делами — хочешь просто поговорить?',
+    gentle: 'Последние дни в дневнике непростые. Как ты сегодня?',
+  },
   mood_shift: {
     supportive:
       'Замечаю, настроение последние дни ушло в минус. Хочешь — поговорим?',
@@ -379,6 +390,7 @@ import { persistCandidates } from './insight-store.js';
 import type { InsightCandidate } from './insight-core.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
+import { gatherReflection, LOW_STREAK_DAYS } from './reflection-context.js';
 
 const DAY_MS = 86_400_000;
 
@@ -838,6 +850,29 @@ async function detectMoodShift(userId: string): Promise<NudgeCandidate[]> {
     return [cand];
   } catch (err) {
     console.warn('[v2-proactivity] detectMoodShift failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Дневник: настроение или энергия низкие N дней подряд (сам отметил). Раньше
+ * мозг видел только тон чата — человек мог неделю ставить 😫 в дневнике, а
+ * робот молчал. Поддержка, не давление: не в PRESSURE_SOURCES.
+ */
+async function detectJournalLow(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const r = await gatherReflection(userId);
+    if (r.lowStreakDays < LOW_STREAK_DAYS) return [];
+    const cand: NudgeCandidate = {
+      source: 'journal_low',
+      significance: 0,
+      payload: { days: r.lowStreakDays },
+      toneHint: 'supportive',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectJournalLow failed:', err);
     return [];
   }
 }
@@ -1476,6 +1511,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectGoalHabitStall(userId),
       detectOpenLoopPileup(userId),
       detectMoodShift(userId),
+      detectJournalLow(userId),
       detectStreakBreak(userId),
       detectGoalNoProgress(userId),
       detectWeeklyGoalStall(userId),
