@@ -67,7 +67,8 @@ export async function captureV2InBackground(
         if (ent.aliases?.length) {
           input.aliases = ent.aliases;
         }
-        const row = await graph.upsertEntity(userId, input);
+        // «Мама переехала» — новое значение заменяет прежнее (прежнее в истории).
+        const row = await graph.upsertEntity(userId, input, ent.changed?.length ? { changedKeys: ent.changed } : undefined);
         idByName.set(ent.name, row.id);
       } catch (err) {
         console.warn(`[v2-capture] upsertEntity ${ent.name} failed:`, err);

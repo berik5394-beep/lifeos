@@ -17,22 +17,106 @@ export function shouldMergeByEmbedding(dist: number, maxDist: number = MERGE_MAX
   return Number.isFinite(dist) && dist <= maxDist;
 }
 
+/** Прежние значения атрибутов: «раньше жила в Алматы». `_` — служебный, в факты не идёт. */
+export const ATTR_HISTORY_KEY = '_history';
+const HISTORY_MAX = 20;
+export interface AttrHistoryEntry {
+  key: string;
+  value: unknown;
+  /** Когда значение сменилось (ISO). */
+  until: string;
+}
+
+/** Синонимы ключей (нижний регистр, ё→е): «city» и «город» — один атрибут. */
+const KEY_SYNONYMS: Record<string, string> = {
+  city: 'город',
+  'город проживания': 'город',
+  'место жительства': 'город',
+  живет: 'город',
+  job: 'работа',
+  work: 'работа',
+  'место работы': 'работа',
+  profession: 'профессия',
+  phone: 'телефон',
+  'номер телефона': 'телефон',
+};
+
+/** Канонический вид ключа для сравнения (сам ключ в данных не переименовываем). */
+export function canonicalAttrKey(k: string): string {
+  const n = k.trim().toLowerCase().replace(/ё/g, 'е');
+  return KEY_SYNONYMS[n] ?? n;
+}
+
+function isEmptyVal(v: unknown): boolean {
+  return v === undefined || v === null || v === '';
+}
+
+function sameVal(a: unknown, b: unknown): boolean {
+  if (typeof a === 'string' && typeof b === 'string') {
+    return a.trim().toLowerCase().replace(/ё/g, 'е') === b.trim().toLowerCase().replace(/ё/g, 'е');
+  }
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 /**
  * Merge атрибутов сущности (T5).
- *  - deliberate=true (инструмент): incoming-wins (как сейчас).
+ *  - deliberate=true (инструмент): incoming-wins.
  *  - deliberate=false (фоновая экстракция): не затирать непустое существующее;
  *    заполнять пустые; добавлять новые. → «брат» не сменится «знакомым».
+ *  - changedKeys: ключи, о которых пользователь ПРЯМО сказал «изменилось»
+ *    («мама переехала в Астану») — для них фон тоже заменяет значение.
+ * Заменённое значение не теряется — уходит в `_history`. Ключи сравниваются
+ * по смыслу (city = город), запись идёт в уже существующий ключ.
  */
 export function mergeAttributes(
   existing: Record<string, unknown>,
   incoming: Record<string, unknown>,
   deliberate: boolean,
+  changedKeys: string[] = [],
+  now: Date = new Date(),
 ): Record<string, unknown> {
-  if (deliberate) return { ...existing, ...incoming };
   const out: Record<string, unknown> = { ...existing };
+  const changed = new Set(changedKeys.map(canonicalAttrKey));
+  const prev = Array.isArray(existing[ATTR_HISTORY_KEY]) ? (existing[ATTR_HISTORY_KEY] as AttrHistoryEntry[]) : [];
+  const history = [...prev];
   for (const [k, v] of Object.entries(incoming)) {
-    const cur = out[k];
-    if (cur === undefined || cur === null || cur === '') out[k] = v;
+    if (k.startsWith('_')) {
+      // Служебные ключи — как раньше, без истории.
+      if (deliberate || isEmptyVal(out[k])) out[k] = v;
+      continue;
+    }
+    const ck = canonicalAttrKey(k);
+    const target = Object.keys(out).find((ek) => !ek.startsWith('_') && canonicalAttrKey(ek) === ck) ?? k;
+    const cur = out[target];
+    if (isEmptyVal(cur)) {
+      out[target] = v;
+      continue;
+    }
+    if (isEmptyVal(v) || sameVal(cur, v)) continue;
+    if (deliberate || changed.has(ck)) {
+      history.push({ key: target, value: cur, until: now.toISOString() });
+      out[target] = v;
+    }
+  }
+  if (history.length > prev.length) out[ATTR_HISTORY_KEY] = history.slice(-HISTORY_MAX);
+  return out;
+}
+
+/** Последнее прежнее значение каждого атрибута — для «раньше …» в фактах. */
+export function attrHistoryFacts(attributes: unknown, max = 2): string[] {
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return [];
+  const h = (attributes as Record<string, unknown>)[ATTR_HISTORY_KEY];
+  if (!Array.isArray(h)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const e of [...(h as AttrHistoryEntry[])].reverse()) {
+    if (!e || typeof e.key !== 'string' || seen.has(e.key)) continue;
+    if (typeof e.value !== 'string' && typeof e.value !== 'number') continue;
+    const val = String(e.value).trim();
+    if (!val || val.length > 60) continue;
+    seen.add(e.key);
+    out.push(`раньше ${e.key}: ${val}`);
+    if (out.length >= max) break;
   }
   return out;
 }

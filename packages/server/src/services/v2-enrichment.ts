@@ -64,6 +64,7 @@ import { getBotTraitsStore } from './bot-traits/index.js';
 import { formatToneSection } from './bot-traits/tone-section.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 import { gatherReflection } from './reflection-context.js';
+import { attrHistoryFacts } from './entity-graph/merge-helpers.js';
 
 export type V2EnrichmentData = {
   identity: { botName: string; style: string } | null;
@@ -151,6 +152,8 @@ export function entityFacts(attributes: unknown): string {
     parts.push(`${k}: ${val}`);
     if (parts.length === 3) break;
   }
+  // «раньше город: Алматы» — робот знает, что изменилось, и не путает.
+  parts.push(...attrHistoryFacts(attributes, 1));
   return parts.join(', ');
 }
 

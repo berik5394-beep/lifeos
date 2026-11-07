@@ -8,6 +8,7 @@
  * сюда не идут — только знание о человеке. READ + обратимая правка.
  */
 import { prisma } from '../lib/prisma.js';
+import { attrHistoryFacts } from './entity-graph/merge-helpers.js';
 
 /** Типы памяти, которые показываем (знание о человеке, не журнал действий). */
 export const ABOUT_ME_TYPES = ['fact', 'preference', 'person', 'place', 'decision', 'event', 'emotion'] as const;
@@ -47,6 +48,8 @@ export function personFacts(attributes: unknown): string[] {
     out.push(/^[a-z_]+$/i.test(k) && k.length <= 12 && !/^(role|relation|note|about)$/i.test(k) ? `${k}: ${val}` : val);
     if (out.length >= 5) break;
   }
+  // «раньше город: Алматы» — экран «Что я о тебе помню» видит и прежнее.
+  if (out.length < 5) out.push(...attrHistoryFacts(a, 1));
   return out;
 }
 

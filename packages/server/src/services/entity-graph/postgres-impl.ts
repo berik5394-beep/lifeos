@@ -86,7 +86,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
   async upsertEntity(
     userId: string,
     entity: Partial<Entity> & { name: string; type: string },
-    opts?: { deliberate?: boolean },
+    opts?: { deliberate?: boolean; changedKeys?: string[] },
   ): Promise<Entity> {
     // Стратегия записи: точный матч → update; иначе (флаг) resolve→merge update;
     // иначе prisma.entity.create. Никогда не prisma.entity.upsert (разветвление выше).
@@ -101,6 +101,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
     const attributes = (entity.attributes as Record<string, unknown> | undefined) ?? {};
     const importance = entity.importance ?? 5;
     const deliberate = opts?.deliberate ?? false;
+    const changedKeys = opts?.changedKeys ?? [];
 
     // Точный матч по (userId, type, name) — приоритет, как сейчас.
     const existing = await prisma.entity.findUnique({
@@ -113,7 +114,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
         ? capAliases([...(existing.aliases as string[]), ...incomingAliases])
         : (existing.aliases as string[]);
       const mergedAttributes = isV2MemGraphEnabled(userId)
-        ? mergeAttributes(existing.attributes as Record<string, unknown>, attributes, deliberate)
+        ? mergeAttributes(existing.attributes as Record<string, unknown>, attributes, deliberate, changedKeys)
         : { ...(existing.attributes as Record<string, unknown>), ...attributes };
       const updated = await prisma.entity.update({
         where: { id: existing.id },
@@ -138,7 +139,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
           ...incomingAliases,
         ]);
         const mergedAttributes = isV2MemGraphEnabled(userId)
-          ? mergeAttributes(resolved.attributes as Record<string, unknown>, attributes, deliberate)
+          ? mergeAttributes(resolved.attributes as Record<string, unknown>, attributes, deliberate, changedKeys)
           : { ...(resolved.attributes as Record<string, unknown>), ...attributes };
         const updated = await prisma.entity.update({
           where: { id: resolved.id },

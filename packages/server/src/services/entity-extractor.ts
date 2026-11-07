@@ -32,6 +32,12 @@ export interface ExtractedEntityInput {
   importance?: number;
   /** Известные НЕ-морфологические варианты имени (Серёга↔Сергей, Kaspi↔Каспи). Стеммер морфологию ловит сам. */
   aliases?: string[];
+  /**
+   * Ключи attributes, о которых пользователь ПРЯМО сказал «изменилось»
+   * («мама переехала в Астану» → ["город"]). Только для них фоновая запись
+   * заменяет прежнее значение (прежнее уходит в историю).
+   */
+  changed?: string[];
 }
 
 export interface ExtractedRelationshipInput {
@@ -154,6 +160,7 @@ const SYSTEM_PROMPT = `Ты — аналитик знаний LifeOS. Из со�
       "type": "person|place|concept|goal|organization",
       "aliases": ["известный вариант: кличка, краткое/полное, латиница"],
       "attributes": { "ключ": "значение" },
+      "changed": ["ключ"],
       "importance": 5
     }
   ],
@@ -172,6 +179,7 @@ const SYSTEM_PROMPT = `Ты — аналитик знаний LifeOS. Из со�
 1. entities — только явно упомянутые. Не выдумывай. Мин. одно слово.
 2. type выбери из фиксированного списка: ${ENTITY_TYPES.join('|')}.
 3. attributes — только явно сказанное (день рождения, город, профессия и т.д.).
+3b. changed — ТОЛЬКО если пользователь прямо говорит, что атрибут ИЗМЕНИЛСЯ («переехала в Астану», «теперь работает в Kaspi», «сменил номер», «больше не…», «раньше…, а теперь…»): перечисли ключи attributes с НОВЫМ значением. Обычное утверждение («мама живёт в Алматы») → НЕ добавляй поле. Ключи — короткие, по-русски: «город», «работа», «профессия», «телефон».
 3a. aliases — ТОЛЬКО НЕ-морфологические варианты (кличка «Серёга» для «Сергей», латиница «Kaspi» для «Каспи», краткое↔полное). Склонения/падежи НЕ добавляй — система их сводит сама. Нет вариантов → не добавляй поле.
 4. importance: 1-3 мелочь, 4-6 средне, 7-10 важно (семья, здоровье, цели).
 5. relationships — только если из текста явно следует связь между двумя entities.
@@ -216,6 +224,13 @@ export async function extractEntities(
     const normalizedEntities: ExtractedEntityInput[] = parsed.entities
       .map((e) => {
         const out: ExtractedEntityInput = { ...e, name: normalizeEntityName(e.name) };
+        // changed — только строки и только ключи, реально пришедшие в attributes.
+        const attrKeys = new Set(Object.keys(e.attributes ?? {}));
+        const changed = Array.isArray(e.changed)
+          ? e.changed.filter((k): k is string => typeof k === 'string' && attrKeys.has(k))
+          : [];
+        if (changed.length > 0) out.changed = changed;
+        else delete out.changed;
         if (Array.isArray(e.aliases)) {
           out.aliases = e.aliases
             .map((a) => normalizeEntityName(String(a)))

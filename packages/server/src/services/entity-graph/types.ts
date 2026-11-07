@@ -49,7 +49,8 @@ export interface EntityGraphStore {
   upsertEntity(
     userId: string,
     entity: Partial<Entity> & { name: string; type: string },
-    opts?: { deliberate?: boolean },
+    /** changedKeys — ключи атрибутов, о которых пользователь прямо сказал «изменилось». */
+    opts?: { deliberate?: boolean; changedKeys?: string[] },
   ): Promise<Entity>;
 
   /**
