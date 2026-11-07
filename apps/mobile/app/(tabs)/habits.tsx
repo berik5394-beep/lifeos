@@ -1132,6 +1132,15 @@ export default function HabitsScreen() {
     fetchMonthEntries(getMonthKey(todayDate.getFullYear(), todayDate.getMonth()));
   }, []);
 
+  // Листаешь календарь на прошлый месяц — грузим его отметки. Раньше грузился
+  // только текущий, и прошлый рисовался как «всё пропущено».
+  useEffect(() => {
+    if (calYear === todayDate.getFullYear() && calMonth === todayDate.getMonth()) return;
+    const from = formatDateKey(calYear, calMonth, 1);
+    const to = formatDateKey(calYear, calMonth, getDaysInMonth(calYear, calMonth));
+    fetchLogs(from, to);
+  }, [calYear, calMonth, todayDate, fetchLogs]);
+
   // Робот что-то сделал (голос/текст в комнате) → перечитываем отметки, если панель открыта.
   const scheduleRevision = useScheduleStore((s) => s.revision);
   const seenRevision = useRef(scheduleRevision);
