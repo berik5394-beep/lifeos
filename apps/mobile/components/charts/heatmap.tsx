@@ -161,7 +161,7 @@ export const Heatmap = React.memo(function Heatmap({
                   <HeatmapCell
                     key={week.weekIndex}
                     value={dayData?.value ?? -1}
-                    surfaceColor={c.surface}
+                    surfaceColor={c.surfaceLight} // карта лежит на карточке цвета surface — пустые дни были невидимы
                   />
                 );
               })}

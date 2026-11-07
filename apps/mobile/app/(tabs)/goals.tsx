@@ -1341,7 +1341,7 @@ export default function GoalsScreen() {
   return (
     <ScreenSafeArea style={styles.container} edges={['top']}>
       {/* ── Header ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, inTools && styles.headerCentered]}>
         {!inTools && <Text style={styles.headerTitle}>Цели на год</Text>}
         <View style={styles.yearNav}>
           <TouchableOpacity onPress={handlePrevYear} style={styles.yearArrow} activeOpacity={0.6}>
@@ -1393,19 +1393,19 @@ export default function GoalsScreen() {
           <View style={styles.summaryRow}>
             <View style={styles.summaryChip}>
               <Text style={styles.summaryChipIcon}>🎯</Text>
-              <Text style={styles.summaryChipLabel}>
+              <Text style={styles.summaryChipLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                 {totalGoals} {totalGoals === 1 ? 'цель' : totalGoals >= 2 && totalGoals <= 4 ? 'цели' : 'целей'}
               </Text>
             </View>
             <View style={styles.summaryChip}>
               <Text style={styles.summaryChipIcon}>📂</Text>
-              <Text style={styles.summaryChipLabel}>
+              <Text style={styles.summaryChipLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                 {areasWithGoals} из 6 областей
               </Text>
             </View>
             <View style={styles.summaryChip}>
               <Text style={styles.summaryChipIcon}>✅</Text>
-              <Text style={styles.summaryChipLabel}>
+              <Text style={styles.summaryChipLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                 {completedGoals} выполнено
               </Text>
             </View>
@@ -1707,6 +1707,9 @@ function createStyles(c: C) {
       color: c.text,
       letterSpacing: 0.5,
     },
+    headerCentered: {
+      justifyContent: 'center',
+    },
     yearNav: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1737,7 +1740,7 @@ function createStyles(c: C) {
       flex: 1,
     },
     scrollContent: {
-      padding: spacing.lg,
+      padding: spacing.md,
     },
 
     // ── Overall progress card ──
@@ -1768,7 +1771,6 @@ function createStyles(c: C) {
     },
     summaryChip: {
       flex: 1,
-      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       paddingVertical: spacing.xs + 2,
@@ -1777,8 +1779,8 @@ function createStyles(c: C) {
       borderRadius: borderRadius.sm,
     },
     summaryChipIcon: {
-      fontSize: 14,
-      marginRight: 4,
+      fontSize: 16,
+      marginBottom: 2,
     },
     summaryChipLabel: {
       fontSize: fontSize.xs,

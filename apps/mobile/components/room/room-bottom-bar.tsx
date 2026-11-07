@@ -69,9 +69,12 @@ function createStyles(c: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     wrap: { paddingTop: spacing.xs, gap: spacing.xs },
     toggles: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.md },
+    // Две кнопки поровну на всю ширину — раньше жались влево, справа пустота.
     toggle: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'center',
       gap: 6,
       paddingHorizontal: spacing.md,
       paddingVertical: 7,

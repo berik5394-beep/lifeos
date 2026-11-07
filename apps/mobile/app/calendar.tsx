@@ -101,7 +101,8 @@ export default function CalendarScreen() {
               {RU_MONTHS[month]} {year}
             </Text>
           </Pressable>
-          {isLoadingTasks && <ActivityIndicator size="small" color={colors.primary} />}
+          {/* Сбоку от заголовка, не сдвигая его: месяц всегда ровно по центру. */}
+          {isLoadingTasks && <ActivityIndicator size="small" color={colors.primary} style={styles.headerSpinner} />}
         </View>
         <TouchableOpacity onPress={nextMonth} hitSlop={12}>
           <Feather name="chevron-right" size={24} color={colors.text} />
@@ -146,7 +147,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headerCenter: { flexDirection: 'row', alignItems: 'center' },
+  headerSpinner: { position: 'absolute', right: -(spacing.sm + 20) },
   headerTitle: { fontSize: fontSize.lg, fontWeight: '700' },
   gridCard: { margin: spacing.md, padding: spacing.sm },
   legend: { textAlign: 'center', fontSize: fontSize.sm, paddingHorizontal: spacing.lg },

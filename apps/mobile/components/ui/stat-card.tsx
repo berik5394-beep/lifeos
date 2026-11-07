@@ -99,7 +99,8 @@ export const StatCard = React.memo(function StatCard({
             </Text>
           ) : null}
         </View>
-        <Text style={styles.label} numberOfLines={1}>
+        {/* Узкая плитка: сжать шрифт, а не резать «Лучшая сер…». */}
+        <Text style={styles.label} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
           {label}
         </Text>
       </View>

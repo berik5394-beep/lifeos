@@ -1096,17 +1096,18 @@ function createStyles(c: C) {
       textDecorationLine: 'line-through',
       color: c.textSecondary,
     },
+    // Две плитки в строку ровной ширины. Было flex:1 в сетке с переносом —
+    // плитки вырастали по высоте и второй ряд вылезал за рамку карточки.
     analyticsGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: spacing.sm,
+      justifyContent: 'space-between',
+      rowGap: spacing.sm,
     },
     analyticsItemWrapper: {
-      flex: 1,
-      minWidth: '40%',
+      width: '48.5%',
     },
     analyticsItem: {
-      flex: 1,
       backgroundColor: c.surfaceLight,
       borderRadius: borderRadius.md,
       padding: spacing.md,

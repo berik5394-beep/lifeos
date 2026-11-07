@@ -305,7 +305,7 @@ export default function KanbanBoardScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={c.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Канбан</Text>
+          <Text style={styles.headerTitle} pointerEvents="none">Канбан</Text>
           <View style={styles.headerHint}>
             <Feather name="move" size={14} color={c.textMuted} />
             <Text style={styles.headerHintText}>Зажми карточку</Text>
@@ -405,7 +405,16 @@ function createStyles(c: Theme) {
       borderBottomColor: c.border,
     },
     backButton: { padding: spacing.xs },
-    headerTitle: { fontSize: fontSize.lg, fontWeight: '700', color: c.text },
+    // По центру экрана, а не между стрелкой и подсказкой (иначе съезжал влево).
+    headerTitle: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      textAlign: 'center',
+      fontSize: fontSize.lg,
+      fontWeight: '700',
+      color: c.text,
+    },
     headerHint: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -435,7 +444,7 @@ function createStyles(c: Theme) {
       fontSize: 10,
       fontWeight: '600',
     },
-    columnsContent: { paddingHorizontal: spacing.md - spacing.xs },
+    columnsContent: { paddingHorizontal: spacing.md - spacing.xs, paddingVertical: spacing.sm },
     column: {
       marginHorizontal: spacing.xs,
       backgroundColor: c.surface,

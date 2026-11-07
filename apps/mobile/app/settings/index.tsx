@@ -13,7 +13,7 @@ import { resyncDailyDigests, DEFAULT_WAKE_UP } from '@/services/daily-digests';
 import { saveAssistantProfile, loadAssistantProfile, type AssistantProfile } from '@/services/assistant-profile';
 import { exportCSV, saveCSVToFile } from '@/services/export';
 import { useAuthStore } from '@/stores/auth-store';
-import { Card, Button, SectionHeader, Modal, Input } from '@/components/ui';
+import { Card, Button, Modal, Input } from '@/components/ui';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 import { useUIStore, type UIComplexity } from '@/stores/ui-store';
@@ -49,7 +49,7 @@ function createStyles(c: ReturnType<typeof useColors>) {
     },
     content: {
       padding: spacing.md,
-      paddingTop: spacing.xl + 32,
+      paddingTop: spacing.sm,
       paddingBottom: spacing.xl,
     },
     sectionTitle: {
@@ -548,10 +548,7 @@ export default function SettingsScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <FadeInView delay={0}>
-        <SectionHeader title="Настройки" subtitle="Профиль, оформление и интеграции" />
-      </FadeInView>
-
+      {/* Заголовок «Настройки» уже в шапке экрана — второй, крупный, был дублем. */}
       <FadeInView delay={80}>
         <Text style={styles.sectionTitle}>Профиль</Text>
         <Card>

@@ -136,6 +136,16 @@ export const ToolsPage = memo(function ToolsPage({
       lastActive.current[tab] = Date.now();
     };
   }, [tab]);
+  // Выбранная вкладка — целиком и по центру полосы (раньше «Привычки» и
+  // дальше оставались обрезанными у правого края).
+  const tabsRef = useRef<ScrollView>(null);
+  const tabLayouts = useRef<Record<string, { x: number; w: number }>>({});
+  useEffect(() => {
+    const l = tabLayouts.current[tab];
+    if (!l) return;
+    tabsRef.current?.scrollTo({ x: Math.max(0, l.x - (width - l.w) / 2), animated: true });
+  }, [tab, width]);
+
   const bubble = voiceBubble ? (
     <ChatReplyBubble text={voiceBubble} tail="left" />
   ) : showReply ? (
@@ -157,7 +167,13 @@ export const ToolsPage = memo(function ToolsPage({
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs} style={styles.tabsBar}>
+      <ScrollView
+        ref={tabsRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabs}
+        style={styles.tabsBar}
+      >
         {tools.map((p) => {
           const on = p.key === tab;
           return (
@@ -165,6 +181,9 @@ export const ToolsPage = memo(function ToolsPage({
               key={p.key}
               style={[styles.tab, on && styles.tabOn]}
               onPress={() => onTab(p.key as ToolKey)}
+              onLayout={(e) => {
+                tabLayouts.current[p.key] = { x: e.nativeEvent.layout.x, w: e.nativeEvent.layout.width };
+              }}
               accessibilityRole="tab"
               accessibilityState={{ selected: on }}
               accessibilityLabel={p.label}
