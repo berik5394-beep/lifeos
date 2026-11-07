@@ -14,7 +14,7 @@ import { exportCSV, saveCSVToFile } from '@/services/export';
 import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore } from '@/stores/theme-store';
 import { themeLabels, themeIcons, type ThemeName } from '@/constants/themes';
-import { Card, Button, SectionHeader } from '@/components/ui';
+import { Card, Button, SectionHeader, Modal, Input } from '@/components/ui';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 import { useUIStore, type UIComplexity } from '@/stores/ui-store';
@@ -218,6 +218,8 @@ function createStyles(c: ReturnType<typeof useColors>) {
       paddingVertical: spacing.md,
       marginTop: spacing.sm,
     },
+    deletePromptText: { color: c.textSecondary, fontSize: fontSize.sm, marginBottom: spacing.md },
+    deletePromptButton: { marginTop: spacing.md, marginBottom: spacing.sm },
     deleteAccountText: {
       fontSize: fontSize.sm,
       color: '#EF4444',
@@ -291,6 +293,9 @@ export default function SettingsScreen() {
   const navigation = useNavigation();
   const { user, logout, deleteAccount, changePassword } = useAuthStore();
   const [deleteLoading, setDeleteLoading] = useState(false);
+  // Пароль для удаления — своё окно: Alert.prompt есть только на iOS, на Android падал.
+  const [deletePromptVisible, setDeletePromptVisible] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -470,7 +475,7 @@ export default function SettingsScreen() {
 
   const handleChangePassword = useCallback(async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert('��шибка', 'Заполните все поля');
+      Alert.alert('Ошибка', 'Заполните все поля');
       return;
     }
     if (newPassword.length < 8) {
@@ -507,31 +512,29 @@ export default function SettingsScreen() {
           text: 'Удалить',
           style: 'destructive',
           onPress: () => {
-            Alert.prompt(
-              'Подтвердите пароль',
-              'Введите пароль для удаления аккаунта',
-              async (password: string) => {
-                if (!password) return;
-                setDeleteLoading(true);
-                try {
-                  await deleteAccount(password);
-                } catch (err) {
-                  const message =
-                    err instanceof Error ? err.message : 'Ошибка удаления';
-                  Alert.alert('Ошибка', message);
-                } finally {
-                  setDeleteLoading(false);
-                }
-              },
-              'secure-text',
-              '',
-              'default',
-            );
+            setDeletePassword('');
+            setDeletePromptVisible(true);
           },
         },
       ],
     );
-  }, [deleteAccount]);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deletePassword) {
+      Alert.alert('Пароль', 'Введите пароль, чтобы удалить аккаунт.');
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      await deleteAccount(deletePassword);
+      setDeletePromptVisible(false);
+    } catch (err) {
+      Alert.alert('Ошибка', err instanceof Error ? err.message : 'Ошибка удаления');
+    } finally {
+      setDeleteLoading(false);
+    }
+  }, [deletePassword, deleteAccount]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Выход', 'Вы уверены, что хотите выйти?', [
@@ -803,6 +806,27 @@ export default function SettingsScreen() {
 
         <Text style={styles.version}>LifeOS v1.0.0</Text>
       </FadeInView>
+
+      <Modal visible={deletePromptVisible} onClose={() => setDeletePromptVisible(false)} title="Подтвердите пароль">
+        <Text style={styles.deletePromptText}>Введите пароль — аккаунт и все данные будут удалены безвозвратно.</Text>
+        <Input
+          value={deletePassword}
+          onChangeText={setDeletePassword}
+          placeholder="Пароль"
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          accessibilityLabel="Пароль для удаления аккаунта"
+        />
+        <Button
+          title={deleteLoading ? 'Удаление…' : 'Удалить навсегда'}
+          variant="danger"
+          onPress={() => void handleConfirmDelete()}
+          loading={deleteLoading}
+          disabled={deleteLoading}
+          style={styles.deletePromptButton}
+        />
+      </Modal>
     </ScrollView>
   );
 }

@@ -312,11 +312,14 @@ export const api = {
   },
 
   /** Returns raw Response (for CSV downloads, etc.) */
-  postRaw: async (endpoint: string, body?: unknown): Promise<Response> => {
+  postRaw: async (endpoint: string, body?: unknown, token?: MaybeToken): Promise<Response> => {
     const headers: Record<string, string> = {};
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
     }
+    // Раньше без токена → сервер всегда 401, экспорт CSV не работал никогда.
+    const auth = token ?? getAuthStore().getState().token;
+    if (auth) headers['Authorization'] = `Bearer ${auth}`;
     const url = `${API_URL}${endpoint}`;
     // Долгие загрузки (PDF-отчёт, Stories-картинка) могут идти до 45с — поэтому увеличенный таймаут.
     return fetchWithTimeout(

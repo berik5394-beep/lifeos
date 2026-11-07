@@ -22,6 +22,7 @@ import { AnimatedPress } from '@/components/ui/animated-press';
 import { hapticSuccess, hapticError } from '@/services/haptics';
 import { api } from '@/services/api';
 import type { Theme } from '@/constants/themes';
+import { useAuthStore } from '@/stores/auth-store';
 
 const CSV_MODULES = [
   { key: 'finance', label: 'Финансы', icon: '💰', desc: 'Все расходы и доходы' },
@@ -43,7 +44,7 @@ export default function ExportScreen() {
   const handleExportCsv = useCallback(async (module: string) => {
     setLoadingKey(`csv_${module}`);
     try {
-      const response = await api.postRaw(`/export/csv/${module}`);
+      const response = await api.postRaw(`/export/csv/${module}`, undefined, useAuthStore.getState().token);
       if (!response.ok) throw new Error('Ошибка экспорта');
       const csvText = await response.text();
 
@@ -68,7 +69,7 @@ export default function ExportScreen() {
   const handleExportReport = useCallback(async (period: string) => {
     setLoadingKey(`report_${period}`);
     try {
-      const data = await api.post<{ reportData: any; message: string }>('/export/pdf/report', { period });
+      const data = await api.post<{ reportData: any; message: string }>('/export/pdf/report', { period }, useAuthStore.getState().token);
       const report = data.reportData;
 
       const text = [
@@ -105,7 +106,7 @@ export default function ExportScreen() {
   const handleShareStory = useCallback(async () => {
     setLoadingKey('story');
     try {
-      const data = await api.post<{ stats: any; title: string; style: string }>('/export/story', {});
+      const data = await api.post<{ stats: any; title: string; style: string }>('/export/story', {}, useAuthStore.getState().token);
       const stats = data.stats;
 
       const storyText = [
