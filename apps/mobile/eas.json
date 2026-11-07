@@ -24,13 +24,15 @@
       },
       "android": {
         "buildType": "apk"
-      }
+      },
+      "channel": "production"
     },
     "production": {
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_URL": "https://lifeos-api-production-736d.up.railway.app"
-      }
+      },
+      "channel": "production"
     }
   },
   "submit": {

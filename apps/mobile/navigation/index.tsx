@@ -8,6 +8,7 @@ import { useAppStore } from '@/stores/app-store';
 import { useThemeStore } from '@/stores/theme-store';
 import { useUIStore } from '@/stores/ui-store';
 import { startOfflineSync } from '@/services/offline-sync';
+import { startOtaUpdates } from '@/services/ota-updates';
 import { setupVoiceAlarmListener } from '@/services/voice-alarm';
 
 // Робот-эпик, Часть 3: дом из двух экранов (Комната ↔ Рабочий) + панели-шторки
@@ -125,6 +126,8 @@ export default function Navigation() {
       // Сеть + отправка записей, сделанных без интернета: при запуске, при
       // появлении связи и при возврате в приложение; потом сторы перечитываются.
       startOfflineSync().catch(() => {});
+      // Обновления «по воздуху»: проверка при возврате в приложение, применение в фоне.
+      startOtaUpdates();
 
       return () => {
         cleanupVoiceAlarm();
