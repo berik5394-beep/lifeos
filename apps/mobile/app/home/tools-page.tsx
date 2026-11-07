@@ -1,12 +1,14 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { RobotAvatar } from '@/components/robot/robot-avatar';
 import { RobotSpeechBubble } from '@/components/robot/robot-speech-bubble';
 import { ChatReplyBubble } from '@/components/room/chat-reply-bubble';
 import { TOOL_SCREEN } from '@/components/room/tool-screens';
 import { ContentWidthContext, ToolActiveContext } from '@/hooks/use-content-width';
+import { RobotDodgeContext, type RobotDodge } from '@/hooks/use-robot-dodge';
 import { useColors } from '@/hooks/use-colors';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
 import { useSharedVoice } from '@/hooks/shared-voice';
@@ -19,9 +21,12 @@ import type { ToolKey } from '@/services/room-tools';
 import { spacing, fontSize, borderRadius } from '@/constants';
 
 const ROBOT = 52;
-/* Своей полосы под робота больше нет (Berik 2026-11-07: «пусть он будет поверх,
- * без отдельной рамки — бросается в глаза»). Цена: в углу он может прикрыть
- * край нижней строки инструмента (раньше так закрывал «Пн 2», «Жильё»). */
+/* Своей полосы под робота нет (Berik 2026-11-07: «пусть он будет поверх, без
+ * отдельной рамки»). Чтобы не загораживать: прокрутка оставляет внизу место под
+ * него (ROBOT_INSET), а пока листают — он уменьшается и уходит к краю. */
+const ROBOT_INSET = ROBOT + spacing.sm * 2;
+/** Робот возвращается, когда прокрутка постояла столько. */
+const DODGE_BACK_MS = 900;
 /** Ответ/подсказка робота лежит поверх инструмента — сам уходит, чтобы не закрывать данные. */
 const BUBBLE_MS = 9000;
 const FRESH_REPLY_MS = 90_000;
@@ -62,6 +67,38 @@ export const ToolsPage = memo(function ToolsPage({
       b.remove();
     };
   }, []);
+
+  // Листают инструмент — робот уменьшается и уходит к левому краю, потом назад.
+  const dodgeV = useSharedValue(0);
+  const backTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (backTimer.current) clearTimeout(backTimer.current);
+  }, []);
+  const dodge = useMemo<RobotDodge>(
+    () => ({
+      inset: ROBOT_INSET,
+      onScrolling: (active) => {
+        if (backTimer.current) clearTimeout(backTimer.current);
+        backTimer.current = null;
+        if (active) {
+          dodgeV.value = withTiming(1, { duration: 180 });
+          return;
+        }
+        backTimer.current = setTimeout(() => {
+          dodgeV.value = withSpring(0, { damping: 14 });
+        }, DODGE_BACK_MS);
+      },
+    }),
+    [dodgeV],
+  );
+  const robotDodgeStyle = useAnimatedStyle(() => ({
+    opacity: 1 - 0.35 * dodgeV.value,
+    transform: [
+      { translateX: -ROBOT * 0.55 * dodgeV.value },
+      { translateY: ROBOT * 0.15 * dodgeV.value },
+      { scale: 1 - 0.4 * dodgeV.value },
+    ],
+  }));
 
   const latest = messages[0];
   const reply =
@@ -196,6 +233,7 @@ export const ToolsPage = memo(function ToolsPage({
       </ScrollView>
 
       <View style={styles.body}>
+        <RobotDodgeContext.Provider value={dodge}>
         <ContentWidthContext.Provider value={width}>
           {visited.map((k) => {
             const S = TOOL_SCREEN[k];
@@ -208,19 +246,16 @@ export const ToolsPage = memo(function ToolsPage({
             );
           })}
         </ContentWidthContext.Provider>
+        </RobotDodgeContext.Provider>
       </View>
 
       {/* Маленький робот поверх инструмента, в углу; облачко — справа от него. */}
       {!kbOpen && (
-      <Pressable
-        style={styles.robot}
-        onPress={askExplain}
-        hitSlop={8}
-        accessibilityRole="button"
-        accessibilityLabel="Робот, что тут важного?"
-      >
-        <RobotAvatar emotion={emotion} size={ROBOT} attention={voice.typing || voice.isRecording ? 'listening' : 'idle'} />
-      </Pressable>
+      <Animated.View style={[styles.robot, robotDodgeStyle]}>
+        <Pressable onPress={askExplain} hitSlop={8} accessibilityRole="button" accessibilityLabel="Робот, что тут важного?">
+          <RobotAvatar emotion={emotion} size={ROBOT} attention={voice.typing || voice.isRecording ? 'listening' : 'idle'} />
+        </Pressable>
+      </Animated.View>
       )}
       {bubble && !kbOpen && <View style={styles.bubble}>{bubble}</View>}
     </SafeAreaView>

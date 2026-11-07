@@ -27,6 +27,15 @@ describe('робот поверх инструмента, без своей по
     expect(page).not.toMatch(/ROBOT_STRIP|bodyAboveRobot/);
     expect(page).toMatch(/robot: \{ position: 'absolute'/);
   });
+  it('робот уступает место: прокрутка дома оставляет место внизу и зовёт робота отойти', () => {
+    const kb = src('components/shared/kb-scroll-view.tsx');
+    expect(kb).toMatch(/height: dodge\.inset/);
+    expect(kb).toMatch(/onScrollBeginDrag=[\s\S]{0,80}dodge\.onScrolling\(true\)/);
+    expect(kb).toMatch(/onMomentumScrollEnd=[\s\S]{0,80}dodge\.onScrolling\(false\)/);
+    const page = src('app/home/tools-page.tsx');
+    expect(page).toMatch(/<RobotDodgeContext\.Provider value=\{dodge\}>/);
+    expect(page).toMatch(/inset: ROBOT_INSET/);
+  });
 });
 
 describe('без дубля шапки внутри дома', () => {
