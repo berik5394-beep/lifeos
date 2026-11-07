@@ -91,7 +91,7 @@ describe('goal_no_progress: по цели, текущий год, без веч�
     const a = await mk('Запустить продукт', 2026);
     const b = await mk('50 книг', 2026);
     const prev = await mk('Прошлогодняя', 2025);
-    const done = await mk('Сделано', 2026, 1);
+    const done = await mk('Сделано', 2026, 100); // проценты 0..100
     await prisma.$executeRaw`UPDATE "YearlyGoal" SET "updatedAt" = ${old} WHERE "userId" = ${userId}`;
 
     const c = (await new V2ProactivityEngine().detectCandidates(userId)).filter((x) => x.source === 'goal_no_progress');

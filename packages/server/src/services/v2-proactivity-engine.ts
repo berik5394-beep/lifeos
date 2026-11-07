@@ -935,7 +935,8 @@ async function detectGoalNoProgress(userId: string): Promise<NudgeCandidate[]> {
   try {
     // Только цели текущего года и не выполненные: прошлогодние «молчат» вечно.
     const goals = await prisma.yearlyGoal.findMany({
-      where: { userId, year: new Date().getUTCFullYear(), progress: { lt: 1 } },
+      // progress — проценты 0..100 (маршрут, update_goal_progress, goal-pace).
+      where: { userId, year: new Date().getUTCFullYear(), progress: { lt: 100 } },
       select: { id: true, goalText: true, updatedAt: true },
     });
     if (goals.length === 0) return [];

@@ -25,6 +25,7 @@ import { formatDate, getMonthKey, getWeekDays, isToday, isSameDay } from '@/util
 import { useColors } from '@/hooks/use-colors';
 import { hapticSelection } from '@/services/haptics';
 import { useNavigation } from '@react-navigation/native';
+import { goalPercent } from '@/utils/goal-progress';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1209,13 +1210,13 @@ export default function FinanceScreen() {
                     style={[
                       styles.savingsProgressFill,
                       {
-                        width: `${Math.min(Math.max(moneyGoal.progress, 0), 1) * 100}%`,
-                        backgroundColor: moneyGoal.progress >= 1 ? c.success : c.primary,
+                        width: `${goalPercent(moneyGoal.progress)}%`,
+                        backgroundColor: goalPercent(moneyGoal.progress) >= 100 ? c.success : c.primary,
                       },
                     ]}
                   />
                 </View>
-                <Text style={styles.savingsProgressText}>{Math.round(moneyGoal.progress * 100)}% от цели</Text>
+                <Text style={styles.savingsProgressText}>{goalPercent(moneyGoal.progress)}% от цели</Text>
               </>
             ) : (
               <Text style={styles.savingsProgressText}>

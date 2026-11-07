@@ -32,6 +32,7 @@ import { spacing, fontSize, borderRadius } from '@/constants';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { useColors } from '@/hooks/use-colors';
 import { hapticLight, hapticSelection } from '@/services/haptics';
+import { goalPercent, GOAL_STEP_PCT } from '@/utils/goal-progress';
 
 // Enable LayoutAnimation on Android
 if (
@@ -228,7 +229,7 @@ const GoalItem = React.memo(function GoalItem({
   c,
   styles,
 }: GoalItemProps) {
-  const progressPercent = Math.round(goal.progress * 100);
+  const progressPercent = goalPercent(goal.progress);
   const isComplete = progressPercent >= 100;
 
   const handleEdit = useCallback(() => {
@@ -240,13 +241,11 @@ const GoalItem = React.memo(function GoalItem({
   }, [goal.id, onDelete]);
 
   const handleSliderDecrease = useCallback(() => {
-    const newVal = Math.max(0, goal.progress - 0.1);
-    onProgressChange(goal.id, Math.round(newVal * 10) / 10);
+    onProgressChange(goal.id, Math.max(0, goalPercent(goal.progress) - GOAL_STEP_PCT));
   }, [goal.id, goal.progress, onProgressChange]);
 
   const handleSliderIncrease = useCallback(() => {
-    const newVal = Math.min(1, goal.progress + 0.1);
-    onProgressChange(goal.id, Math.round(newVal * 10) / 10);
+    onProgressChange(goal.id, Math.min(100, goalPercent(goal.progress) + GOAL_STEP_PCT));
   }, [goal.id, goal.progress, onProgressChange]);
 
   return (
@@ -374,8 +373,8 @@ const AreaCard = React.memo(function AreaCard({
   // Compute area progress
   const areaProgress = useMemo(() => {
     if (goals.length === 0) return 0;
-    const sum = goals.reduce((acc, g) => acc + g.progress, 0);
-    return Math.round((sum / goals.length) * 100);
+    const sum = goals.reduce((acc, g) => acc + goalPercent(g.progress), 0);
+    return Math.round(sum / goals.length);
   }, [goals]);
 
   // Filter habits linked to goals in this area
@@ -1043,8 +1042,8 @@ export default function GoalsScreen() {
 
   const overallProgress = useMemo(() => {
     if (goalsForYear.length === 0) return 0;
-    const sum = goalsForYear.reduce((acc, g) => acc + g.progress, 0);
-    return Math.round((sum / goalsForYear.length) * 100);
+    const sum = goalsForYear.reduce((acc, g) => acc + goalPercent(g.progress), 0);
+    return Math.round(sum / goalsForYear.length);
   }, [goalsForYear]);
 
   const habitStats = useMemo(
@@ -1151,7 +1150,7 @@ export default function GoalsScreen() {
       setEditingGoal(goal);
       setModalArea(goal.area as GoalAreaKey);
       setModalGoalText(goal.goalText);
-      setModalProgress(Math.round(goal.progress * 100));
+      setModalProgress(goalPercent(goal.progress));
       setGoalModalVisible(true);
     },
     [],
@@ -1188,7 +1187,7 @@ export default function GoalsScreen() {
       await updateYearlyGoal(editingGoal.id, {
         area: modalArea,
         goalText: modalGoalText.trim(),
-        progress: modalProgress / 100,
+        progress: modalProgress, // проценты 0..100, как хранит сервер
       });
       setGoalModalVisible(false);
     } catch {
@@ -1307,7 +1306,7 @@ export default function GoalsScreen() {
   // ── Summary stats ──
   const totalGoals = goalsForYear.length;
   const completedGoals = useMemo(
-    () => goalsForYear.filter((g) => g.progress >= 1).length,
+    () => goalsForYear.filter((g) => goalPercent(g.progress) >= 100).length,
     [goalsForYear],
   );
   const areasWithGoals = useMemo(
