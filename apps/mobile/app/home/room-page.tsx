@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Keyboard, type LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -21,6 +21,7 @@ import { RoomBottomBar } from '@/components/room/room-bottom-bar';
 import { RoomShop } from '@/components/room/room-shop';
 import { SlotGrid } from '@/components/room/slot-grid';
 import { CoinCounter } from '@/components/room/coin-counter';
+import { SoftSpot, Vignette } from '@/components/room/face-light';
 import { useScheduleStore } from '@/stores/schedule-store';
 import { RoomIntro } from '@/components/room/room-intro';
 import { useColors } from '@/hooks/use-colors';
@@ -56,7 +57,8 @@ function timeTint(hour: number): string {
   return 'rgba(255,255,255,0)';
 }
 
-const PARALLAX_PX = 6;
+/** Поворот головы робота сдвигает дальнюю стену на столько pt — комната «приоткрывается». */
+const PARALLAX_PX = 10;
 const ZOOM_MS = 380;
 const THANKS_MS = 8000;
 /** Робот, пока открыт магазин (комната короче). */
@@ -71,6 +73,7 @@ const FRESH_REPLY_MS = 90_000;
 
 export const RoomPage = memo(function RoomPage() {
   const c = useColors();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(c), [c]);
   const navigation = useNavigation<{ navigate: (route: string) => void }>();
   const [headTurn, setHeadTurn] = useState<-1 | 0 | 1>(0);
@@ -165,6 +168,10 @@ export const RoomPage = memo(function RoomPage() {
   const robotX = useSharedValue(0);
   const robotY = useSharedValue(0);
   const robotS = useSharedValue(1);
+  // Камера комнаты: поворот головы робота + наклон телефона (пиксели сцены).
+  const tiltX = useSharedValue(0);
+  const tiltY = useSharedValue(0);
+  const cam = useDerivedValue(() => ({ x: shift.value + tiltX.value, y: tiltY.value }));
   // Сцена нарисована в R раз крупнее и уменьшена: издалека масштаб 1/R, вблизи — 1 (чётко).
   const sceneScale = useDerivedValue(() => zoom.value / R);
 
@@ -301,7 +308,6 @@ export const RoomPage = memo(function RoomPage() {
   const sceneStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: sceneScale.value }],
   }));
-  const furnitureStyle = useAnimatedStyle(() => ({ transform: [{ translateX: shift.value }] }));
   const robotStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: robotX.value }, { translateY: robotY.value }, { scale: robotS.value }],
   }));
@@ -437,8 +443,12 @@ export const RoomPage = memo(function RoomPage() {
       ? 'Распознаю…'
       : voiceNote;
 
+  // Ближние предметы рисуем поверх дальних.
+  const byDepth = useMemo(() => [...items].sort((a, b) => a.y - b.y), [items]);
+  const topInset = insets.top + spacing.xs;
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <View style={styles.container}>
       <GestureDetector gesture={sceneGesture}>
         <View style={styles.roomOuter} onLayout={onLayout}>
           <View style={styles.room}>
@@ -454,13 +464,20 @@ export const RoomPage = memo(function RoomPage() {
                 sceneStyle,
               ]}
             >
-              <RoomDiorama width={size.w * R} height={size.h * R} hour={hour} wallsTier={wallsTier} floorTier={floorTier} />
-              <Animated.View style={[StyleSheet.absoluteFill, furnitureStyle]} pointerEvents="box-none">
+              <RoomDiorama
+                width={size.w * R}
+                height={size.h * R}
+                hour={hour}
+                cam={cam}
+                wallsTier={wallsTier}
+                floorTier={floorTier}
+              />
+              <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
                 {size.w > 0 && (furnishing || dragging) && (
-                  <SlotGrid width={size.w * R} height={size.h * R} owned={owned} dragSpot={dragSpot} />
+                  <SlotGrid width={size.w * R} height={size.h * R} owned={owned} dragSpot={dragSpot} cam={cam} />
                 )}
                 {size.w > 0 &&
-                  items.map((item) => (
+                  byDepth.map((item) => (
                     <RoomFurnitureItem
                       key={item.id}
                       item={item}
@@ -468,6 +485,7 @@ export const RoomPage = memo(function RoomPage() {
                       roomHeight={size.h * R}
                       blockGestures={[lookAround]}
                       zoom={sceneScale}
+                      cam={cam}
                       onMove={moveItem}
                       onRemove={onRemove}
                       onTap={onItemTap}
@@ -477,9 +495,10 @@ export const RoomPage = memo(function RoomPage() {
                       onDragState={(on) => onDragState(item.id, on)}
                     />
                   ))}
-              </Animated.View>
+              </View>
             </Animated.View>
             <View style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} pointerEvents="none" />
+            <Vignette />
           </View>
 
           {/* Реплики под роботом: поднятая рука робота поверх облачка. */}
@@ -487,7 +506,7 @@ export const RoomPage = memo(function RoomPage() {
             <View
               style={
                 plan.zone === 'top'
-                  ? styles.bubbleTop
+                  ? [styles.bubbleTop, { top: topInset }]
                   : plan.robotSide === 'left'
                     ? styles.bubbleBottomRight
                     : styles.bubbleBottomLeft
@@ -511,7 +530,7 @@ export const RoomPage = memo(function RoomPage() {
           )}
           {/* Пишем роботу: ответ справа от маленького робота, длинный — прокручивается. */}
           {chatMode && (showReply || voiceBubble) && (
-            <View style={[styles.bubbleChat, { maxHeight: Math.max(80, size.h - 56) }]}>
+            <View style={[styles.bubbleChat, { maxHeight: Math.max(80, size.h - 56 - insets.top) }]}>
               <ScrollView bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                 <ChatReplyBubble
                   text={voiceBubble ?? reply?.content ?? ''}
@@ -541,6 +560,10 @@ export const RoomPage = memo(function RoomPage() {
           )}
 
           <Animated.View style={[styles.robot, robotStyle]} pointerEvents="none">
+            {/* Робот стоит на полу: мягкая тень под ногами. */}
+            <View style={styles.robotShadow}>
+              <SoftSpot id="robotShadow" cx={0.5} cy={0.5} rx={0.5} ry={0.5} color="#0E0802" opacity={0.8} />
+            </View>
             <View style={mirror ? styles.mirror : undefined}>
               <RobotAvatar
                 emotion={emotion}
@@ -552,7 +575,7 @@ export const RoomPage = memo(function RoomPage() {
             </View>
           </Animated.View>
 
-          <View style={styles.topLeft}>
+          <View style={[styles.topLeft, { top: topInset }]}>
             <Pressable
               style={styles.iconBtn}
               onPress={() => navigation.navigate('ChatHistory')}
@@ -579,14 +602,14 @@ export const RoomPage = memo(function RoomPage() {
             </Pressable>
           </View>
           {!zoomed && (
-            <View style={styles.topRight} pointerEvents="none">
+            <View style={[styles.topRight, { top: topInset }]} pointerEvents="none">
               <CoinCounter coins={coins} gain={coinGain} />
             </View>
           )}
           {zoomed && (
             <Pressable
               onPress={zoomOut}
-              style={[styles.iconBtn, styles.topRight]}
+              style={[styles.iconBtn, styles.topRight, { top: topInset }]}
               accessibilityRole="button"
               accessibilityLabel="Отдалить комнату"
             >
@@ -612,15 +635,16 @@ export const RoomPage = memo(function RoomPage() {
         compact={kbOpen}
         highlight={introTarget === 'tools' || introTarget === 'furnish' ? introTarget : null}
       />
-    </SafeAreaView>
+    </View>
   );
 });
 
 function createStyles(c: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.background },
-    roomOuter: { flex: 1, marginHorizontal: spacing.sm, marginTop: spacing.sm },
-    room: { flex: 1, borderRadius: 24, overflow: 'hidden', backgroundColor: '#0B1022' },
+    // Комната на весь экран: без полей, рамки и скруглений, под статус-баром.
+    roomOuter: { flex: 1 },
+    room: { flex: 1, overflow: 'hidden', backgroundColor: '#0B1022' },
     scene: { position: 'absolute' },
     robot: { position: 'absolute', left: 0, right: 0, bottom: '4%', alignItems: 'center' },
     // Облачко благодарности там, где свободно (services/speech-layout).
@@ -632,6 +656,7 @@ function createStyles(c: ReturnType<typeof useColors>) {
     // Режим разговора: справа от маленького робота, низ — на уровне пола.
     bubbleChat: { position: 'absolute', left: ROBOT_SIZE * CHAT_ROBOT_SCALE + 6, right: 2, bottom: 6 },
     mirror: { transform: [{ scaleX: -1 }] },
+    robotShadow: { position: 'absolute', bottom: -16, left: '50%', marginLeft: -ROBOT_SIZE * 0.45, width: ROBOT_SIZE * 0.9, height: 32 },
     topLeft: { position: 'absolute', top: spacing.sm, left: spacing.sm, flexDirection: 'row', gap: spacing.sm },
     topRight: { position: 'absolute', top: spacing.sm, right: spacing.sm },
     iconBtn: {

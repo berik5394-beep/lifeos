@@ -1,31 +1,39 @@
-import React, { memo, useMemo, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
-import { quadMatrix, type Quad } from '@/services/room-geometry';
+import React, { memo, type ReactNode } from 'react';
+import { StyleSheet } from 'react-native';
+import Animated, { type DerivedValue, useAnimatedStyle } from 'react-native-reanimated';
+import { quadMatrix, roomFaces, type Pt, type RoomFaces } from '@/services/room-geometry';
 
 /**
  * Грань 3D-комнаты: обычный View w×h, натянутый матрицей перспективы на
- * четырёхугольник экрана. Всё внутри (обои, ковёр, окно) ложится по грани.
+ * четырёхугольник экрана. Всё внутри (обои, ковёр, окно, свет) ложится по
+ * грани. Матрица считается на UI-потоке от «камеры» — параллакс без React.
  */
 export const RoomFace = memo(function RoomFace({
   width,
   height,
-  quad,
-  shade = 0,
+  sceneW,
+  sceneH,
+  face,
+  cam,
   children,
 }: {
   width: number;
   height: number;
-  quad: Quad;
-  /** Затемнение грани 0..1 — боковые стены и потолок темнее задней стены. */
-  shade?: number;
+  /** Размер сцены — по нему строятся грани. */
+  sceneW: number;
+  sceneH: number;
+  face: keyof RoomFaces;
+  /** Сдвиг камеры (пиксели сцены): двигает дальнюю стену. */
+  cam: DerivedValue<Pt>;
   children: ReactNode;
 }) {
-  const transform = useMemo(() => [{ matrix: quadMatrix(width, height, quad) }], [width, height, quad]);
+  const style = useAnimatedStyle(() => ({
+    transform: [{ matrix: quadMatrix(width, height, roomFaces(sceneW, sceneH, cam.value)[face]) }],
+  }));
   return (
-    <View style={[styles.face, { width, height, transform }]} pointerEvents="none">
+    <Animated.View style={[styles.face, { width, height }, style]} pointerEvents="none">
       {children}
-      {shade > 0 && <View style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(20,12,4,${shade})` }]} />}
-    </View>
+    </Animated.View>
   );
 });
 

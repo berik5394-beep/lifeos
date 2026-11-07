@@ -2,6 +2,7 @@ import React, { memo, useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector, type GestureType } from 'react-native-gesture-handler';
 import Animated, {
+  type DerivedValue,
   runOnJS,
   type SharedValue,
   useAnimatedStyle,
@@ -11,8 +12,9 @@ import Animated, {
   withTiming,
   withSpring,
 } from 'react-native-reanimated';
-import { RENDER_SCALE as R, itemDepthScale } from '@/services/room-geometry';
-import { TIER_COLOR, roomItemEmoji, slotsFor, SLOT_POS, tierOf, type RoomItem } from '@/services/room-catalog';
+import { RENDER_SCALE as R, itemDepthScale, pointDepth, type Pt } from '@/services/room-geometry';
+import { TIER_COLOR, roomItemEmoji, slotsFor, SLOT_POS, spotOf, tierOf, type RoomItem } from '@/services/room-catalog';
+import { SoftSpot } from '@/components/room/face-light';
 import { hapticLight, hapticMedium } from '@/services/haptics';
 
 const SIZE = 56 * R;
@@ -28,6 +30,8 @@ interface RoomFurnitureItemProps {
   blockGestures?: BlockTarget[];
   /** Текущее приближение комнаты: палец двигается по экрану, предмет — по комнате. */
   zoom: SharedValue<number>;
+  /** Камера комнаты: дальние предметы сдвигаются вместе с задней стеной (объём). */
+  cam: DerivedValue<Pt>;
   onMove: (id: string, x: number, y: number) => void;
   onRemove: (id: string) => void;
   /** Только что купленный предмет: «выпрыгивает» крупнее, пока робот на него показывает. */
@@ -53,6 +57,7 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   roomHeight,
   blockGestures,
   zoom,
+  cam,
   onMove,
   onRemove,
   highlight = false,
@@ -65,6 +70,7 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   const targets = slotsFor(item.itemKey).map((s) => SLOT_POS[s]);
   const tier = tierOf(item.variantKey);
   const tierColor = tier && tier !== 'free' ? TIER_COLOR[tier] : null;
+  const onWall = spotOf(item.itemKey) === 'wall';
   const badgeScale = useSharedValue(1);
   useEffect(() => {
     badgeScale.value = pulseBadge
@@ -146,25 +152,46 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
       if (ok && onTap) runOnJS(onTap)(item.id);
     });
 
-  const style = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: px.value + dx.value - SIZE / 2 },
-      { translateY: py.value + dy.value - SIZE / 2 },
-      // Дальше от зрителя — мельче (перспектива комнаты).
-      { scale: lift.value * itemDepthScale(roomHeight > 0 ? (py.value + dy.value) / roomHeight : 0.5) },
-    ],
-  }));
+  const style = useAnimatedStyle(() => {
+    const fx = roomWidth > 0 ? (px.value + dx.value) / roomWidth : 0.5;
+    const fy = roomHeight > 0 ? (py.value + dy.value) / roomHeight : 0.5;
+    // Параллакс: предмет сдвигается с камерой настолько, насколько он далеко.
+    const depth = pointDepth(fx, fy);
+    return {
+      transform: [
+        { translateX: px.value + dx.value - SIZE / 2 + cam.value.x * depth },
+        { translateY: py.value + dy.value - SIZE / 2 + cam.value.y * depth },
+        // Дальше от зрителя — мельче (перспектива комнаты).
+        { scale: lift.value * itemDepthScale(fy) },
+      ],
+    };
+  });
 
   return (
     <GestureDetector gesture={Gesture.Race(pan, longPress, tap)}>
       <Animated.View style={[styles.item, style]} accessibilityLabel={`Предмет: ${item.itemKey}`}>
-        {tierColor && (
+        {/* Объём: предмет на полу отбрасывает мягкую тень, «класс» — подиум под ним. */}
+        {!onWall && (
+          <View style={styles.contact} pointerEvents="none">
+            <SoftSpot id={`contact-${item.id}`} cx={0.5} cy={0.5} rx={0.5} ry={0.5} color="#120A02" opacity={0.6} />
+          </View>
+        )}
+        {tierColor && !onWall && (
+          <>
+            <View style={[styles.podiumSide, { backgroundColor: tierColor.frame }]} pointerEvents="none" />
+            <View
+              style={[styles.podium, { backgroundColor: tierColor.stand, borderColor: tierColor.frame }, tier === 'luxury' && styles.sheen]}
+              pointerEvents="none"
+            />
+          </>
+        )}
+        {tierColor && onWall && (
           <View
             style={[styles.stand, { backgroundColor: tierColor.stand, borderColor: tierColor.frame }, tier === 'luxury' && styles.sheen]}
             pointerEvents="none"
           />
         )}
-        <Text style={styles.emoji}>{roomItemEmoji(item.itemKey)}</Text>
+        <Text style={[styles.emoji, onWall ? styles.hung : styles.standing]}>{roomItemEmoji(item.itemKey)}</Text>
         {badge ? (
           <Animated.View style={[styles.badge, badgeStyle]} pointerEvents="none">
             <Text style={styles.badgeText}>{badge}</Text>
@@ -186,7 +213,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emoji: { fontSize: 40 * R },
-  // Часть 6: «класс» предмета — подставка с рамкой цвета класса (до рисованной мебели).
+  // Свет из окна справа: тень предмета ложится влево-вниз — он «стоит», а не наклеен.
+  standing: { textShadowColor: 'rgba(20,10,0,0.45)', textShadowOffset: { width: -3 * R, height: 2 * R }, textShadowRadius: 3 * R },
+  // Висит на стене: тень ниже и мягче — между предметом и стеной есть зазор.
+  hung: { textShadowColor: 'rgba(20,10,0,0.42)', textShadowOffset: { width: -2 * R, height: 4 * R }, textShadowRadius: 4 * R },
+  contact: { position: 'absolute', left: SIZE * 0.06, width: SIZE * 0.88, top: SIZE * 0.72, height: SIZE * 0.3 },
+  // Подиум «класса»: эллипс на полу с боковой гранью (толщина) — читается как объём.
+  podium: {
+    position: 'absolute',
+    left: SIZE * 0.04,
+    width: SIZE * 0.92,
+    top: SIZE * 0.66,
+    height: SIZE * 0.3,
+    borderRadius: SIZE,
+    borderWidth: 1.5 * R,
+  },
+  podiumSide: { position: 'absolute', left: SIZE * 0.04, width: SIZE * 0.92, top: SIZE * 0.66 + 4 * R, height: SIZE * 0.3, borderRadius: SIZE, opacity: 0.8 },
+  // Часть 6: «класс» предмета на стене — рамка цвета класса.
   stand: {
     position: 'absolute',
     left: 2 * R,
