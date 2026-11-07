@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
 
 // Два теста: первый вставляет юзера, второй ОБЯЗАН видеть пустую таблицу.
-// Если TRUNCATE-beforeEach не работает — второй тест увидит юзера из первого.
+// Если очистка в beforeEach (resetDb) не работает — второй тест увидит юзера из первого.
 describe('truncate isolation', () => {
   it('тест A: вставляет юзера', async () => {
     await prisma.user.create({
