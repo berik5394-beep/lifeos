@@ -232,6 +232,8 @@ model Task {
   estimatedMinutes Int?
   recurrence       String?
   kanbanStatus     String           @default("todo")
+  /// Когда задача попала в текущую колонку канбана (NULL — неизвестно, старые задачи).
+  kanbanMovedAt    DateTime?
   urgency          Int?
   importance       Int?
   aiScore          Float?

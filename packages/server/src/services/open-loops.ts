@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { countOverduePending, listOverduePending } from './task-overdue.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { localDateOnlyUTC } from '../lib/tz.js';
+import { gatherKanbanSignals, formatKanbanFacts, type KanbanSignals } from './kanban-signals.js';
 
 export interface OpenLoops {
   overdueCount: number;
@@ -10,6 +11,8 @@ export interface OpenLoops {
   habitsUnchecked: number;
   uncheckedHabitNames: string[];
   pendingText: string | null;
+  /** Канбан: сколько «В работе» и что там зависло (необязательно — старые вызовы без него). */
+  kanban?: KanbanSignals;
 }
 
 /**
@@ -23,7 +26,7 @@ export async function gatherOpenLoops(userId: string, now: Date = new Date()): P
   const tz = await getUserTimezone(userId);
   const taskToday = localDateOnlyUTC(tz, now); // @db.Date convA — задачи
   const habitToday = taskToday; // habit-day: HabitLog.date — та же календарная дата (convA)
-  const [overdueCount, overdueSample, habits, todayLogs, pending] = await Promise.all([
+  const [overdueCount, overdueSample, habits, todayLogs, pending, kanban] = await Promise.all([
     countOverduePending(userId, taskToday),
     listOverduePending(userId, taskToday, 3),
     prisma.habit.findMany({ where: { userId, active: true }, select: { id: true, name: true } }),
@@ -32,6 +35,7 @@ export async function gatherOpenLoops(userId: string, now: Date = new Date()): P
       select: { habitId: true },
     }),
     prisma.pendingAction.findUnique({ where: { userId }, select: { confirmationText: true } }).catch(() => null),
+    gatherKanbanSignals(userId, now).catch(() => undefined),
   ]);
   const doneIds = new Set(todayLogs.map((l) => l.habitId));
   const unchecked = habits.filter((h) => !doneIds.has(h.id));
@@ -42,6 +46,7 @@ export async function gatherOpenLoops(userId: string, now: Date = new Date()): P
     habitsUnchecked: unchecked.length,
     uncheckedHabitNames: unchecked.slice(0, 3).map((h) => h.name),
     pendingText: pending?.confirmationText ?? null,
+    kanban,
   };
 }
 
@@ -58,6 +63,7 @@ export function formatOpenLoopsSection(l: OpenLoops): string | null {
     parts.push(`привычки ${l.habitsUnchecked}/${l.habitsActive} не отмечены${names}`);
   }
   if (l.pendingText) parts.push('ждёт подтверждение');
+  if (l.kanban) parts.push(...formatKanbanFacts(l.kanban));
   if (parts.length === 0) return null;
   return `Открыто сейчас: ${parts.join('; ')}.`;
 }

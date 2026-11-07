@@ -11,6 +11,7 @@ import {
   Dimensions,
   LayoutChangeEvent,
   Alert,
+  Pressable,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -33,13 +34,15 @@ import { hapticMedium, hapticLight } from '@/services/haptics';
 import type { Theme } from '@/constants/themes';
 import { formatDate } from '@/utils/dates';
 import { useContentWidth } from '@/hooks/use-content-width';
-
-const COLUMNS = [
-  { id: 'backlog', label: 'Бэклог', color: '#6B7280' },
-  { id: 'todo', label: 'К выполнению', color: '#3B82F6' },
-  { id: 'in_progress', label: 'В работе', color: '#F59E0B' },
-  { id: 'done', label: 'Готово', color: '#22C55E' },
-] as const;
+import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
+import {
+  KANBAN_COLUMNS as COLUMNS,
+  WIP_LIMIT,
+  cardDue,
+  categoryLabel,
+  columnIndexAt,
+  columnOf,
+} from '@/components/kanban/kanban-logic';
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: '#22C55E',
@@ -66,6 +69,7 @@ interface DraggableCardProps {
   onDragStart: (taskId: string, columnId: string) => void;
   onDragEnd: (taskId: string, targetColumnId: string | null) => void;
   onMoveTask: (taskId: string, currentStatus: string, direction: 'left' | 'right') => void;
+  onOpen: (taskId: string) => void;
   columnLayouts: React.MutableRefObject<Record<string, { x: number; width: number }>>;
   scrollOffset: SharedValue<number>;
 }
@@ -79,6 +83,7 @@ const DraggableCard = React.memo(function DraggableCard({
   onDragStart,
   onDragEnd,
   onMoveTask,
+  onOpen,
   columnLayouts,
   scrollOffset,
 }: DraggableCardProps) {
@@ -145,6 +150,9 @@ const DraggableCard = React.memo(function DraggableCard({
       translateY.value = withSpring(0, SPRING_CONFIG);
     });
 
+  const due = cardDue(item);
+  const next = COLUMNS[columnIndex + 1];
+
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
       { translateX: translateX.value },
@@ -161,6 +169,12 @@ const DraggableCard = React.memo(function DraggableCard({
   return (
     <GestureDetector gesture={panGesture}>
       <Animated.View style={[styles.card, animatedStyle]}>
+        {/* Тап — открыть задачу (название, срок, важность, колонка). Зажать — тащить. */}
+        <Pressable
+          onPress={() => onOpen(item.id)}
+          accessibilityRole="button"
+          accessibilityLabel={`Открыть задачу ${item.title}`}
+        >
         <View style={styles.cardTop}>
           <View
             style={[
@@ -184,6 +198,16 @@ const DraggableCard = React.memo(function DraggableCard({
             ))}
           </View>
         )}
+        <View style={styles.dueRow}>
+          <Feather name="calendar" size={12} color={due.overdue ? c.danger : c.textMuted} />
+          <Text style={[styles.dueText, due.overdue && { color: c.danger }]} numberOfLines={1}>
+            {due.label}
+          </Text>
+          <Text style={styles.cardCategory} numberOfLines={1}>
+            {categoryLabel(item.category)}
+          </Text>
+        </View>
+        </Pressable>
         <View style={styles.cardActions}>
           <TouchableOpacity
             onPress={() => onMoveTask(item.id, columnId, 'left')}
@@ -196,18 +220,17 @@ const DraggableCard = React.memo(function DraggableCard({
               color={columnId === 'backlog' ? c.textMuted : c.text}
             />
           </TouchableOpacity>
-          <Text style={styles.cardCategory}>{item.category}</Text>
-          <TouchableOpacity
-            onPress={() => onMoveTask(item.id, columnId, 'right')}
-            disabled={columnId === 'done'}
-            style={[styles.moveBtn, columnId === 'done' && styles.moveBtnDisabled]}
-          >
-            <Feather
-              name="chevron-right"
-              size={16}
-              color={columnId === 'done' ? c.textMuted : c.text}
-            />
-          </TouchableOpacity>
+          {next ? (
+            <TouchableOpacity
+              onPress={() => onMoveTask(item.id, columnId, 'right')}
+              style={styles.moveNext}
+              accessibilityRole="button"
+              accessibilityLabel={`Перенести в «${next.label}»`}
+            >
+              <Text style={[styles.moveNextText, { color: next.color }]}>{next.short}</Text>
+              <Feather name="chevron-right" size={16} color={next.color} />
+            </TouchableOpacity>
+          ) : null}
         </View>
         <View style={styles.dragHint}>
           <Feather name="more-horizontal" size={14} color={c.textMuted} />
@@ -242,6 +265,24 @@ export default function KanbanBoardScreen() {
   const updateKanbanStatus = useTaskStore((s) => s.updateKanbanStatus);
   const token = useAuthStore((s) => s.token);
   const [draggingTask, setDraggingTask] = useState<string | null>(null);
+  const deleteTask = useTaskStore((s) => s.deleteTask);
+  // Открытая карточка задачи (тап по карточке).
+  const [openId, setOpenId] = useState<string | null>(null);
+  const openTask = useMemo(() => tasks.find((t) => t.id === openId) ?? null, [tasks, openId]);
+  // Переключатель колонок сверху: какая колонка сейчас на экране.
+  const boardRef = useRef<ScrollView>(null);
+  const step = columnWidth + spacing.xs * 2;
+  const [active, setActive] = useState(0);
+  const activeRef = useRef(0);
+  const goToColumn = useCallback(
+    (i: number) => {
+      boardRef.current?.scrollTo({ x: i * step, animated: true });
+      activeRef.current = i;
+      setActive(i);
+      hapticLight();
+    },
+    [step],
+  );
   const columnLayouts = useRef<Record<string, { x: number; width: number }>>({});
   const scrollOffset = useSharedValue(0);
 
@@ -252,7 +293,8 @@ export default function KanbanBoardScreen() {
   const tasksByColumn = useMemo(() => {
     const map: Record<string, typeof tasks> = {};
     for (const col of COLUMNS) {
-      map[col.id] = tasks.filter((t) => (t.kanbanStatus || 'todo') === col.id);
+      // Галочка главнее колонки: выполненная — в «Готово» (отметил в списке или голосом).
+      map[col.id] = tasks.filter((t) => columnOf(t) === col.id);
     }
     return map;
   }, [tasks]);
@@ -291,11 +333,46 @@ export default function KanbanBoardScreen() {
   );
 
   const handleScroll = useCallback(
-    (event: any) => {
-      scrollOffset.value = event.nativeEvent.contentOffset.x;
+    (event: { nativeEvent: { contentOffset: { x: number } } }) => {
+      const x = event.nativeEvent.contentOffset.x;
+      scrollOffset.value = x;
+      const i = columnIndexAt(x, step);
+      if (i !== activeRef.current) {
+        activeRef.current = i;
+        setActive(i);
+      }
     },
-    [scrollOffset],
+    [scrollOffset, step],
   );
+
+  const moveOpenTo = useCallback(
+    (status: string) => {
+      if (!openTask) return;
+      if (columnOf(openTask) !== status) {
+        updateKanbanStatus(openTask.id, status);
+        hapticLight();
+      }
+      setOpenId(null);
+    },
+    [openTask, updateKanbanStatus],
+  );
+
+  const removeOpen = useCallback(() => {
+    if (!openTask) return;
+    Alert.alert('Убрать задачу?', `«${openTask.title}» пропадёт с доски и из списка задач.`, [
+      { text: 'Отмена', style: 'cancel' },
+      {
+        text: 'Убрать',
+        style: 'destructive',
+        onPress: () => {
+          setOpenId(null);
+          deleteTask(openTask.id).catch((e: unknown) =>
+            Alert.alert('Не получилось', e instanceof Error ? e.message : 'Попробуй ещё раз.'),
+          );
+        },
+      },
+    ]);
+  }, [openTask, deleteTask]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -310,6 +387,30 @@ export default function KanbanBoardScreen() {
             <Feather name="move" size={14} color={c.textMuted} />
             <Text style={styles.headerHintText}>Зажми карточку</Text>
           </View>
+        </View>
+
+        {/* Колонки одним касанием — доска встаёт ровно на выбранную. */}
+        <View style={styles.switcher}>
+          {COLUMNS.map((col, i) => {
+            const n = (tasksByColumn[col.id] || []).length;
+            const on = i === active;
+            const over = col.id === 'in_progress' && n > WIP_LIMIT;
+            return (
+              <Pressable
+                key={col.id}
+                onPress={() => goToColumn(i)}
+                style={[styles.switchPill, on && { backgroundColor: col.color + '33', borderColor: col.color }]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={`${col.label}, задач: ${n}`}
+              >
+                <Text style={[styles.switchText, on && { color: c.text }]} numberOfLines={1}>
+                  {col.short}
+                </Text>
+                <Text style={[styles.switchCount, { color: over ? c.danger : on ? col.color : c.textMuted }]}>{n}</Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         {loading && (
@@ -333,8 +434,9 @@ export default function KanbanBoardScreen() {
 
         {/* Columns */}
         <ScrollView
+          ref={boardRef}
           horizontal
-          snapToInterval={columnWidth + spacing.xs * 2}
+          snapToInterval={step}
           decelerationRate="fast"
           showsHorizontalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -358,6 +460,12 @@ export default function KanbanBoardScreen() {
                   </View>
                 </View>
 
+                {col.id === 'in_progress' && colTasks.length > WIP_LIMIT && (
+                  <Text style={styles.wipHint}>
+                    В работе больше {WIP_LIMIT} — закончи одну, прежде чем брать новую
+                  </Text>
+                )}
+
                 <FlatList
                   data={colTasks}
                   keyExtractor={(item) => item.id}
@@ -373,6 +481,7 @@ export default function KanbanBoardScreen() {
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       onMoveTask={handleMoveTask}
+                      onOpen={setOpenId}
                       columnLayouts={columnLayouts}
                       scrollOffset={scrollOffset}
                     />
@@ -387,6 +496,41 @@ export default function KanbanBoardScreen() {
             );
           })}
         </ScrollView>
+
+        <TaskEditSheet
+          task={openTask}
+          onClose={() => setOpenId(null)}
+          extra={
+            openTask ? (
+              <View>
+                <Text style={styles.sheetLabel}>Колонка</Text>
+                <View style={styles.sheetColumns}>
+                  {COLUMNS.map((col) => {
+                    const on = columnOf(openTask) === col.id;
+                    return (
+                      <Pressable
+                        key={col.id}
+                        onPress={() => moveOpenTo(col.id)}
+                        style={[styles.sheetColumn, on && { backgroundColor: col.color + '33', borderColor: col.color }]}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
+                        accessibilityLabel={`Перенести в «${col.label}»`}
+                      >
+                        <Text style={[styles.sheetColumnText, on && { color: col.color }]} numberOfLines={1}>
+                          {col.short}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Pressable onPress={removeOpen} style={styles.removeBtn} accessibilityRole="button" accessibilityLabel="Убрать задачу">
+                  <Feather name="trash-2" size={14} color={c.danger} />
+                  <Text style={styles.removeText}>Убрать задачу</Text>
+                </Pressable>
+              </View>
+            ) : null
+          }
+        />
       </SafeAreaView>
     </GestureHandlerRootView>
   );
@@ -490,7 +634,43 @@ function createStyles(c: Theme) {
     },
     moveBtn: { padding: spacing.xs },
     moveBtnDisabled: { opacity: 0.3 },
-    cardCategory: { fontSize: fontSize.xs, color: c.textMuted },
+    cardCategory: { fontSize: fontSize.xs, color: c.textMuted, marginLeft: 'auto', flexShrink: 0 },
+    dueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: spacing.xs },
+    dueText: { fontSize: fontSize.xs, color: c.textMuted, flexShrink: 1 },
+    moveNext: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: spacing.xs, paddingLeft: spacing.sm },
+    moveNextText: { fontSize: fontSize.xs, fontWeight: '600' },
+    // Переключатель колонок под шапкой.
+    switcher: { flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+    switchPill: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      paddingVertical: 7,
+      borderRadius: borderRadius.lg,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surface,
+    },
+    switchText: { fontSize: fontSize.xs, fontWeight: '600', color: c.textSecondary, flexShrink: 1 },
+    switchCount: { fontSize: fontSize.xs, fontWeight: '700' },
+    wipHint: { fontSize: fontSize.xs, color: c.danger, paddingHorizontal: spacing.md, paddingBottom: spacing.xs },
+    // Карточка задачи: колонка одним касанием + «Убрать».
+    sheetLabel: { fontSize: fontSize.sm, fontWeight: '600', color: c.textSecondary, marginTop: spacing.md, marginBottom: spacing.xs },
+    sheetColumns: { flexDirection: 'row', gap: spacing.xs },
+    sheetColumn: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surfaceLight,
+    },
+    sheetColumnText: { fontSize: fontSize.xs, fontWeight: '600', color: c.textSecondary },
+    removeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: spacing.sm, marginTop: spacing.xs },
+    removeText: { fontSize: fontSize.sm, color: c.danger, fontWeight: '600' },
     dragHint: {
       alignItems: 'center',
       marginTop: 2,

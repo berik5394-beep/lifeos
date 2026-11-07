@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { kanbanForCompletion } from '../services/kanban-signals.js';
 import { prisma } from '../lib/prisma.js';
 import { matchOpenTask } from '../services/task-title.js';
 import { defineTool } from './_types.js';
@@ -41,7 +42,7 @@ export const completeTaskTool = defineTool({
     if (!task) return { message: 'Задача не найдена', notFound: true };
     await prisma.task.update({
       where: { id: task.id },
-      data: { completed: true },
+      data: { completed: true, ...kanbanForCompletion(true, task.kanbanStatus) },
     });
     // Часть 6: монеты за дело — так же, как из приложения.
     await onTaskCompleted(userId, task.id, task.title);

@@ -21,3 +21,34 @@ describe('POST /tasks с kanbanStatus', () => {
     expect(doing.json()).toMatchObject({ kanbanStatus: 'in_progress', completed: false });
   });
 });
+
+describe('Галочка ⇄ колонка «Готово» + время переезда', () => {
+  it('отметил выполненной → «Готово»; снял → «К выполнению»; переезд пишет kanbanMovedAt', async () => {
+    const u = await prisma.user.create({ data: { email: `kd2-${Date.now()}-${Math.random()}@a.test`, name: 'K', passwordHash: 'x', timezone: 'UTC' } });
+    const headers = { authorization: `Bearer ${app.jwt.sign({ sub: u.id })}` };
+    const created = await app.inject({
+      method: 'POST', url: '/tasks', headers,
+      payload: { category: 'personal', priority: 'medium', date: '2026-11-07', title: 'Сайт', kanbanStatus: 'in_progress' },
+    });
+    const id = created.json().id as string;
+    expect(created.json().kanbanMovedAt).toBeTruthy();
+
+    // Галочка в списке задач → карточка уезжает в «Готово».
+    const toggled = await app.inject({ method: 'PATCH', url: `/tasks/${id}/complete`, headers });
+    expect(toggled.json()).toMatchObject({ completed: true, kanbanStatus: 'done' });
+    // Сняли галочку → обратно «К выполнению».
+    const back = await app.inject({ method: 'PATCH', url: `/tasks/${id}/complete`, headers });
+    expect(back.json()).toMatchObject({ completed: false, kanbanStatus: 'todo' });
+    // Через карточку задачи (PUT completed) — то же правило.
+    const put = await app.inject({ method: 'PUT', url: `/tasks/${id}`, headers, payload: { completed: true } });
+    expect(put.json()).toMatchObject({ completed: true, kanbanStatus: 'done' });
+
+    // Переезд по доске обновляет время; та же колонка — нет.
+    await prisma.task.update({ where: { id }, data: { kanbanStatus: 'todo', completed: false, kanbanMovedAt: new Date('2026-01-01T00:00:00Z') } });
+    const moved = await app.inject({ method: 'PATCH', url: `/tasks/${id}/kanban`, headers, payload: { status: 'in_progress' } });
+    expect(new Date(moved.json().kanbanMovedAt).getTime()).toBeGreaterThan(new Date('2026-06-01').getTime());
+    const stay = await prisma.task.findUniqueOrThrow({ where: { id } });
+    const same = await app.inject({ method: 'PATCH', url: `/tasks/${id}/kanban`, headers, payload: { status: 'in_progress' } });
+    expect(new Date(same.json().kanbanMovedAt).getTime()).toBe(stay.kanbanMovedAt!.getTime());
+  });
+});

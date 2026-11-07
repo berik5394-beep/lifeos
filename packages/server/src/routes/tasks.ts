@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { kanbanForCompletion, kanbanLabel } from '../services/kanban-signals.js';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
@@ -159,6 +160,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         time: data.time ?? null,
         notes: data.notes ?? null,
         kanbanStatus: data.kanbanStatus ?? 'todo',
+        kanbanMovedAt: new Date(),
         // Как PATCH /kanban: записал сразу в «Готово» — задача выполнена.
         ...(data.kanbanStatus === 'done' ? { completed: true } : {}),
         parentId: data.parentId ?? null,
@@ -202,6 +204,8 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         data: {
           ...data,
           date: data.date ? new Date(data.date) : undefined,
+          // Галочка ⇄ колонка «Готово» канбана.
+          ...(data.completed !== undefined ? kanbanForCompletion(data.completed, task.kanbanStatus) : {}),
         },
         include: {
           taskTags: { include: { tag: true } },
@@ -258,7 +262,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
 
       const updated = await tx.task.update({
         where: { id },
-        data: { completed: !task.completed },
+        data: { completed: !task.completed, ...kanbanForCompletion(!task.completed, task.kanbanStatus) },
       });
 
       return updated;
@@ -293,6 +297,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         data: {
           kanbanStatus: status,
           completed: status === 'done',
+          ...(status !== task.kanbanStatus ? { kanbanMovedAt: new Date() } : {}),
         },
         include: {
           taskTags: { include: { tag: true } },
@@ -306,7 +311,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
     if (status === 'done') void onTaskCompleted(request.userId, result.id, result.title);
     captureActivity(request.userId, {
       type: 'task_kanban_moved',
-      content: `Передвинул задачу «${result.title}» → ${status}`,
+      content: `Передвинул задачу «${result.title}» в колонку «${kanbanLabel(status)}»`,
     });
     return reply.send(result);
   });

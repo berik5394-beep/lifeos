@@ -186,7 +186,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
     set((state) => ({
       tasks: state.tasks.map((t) =>
-        t.id === id ? { ...t, completed: !t.completed } : t,
+        t.id === id
+          ? {
+              ...t,
+              completed: !t.completed,
+              // Галочка ⇄ «Готово» канбана (то же правило, что на сервере).
+              kanbanStatus: !t.completed ? 'done' : t.kanbanStatus === 'done' ? 'todo' : t.kanbanStatus,
+            }
+          : t,
       ),
     }));
 
@@ -237,7 +244,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     // Optimistic update
     set((state) => ({
       tasks: state.tasks.map((t) =>
-        t.id === taskId ? { ...t, kanbanStatus: status } : t,
+        // «Готово» = выполнена (как на сервере); уход из «Готово» снимает отметку.
+        t.id === taskId ? { ...t, kanbanStatus: status, completed: status === 'done' } : t,
       ),
     }));
 

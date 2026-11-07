@@ -20,6 +20,7 @@ import { gatherDayLoad } from './day-load.js';
 import { computeCapacityFit } from './capacity-fit.js';
 import { computeGoalPace, isMoneyGoal } from './goal-pace.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
+import { gatherKanbanSignals, formatKanbanFacts } from './kanban-signals.js';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU').replace(/ /g, ' ');
 
@@ -30,7 +31,7 @@ export async function gatherBriefExtras(userId: string, tz: string, now: Date = 
   const nextMonth = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1));
   const out: string[] = [];
 
-  const [spent, limits, obligations, goals, load] = await Promise.all([
+  const [spent, limits, obligations, goals, load, kanban] = await Promise.all([
     prisma.expense.aggregate({ where: { userId, date: { gte: monthStart, lt: nextMonth } }, _sum: { amount: true } }).catch(() => null),
     prisma.budgetLimit
       .aggregate({ where: { userId, month: monthStart.getUTCMonth() + 1, year: monthStart.getUTCFullYear() }, _sum: { monthlyLimit: true } })
@@ -42,6 +43,7 @@ export async function gatherBriefExtras(userId: string, tz: string, now: Date = 
       .findMany({ where: { userId, year: monthStart.getUTCFullYear(), target: { not: null }, progress: { lt: 100 } } })
       .catch(() => []),
     gatherDayLoad(userId, now).catch(() => null),
+    gatherKanbanSignals(userId, now).catch(() => null),
   ]);
 
   const limit = limits?._sum.monthlyLimit ?? 0;
@@ -66,6 +68,9 @@ export async function gatherBriefExtras(userId: string, tz: string, now: Date = 
     .filter((g) => g.target != null && !isMoneyGoal(g.area, g.target))
     .map((g) => ({ g, p: computeGoalPace({ target: g.target!, targetDate: g.targetDate, progress: g.progress, createdAt: g.createdAt }, now) }))
     .find((x) => x.p.status === 'behind' || x.p.status === 'stalled');
+  // Канбан: перебор «В работе» и зависшие задачи (робот следит за доской).
+  if (kanban) out.push(...formatKanbanFacts(kanban));
+
   if (behind) out.push(`цель «${behind.g.goalText}» отстаёт: сделано ${fmt(behind.p.done)} из ${fmt(behind.g.target!)}`);
 
   return out;

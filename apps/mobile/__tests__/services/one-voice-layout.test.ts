@@ -64,7 +64,10 @@ describe('канбан: писать можно в любой колонке', (
     expect(kb).not.toMatch(/col\.id === 'todo' \? <TapToAdd/);
   });
   it('колонка — по ширине экрана, листание ровно по колонке', () => {
-    expect(kb).toMatch(/snapToInterval=\{columnWidth/);
+    // Шаг листания = колонка + её поля; им же ездит переключатель колонок сверху.
+    expect(kb).toMatch(/const step = columnWidth \+ spacing\.xs \* 2/);
+    expect(kb).toMatch(/snapToInterval=\{step\}/);
+    expect(kb).toMatch(/scrollTo\(\{ x: i \* step/);
     expect(kb).not.toMatch(/COLUMN_WIDTH = 280/);
   });
 });

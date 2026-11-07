@@ -22,9 +22,12 @@ const CATEGORY_CHIPS: Chip[] = (Object.keys(taskCategories) as (keyof typeof tas
 export const TaskEditSheet = memo(function TaskEditSheet({
   task,
   onClose,
+  extra,
 }: {
   task: EditableTask | null;
   onClose: () => void;
+  /** Доп. блок под названием (канбан: колонка одним касанием, «Убрать»). */
+  extra?: React.ReactNode;
 }) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
@@ -71,6 +74,7 @@ export const TaskEditSheet = memo(function TaskEditSheet({
       {draft && (
         <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Input value={draft.title} onChangeText={(v) => set('title', v)} placeholder="Что нужно сделать?" accessibilityLabel="Название задачи" />
+          {extra}
 
           <Text style={styles.label}>Важность</Text>
           <ChipRow items={PRIORITY_CHIPS} selected={draft.priority} onSelect={(k) => set('priority', k)} styles={styles} />
