@@ -425,7 +425,7 @@ async function generateMorningBriefing(
   // W11-фикс: wakeUpTime — локальное время юзера, НЕ серверный UTC.
   // Раньше «07:00» интерпретировалось как 07:00 UTC = 12:00 Алматы →
   // юзер видел «доброе утро» в полдень. Теперь tz-корректно.
-  const scheduledFor = timeToDate(user?.wakeUpTime || '08:00', user?.timezone || 'UTC');
+  const scheduledFor = timeToDate(user?.wakeUpTime || '07:00', user?.timezone || 'UTC');
   // Планировщик сам решит «пора/не пора» (scheduledFor<=now и <2ч
   // просрочки) и дедупнёт раз в день. Здесь просто собираем брифинг.
   return buildMorning(userId, user?.name ?? 'друг', scheduledFor, user?.timezone || 'UTC');

@@ -159,7 +159,7 @@ export async function cancelEventReminder(eventId: string): Promise<void> {
 // Morning briefing (daily recurring at user's wake time)
 // ---------------------------------------------------------------------------
 export async function scheduleMorningBriefing(
-  wakeUpTime: string = '08:00',
+  wakeUpTime: string = '07:00',
 ): Promise<string> {
   // Cancel previous morning notification so we don't stack duplicates
   await cancelByPrefix(PREFIX_MORNING);
@@ -183,6 +183,15 @@ export async function scheduleMorningBriefing(
   });
 
   return id;
+}
+
+/** Снять локальные ежедневные сводки (утро/вечер/неделя): их шлёт сервер пушем. */
+export async function cancelLocalDigests(): Promise<void> {
+  await cancelByPrefix(PREFIX_MORNING);
+  await cancelByPrefix(PREFIX_EVENING);
+  await cancelByPrefix(PREFIX_WEEKLY);
+  // Старый отдельный будильник «Доброе утро» (settings) — дубль брифа.
+  await Notifications.cancelScheduledNotificationAsync('wakeup').catch(() => {});
 }
 
 /** @deprecated Use `scheduleMorningBriefing` */

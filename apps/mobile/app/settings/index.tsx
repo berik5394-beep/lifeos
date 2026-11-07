@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { storage } from '@/services/storage';
+import { resyncDailyDigests, DEFAULT_WAKE_UP } from '@/services/daily-digests';
 import { saveAssistantProfile, loadAssistantProfile, type AssistantProfile } from '@/services/assistant-profile';
 import { exportCSV, saveCSVToFile } from '@/services/export';
 import { useAuthStore } from '@/stores/auth-store';
@@ -22,10 +23,6 @@ import { AnimatedPress } from '@/components/ui/animated-press';
 import { FadeInView } from '@/components/ui/fade-in-view';
 
 const THEME_OPTIONS: ThemeName[] = ['dark', 'planner', 'pink'];
-import {
-  scheduleWakeUpNotification,
-  cancelWakeUpNotification,
-} from '@/services/wake-up-notification';
 
 const UI_COMPLEXITY_OPTIONS: { key: UIComplexity; label: string; icon: string; desc: string }[] = [
   { key: 'simple', label: 'Простой', icon: '🌱', desc: 'Задачи и привычки' },
@@ -325,7 +322,7 @@ export default function SettingsScreen() {
     return (stored as 'female' | 'male') ?? 'female';
   });
   const [wakeUpTime, setWakeUpTime] = useState(() => {
-    return storage.getString('wakeUpTime') ?? '07:00';
+    return storage.getString('wakeUpTime') ?? DEFAULT_WAKE_UP;
   });
   const [editingWakeUpTime, setEditingWakeUpTime] = useState(false);
   const [wakeUpTimeInput, setWakeUpTimeInput] = useState('');
@@ -419,7 +416,7 @@ export default function SettingsScreen() {
     const prev = wakeUpTime;
     setWakeUpTime(trimmed);
     setEditingWakeUpTime(false);
-    scheduleWakeUpNotification(trimmed);
+    resyncDailyDigests(trimmed).catch(() => {});
     // Утренний бриф с сервера приходит по этому времени.
     persistProfile({ wakeUpTime: trimmed }, () => setWakeUpTime(prev));
   }, [wakeUpTimeInput, wakeUpTime, persistProfile]);

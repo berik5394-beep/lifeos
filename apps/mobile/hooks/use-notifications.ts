@@ -3,9 +3,6 @@ import * as Notifications from 'expo-notifications';
 import { useNavigation } from '@react-navigation/native';
 import {
   requestPermissions,
-  scheduleMorningBriefing,
-  scheduleEveningReview,
-  scheduleWeeklyReport,
   scheduleStreakReminder,
   rescheduleAllEventReminders,
   setBadgeCount,
@@ -17,6 +14,7 @@ import { storage } from '@/services/storage';
 import { api } from '@/services/api';
 import { useRoomToolStore } from '@/stores/room-tool-store';
 import { syncTaskReminders } from '@/services/task-reminders';
+import { syncDailyDigests } from '@/services/daily-digests';
 import { formatDate } from '@/utils/dates';
 
 // ---------------------------------------------------------------------------
@@ -95,24 +93,19 @@ export function useNotifications(): UseNotificationsResult {
       // Регистрируем push-токен на сервере — primary канал проактивных
       // уведомлений (app-first). Сервер шлёт сюда напоминания через
       // Expo Push, даже когда приложение закрыто.
+      let serverPush = false;
       if (token) {
         const authToken = useAuthStore.getState().token;
         if (authToken) {
-          api
+          serverPush = await api
             .post('/notifications/register-token', { token }, authToken)
-            .catch(() => {
-              /* не критично — повторим при следующем запуске */
-            });
+            .then(() => true)
+            .catch(() => false); // не критично — повторим при следующем запуске
         }
       }
 
-      // Read user's wake-up time from local storage (default 08:00)
-      const wakeUpTime = storage.getString('wakeUpTime') ?? '08:00';
-
-      // Schedule recurring notifications (these are idempotent — cancel + reschedule)
-      await scheduleMorningBriefing(wakeUpTime).catch(() => {});
-      await scheduleEveningReview('21:00').catch(() => {});
-      await scheduleWeeklyReport().catch(() => {});
+      // Одна сводка утром/вечером/в неделю: есть пуш с сервера — он, иначе локальная.
+      await syncDailyDigests(serverPush).catch(() => {});
     }
 
     init();
