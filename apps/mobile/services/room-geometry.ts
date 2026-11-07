@@ -19,6 +19,7 @@ export type Quad = [Pt, Pt, Pt, Pt];
  * Требует transformOrigin в левом верхнем углу View.
  */
 export function quadMatrix(w: number, h: number, quad: Quad): number[] {
+  'worklet';
   const [p0, p1, p2, p3] = quad;
   const dx1 = p1.x - p2.x;
   const dx2 = p3.x - p2.x;
@@ -49,6 +50,7 @@ export function quadMatrix(w: number, h: number, quad: Quad): number[] {
 
 /** Применить матрицу quadMatrix к точке (для тестов и попаданий пальцем). */
 export function applyMatrix(m: number[], x: number, y: number): Pt {
+  'worklet';
   const X = m[0] * x + m[4] * y + m[12];
   const Y = m[1] * x + m[5] * y + m[13];
   const W = m[3] * x + m[7] * y + m[15];
@@ -63,13 +65,28 @@ export interface RoomFaces {
   ceiling: Quad;
 }
 
-/** Передний проём коробки и задняя стена — доли сцены. «Издалека»: коробка с полями. */
-export const FRONT = { l: 0.03, r: 0.97, t: 0.06, b: 0.97 };
-export const BACK = { l: 0.24, r: 0.76, t: 0.2, b: 0.6 };
+/**
+ * Передний проём комнаты и задняя стена — доли сцены. Комната на весь экран:
+ * передний проём совпадает с краями экрана (без полей и рамки), стены и пол
+ * уходят прямо из углов экрана к задней стене — одна точка схода.
+ */
+export const FRONT = { l: 0, r: 1, t: 0, b: 1 };
+export const BACK = { l: 0.2, r: 0.8, t: 0.2, b: 0.56 };
 
-export function roomFaces(W: number, H: number): RoomFaces {
+/**
+ * Грани комнаты на экране. `cam` — сдвиг «камеры» в пикселях сцены: двигается
+ * только дальняя стена (передний проём — край экрана), поэтому при повороте
+ * головы робота или наклоне телефона комната «приоткрывается» как настоящая.
+ */
+export function roomFaces(W: number, H: number, cam: Pt = { x: 0, y: 0 }): RoomFaces {
+  'worklet';
   const f = { tl: { x: FRONT.l * W, y: FRONT.t * H }, tr: { x: FRONT.r * W, y: FRONT.t * H }, br: { x: FRONT.r * W, y: FRONT.b * H }, bl: { x: FRONT.l * W, y: FRONT.b * H } };
-  const k = { tl: { x: BACK.l * W, y: BACK.t * H }, tr: { x: BACK.r * W, y: BACK.t * H }, br: { x: BACK.r * W, y: BACK.b * H }, bl: { x: BACK.l * W, y: BACK.b * H } };
+  const k = {
+    tl: { x: BACK.l * W + cam.x, y: BACK.t * H + cam.y },
+    tr: { x: BACK.r * W + cam.x, y: BACK.t * H + cam.y },
+    br: { x: BACK.r * W + cam.x, y: BACK.b * H + cam.y },
+    bl: { x: BACK.l * W + cam.x, y: BACK.b * H + cam.y },
+  };
   return {
     back: [k.tl, k.tr, k.br, k.bl],
     left: [f.tl, k.tl, k.bl, f.bl],
@@ -77,6 +94,23 @@ export function roomFaces(W: number, H: number): RoomFaces {
     floor: [k.bl, k.br, f.br, f.bl],
     ceiling: [f.tl, f.tr, k.tr, k.tl],
   };
+}
+
+/**
+ * Глубина точки сцены (доли): 1 — задняя стена, 0 — передний край. Предмет
+ * сдвигается вместе с камерой на cam × глубина — дальние сильнее, ближние почти
+ * стоят: так и выглядит объём.
+ */
+export function pointDepth(x: number, y: number): number {
+  'worklet';
+  const clamp = (v: number) => Math.min(1, Math.max(0, v));
+  if (y < BACK.b) {
+    // Выше низа задней стены: на задней стене или на боковой (тогда — по ширине).
+    if (x < BACK.l) return clamp((x - FRONT.l) / (BACK.l - FRONT.l));
+    if (x > BACK.r) return clamp((FRONT.r - x) / (FRONT.r - BACK.r));
+    return 1;
+  }
+  return clamp((FRONT.b - y) / (FRONT.b - BACK.b));
 }
 
 /** Чем ближе к зрителю (ниже по сцене), тем крупнее предмет. */

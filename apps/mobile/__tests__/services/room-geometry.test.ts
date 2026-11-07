@@ -2,6 +2,7 @@ import {
   applyMatrix,
   clampPan,
   itemDepthScale,
+  pointDepth,
   quadMatrix,
   roomFaces,
   zoomOffset,
@@ -53,7 +54,7 @@ describe('room-geometry — 3D-комната и приближение', () => 
     expect(itemDepthScale(0.9)).toBeGreaterThan(itemDepthScale(0.3));
   });
 
-  it('zoomOffset ставит точку в центр, но не показывает пустоту за стенами и под полом', () => {
+  it('zoomOffset ставит точку в центр, но не показывает пустоту за краями комнаты', () => {
     const W = 400;
     const H = 600;
     const center = zoomOffset({ x: 200, y: 300 }, W, H, 2);
@@ -61,14 +62,44 @@ describe('room-geometry — 3D-комната и приближение', () => 
     close(center.y, 0);
     const near = zoomOffset({ x: 180, y: 300 }, W, H, 2);
     close(near.x, 40);
-    // Предел — передний проём комнаты: 2*(0.5-0.03)*400-200 = 176; 2*(0.5-0.06)*600-300 = 228.
+    // Комната на весь экран: предел — край экрана. 2*0.5*400-200 = 200; 2*0.5*600-300 = 300.
     const corner = zoomOffset({ x: 0, y: 0 }, W, H, 2);
-    close(corner.x, 176);
-    close(corner.y, 228);
+    close(corner.x, 200);
+    close(corner.y, 300);
     const far = clampPan({ x: -999, y: -999 }, W, H, 2);
-    close(far.x, -176);
-    close(far.y, -264); // низ проёма 0.97: 2*(0.5-0.97)*600+300
+    close(far.x, -200);
+    close(far.y, -300);
     // Без приближения двигать нечего.
     expect(clampPan({ x: 50, y: 50 }, W, H, 1)).toEqual({ x: 0, y: 0 });
+  });
+
+  it('комната на весь экран: передний проём — углы экрана, без полей и рамки', () => {
+    const f = roomFaces(400, 600);
+    expect(f.left[0]).toEqual({ x: 0, y: 0 });
+    expect(f.right[1]).toEqual({ x: 400, y: 0 });
+    expect(f.floor[2]).toEqual({ x: 400, y: 600 });
+    expect(f.floor[3]).toEqual({ x: 0, y: 600 });
+  });
+
+  it('камера сдвигает только дальнюю стену — передний проём стоит на месте (параллакс)', () => {
+    const still = roomFaces(400, 600);
+    const moved = roomFaces(400, 600, { x: 12, y: -8 });
+    expect(moved.back[0]).toEqual({ x: still.back[0].x + 12, y: still.back[0].y - 8 });
+    expect(moved.back[2]).toEqual({ x: still.back[2].x + 12, y: still.back[2].y - 8 });
+    expect(moved.left[0]).toEqual(still.left[0]);
+    expect(moved.floor[2]).toEqual(still.floor[2]);
+    // Грани по-прежнему стыкуются.
+    expect(moved.floor[0]).toEqual(moved.back[3]);
+    expect(moved.left[1]).toEqual(moved.back[0]);
+  });
+
+  it('pointDepth: задняя стена — 1, передний край пола — 0, боковая стена — по ширине', () => {
+    close(pointDepth(0.5, 0.3), 1);
+    close(pointDepth(0.5, 1), 0);
+    expect(pointDepth(0.5, 0.64)).toBeGreaterThan(pointDepth(0.5, 0.9));
+    // Часы на левой стене (x 0.13) — где-то посередине глубины.
+    const side = pointDepth(0.13, 0.42);
+    expect(side).toBeGreaterThan(0.2);
+    expect(side).toBeLessThan(0.8);
   });
 });
