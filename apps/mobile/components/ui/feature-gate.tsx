@@ -81,9 +81,9 @@ export const FeatureGate = React.memo(function FeatureGate({
           <View style={styles.lockIcon}>
             <Feather name="lock" size={24} color={c.primary} />
           </View>
-          <Text style={styles.upgradeTitle}>PRO функция</Text>
+          <Text style={styles.upgradeTitle}>Функция Про</Text>
           <Text style={styles.upgradeText}>
-            Эта функция доступна в PRO версии. Обновитесь для полного доступа.
+            Эта функция доступна в версии Про. Обновитесь для полного доступа.
           </Text>
           {onUpgrade && (
             <TouchableOpacity
@@ -91,9 +91,9 @@ export const FeatureGate = React.memo(function FeatureGate({
               onPress={onUpgrade}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel="Перейти на PRO"
+              accessibilityLabel="Перейти на Про"
             >
-              <Text style={styles.upgradeButtonText}>Перейти на PRO</Text>
+              <Text style={styles.upgradeButtonText}>Перейти на Про</Text>
             </TouchableOpacity>
           )}
         </View>

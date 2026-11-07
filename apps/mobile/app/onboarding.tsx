@@ -244,7 +244,7 @@ export default function OnboardingScreen() {
           {'\u041A\u0430\u043A \u044F \u0434\u043E\u043B\u0436\u0435\u043D \u043E\u0431\u0449\u0430\u0442\u044C\u0441\u044F?'}
         </Text>
         <Text style={styles.subtitle}>
-          {'\u0421\u0442\u0438\u043B\u044C AI-\u0430\u0441\u0441\u0438\u0441\u0442\u0435\u043D\u0442\u0430'}
+          {'Стиль ассистента'}
         </Text>
         <View style={styles.optionsList}>
           {ASSISTANT_OPTIONS.map((option) => (

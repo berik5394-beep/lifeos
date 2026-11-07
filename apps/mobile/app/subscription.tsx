@@ -28,8 +28,8 @@ const FEATURES: FeatureRow[] = [
   { label: 'Дневник самочувствия', free: true, pro: true },
   { label: 'Офлайн-режим', free: true, pro: true },
   { label: 'Голосовые команды', free: '3/день', pro: '∞' },
-  { label: 'JARVIS AI-ассистент', free: false, pro: true },
-  { label: 'AI-приоритизация задач', free: false, pro: true },
+  { label: 'Ассистент ЛайфОС', free: false, pro: true },
+  { label: 'Умная расстановка приоритетов', free: false, pro: true },
   { label: 'Kanban + Gantt', free: false, pro: true },
   { label: 'Зависимости задач', free: false, pro: true },
   { label: 'Все темы оформления', free: '1 тема', pro: '6 тем' },
@@ -80,7 +80,7 @@ export default function SubscriptionScreen() {
         <View style={[styles.planBadge, isPro && styles.planBadgePro]}>
           <Feather name={isPro ? 'star' : 'user'} size={20} color={isPro ? '#F59E0B' : c.textMuted} />
           <Text style={[styles.planText, isPro && styles.planTextPro]}>
-            {isPro ? 'PRO' : 'Бесплатный план'}
+            {isPro ? 'Про' : 'Бесплатный план'}
           </Text>
         </View>
 
@@ -90,7 +90,7 @@ export default function SubscriptionScreen() {
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderText, { flex: 1 }]}>Функция</Text>
             <Text style={[styles.tableHeaderText, styles.colHeader]}>Free</Text>
-            <Text style={[styles.tableHeaderText, styles.colHeader, styles.colHeaderPro]}>PRO</Text>
+            <Text style={[styles.tableHeaderText, styles.colHeader, styles.colHeaderPro]}>Про</Text>
           </View>
 
           {/* Rows */}
@@ -134,7 +134,7 @@ export default function SubscriptionScreen() {
         {isPro && (
           <View style={styles.proActive}>
             <Feather name="check-circle" size={24} color={c.success} />
-            <Text style={styles.proActiveText}>PRO подписка активна</Text>
+            <Text style={styles.proActiveText}>Подписка Про активна</Text>
           </View>
         )}
 

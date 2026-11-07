@@ -65,7 +65,7 @@ const PRIORITY_KEYS = Object.keys(priorities) as Array<keyof typeof priorities>;
 const SLIDE_TABS = [
   { key: 'dashboard', title: 'Дашборд', icon: '📊' },
   { key: 'week', title: 'Неделя', icon: '📅' },
-  { key: 'insights', title: 'Инсайты', icon: '📈' },
+  { key: 'insights', title: 'Итоги', icon: '📈' },
 ];
 
 interface ViewModeItem {

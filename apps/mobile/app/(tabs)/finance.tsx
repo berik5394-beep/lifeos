@@ -27,6 +27,7 @@ import { hapticSelection } from '@/services/haptics';
 import { useNavigation } from '@react-navigation/native';
 import { goalPercent } from '@/utils/goal-progress';
 import { useInTools } from '@/hooks/use-content-width';
+import { pluralN, RECORDS } from '@/utils/plural';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -224,7 +225,8 @@ const TableRow = React.memo(function TableRow({
             : null,
         ];
         return (
-          <Text key={i} style={cellStyle} numberOfLines={1}>
+          // Узкий экран: сжать шрифт, а не резать «Потраче…» / «Категор…».
+          <Text key={i} style={cellStyle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
             {cell}
           </Text>
         );
@@ -1323,7 +1325,7 @@ export default function FinanceScreen() {
               ЕЖЕДНЕВНЫЕ ТРАТЫ
             </Text>
             <Text style={styles.journalCount}>
-              {dailyExpenses.length} записей
+              {pluralN(dailyExpenses.length, RECORDS)}
             </Text>
           </View>
 
@@ -1379,7 +1381,7 @@ export default function FinanceScreen() {
               ЕЖЕДНЕВНЫЕ ПОСТУПЛЕНИЯ
             </Text>
             <Text style={styles.journalCount}>
-              {dailyIncomes.length} записей
+              {pluralN(dailyIncomes.length, RECORDS)}
             </Text>
           </View>
 
@@ -1512,7 +1514,7 @@ export default function FinanceScreen() {
           activeOpacity={0.7}
         >
           <Text style={[styles.aiPillText, { color: c.primary }]}>
-            {'🔍 AI-анализ'}
+            {'🔍 Разбор'}
           </Text>
         </TouchableOpacity>
       </View>

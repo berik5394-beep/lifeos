@@ -16,6 +16,7 @@ import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useSharedSpaceStore } from '@/stores/shared-space-store';
 import type { Theme } from '@/constants/themes';
+import { pluralN, MEMBERS, TASKS } from '@/utils/plural';
 
 export default function SharedSpacesScreen() {
   const c = useColors();
@@ -88,7 +89,7 @@ export default function SharedSpacesScreen() {
               <View style={styles.cardContent}>
                 <Text style={styles.cardName}>{item.name}</Text>
                 <Text style={styles.cardMeta}>
-                  {item.members?.length ?? 0} участников · {item.taskCount ?? 0} задач
+                  {pluralN(item.members?.length ?? 0, MEMBERS)} · {pluralN(item.taskCount ?? 0, TASKS)}
                 </Text>
               </View>
               <Feather name="chevron-right" size={20} color={c.textMuted} />

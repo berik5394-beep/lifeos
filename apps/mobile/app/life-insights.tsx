@@ -22,6 +22,7 @@ import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { api } from '@/services/api';
 import type { Theme } from '@/constants/themes';
+import { pluralN, DAYS } from '@/utils/plural';
 
 if (
   Platform.OS === 'android' &&
@@ -239,7 +240,7 @@ export default function LifeInsightsScreen() {
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={c.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Правда о твоей жизни</Text>
+          <Text style={styles.headerTitle}>Разбор твоей жизни</Text>
         </View>
         <SkeletonList count={4} />
       </SafeAreaView>
@@ -253,7 +254,7 @@ export default function LifeInsightsScreen() {
           <TouchableOpacity onPress={handleBack} style={styles.backButton}>
             <Feather name="arrow-left" size={24} color={c.text} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Правда о твоей жизни</Text>
+          <Text style={styles.headerTitle}>Разбор твоей жизни</Text>
         </View>
         <View style={styles.centered}>
           <Text style={styles.emptyIcon}>🔍</Text>
@@ -288,7 +289,7 @@ export default function LifeInsightsScreen() {
               <Feather name="arrow-left" size={24} color={c.text} />
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
-              <Text style={styles.headerTitle}>Правда о твоей жизни</Text>
+              <Text style={styles.headerTitle}>Разбор твоей жизни</Text>
               <Text style={styles.headerDate}>{today}</Text>
             </View>
           </View>
@@ -374,7 +375,7 @@ export default function LifeInsightsScreen() {
                 >
                   <Feather name="alert-triangle" size={16} color={c.danger} />
                   <Text style={[styles.insightText, { color: c.danger }]}>
-                    До нуля: {financial.daysUntilBroke} дней
+                    До нуля: {pluralN(financial.daysUntilBroke, DAYS)}
                   </Text>
                 </View>
               ) : null}
@@ -419,7 +420,7 @@ export default function LifeInsightsScreen() {
           <AnimatedPress>
             <Card style={styles.sectionCard}>
               <Text style={styles.sectionTitle}>
-                {'🏃'} Правда о здоровье
+                {'🏃'} Здоровье
               </Text>
 
               {/* Sleep */}
@@ -531,7 +532,7 @@ export default function LifeInsightsScreen() {
           <AnimatedPress>
             <Card style={styles.sectionCard}>
               <Text style={styles.sectionTitle}>
-                {'📊'} Правда о прогрессе
+                {'📊'} Прогресс
               </Text>
 
               {/* Goals visual */}
@@ -635,7 +636,7 @@ export default function LifeInsightsScreen() {
               <View style={styles.statRow}>
                 <Text style={styles.statLabel}>Текущая серия</Text>
                 <Text style={styles.streakText}>
-                  {progress.currentStreak} дней
+                  {pluralN(progress.currentStreak, DAYS)}
                 </Text>
               </View>
             </Card>

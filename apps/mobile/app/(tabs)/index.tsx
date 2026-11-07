@@ -502,7 +502,7 @@ export default function PlannerScreen() {
               progress={habitProgress}
             />
             <SummaryCard
-              label="Настрой"
+              label="Настроение"
               value={moodEmoji(todayEntry?.mood)}
               color={c.secondary}
             />
@@ -560,7 +560,7 @@ export default function PlannerScreen() {
             onPress={handleNavigateLifeInsights}
             activeOpacity={0.7}
           >
-            <Text style={styles.quickActionText}>{'\u{1F50D}'} Правда</Text>
+            <Text style={styles.quickActionText}>{'\u{1F50D}'} Разбор</Text>
           </TouchableOpacity>
         </View>
 

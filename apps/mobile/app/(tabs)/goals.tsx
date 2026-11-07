@@ -34,6 +34,7 @@ import { useColors } from '@/hooks/use-colors';
 import { hapticLight, hapticSelection } from '@/services/haptics';
 import { goalPercent, GOAL_STEP_PCT } from '@/utils/goal-progress';
 import { useInTools } from '@/hooks/use-content-width';
+import { pluralN, HABITS } from '@/utils/plural';
 
 // Enable LayoutAnimation on Android
 if (
@@ -525,7 +526,7 @@ const AreaCard = React.memo(function AreaCard({
                 : goals.length >= 2 && goals.length <= 4
                   ? 'цели'
                   : 'целей'}
-              {linkedHabits.length > 0 ? ` · ${linkedHabits.length} привычек` : ''}
+              {linkedHabits.length > 0 ? ` · ${pluralN(linkedHabits.length, HABITS)}` : ''}
             </Text>
           </View>
         </View>

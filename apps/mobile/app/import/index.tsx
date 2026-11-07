@@ -15,6 +15,7 @@ import { api, ApiError } from '@/services/api';
 import { Card, Button } from '@/components/ui';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
+import { pluralN, RECORDS } from '@/utils/plural';
 
 
 const FILE_TYPE_LABELS: Record<string, string> = {
@@ -233,7 +234,7 @@ export default function ImportScreen() {
                 </Text>
               </View>
               <Text style={styles.itemCount}>
-                {importResult.itemCount} записей
+                {pluralN(importResult.itemCount, RECORDS)}
               </Text>
             </View>
 

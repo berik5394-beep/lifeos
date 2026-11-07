@@ -23,6 +23,7 @@ import { hapticSuccess, hapticError } from '@/services/haptics';
 import { api } from '@/services/api';
 import type { Theme } from '@/constants/themes';
 import { useAuthStore } from '@/stores/auth-store';
+import { pluralN, DAYS } from '@/utils/plural';
 
 const CSV_MODULES = [
   { key: 'finance', label: 'Финансы', icon: '💰', desc: 'Все расходы и доходы' },
@@ -114,7 +115,7 @@ export default function ExportScreen() {
         '',
         `✅ Задачи сегодня: ${stats.tasksCompletedToday}/${stats.tasksTotalToday}`,
         `🏃 Привычки: ${stats.habitsCompletedToday}/${stats.habitsTotalToday}`,
-        `🔥 Серия: ${stats.habitsStreak} дней`,
+        `🔥 Серия: ${pluralN(stats.habitsStreak, DAYS)}`,
         `👟 Шаги: ${stats.stepsToday.toLocaleString()}`,
         '',
         `📊 За неделю: ${stats.tasksCompletedWeek}/${stats.tasksTotalWeek} задач`,

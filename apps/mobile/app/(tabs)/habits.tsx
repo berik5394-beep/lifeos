@@ -38,6 +38,7 @@ import { FadeInView } from '@/components/ui/fade-in-view';
 import { hapticLight, hapticSelection } from '@/services/haptics';
 import { MOOD_LEVELS, moodLevel } from '@/constants/mood';
 import { useInTools } from '@/hooks/use-content-width';
+import { pluralN, DAYS } from '@/utils/plural';
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -278,7 +279,7 @@ const HabitCard = React.memo(function HabitCard({
         onLongPress={handleLongPress}
         style={styles.container}
         accessibilityRole="button"
-        accessibilityLabel={`${name}, ${isCompleted ? 'выполнено' : 'не выполнено'}${streak > 0 ? `, серия ${streak} дней` : ''}`}
+        accessibilityLabel={`${name}, ${isCompleted ? 'выполнено' : 'не выполнено'}${streak > 0 ? `, серия ${pluralN(streak, DAYS)}` : ''}`}
         accessibilityHint="Удерживайте, чтобы изменить; сдвиньте влево, чтобы удалить"
       >
         <TouchableOpacity
@@ -1419,7 +1420,7 @@ export default function HabitsScreen() {
         <View style={styles.streakCard}>
           <Text style={{ fontSize: 32 }}>{'🔥'}</Text>
           <View style={{ marginLeft: spacing.md }}>
-            <Text style={styles.streakTitle}>Серия: {currentStreak} дней</Text>
+            <Text style={styles.streakTitle}>Серия: {pluralN(currentStreak, DAYS)}</Text>
             <Text style={styles.streakDesc}>
               {currentStreak >= 30
                 ? 'Невероятно! Ты машина!'

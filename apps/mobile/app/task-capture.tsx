@@ -25,6 +25,7 @@ import { spacing, fontSize, borderRadius } from '@/constants';
 import { taskCategories } from '@/constants/categories';
 import { SectionHeader } from '@/components/ui';
 import { useColors } from '@/hooks/use-colors';
+import { pluralN, TASKS } from '@/utils/plural';
 
 // Image size budget — 1.5 MB before base64
 const MAX_IMAGE_BYTES = 1.5 * 1024 * 1024;
@@ -390,7 +391,7 @@ export default function TaskCapture() {
                 <>
                   <Feather name="check" size={22} color="#FFFFFF" />
                   <Text style={styles.primaryButtonText}>
-                    Сохранить {selectedCount} задач
+                    Сохранить {pluralN(selectedCount, TASKS)}
                   </Text>
                 </>
               )}
