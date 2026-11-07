@@ -2,32 +2,34 @@ import { create } from 'zustand';
 import { storage } from '@/services/storage';
 import { themes, type Theme, type ThemeName } from '@/constants/themes';
 
-const THEME_ORDER: ThemeName[] = ['dark', 'planner', 'pink'];
+const THEME_ORDER: ThemeName[] = ['planner', 'dark', 'pink'];
+/** По умолчанию — светлая «слоновая кость» (Berik 2026-11-07). */
+export const DEFAULT_THEME: ThemeName = 'planner';
 
 interface ThemeState {
   themeName: ThemeName;
   theme: Theme;
   setTheme: (name: ThemeName) => void;
-  /** Cycle through: dark → planner → pink → dark */
+  /** По кругу: планер → тёмная → розовая → планер */
   toggleTheme: () => void;
   /** Call after storage.load() to restore persisted theme */
   rehydrate: () => void;
 }
 
 function resolveTheme(name: ThemeName): Theme {
-  return themes[name] ?? themes.dark;
+  return themes[name] ?? themes[DEFAULT_THEME];
 }
 
-/** Тем нет (решение Berik): всегда тёмная. Выбор «Планер/Розовая» из настроек убран,
- *  ранее выбранные возвращаются на тёмную. */
-function readStoredThemeName(): ThemeName {
-  return 'dark';
+/** Выбранный в настройках фон; не выбирал (или мусор) — светлая «слоновая кость». */
+export function readStoredThemeName(): ThemeName {
+  const v = storage.getString('themeName');
+  return v && v in themes ? (v as ThemeName) : DEFAULT_THEME;
 }
 
 export const useThemeStore = create<ThemeState>((set) => ({
-  // Start with dark; rehydrate() will restore the persisted choice after storage.load()
-  themeName: 'dark',
-  theme: resolveTheme('dark'),
+  // Сразу светлая (без вспышки тёмной); rehydrate() после storage.load() вернёт выбранную.
+  themeName: DEFAULT_THEME,
+  theme: resolveTheme(DEFAULT_THEME),
 
   setTheme: (name: ThemeName) => {
     storage.set('themeName', name);

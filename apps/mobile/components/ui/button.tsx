@@ -68,8 +68,10 @@ export const Button = React.memo(function Button({
     disabled: {
       opacity: 0.5,
     },
+    // На заливке (основной/второй/опасный) — белый во всех темах: в светлой
+    // тёмно-сепиевый текст на коричневом почти не читался.
     text: {
-      color: c.text,
+      color: '#FFFFFF',
       fontWeight: '600',
     },
     text_sm: {
@@ -111,7 +113,7 @@ export const Button = React.memo(function Button({
       accessibilityState={{ disabled: disabled || loading }}
     >
       {loading ? (
-        <ActivityIndicator color={c.text} size="small" />
+        <ActivityIndicator color={variant === 'outline' ? c.primary : '#FFFFFF'} size="small" />
       ) : (
         <Text style={textStyles}>{title}</Text>
       )}
