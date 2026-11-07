@@ -556,16 +556,18 @@ export default function TasksScreen() {
   const scheduleRevision = useScheduleStore((s) => s.revision);
 
   // ─── Effects ─────────────────────────────────────────────────────────────
+  // Без сети и без кэша fetch бросает: экран остаётся с тем, что уже показан,
+  // а не роняет необработанную ошибку.
   useEffect(() => {
-    fetchTasks();
-    fetchHabits();
+    fetchTasks().catch(() => {});
+    void Promise.resolve(fetchHabits()).catch(() => {});
   }, [fetchTasks, fetchHabits]);
 
   // Re-fetch tasks when user navigates to a different month
   useEffect(() => {
     const y = currentMonth.getFullYear();
     const m = String(currentMonth.getMonth() + 1).padStart(2, '0');
-    fetchTasks(undefined, undefined, `${y}-${m}`);
+    fetchTasks(undefined, undefined, `${y}-${m}`).catch(() => {});
   }, [currentMonth, fetchTasks, scheduleRevision]);
 
   // ─── Computed Values ─────────────────────────────────────────────────────

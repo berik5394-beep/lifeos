@@ -41,6 +41,11 @@ interface ChatState {
   isLoading: boolean;
   hasMore: boolean;
   sendMessage: (text: string, webSearch?: boolean) => Promise<void>;
+  /** Текст, который не дошёл до робота (нет сети, сбой) — строка ввода вернёт его. */
+  failedDraft: string | null;
+  /** Какая строка ввода отправила последней — ей и вернуть текст. */
+  draftOwner: string | null;
+  takeFailedDraft: (owner: string) => string | null;
   fetchHistory: (offset?: number) => Promise<void>;
   clearHistory: () => Promise<void>;
   executeAction: (action: ChatAction) => Promise<void>;
@@ -59,6 +64,14 @@ function uniqueId(prefix: string): string {
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isLoading: false,
+  failedDraft: null,
+  draftOwner: null,
+  takeFailedDraft: (owner: string) => {
+    const { failedDraft: d, draftOwner } = get();
+    if (d === null || (draftOwner !== null && draftOwner !== owner)) return null;
+    set({ failedDraft: null });
+    return d;
+  },
   hasMore: true,
 
   showNudge: (insightId: string, content: string) => {
@@ -131,9 +144,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         createdAt: new Date().toISOString(),
       };
 
+      // Напечатанное не пропадает: строка ввода вернёт его, можно отправить ещё
+      // раз. Кроме 408 — сервер ещё думает и может выполнить, повтор = дубль.
+      const retryable = !(err instanceof ApiError && err.status === 408);
       set((state) => ({
         messages: [errorMessage, ...state.messages],
         isLoading: false,
+        failedDraft: retryable ? text : null,
       }));
     }
   },

@@ -1,10 +1,12 @@
-import React, { memo, useCallback, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize } from '@/constants';
 import { useSharedVoice } from '@/hooks/shared-voice';
 import { useChatStore } from '@/stores/chat-store';
+
+let rowSeq = 0;
 
 /**
  * Одна строка разговора с роботом под обоими экранами (инструменты ↔ комната):
@@ -16,6 +18,14 @@ export const ChatInputRow = memo(function ChatInputRow() {
   const v = useSharedVoice();
   const sending = useChatStore((s) => s.isLoading);
   const [text, setText] = useState('');
+  // Не дошло до робота (нет сети, сбой) — вернуть текст в строку, а не терять.
+  const [rowId] = useState(() => `row-${++rowSeq}`);
+  const failedDraft = useChatStore((s) => s.failedDraft);
+  useEffect(() => {
+    if (failedDraft === null) return;
+    const d = useChatStore.getState().takeFailedDraft(rowId);
+    if (d) setText((cur) => (cur ? cur : d));
+  }, [failedDraft, rowId]);
 
   const send = useCallback(() => {
     const t = text.trim();
@@ -25,8 +35,9 @@ export const ChatInputRow = memo(function ChatInputRow() {
     // Клавиатура закрывала облачко с ответом (оно прячется при открытой
     // клавиатуре) — ответ на напечатанное исчезал невидимым.
     Keyboard.dismiss();
+    useChatStore.setState({ draftOwner: rowId });
     v.send(t);
-  }, [text, sending, v]);
+  }, [text, sending, v, rowId]);
 
   return (
     <View style={styles.inputRow}>
