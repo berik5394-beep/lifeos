@@ -55,6 +55,7 @@ const LegalScreen = React.lazy(() => import('@/screens/legal'));
 import { ErrorBoundary } from '@/components/shared/error-boundary';
 import { OfflineBanner } from '@/components/shared/offline-banner';
 import type { RootStackParamList, AuthStackParamList } from './types';
+import { rehydrateStores } from '@/services/rehydrate-stores';
 
 function useNavigationTheme() {
   const theme = useThemeStore((s) => s.theme);
@@ -111,8 +112,8 @@ export default function Navigation() {
       } catch {
         // continue with empty cache
       }
-      // Rehydrate theme from persisted storage (must happen after storage.load())
-      useThemeStore.getState().rehydrate();
+      // Сохранённые настройки (тема, уровень интерфейса, «Фокус»…) — только после storage.load().
+      rehydrateStores();
       await loadStoredAuth();
       // Auto-refresh token on app start to get fresh access token
       try {
