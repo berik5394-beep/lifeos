@@ -254,6 +254,7 @@ describe('TEMPLATES — table', () => {
     expect(Object.keys(TEMPLATES).sort()).toEqual(
       [
         'birthday_upcoming',
+        'check_in',
         'commitment_due',
         'decision_review',
         'energy_link',

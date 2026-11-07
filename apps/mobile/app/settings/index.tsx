@@ -339,6 +339,7 @@ export default function SettingsScreen() {
       if (p.assistantStyle) setAssistantStyle(p.assistantStyle as AssistantStyleKey);
       if (p.assistantGender) setAssistantGender(p.assistantGender);
       if (p.wakeUpTime) setWakeUpTime(p.wakeUpTime);
+      if (typeof p.checkIns === 'boolean') setCheckIns(p.checkIns);
     });
     return () => {
       alive = false;
@@ -352,6 +353,17 @@ export default function SettingsScreen() {
       Alert.alert('Не сохранилось', err instanceof Error ? err.message : 'Попробуй ещё раз.');
     });
   }, []);
+
+  // Робот-друг №2: «как ты?» без повода — настройка на сервере (детектор там).
+  const [checkIns, setCheckIns] = useState(true);
+  const handleToggleCheckIns = useCallback(() => {
+    const next = !checkIns;
+    setCheckIns(next);
+    saveAssistantProfile({ checkIns: next }).catch(() => {
+      setCheckIns(!next);
+      Alert.alert('Не сохранилось', 'Нет связи с сервером. Попробуй ещё раз.');
+    });
+  }, [checkIns]);
 
   const handleToggleMorning = useCallback(() => {
     const next = !morningReminder;
@@ -677,6 +689,8 @@ export default function SettingsScreen() {
           <SettingRow icon="🌙" label="Вечерний обзор" isToggle toggleValue={eveningReview} onPress={handleToggleEvening} styles={styles} />
           <View style={styles.separator} />
           <SettingRow icon="🔔" label="Напоминания о задачах" isToggle toggleValue={taskReminders} onPress={handleToggleTasks} styles={styles} />
+          <View style={styles.separator} />
+          <SettingRow icon="💬" label="Робот спрашивает «как ты?»" isToggle toggleValue={checkIns} onPress={handleToggleCheckIns} styles={styles} />
         </Card>
       </FadeInView>
 

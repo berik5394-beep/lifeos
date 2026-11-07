@@ -42,7 +42,8 @@ export type NudgeSource =
   | 'deal_step_overdue'
   | 'deal_stale'
   | 'sales_plan_behind'
-  | 'journal_low';
+  | 'journal_low'
+  | 'check_in';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
 
@@ -86,6 +87,11 @@ export function scoreSignificance(c: NudgeCandidate): number {
       const magnitude = Math.abs(Number(c.payload.magnitude ?? 0));
       return Math.min(1, magnitude);
     }
+    case 'check_in':
+      // Ровно на пороге 0.6 и ПОСЛЕДНИЙ в очереди детекторов (стабильная
+      // сортировка): при равенстве важное (сделки, долги, ДР — тоже 0.6)
+      // всегда раньше. «Как ты?» доходит только в спокойный день.
+      return 0.6;
     case 'journal_low': {
       // 3 дня подряд тяжело по дневнику — уже выше порога 0.6; дальше растёт.
       const days = Number(c.payload.days ?? 0);
@@ -311,6 +317,9 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
   sales_plan_behind: {
     gentle: '{{planText}}',
   },
+  check_in: {
+    curious: '{{question}}',
+  },
   journal_low: {
     supportive:
       'Вижу по дневнику: {{days}} дн. подряд тяжеловато. Не буду грузить делами — хочешь просто поговорить?',
@@ -391,6 +400,14 @@ import type { InsightCandidate } from './insight-core.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
 import { gatherReflection, LOW_STREAK_DAYS } from './reflection-context.js';
+import {
+  CHECK_IN_EVERY_DAYS,
+  chattedRecently,
+  checkInsEnabled,
+  composeCheckInQuestion,
+  genericCheckIn,
+  pickCheckInMemory,
+} from './check-in.js';
 import { numbersHonest } from '../lib/number-honesty.js';
 
 const DAY_MS = 86_400_000;
@@ -874,6 +891,36 @@ async function detectJournalLow(userId: string): Promise<NudgeCandidate[]> {
     return [cand];
   } catch (err) {
     console.warn('[v2-proactivity] detectJournalLow failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Робот-друг №2: «Как ты?» без повода (services/check-in.ts). Не чаще раза
+ * в 1,5 дня, не после свежего разговора, выключается в настройках. Вопрос по
+ * свежему воспоминанию (scopeKey по нему — не повторится) или простой.
+ */
+async function detectCheckIn(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const now = new Date();
+    if (!(await checkInsEnabled(userId))) return [];
+    if (await sourceNudgedWithin(userId, 'check_in', CHECK_IN_EVERY_DAYS, now)) return [];
+    if (await chattedRecently(userId, now)) return [];
+    // Вопрос (Haiku) сочиняем НЕ здесь, а в generateNudge — только для
+    // реально выбранного нуджа: детектор крутится каждые 10 минут, и фильтры
+    // могут его отсеять — иначе платили бы за вопрос на каждом тике.
+    const mem = await pickCheckInMemory(userId, now).catch(() => null);
+    const cand: NudgeCandidate = {
+      source: 'check_in',
+      significance: 0,
+      ...(mem ? { entityId: mem.id } : {}),
+      payload: mem ? { memory: mem.content } : {},
+      toneHint: 'curious',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectCheckIn failed:', err);
     return [];
   }
 }
@@ -1525,6 +1572,8 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectSalesPlanBehind(userId),
       detectIdentityGrowth(userId),
       detectSkillOpportunity(userId),
+      // ПОСЛЕДНИМ: при равной значимости уступает всем (см. scoreSignificance).
+      detectCheckIn(userId),
     ]);
     const out: NudgeCandidate[] = [];
     for (const r of results) {
@@ -1626,6 +1675,12 @@ export class V2ProactivityEngine implements ProactivityEngine {
     userId: string,
     candidate: NudgeCandidate,
   ): Promise<string> {
+    // Робот-друг №2: вопрос по воспоминанию — здесь, один вызов на реальный нудж.
+    if (candidate.source === 'check_in') {
+      const memory = typeof candidate.payload.memory === 'string' ? candidate.payload.memory : null;
+      const q = memory ? await composeCheckInQuestion(userId, memory).catch(() => null) : null;
+      return q ?? genericCheckIn();
+    }
     // Special case: identity_growth — use growth narrative.
     if (candidate.source === 'identity_growth') {
       try {

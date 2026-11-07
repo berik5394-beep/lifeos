@@ -12,6 +12,8 @@ export type AssistantProfile = {
   assistantStyle?: 'friendly' | 'strict' | 'calm' | 'toxic';
   assistantGender?: 'female' | 'male';
   wakeUpTime?: string;
+  /** Робот-друг №2: «как ты?» без повода (по умолчанию вкл, хранится на сервере). */
+  checkIns?: boolean;
 };
 
 const KEYS: (keyof AssistantProfile)[] = ['assistantStyle', 'assistantGender', 'wakeUpTime'];
@@ -42,6 +44,7 @@ export async function loadAssistantProfile(): Promise<AssistantProfile | null> {
       assistantStyle: p.assistantStyle,
       assistantGender: p.assistantGender,
       wakeUpTime: p.wakeUpTime,
+      checkIns: typeof p.checkIns === 'boolean' ? p.checkIns : undefined,
     };
     cache(picked);
     return picked;

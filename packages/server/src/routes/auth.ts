@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
+import type { Prisma } from '@prisma/client';
 import { validate } from '../middleware/validate.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimiter, validatePassword, getClientIp } from '../middleware/security.js';
@@ -44,6 +45,8 @@ const profileUpdateSchema = z.object({
   currency: z.string().max(8).optional(),
   // Phase 6 C5 — opt-out therapeutic-режима (тумблер в settings).
   therapeuticMode: z.boolean().optional(),
+  // Робот-друг №2: «как ты?» без повода (в User.settings.checkIns; по умолчанию вкл).
+  checkIns: z.boolean().optional(),
 });
 
 // ============================================================================
@@ -491,7 +494,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (body.therapeuticMode !== undefined)
       dataToUpdate.therapeuticMode = body.therapeuticMode;
 
-    if (Object.keys(dataToUpdate).length === 0) {
+    // settings — JSON: сливаем, а не затираем (там могут быть другие ключи).
+    let settingsUpdate: Record<string, unknown> | undefined;
+    if (body.checkIns !== undefined) {
+      const cur = await prisma.user.findUnique({ where: { id: userId }, select: { settings: true } });
+      settingsUpdate = { ...((cur?.settings ?? {}) as Record<string, unknown>), checkIns: body.checkIns };
+    }
+
+    if (Object.keys(dataToUpdate).length === 0 && !settingsUpdate) {
       return reply.status(400).send({ message: 'Нет данных для обновления' });
     }
 
@@ -505,10 +515,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       body.wakeUpTime !== undefined && `подъём → ${body.wakeUpTime}`,
       body.currency !== undefined && `валюта → ${body.currency}`,
       body.therapeuticMode !== undefined && `режим поддержки ${body.therapeuticMode ? 'вкл' : 'выкл'}`,
+      body.checkIns !== undefined && `вопросы «как ты?» ${body.checkIns ? 'вкл' : 'выкл'}`,
     ].filter(Boolean);
     const user = await prisma.user.update({
       where: { id: userId },
-      data: dataToUpdate,
+      data: { ...dataToUpdate, ...(settingsUpdate ? { settings: settingsUpdate as Prisma.InputJsonValue } : {}) },
       select: {
         id: true,
         email: true,
@@ -544,9 +555,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         assistantGender: true,
         wakeUpTime: true,
         therapeuticMode: true,
+        settings: true,
       },
     });
     if (!user) return reply.status(404).send({ message: 'Не найден' });
-    return reply.send({ user, disclaimer: disclaimerFull() });
+    const { settings, ...rest } = user;
+    const checkIns = ((settings ?? {}) as { checkIns?: unknown }).checkIns !== false;
+    return reply.send({ user: { ...rest, checkIns }, disclaimer: disclaimerFull() });
   });
 }
