@@ -31,7 +31,8 @@ describe('mood-tone — Part 2 suppressPressureNudges (pure)', () => {
     for (const keep of ['mood_shift', 'person_meeting', 'obligation_due', 'runway_low', 'birthday_upcoming', 'commitment_due'] as const) {
       expect(PRESSURE_SOURCES.has(keep)).toBe(false);
     }
-    expect(PRESSURE_SOURCES.size).toBe(12);
+    expect(PRESSURE_SOURCES.size).toBe(13);
+    expect(PRESSURE_SOURCES.has('strategic_drift')).toBe(true); // «взгляд сверху» — тоже давление
     expect(PRESSURE_SOURCES.has('deal_stale')).toBe(true);
     expect(PRESSURE_SOURCES.has('sales_plan_behind')).toBe(true);
     expect(PRESSURE_SOURCES.has('deal_next_step_due')).toBe(false); // обещание клиенту — не давление

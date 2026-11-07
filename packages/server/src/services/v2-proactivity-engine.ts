@@ -43,6 +43,7 @@ export type NudgeSource =
   | 'deal_stale'
   | 'sales_plan_behind'
   | 'journal_low'
+  | 'strategic_drift'
   | 'check_in';
 
 export type NudgeTone = 'gentle' | 'curious' | 'supportive' | 'celebratory';
@@ -200,6 +201,9 @@ export function scoreSignificance(c: NudgeCandidate): number {
       return 0.6;
     case 'sales_plan_behind':
       return 0.65;
+    case 'strategic_drift':
+      // Раз в неделю и про главное — выше рядовых «цель молчит» (0.6–0.7).
+      return 0.72;
   }
 }
 
@@ -313,6 +317,9 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
   },
   deal_stale: {
     gentle: '{{staleText}}',
+  },
+  strategic_drift: {
+    gentle: '{{driftText}}',
   },
   sales_plan_behind: {
     gentle: '{{planText}}',
@@ -1395,6 +1402,33 @@ async function detectSalesPlanBehind(userId: string): Promise<NudgeCandidate[]> 
   }
 }
 
+// «Взгляд сверху» (jarvis-roadmap №2): в воскресенье — 3 недели текучки против
+// стоящей цели года. Не чаще раза в 7 дней на цель (каденс здесь, как у плана продаж).
+async function detectStrategicDrift(userId: string): Promise<NudgeCandidate[]> {
+  try {
+    const tz = await getUserTimezone(userId);
+    const now = new Date();
+    if (localDayOfWeek(tz, now) !== 0) return [];
+    const { gatherStrategicFacts, driftVerdict } = await import('./strategic-view.js');
+    const v = driftVerdict(await gatherStrategicFacts(userId, tz, now));
+    if (!v) return [];
+    const entityId = `goal:${v.goal.id}`;
+    if (await nudgedWithin(userId, nudgeScopeKey({ source: 'strategic_drift', entityId }), 7, now)) return [];
+    const cand: NudgeCandidate = {
+      source: 'strategic_drift',
+      significance: 0,
+      entityId,
+      payload: { driftText: v.text, goal: v.goal.goalText },
+      toneHint: 'gentle',
+    };
+    cand.significance = scoreSignificance(cand);
+    return [cand];
+  } catch (err) {
+    console.warn('[v2-proactivity] detectStrategicDrift failed:', err);
+    return [];
+  }
+}
+
 /**
  * v2 Phase B4 — propose a skill when the user repeatedly invokes the same
  * cluster of tools. Reads ToolCall history: groups same-day tool sets,
@@ -1529,6 +1563,7 @@ export const PRESSURE_SOURCES: ReadonlySet<NudgeSource> = new Set<NudgeSource>([
   'relationship_link',
   'deal_stale',
   'sales_plan_behind',
+  'strategic_drift',
 ]);
 
 /** Чистый фильтр (mood-tone Part 2): при сдвиге-вниз убирает PRESSURE-кандидатов. */
@@ -1572,6 +1607,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       detectDealStepOverdue(userId),
       detectDealStale(userId),
       detectSalesPlanBehind(userId),
+      detectStrategicDrift(userId),
       detectIdentityGrowth(userId),
       detectSkillOpportunity(userId),
       // ПОСЛЕДНИМ: при равной значимости уступает всем (см. scoreSignificance).

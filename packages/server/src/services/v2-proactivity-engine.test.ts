@@ -280,6 +280,7 @@ describe('TEMPLATES — table', () => {
         'deal_step_overdue',
         'deal_stale',
         'sales_plan_behind',
+        'strategic_drift',
       ].sort(),
     );
   });
