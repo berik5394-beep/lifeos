@@ -3,7 +3,7 @@ import { getDeviceTimezone } from './device-tz';
 // NOTE: EXPO_PUBLIC_API_URL should be set via `app.config.ts` `extra`
 // or a .env file (apps/mobile/.env) for physical devices on LAN/LTE.
 // Localhost fallback only works for simulators/web dev.
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
 
 // ────────────────────────────────────────────────────────────────────────
 // Fetch с таймаутом: RN `fetch` не даёт отменить зависший запрос по умолчанию.
@@ -90,7 +90,7 @@ export function isOfflineQueued(err: unknown): err is OfflineQueuedError {
 /** Для сторов: обычная CRUD-запись, которую можно отправить позже. */
 export const QUEUE_OFFLINE = { queueOffline: true } as const;
 
-const OFFLINE_ERROR = 'Нет интернета — попробуй, когда появится связь.';
+export const OFFLINE_ERROR = 'Нет интернета — попробуй, когда появится связь.';
 /**
  * Не дождались ответа (сервер жив, но думает долго). Это НЕ «нет интернета»:
  * сервер мог доделать дело — повтор сразу дал бы дубль задачи.

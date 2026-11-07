@@ -101,3 +101,6 @@ jest.mock('expo-haptics', () => ({
     Error: 'error',
   },
 }));
+
+// expo/fetch (потоковый ответ мозга) — нативный модуль, в jest не грузится.
+jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));

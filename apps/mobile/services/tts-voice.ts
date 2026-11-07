@@ -78,6 +78,35 @@ export async function speakReply(text: string): Promise<void> {
   }
 }
 
+/**
+ * Озвучка по фразам (потоковый ответ): каждая фраза — в очередь, без остановки
+ * предыдущей. Голос выбирается один раз на ответ.
+ */
+export function createPhraseVoice(): { say: (sentence: string) => void; stop: () => void } {
+  const voice = getPreferredVoiceIdentifier().catch(() => undefined);
+  let first = true;
+  return {
+    say: (sentence) => {
+      const t = speakableText(sentence);
+      if (!t) return;
+      const startFresh = first;
+      first = false;
+      void voice.then((v) => {
+        try {
+          if (startFresh) Speech.stop(); // прежний ответ — замолчать
+          Speech.speak(t, { language: 'ru-RU', rate: 1.05, voice: v });
+        } catch {
+          /* озвучка — не критично */
+        }
+      });
+    },
+    stop: () => {
+      first = true;
+      stopSpeaking();
+    },
+  };
+}
+
 /** Замолчать (человек снова заговорил). */
 export function stopSpeaking(): void {
   try {

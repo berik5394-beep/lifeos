@@ -24,6 +24,30 @@ const historyQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
+type JarvisResult = Awaited<ReturnType<typeof handleMessage>>;
+
+/** Ответ чата для приложения (общий для /voice/chat и потока). */
+function chatReplyBody(res: JarvisResult) {
+  let message = res.reply;
+  if (res.bookingUrl) message += `\n\n\u{1F517} ${res.bookingUrl}`;
+  // SSOT Step 7: бейдж — ТОЛЬКО реальные исполненные инструменты
+  // из аудита ToolCall. Никакого NLP-«+N в задачи» из воздуха.
+  // Friend-UX: бейдж выглядит как SQL-trace для юзера → скрыт по
+  // умолчанию. Включить для debug: DEBUG_AUDIT_FOOTER=true в env.
+  if (process.env.DEBUG_AUDIT_FOOTER === 'true' && res.auditedActions && res.auditedActions > 0) {
+    message += `\n\n— \u{2705} выполнено действий: ${res.auditedActions}`;
+  }
+  return {
+    message,
+    intent: res.intent,
+    // Фаза 1.2: если денежное действие ждёт подтверждения —
+    // приложение показывает кнопки «Подтвердить / Отмена».
+    pendingAction: res.pendingAction ?? null,
+    emotion: res.emotion ?? 'neutral',
+    openPanel: res.openPanel ?? null,
+  };
+}
+
 export async function chatRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
@@ -39,30 +63,49 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
     const { text, voice } = request.body as z.infer<typeof chatSchema>;
     try {
       const res = await handleMessage(request.userId, text, voice ? 'voice' : undefined);
-      let message = res.reply;
-      if (res.bookingUrl) message += `\n\n\u{1F517} ${res.bookingUrl}`;
-      // SSOT Step 7: бейдж — ТОЛЬКО реальные исполненные инструменты
-      // из аудита ToolCall. Никакого NLP-«+N в задачи» из воздуха.
-      // Friend-UX: бейдж выглядит как SQL-trace для юзера → скрыт по
-      // умолчанию. Включить для debug: DEBUG_AUDIT_FOOTER=true в env.
-      if (
-        process.env.DEBUG_AUDIT_FOOTER === 'true' &&
-        res.auditedActions && res.auditedActions > 0
-      ) {
-        message += `\n\n— \u{2705} выполнено действий: ${res.auditedActions}`;
-      }
-      return reply.send({
-        message,
-        intent: res.intent,
-        // Фаза 1.2: если денежное действие ждёт подтверждения —
-        // приложение показывает кнопки «Подтвердить / Отмена».
-        pendingAction: res.pendingAction ?? null,
-        emotion: res.emotion ?? 'neutral',
-        openPanel: res.openPanel ?? null,
-      });
+      return reply.send(chatReplyBody(res));
     } catch (err) {
       app.log.error(err);
       return reply.status(500).send({ message: 'Ошибка обработки чата' });
+    }
+  });
+
+  // --- Потоковый ответ (jarvis-roadmap №5) ---
+  // Голос начинает говорить с первой фразы, не дожидаясь всего ответа.
+  // NDJSON: {"t":"d","x":кусок}… затем {"t":"done",…как /voice/chat, streamed}
+  // (streamed — весь отданный кусками текст: приложение сверяет с итогом и
+  // переозвучивает, если итог другой — подтверждение денег, запасной путь).
+  // Ошибка — {"t":"error",message}. Быстрые команды (задача, трата) кусков не
+  // дают — сразу done.
+  app.post('/voice/chat/stream', {
+    preHandler: [chatRateLimit, aiDailyLimiter, validate(chatSchema)],
+  }, async (request, reply) => {
+    const { text, voice } = request.body as z.infer<typeof chatSchema>;
+    reply.hijack();
+    const raw = reply.raw;
+    raw.writeHead(200, {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'X-Accel-Buffering': 'no',
+      Connection: 'keep-alive',
+    });
+    const send = (obj: unknown) => {
+      if (!raw.destroyed && !raw.writableEnded) raw.write(`${JSON.stringify(obj)}\n`);
+    };
+    let streamed = '';
+    try {
+      const res = await handleMessage(request.userId, text, voice ? 'voice' : undefined, {
+        onText: (x) => {
+          streamed += x;
+          send({ t: 'd', x });
+        },
+      });
+      send({ t: 'done', ...chatReplyBody(res), streamed });
+    } catch (err) {
+      app.log.error(err);
+      send({ t: 'error', message: 'Ошибка обработки чата' });
+    } finally {
+      if (!raw.writableEnded) raw.end();
     }
   });
 

@@ -802,8 +802,10 @@ export async function handleMessage(
   // ISSUE-4: 'voice' → краткий TTS-режим в промпте. Опционально,
   // дефолт = текст (Telegram/чат не меняются — аддитивно).
   channel?: 'voice' | 'text',
+  /** Потоковый ответ: куски текста основного ответа агента (голос говорит с первой фразы). */
+  stream?: { onText?: (delta: string) => void },
 ): Promise<JarvisResponse> {
-  const res = await handleMessageCore(userId, text, channel);
+  const res = await handleMessageCore(userId, text, channel, stream);
   // Робот-эпик, Часть 2: эмоция робота — одной чистой функцией по фактам хода,
   // чтобы ни один путь (кризис, деньги, инструмент, чат) не остался без неё.
   const { turnFacts, ...out } = res;
@@ -825,6 +827,7 @@ async function handleMessageCore(
   userId: string,
   text: string,
   channel?: 'voice' | 'text',
+  stream?: { onText?: (delta: string) => void },
 ): Promise<JarvisResponse> {
   // SSOT Step 7: засекаем начало хода — бейдж считаем из ToolCall,
   // созданных за этот ход (факт), а не из NLP-выдумки.
@@ -1683,6 +1686,8 @@ async function handleMessageCore(
         // правдоподобно требует данных/действия юзера.
         localTools: wantTools,
         userId,
+        // Поток — только у основного ответа; повтор/запасные пути отдадут итог целиком.
+        onText: stream?.onText,
         // Confirm-bridge: confirm-tool (set_balance/clear_overdue/решения…)
         // НЕ исполняется в цикле — стейджим pending + детерминир. текст,
         // запись только на «да» через peekPendingAction→runConfirmedAction.

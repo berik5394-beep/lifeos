@@ -126,6 +126,12 @@ export interface AgentOptions {
    * чтобы оркестратор не запускал запасные пути, а честно сказал «не успел».
    */
   deadlineAt?: number;
+  /**
+   * Потоковый ответ (jarvis-roadmap №5): куски текста по мере генерации —
+   * голос начинает говорить с первой фразы. Приходит и промежуточный текст
+   * раундов с инструментами («сейчас посмотрю…»). Итог — как без потока.
+   */
+  onText?: (delta: string) => void;
 }
 
 /**
@@ -150,13 +156,23 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     maxToolRounds = 3,
     onConfirmTool,
     deadlineAt,
+    onText,
   } = opts;
 
   // Один вызов Claude в пределах хода. Таймаут/обрыв по сроку → AgentDeadlineError.
   const create = async (body: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> => {
     const budget = callBudget(deadlineAt);
     try {
-      return await anthropic.messages.create(body, budget);
+      if (!onText) return await anthropic.messages.create(body, budget);
+      const stream = anthropic.messages.stream(body, budget);
+      stream.on('text', (delta) => {
+        try {
+          onText(delta);
+        } catch {
+          /* слушатель упал — генерация продолжается */
+        }
+      });
+      return await stream.finalMessage();
     } catch (err) {
       if (isPastDeadline(deadlineAt)) throw new AgentDeadlineError();
       throw new AiModelError(err instanceof Error ? err : new Error(String(err)));

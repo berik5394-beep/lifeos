@@ -5,7 +5,9 @@ import { confirmPendingVoiceAction, isConfirmable, type PendingActionInfo } from
 import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
 import { useScheduleStore, RESCHEDULE_ACTION, type RescheduleProposal } from '@/stores/schedule-store';
 import { formatDate } from '@/utils/dates';
-import { speakReply } from '@/services/tts-voice';
+import { createPhraseVoice, speakReply } from '@/services/tts-voice';
+import { createSentenceSpeaker } from '@/services/sentence-speaker';
+import { streamChat, StreamUnavailableError } from '@/services/chat-stream';
 
 export interface ChatAction {
   type: string;
@@ -107,8 +109,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isLoading: true,
     }));
 
-    try {
-      const data = await api.post<{ message: string; actions?: ChatAction[]; pendingAction?: PendingActionInfo | null; emotion?: string; openPanel?: string | null }>(
+    // Сказали голосом — потоковый ответ: текст в облачке растёт по мере ответа,
+    // готовые фразы сразу звучат (Джарвис, jarvis-roadmap №5).
+    const liveId = uniqueId('assistant');
+    let live = '';
+    const voice = spoken ? createPhraseVoice() : null;
+    const speaker = voice ? createSentenceSpeaker(voice.say, voice.stop) : null;
+    const onDelta = (x: string) => {
+      live += x;
+      speaker?.push(x);
+      const content = live;
+      set((state) => {
+        const exists = state.messages.some((m) => m.id === liveId);
+        const msg: ChatMessage = { id: liveId, role: 'assistant', content, createdAt: new Date().toISOString() };
+        return {
+          messages: exists ? state.messages.map((m) => (m.id === liveId ? { ...m, content } : m)) : [msg, ...state.messages],
+          isLoading: false,
+        };
+      });
+    };
+
+    type Reply = { message: string; actions?: ChatAction[]; pendingAction?: PendingActionInfo | null; emotion?: string; openPanel?: string | null };
+    const viaPost = () =>
+      api.post<Reply>(
         '/voice/chat',
         { text, webSearch: webSearch ?? false, ...(spoken ? { voice: true } : {}) },
         token,
@@ -117,8 +140,25 @@ export const useChatStore = create<ChatState>((set, get) => ({
         { timeoutMs: BRAIN_TIMEOUT_MS },
       );
 
+    try {
+      let data: Reply;
+      let streamed: string | null = null;
+      if (spoken) {
+        try {
+          const done = await streamChat(text, token, onDelta, { voice: true, webSearch: webSearch ?? false });
+          data = done;
+          streamed = done.streamed ?? '';
+        } catch (err) {
+          // Сервер без потока (404) / вход протух (401) — сообщение не обработано: обычным путём.
+          if (!(err instanceof StreamUnavailableError)) throw err;
+          data = await viaPost();
+        }
+      } else {
+        data = await viaPost();
+      }
+
       const assistantMessage: ChatMessage = {
-        id: uniqueId('assistant'),
+        id: liveId,
         role: 'assistant',
         content: data.message,
         actions: data.actions,
@@ -130,11 +170,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       };
 
       set((state) => ({
-        messages: [assistantMessage, ...state.messages],
+        messages: state.messages.some((m) => m.id === liveId)
+          ? state.messages.map((m) => (m.id === liveId ? assistantMessage : m))
+          : [assistantMessage, ...state.messages],
         isLoading: false,
       }));
-      // Сказали голосом — робот отвечает вслух (Джарвис, jarvis-roadmap №5).
-      if (spoken) void speakReply(data.message);
+      // Сказали голосом — договорить (поток) или сказать итог (обычный путь).
+      if (speaker) speaker.finish(data.message, streamed ?? '');
       // Мозг мог что-то сделать (отметил привычку, добавил задачу) — открытая
       // панель перечитает свои данные. Микрофон теперь один, у поля ввода.
       useScheduleStore.getState().bump();
@@ -152,9 +194,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Напечатанное не пропадает: строка ввода вернёт его, можно отправить ещё
       // раз. Кроме 408 — сервер ещё думает и может выполнить, повтор = дубль.
       const retryable = !(err instanceof ApiError && err.status === 408);
-      if (spoken) void speakReply(errorMessage.content);
+      if (spoken) {
+        voice?.stop();
+        void speakReply(errorMessage.content);
+      }
       set((state) => ({
-        messages: [errorMessage, ...state.messages],
+        // Недоговорённый поток убираем — вместо него честная ошибка.
+        messages: [errorMessage, ...state.messages.filter((m) => m.id !== liveId)],
         isLoading: false,
         failedDraft: retryable ? text : null,
       }));

@@ -2,8 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 type CreateOpts = { timeout?: number; signal?: AbortSignal } | undefined;
 const create = vi.fn<(body: unknown, opts: CreateOpts) => Promise<unknown>>();
+const stream = vi.fn<(body: unknown, opts: CreateOpts) => unknown>();
 vi.mock('../lib/anthropic.js', () => ({
-  createAnthropic: () => ({ messages: { create: (b: unknown, o: CreateOpts) => create(b, o) } }),
+  createAnthropic: () => ({
+    messages: { create: (b: unknown, o: CreateOpts) => create(b, o), stream: (b: unknown, o: CreateOpts) => stream(b, o) },
+  }),
 }));
 
 const { runAgent } = await import('./claude-agent.js');
@@ -73,5 +76,28 @@ describe('agent-deadline — чистые функции', () => {
     expect(deadlineReplyText(true)).toMatch(/часть уже сделал/);
     expect(deadlineReplyText(true)).toMatch(/Не повторяй/);
     expect(deadlineReplyText(false)).toMatch(/Спроси ещё раз/);
+  });
+});
+
+describe('потоковый ответ (onText)', () => {
+  it('куски текста приходят по мере генерации, итог — как без потока', async () => {
+    stream.mockImplementationOnce(() => {
+      let onText: ((d: string) => void) | null = null;
+      return {
+        on: (ev: string, cb: (d: string) => void) => {
+          if (ev === 'text') onText = cb;
+        },
+        finalMessage: async () => {
+          onText?.('Привет, ');
+          onText?.('Берик!');
+          return textReply('Привет, Берик!');
+        },
+      };
+    });
+    const parts: string[] = [];
+    const out = await runAgent({ system: 's', userMessage: 'привет', webSearch: false, onText: (d) => parts.push(d) });
+    expect(parts).toEqual(['Привет, ', 'Берик!']);
+    expect(out).toBe('Привет, Берик!');
+    expect(create).not.toHaveBeenCalled();
   });
 });
