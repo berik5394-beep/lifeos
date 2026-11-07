@@ -40,6 +40,16 @@ describe('запись без сети', () => {
   });
 });
 
+describe('владелец записи', () => {
+  it('запись в очереди помнит, чья она (иначе ушла бы следующему аккаунту на телефоне)', async () => {
+    const { useAuthStore } = jest.requireMock('@/stores/auth-store') as { useAuthStore: { getState: jest.Mock } };
+    useAuthStore.getState.mockReturnValueOnce({ token: 'tok', user: { id: 'user-A' } });
+    fetchMock.mockRejectedValueOnce(new TypeError('Network request failed'));
+    await api.post('/journal', { notes: 'x' }, 'tok', QUEUE_OFFLINE).catch(() => {});
+    expect(mockEnqueue).toHaveBeenCalledWith(expect.objectContaining({ endpoint: '/journal', userId: 'user-A' }));
+  });
+});
+
 describe('повтор из очереди', () => {
   const ok = { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => ({}) };
   const bad = (status: number) => ({ ok: false, status, headers: { get: () => 'application/json' }, text: async () => '{"message":"x"}' });

@@ -59,13 +59,16 @@ export const networkMonitor = new NetworkMonitor();
 
 // ─── Offline Queue ──────────────────────────────────────────────────────────
 
-interface QueuedMutation {
+export interface QueuedMutation {
   id: string;
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   endpoint: string;
   body?: unknown;
   createdAt: number;
   retryCount?: number;
+  /** Чья запись. Отправляется только от имени этого же пользователя: иначе
+   *  записи А (дневник, траты) уходили в аккаунт Б, вошедшего на том же телефоне. */
+  userId?: string;
 }
 
 const QUEUE_KEY = 'lifeos_offline_queue';
@@ -75,6 +78,19 @@ const MAX_QUEUE_AGE = 48 * 60 * 60 * 1000; // 48 hours
 class OfflineQueue {
   private queue: QueuedMutation[] = [];
   private isSyncing = false;
+  /** Растёт на clear(): sync, начатый до выхода из аккаунта, не возвращает записи обратно. */
+  private generation = 0;
+
+  /** Выход/удаление аккаунта: очередь чужих записей на телефоне не остаётся. */
+  async clear(): Promise<void> {
+    this.queue = [];
+    this.generation++;
+    try {
+      await AsyncStorage.removeItem(QUEUE_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
 
   /** Load persisted queue from storage */
   async load(): Promise<void> {
@@ -106,19 +122,23 @@ class OfflineQueue {
 
   /** Process all queued mutations (called when network restored) */
   async sync(
-    executor: (mutation: QueuedMutation) => Promise<boolean>
+    executor: (mutation: QueuedMutation) => Promise<boolean>,
+    /** Кто вошёл сейчас: записи другого (или без владельца) не отправляются. */
+    ownerId: string | null,
   ): Promise<{ success: number; failed: number }> {
     if (this.isSyncing || this.queue.length === 0) {
       return { success: 0, failed: 0 };
     }
 
     this.isSyncing = true;
+    const gen = this.generation;
     let success = 0;
     let failed = 0;
 
     // Prune stale mutations before processing
     const now = Date.now();
     const toProcess = this.queue.filter((m) => {
+      if (!ownerId || m.userId !== ownerId) { failed++; return false; }
       if (now - m.createdAt > MAX_QUEUE_AGE) { failed++; return false; }
       if ((m.retryCount ?? 0) >= MAX_RETRIES) { failed++; return false; }
       return true;
@@ -140,8 +160,12 @@ class OfflineQueue {
       }
     }
 
-    this.queue = remaining;
-    await this.persist();
+    // Во время отправки вышли из аккаунта (сервер отклонил токен → logout →
+    // clear) — неотправленное не возвращаем: оно ушло бы следующему аккаунту.
+    if (gen === this.generation) {
+      this.queue = remaining;
+      await this.persist();
+    }
     this.isSyncing = false;
 
     return { success, failed };

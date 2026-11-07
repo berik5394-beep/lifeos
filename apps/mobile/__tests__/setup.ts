@@ -26,6 +26,7 @@ jest.mock('@/services/storage', () => {
       remove: (key: string) => store.delete(key),
       contains: (key: string) => store.has(key),
       getAllKeys: () => [...store.keys()],
+      keys: () => [...store.keys()],
       clearAll: () => store.clear(),
     },
   };

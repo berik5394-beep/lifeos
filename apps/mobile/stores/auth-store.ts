@@ -89,6 +89,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Clear cached store data so next user starts fresh
     const { clearPersistedStores } = await import('@/services/store-persist');
     await clearPersistedStores();
+    // Очередь офлайн-записей, кэш ответов, заметки недели — не следующему аккаунту.
+    const { wipeUserDeviceData } = await import('@/services/offline-sync');
+    await wipeUserDeviceData().catch(() => {});
     const { useRoomStore } = await import('@/stores/room-store');
     useRoomStore.getState().reset();
     const { useDealStore } = await import('@/stores/deal-store');
@@ -109,6 +112,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     storage.remove('morning_reminder');
     storage.remove('evening_review');
     storage.remove('task_reminders');
+    const { clearPersistedStores } = await import('@/services/store-persist');
+    await clearPersistedStores().catch(() => {});
+    const { wipeUserDeviceData } = await import('@/services/offline-sync');
+    await wipeUserDeviceData().catch(() => {});
     // Сделки и запомненная доступность функции — не достаются следующему аккаунту.
     const { useDealStore } = await import('@/stores/deal-store');
     useDealStore.getState().reset();

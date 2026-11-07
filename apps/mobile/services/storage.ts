@@ -40,6 +40,11 @@ class Storage {
     AsyncStorage.removeItem(key).catch(() => {});
   }
 
+  /** Ключи хранилища (для чистки данных пользователя при выходе). */
+  keys(): string[] {
+    return [...this.cache.keys()];
+  }
+
   getBoolean(key: string): boolean | undefined {
     const val = this.cache.get(key);
     if (val === undefined) return undefined;

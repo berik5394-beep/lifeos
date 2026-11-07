@@ -154,6 +154,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       method: method as 'POST' | 'PUT' | 'PATCH' | 'DELETE',
       endpoint,
       body,
+      userId: getAuthStore().getState().user?.id,
     });
     throw new OfflineQueuedError();
   }
@@ -199,6 +200,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
         method: method as 'POST' | 'PUT' | 'PATCH' | 'DELETE',
         endpoint,
         body,
+        userId: getAuthStore().getState().user?.id,
       });
       throw new OfflineQueuedError();
     }
