@@ -45,12 +45,13 @@ function num(obj: unknown, key: string): number | undefined {
  * Такое в память не пишем — раньше «закрой задачу X» без задачи X записывало
  * «Выполнил задачу «X»», и мозг «помнил» несделанное.
  */
-function isFailedResult(result: unknown): boolean {
+export function isFailedResult(result: unknown): boolean {
   if (!result || typeof result !== 'object') return false;
   const r = result as Record<string, unknown>;
   return (
     (typeof r.error === 'string' && r.error.length > 0) ||
     r.notFound === true ||
+    r.ambiguous === true ||
     r.ok === false
   );
 }

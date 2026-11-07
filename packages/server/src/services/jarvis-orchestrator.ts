@@ -24,6 +24,7 @@ import { isPlannerIntent } from './planner-service.js';
 import { writeMemory, supersedeByTopic } from './episodic-memory.js';
 import { trackInterests } from './interest-service.js';
 import { runRegistryTool, toolConfirmRequired } from '../tools/index.js';
+import { isFailedResult } from './tool-activity-summary.js';
 import { maybeSavingsCoachLine } from './savings-coach.js';
 import { commitGoal, type CommitGoalInput } from './goal-commit.js';
 import { getToolCounts } from './tool-audit.js';
@@ -750,6 +751,12 @@ export async function runConfirmedAction(
   }
 }
 
+/** Сумма денег из разбора: конечное положительное число (строка «3000» тоже). */
+export function isValidMoneyAmount(v: unknown): boolean {
+  const n = typeof v === 'string' ? Number(v.replace(/\s/g, '').replace(',', '.')) : Number(v);
+  return Number.isFinite(n) && n > 0;
+}
+
 export async function handleMessage(
   userId: string,
   text: string,
@@ -1280,6 +1287,13 @@ async function handleMessageCore(
         return routed;
       }
     }
+    // Сумма из LLM-разбора бывает мусором («NaN ₸» в подтверждении, а zod
+    // отказывал только после «да»). Не ставим подтверждение — переспрашиваем.
+    if ((intent.action === 'add_expense' || intent.action === 'add_income') && !isValidMoneyAmount(input.amount)) {
+      const q = intent.action === 'add_expense' ? 'Не расслышал сумму — сколько потратил?' : 'Не расслышал сумму — сколько получил?';
+      await saveTurn(userId, text, q);
+      return { reply: q, intent: intent.action, turnFacts: {} };
+    }
     // #189 деньги без слота → детерминированно доспрашиваем категорию/
     // источник через FSM (сумма уже названа юзером), НЕ нарративом.
     if (intent.action === 'add_expense' && input.category == null) {
@@ -1349,6 +1363,10 @@ async function handleMessageCore(
         { userId },
       )) as { message?: string };
       let replyText = out.message ?? 'Готово.';
+      // «Не нашёл» / «какую из?» / выключено — дело НЕ сделано: не радоваться
+      // как успеху (эмоция робота, бейдж). Вопрос «какую?» — без «провала».
+      const didNothing = isFailedResult(out);
+      const askedBack = !!(out as { ambiguous?: boolean }).ambiguous;
       // Коуч по накоплениям: тот же хук в прямой (без confirm) ветке
       // расхода — точка схождения текст/голос/фото покрыта обеими.
       if (intent.action === 'add_expense') {
@@ -1383,7 +1401,11 @@ async function handleMessageCore(
           confirmationText: staged.confirmationText,
         };
       }
-      return { reply: replyText, intent: intent.action, turnFacts: { executed: true } };
+      return {
+        reply: replyText,
+        intent: intent.action,
+        turnFacts: askedBack ? {} : didNothing ? { failed: true } : { executed: true },
+      };
     } catch (err) {
       console.warn(
         `[jarvis] runRegistryTool failed user=${userId} intent=${intent.action}:`,
@@ -1695,7 +1717,12 @@ async function handleMessageCore(
     // на +1 Sonnet-вызов (extractFromTranscript) на «важных» сообщениях.
     // Результат не используется; capture идёт в фоне. .catch — чтобы не
     // было unhandled rejection при сбое.
-    void captureInBackground(userId, text, String(Date.now())).catch((err) => {
+    // Агент в этом ходу уже создал задачу (create_task) — фон извлекает
+    // только память/людей, иначе та же задача появлялась второй раз.
+    const agentCreatedTask = await getToolCounts(userId, turnStart)
+      .then((rows) => rows.some((r) => r.toolName === 'create_task' && r.count > 0))
+      .catch(() => false);
+    void captureInBackground(userId, text, String(Date.now()), { memoriesOnly: agentCreatedTask }).catch((err) => {
       console.warn(
         '[captureInBackground] failed:',
         err instanceof Error ? err.message : err,

@@ -41,6 +41,9 @@ jest.mock('@/services/api', () => {
     OfflineQueuedError: actual.OfflineQueuedError,
     isOfflineQueued: actual.isOfflineQueued,
     QUEUE_OFFLINE: actual.QUEUE_OFFLINE,
+    BRAIN_TIMEOUT_MS: actual.BRAIN_TIMEOUT_MS,
+    SLOW_SERVER_ERROR: actual.SLOW_SERVER_ERROR,
+    newIdempotencyKey: actual.newIdempotencyKey,
     api: {
       get: jest.fn(),
       post: jest.fn(),

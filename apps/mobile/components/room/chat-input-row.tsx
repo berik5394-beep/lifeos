@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize } from '@/constants';
@@ -22,6 +22,9 @@ export const ChatInputRow = memo(function ChatInputRow() {
     if (!t || sending) return;
     setText('');
     v.setTyping(false);
+    // Клавиатура закрывала облачко с ответом (оно прячется при открытой
+    // клавиатуре) — ответ на напечатанное исчезал невидимым.
+    Keyboard.dismiss();
     v.send(t);
   }, [text, sending, v]);
 

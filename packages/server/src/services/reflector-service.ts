@@ -9,6 +9,7 @@ import { isV2SavingsCoachEnabled, isV2YearLoadEnabled } from '../lib/feature-fla
 import { pickCoachableGoal } from './savings-pace.js';
 import { isMoneyGoal } from './goal-pace.js';
 import type { InsightCandidate } from './insight-core.js';
+import { numbersHonest } from '../lib/number-honesty.js';
 
 /**
  * Phase 5 P3.b.3 — рефлектор-сервис (glue). Решения Берика:
@@ -218,7 +219,11 @@ async function phrase(
     ) {
       return candidates; // honest fallback — детерминированный текст
     }
-    return candidates.map((c, i) => ({ ...c, message: arr[i] as string }));
+    // Гард чисел по каждому сообщению: модель поменяла/добавила число →
+    // оставляем точный текст из БД (промпт это запрещал, но не проверял).
+    return candidates.map((c, i) =>
+      numbersHonest(arr[i] as string, c.message) ? { ...c, message: arr[i] as string } : c,
+    );
   } catch (err) {
     console.warn(
       '[reflector] phrase failed (non-fatal, keep deterministic):',

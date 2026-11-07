@@ -33,6 +33,7 @@ import { hapticLight } from '@/services/haptics';
 import { useUtterance } from '@/hooks/use-utterance';
 import { DictationModal } from '@/components/voice';
 import { spacing, fontSize, borderRadius } from '@/constants';
+import { openScreen } from '@/navigation/open-screen';
 const ACTION_LABELS: Record<string, { icon: string; label: string }> = {
   create_task: { icon: '\u2705', label: 'Создать задачу' },
   complete_task: { icon: '\u2611\uFE0F', label: 'Завершить задачу' },
@@ -192,7 +193,8 @@ export default function ChatScreen() {
     // Handle navigation actions from AI (e.g., "open kanban", "show pet")
     if (action.type === 'navigate' && action.data.screen) {
       hapticLight();
-      navigation.navigate(String(action.data.screen), action.data.params ?? undefined);
+      // Инструменты — вкладкой дома, а не старой шторкой (navigation/open-screen).
+      openScreen(String(action.data.screen), (r, p) => navigation.navigate(r, p), action.data.params ?? undefined);
       return;
     }
     executeAction(action);

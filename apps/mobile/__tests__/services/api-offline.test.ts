@@ -27,7 +27,8 @@ describe('запись без сети', () => {
     fetchMock.mockRejectedValueOnce(new TypeError('Network request failed'));
     const err = await api.post('/tasks', { title: 'X' }, 'tok', QUEUE_OFFLINE).catch((e: unknown) => e);
     expect(isOfflineQueued(err)).toBe(true);
-    expect(mockEnqueue).toHaveBeenCalledWith({ method: 'POST', endpoint: '/tasks', body: { title: 'X' } });
+    // Запись в очереди несёт ключ повтора — сервер не создаст её дважды.
+    expect(mockEnqueue).toHaveBeenCalledWith(expect.objectContaining({ method: 'POST', endpoint: '/tasks', body: { title: 'X' }, idempotencyKey: expect.stringMatching(/^[A-Za-z0-9_-]{8,80}$/) }));
   });
 
   it('без флага (ИИ, чат, вход) → «нет интернета», в очередь не кладём', async () => {

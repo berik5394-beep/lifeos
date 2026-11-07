@@ -391,6 +391,7 @@ import type { InsightCandidate } from './insight-core.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
 import { gatherReflection, LOW_STREAK_DAYS } from './reflection-context.js';
+import { numbersHonest } from '../lib/number-honesty.js';
 
 const DAY_MS = 86_400_000;
 
@@ -1675,7 +1676,8 @@ export class V2ProactivityEngine implements ProactivityEngine {
         userId,
       });
       const txt = (reply ?? '').trim();
-      if (txt.length > 0) return txt;
+      // Гард чисел: в нудже только числа из payload детектора (без выдумок).
+      if (txt.length > 0 && numbersHonest(txt, JSON.stringify(candidate.payload))) return txt;
     } catch (err) {
       console.warn('[v2-proactivity] generateNudge claude failed:', err);
     }

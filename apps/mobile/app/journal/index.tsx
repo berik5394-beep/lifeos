@@ -17,6 +17,7 @@ import { useJournalStore } from '@/stores/journal-store';
 import { spacing, borderRadius, fontSize } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 import { MOOD_LEVELS, moodLevel } from '@/constants/mood';
+import { useScheduleStore } from '@/stores/schedule-store';
 
 const MONTH_NAMES_GENITIVE = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -264,6 +265,9 @@ export default function JournalScreen() {
   const { fetchEntry, saveEntry, isLoading } = useJournalStore();
 
   const dateString = toDateString(selectedDate);
+  // Записал самочувствие роботу («спал 7 часов», «настроение плохое») —
+  // дневник перечитается сам (тот же сигнал, что у остальных вкладок).
+  const scheduleRevision = useScheduleStore((s) => s.revision);
 
   useEffect(() => {
     let cancelled = false;
@@ -291,7 +295,7 @@ export default function JournalScreen() {
     return () => {
       cancelled = true;
     };
-  }, [dateString, fetchEntry]);
+  }, [dateString, fetchEntry, scheduleRevision]);
 
   const handlePrevDay = useCallback(() => {
     setSelectedDate((prev) => addDays(prev, -1));

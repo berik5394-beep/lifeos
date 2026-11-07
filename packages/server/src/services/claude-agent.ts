@@ -14,6 +14,7 @@ import {
 } from '../tools/index.js';
 import { partitionToolUses } from './agent-tooluse.js';
 import { convertCurrency } from './external-apis.js';
+import { cachedSystem, withCachedTools } from '../lib/prompt-cache.js';
 
 /**
  * #6 — детерминированная защита от рублей. Промт говорит «только ₸»,
@@ -166,8 +167,11 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
   if (localTools && userId && onConfirmTool) {
     toolList.push(...(await confirmToolSchemasForUser(userId)));
   }
-  const tools =
-    toolList.length > 0 ? (toolList as unknown as Anthropic.Tool[]) : undefined;
+  // Кэш промпта: список инструментов (стабилен для юзера) — общий префикс всех
+  // вызовов хода; метка на последней схеме кэширует весь список.
+  const tools = withCachedTools(
+    toolList.length > 0 ? (toolList as unknown as Anthropic.Tool[]) : undefined,
+  );
 
   const textParts: string[] = [];
   let response;
@@ -191,7 +195,7 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
       response = await anthropic.messages.create({
         model,
         max_tokens: maxTokens,
-        system,
+        system: cachedSystem(system),
         messages,
         ...(tools ? { tools } : {}),
       });
@@ -344,7 +348,7 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
       response = await anthropic.messages.create({
         model,
         max_tokens: 400,
-        system,
+        system: cachedSystem(system),
         messages,
         // NO tools — заставляем выдать чистый текст (никаких новых
         // tool_use; модель суммирует РЕАЛЬНЫЕ результаты выше).

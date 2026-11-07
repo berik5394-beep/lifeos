@@ -40,7 +40,7 @@ describe('подтверждение поставило новый вопрос'
     // вторая кнопка подтверждает именно новый вопрос
     mockApi.post.mockResolvedValueOnce({ message: 'Записал доход 500 000 ₸ — сделка Серик — склад.', intent: 'record_deal_income', done: true });
     await useChatStore.getState().confirmPendingAction(reply.id, true);
-    expect(mockApi.post).toHaveBeenLastCalledWith('/voice/confirm-action', { confirm: true, action: 'record_deal_income' }, expect.anything());
+    expect(mockApi.post).toHaveBeenLastCalledWith('/voice/confirm-action', { confirm: true, action: 'record_deal_income' }, expect.anything(), { timeoutMs: 60_000 });
     expect(useChatStore.getState().messages[0].pendingAction ?? null).toBeNull();
   });
 

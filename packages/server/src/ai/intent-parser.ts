@@ -2,6 +2,7 @@ import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { civilDayRefs } from '../lib/tz.js';
 import { MAX_MONEY_AMOUNT } from '../lib/money.js';
+import { cachedSystem } from '../lib/prompt-cache.js';
 
 const anthropic = createAnthropic();
 
@@ -480,7 +481,8 @@ export async function parseIntent(
       // быстрее и дешевле. Замер на 30 фразах — в коммите. opts.model — для замера.
       model: opts.model ?? INTENT_MODEL,
       max_tokens: 256,
-      system: systemPrompt,
+      // Кэш: промпт парсера одинаков весь день (меняются только даты).
+      system: cachedSystem(systemPrompt),
       messages: [{ role: 'user', content: text }],
     });
 

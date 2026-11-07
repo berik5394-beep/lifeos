@@ -3,6 +3,7 @@ import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { getUserTimezone } from '../lib/user-context.js';
+import { numbersHonest } from '../lib/number-honesty.js';
 import {
   addCivilDays,
   dateOnlyUTC,
@@ -286,5 +287,8 @@ export async function explainPanel(
   };
 
   const text = await withTimeout(ask().catch(() => null), EXPLAIN_TIMEOUT_MS, null);
-  return text ? { text, source: 'ai' } : { text: factsFallback(panel, facts), source: 'facts' };
+  // Гард чисел: модель добавила число, которого нет в фактах → факты как есть.
+  return text && numbersHonest(text, facts.join('\n'))
+    ? { text, source: 'ai' }
+    : { text: factsFallback(panel, facts), source: 'facts' };
 }

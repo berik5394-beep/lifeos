@@ -9,6 +9,9 @@ import { useThemeStore } from '@/stores/theme-store';
 import { useUIStore } from '@/stores/ui-store';
 import { startOfflineSync } from '@/services/offline-sync';
 import { startOtaUpdates } from '@/services/ota-updates';
+import { navigationRef } from '@/navigation/ref';
+import { SharedVoiceProvider } from '@/hooks/shared-voice';
+import { CommandLayout } from '@/components/room/command-layout';
 import { setupVoiceAlarmListener } from '@/services/voice-alarm';
 
 // Робот-эпик, Часть 3: дом из двух экранов (Комната ↔ Рабочий) + панели-шторки
@@ -154,10 +157,14 @@ export default function Navigation() {
 
   return (
     <ErrorBoundary>
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer theme={navTheme} ref={navigationRef}>
       <OfflineBanner />
       <React.Suspense fallback={null}>
+      {/* Один микрофон на всё приложение — над стеком, чтобы строка «Скажи роботу»
+          работала на любом экране (раньше — только на доме). */}
+      <SharedVoiceProvider>
       <RootStack.Navigator
+        screenLayout={({ children, route }) => <CommandLayout routeName={route.name}>{children}</CommandLayout>}
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: theme.background },
@@ -243,6 +250,7 @@ export default function Navigation() {
           </>
         )}
       </RootStack.Navigator>
+      </SharedVoiceProvider>
       </React.Suspense>
     </NavigationContainer>
     </ErrorBoundary>

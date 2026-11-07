@@ -54,6 +54,10 @@ interface RequestOptions {
    *  По умолчанию false: ИИ-запросы, вход, чат, покупки «потом» без ведома
    *  юзера повторять нельзя — честная ошибка «нет интернета». */
   queueOffline?: boolean;
+  /** Ключ повтора записи (Idempotency-Key): сервер не запишет её дважды. */
+  idempotencyKey?: string;
+  /** Сколько ждать ответа. Мозгу (чат, подтверждение) нужно больше 15 с. */
+  timeoutMs?: number;
 }
 
 export class ApiError extends Error {
@@ -87,6 +91,13 @@ export function isOfflineQueued(err: unknown): err is OfflineQueuedError {
 export const QUEUE_OFFLINE = { queueOffline: true } as const;
 
 const OFFLINE_ERROR = 'Нет интернета — попробуй, когда появится связь.';
+/**
+ * Не дождались ответа (сервер жив, но думает долго). Это НЕ «нет интернета»:
+ * сервер мог доделать дело — повтор сразу дал бы дубль задачи.
+ */
+export const SLOW_SERVER_ERROR = 'Думаю дольше обычного. Не повторяй сразу — через минуту проверь, выполнилось ли.';
+/** Ожидание ответа мозга: поиск в интернете + инструменты бывают 20–40 с. */
+export const BRAIN_TIMEOUT_MS = 60_000;
 
 // Lock to prevent multiple simultaneous refresh attempts
 let refreshPromise: Promise<string | null> | null = null;
@@ -135,8 +146,18 @@ function parseJsonSafe<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+/** Случайный ключ записи (Idempotency-Key). Формат сервера: [A-Za-z0-9_-]{8,80}. */
+export function newIdempotencyKey(): string {
+  const rnd = () => Math.random().toString(36).slice(2, 10);
+  return `m-${Date.now().toString(36)}-${rnd()}${rnd()}`;
+}
+
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, token, queueOffline = false } = options;
+  // Запись, которая может уйти в офлайн-очередь, получает ключ сразу: если
+  // сервер записал, а ответ потерялся, повтор из очереди с тем же ключом
+  // вернёт сохранённый ответ, а не создаст вторую трату/задачу.
+  const idempotencyKey = options.idempotencyKey ?? (method === 'POST' && queueOffline ? newIdempotencyKey() : undefined);
   const om = getOfflineManager();
 
   // ── Offline handling ──────────────────────────────────────────────────
@@ -155,6 +176,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       endpoint,
       body,
       userId: getAuthStore().getState().user?.id,
+      idempotencyKey,
     });
     throw new OfflineQueuedError();
   }
@@ -171,6 +193,8 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     headers['Authorization'] = `Bearer ${token}`;
   }
 
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+
   // Real-Time Foundation: настоящий пояс устройства на КАЖДЫЙ запрос
   // (getDeviceTimezone синхронный, всегда свежий → перелёт подхватывается).
   headers['X-Timezone'] = getDeviceTimezone();
@@ -185,8 +209,9 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
 
   let response: Response;
   try {
-    response = await fetchWithTimeout(url, fetchOptions);
+    response = await fetchWithTimeout(url, fetchOptions, options.timeoutMs);
   } catch (networkError) {
+    const timedOut = networkError instanceof Error && networkError.name === 'AbortError';
     // Network error или таймаут (AbortError). В обоих случаях
     // офлайн-fallback/очередь работают одинаково — пользователь не видит разницы.
     if (method === 'GET') {
@@ -194,13 +219,17 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       const cached = await om.getCachedData<T>(endpoint);
       if (cached !== null) return cached;
     } else if (!queueOffline) {
+      // Таймаут ≠ нет сети: сервер мог выполнить команду — честно говорим «долго».
+      if (timedOut) throw new ApiError(408, SLOW_SERVER_ERROR);
       throw new ApiError(0, OFFLINE_ERROR);
     } else {
+      // Таймаут/обрыв: сервер мог УЖЕ записать — повтор уйдёт с тем же ключом.
       await om.offlineQueue.enqueue({
         method: method as 'POST' | 'PUT' | 'PATCH' | 'DELETE',
         endpoint,
         body,
         userId: getAuthStore().getState().user?.id,
+        idempotencyKey,
       });
       throw new OfflineQueuedError();
     }
@@ -249,13 +278,13 @@ export const api = {
   get: <T>(endpoint: string, token?: MaybeToken) =>
     request<T>(endpoint, { token: token ?? undefined }),
 
-  post: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean }) =>
+  post: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean; timeoutMs?: number }) =>
     request<T>(endpoint, { method: 'POST', body, token: token ?? undefined, ...opts }),
 
-  put: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean }) =>
+  put: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean; timeoutMs?: number }) =>
     request<T>(endpoint, { method: 'PUT', body, token: token ?? undefined, ...opts }),
 
-  patch: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean }) =>
+  patch: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean; timeoutMs?: number }) =>
     request<T>(endpoint, { method: 'PATCH', body, token: token ?? undefined, ...opts }),
 
   delete: <T>(endpoint: string, token?: MaybeToken, opts?: { queueOffline?: boolean }) =>
@@ -266,9 +295,9 @@ export const api = {
    * true — ушло; false — сервер окончательно отказал (4xx: задачи уже нет и т.п.) →
    * выкинуть; throw — нет сети/сервера/доступа (401, 408, 429, 5xx) → оставить в очереди.
    */
-  replayQueued: async (m: { method: string; endpoint: string; body?: unknown }, token: MaybeToken): Promise<boolean> => {
+  replayQueued: async (m: { method: string; endpoint: string; body?: unknown; idempotencyKey?: string }, token: MaybeToken): Promise<boolean> => {
     try {
-      await request<unknown>(m.endpoint, { method: m.method, body: m.body, token: token ?? undefined });
+      await request<unknown>(m.endpoint, { method: m.method, body: m.body, token: token ?? undefined, idempotencyKey: m.idempotencyKey });
       return true;
     } catch (err) {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500 && ![401, 408, 429].includes(err.status)) return false;

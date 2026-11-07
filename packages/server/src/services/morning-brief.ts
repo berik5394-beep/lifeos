@@ -24,6 +24,7 @@ import { computeGoalPace, isMoneyGoal } from './goal-pace.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { gatherKanbanSignals, formatKanbanFacts } from './kanban-signals.js';
 import { gatherReflection } from './reflection-context.js';
+import { numbersHonest } from '../lib/number-honesty.js';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('ru-RU').replace(/ /g, ' ');
 
@@ -94,15 +95,9 @@ export async function gatherBriefExtras(userId: string, tz: string, now: Date = 
   return out;
 }
 
-/** Все числа текста (с пробелами-разделителями тысяч) — для гарда честности. */
-function numbersIn(text: string): string[] {
-  return (text.match(/\d[\d\s]*\d|\d/g) ?? []).map((n) => n.replace(/\s/g, ''));
-}
-
-/** Модель не добавила чисел, которых нет в фактах. */
+/** Модель не добавила чисел, которых нет в фактах (общий гард — lib/number-honesty). */
 export function briefNumbersHonest(brief: string, facts: string): boolean {
-  const allowed = new Set(numbersIn(facts));
-  return numbersIn(brief).every((n) => allowed.has(n));
+  return numbersHonest(brief, facts);
 }
 
 const STYLE_HINT: Record<string, string> = {

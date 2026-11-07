@@ -54,6 +54,30 @@ function isPanelVisible(p: PanelDef, isFeatureVisible: (feature: string) => bool
   return !p.serverGated || server.dealsAvailable === undefined || server.dealsAvailable === true;
 }
 
+/**
+ * Почему вкладка не видна (робот говорит это вслух, а не молча открывает
+ * «Сегодня»). null — вкладка видна или такой нет.
+ */
+export function hiddenPanelReason(
+  key: string,
+  isFeatureVisible: (feature: string) => boolean,
+  server: ServerAvailability = {},
+): string | null {
+  const p = PANELS.find((x) => x.key === key);
+  if (!p || isPanelVisible(p, isFeatureVisible, server)) return null;
+  if (p.serverGated) return `Вкладка «${p.label}» пока недоступна.`;
+  return `Вкладка «${p.label}» скрыта: в Настройках → «Уровень интерфейса» выбери «Стандарт» или «Продвинутый».`;
+}
+
+/**
+ * Старые экраны-панели стека (Tasks, Finance, Dashboard…) больше не
+ * открываются отдельной шторкой — инструменты живут вкладками дома. Если
+ * сервер/мозг шлёт navigate на такой экран — вкладка дома с этим ключом.
+ */
+export function toolKeyForRoute(route: string): string | null {
+  return PANELS.find((p) => p.route === route)?.key ?? null;
+}
+
 export function visiblePanels(isFeatureVisible: (feature: string) => boolean, server: ServerAvailability = {}): PanelDef[] {
   return PANELS.filter((p) => isPanelVisible(p, isFeatureVisible, server));
 }

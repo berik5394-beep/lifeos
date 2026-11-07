@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import { navigateTo } from '@/navigation/ref';
 import { useChatStore } from '@/stores/chat-store';
 import { routeVoice } from '@/services/voice-route';
 
@@ -10,17 +10,17 @@ import { routeVoice } from '@/services/voice-route';
  */
 export function useUtterance() {
   const sendMessage = useChatStore((s) => s.sendMessage);
-  const navigation = useNavigation<{ navigate: (route: string) => void }>();
   const [dictationOpen, setDictationOpen] = useState(false);
 
   const handle = useCallback(
     (raw: string) => {
       const route = routeVoice(raw);
       if (route.kind === 'dictation') setDictationOpen(true);
-      else if (route.kind === 'conversation') navigation.navigate('VoiceConversation');
+      // Через общий ref: голос теперь живёт над всем стеком, а не внутри экрана.
+      else if (route.kind === 'conversation') navigateTo('VoiceConversation');
       else if (route.text) void sendMessage(route.text, true);
     },
-    [navigation, sendMessage],
+    [sendMessage],
   );
   const closeDictation = useCallback(() => setDictationOpen(false), []);
   return { handle, dictationOpen, closeDictation };

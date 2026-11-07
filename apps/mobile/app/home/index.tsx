@@ -3,14 +3,14 @@ import { KeyboardAvoidingView, type NativeScrollEvent, type NativeSyntheticEvent
 import { ScrollView } from 'react-native-gesture-handler';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useColors } from '@/hooks/use-colors';
-import { SharedVoiceProvider } from '@/hooks/shared-voice';
 import { ChatInputRow } from '@/components/room/chat-input-row';
 import { useRoomToolStore } from '@/stores/room-tool-store';
 import { useChatStore } from '@/stores/chat-store';
 import { useUIStore } from '@/stores/ui-store';
 import { useDealStore } from '@/stores/deal-store';
 import { useAuthStore } from '@/stores/auth-store';
-import { visiblePanels } from '@/services/panels';
+import { visiblePanels, hiddenPanelReason } from '@/services/panels';
+import { currentRouteName, navigateTo } from '@/navigation/ref';
 import { isToolKey, type ToolKey } from '@/services/room-tools';
 import { RoomPage } from './room-page';
 import { ToolsPage } from './tools-page';
@@ -34,9 +34,8 @@ export default function HomeScreen() {
       // Android с edge-to-edge не сжимает окно сам — без padding клавиатура закрывает ввод.
       behavior="padding"
     >
-      <SharedVoiceProvider>
-        <HomePager />
-      </SharedVoiceProvider>
+      {/* Голос (SharedVoiceProvider) — над всем стеком в navigation/index.tsx. */}
+      <HomePager />
     </KeyboardAvoidingView>
   );
 }
@@ -86,7 +85,17 @@ function HomePager() {
     if (!latest || latest.role !== 'assistant' || openedFor.current === latest.id) return;
     if (Date.now() - new Date(latest.createdAt).getTime() > FRESH_REPLY_MS) return;
     openedFor.current = latest.id;
-    if (isToolKey(latest.openPanel)) useRoomToolStore.getState().openTool(latest.openPanel);
+    if (!isToolKey(latest.openPanel)) return;
+    // Скрытая вкладка: сказать почему, а не молча открыть «Сегодня».
+    const why = hiddenPanelReason(latest.openPanel, isFeatureVisible, { dealsAvailable });
+    if (why) {
+      useChatStore.getState().showNudge(`panel-${latest.id}`, why);
+      return;
+    }
+    // Команда пришла с другого экрана (Настройки, Канбан…) — вернуться домой.
+    if (currentRouteName() !== 'Home') navigateTo('Home');
+    useRoomToolStore.getState().openTool(latest.openPanel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latest]);
 
   const onMomentumEnd = useCallback(

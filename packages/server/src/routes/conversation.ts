@@ -33,6 +33,7 @@ import { gatherAssistantContext } from '../services/assistant-service.js';
 import { buildStartGreeting } from '../services/conversation-greeting.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { localDayStartUTC, localHour } from '../lib/tz.js';
+import { sttFailure } from '../lib/stt-messages.js';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY || '',
@@ -189,17 +190,11 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         text = await transcribeAudio(audio, format);
       } catch (err) {
         app.log.error(err, 'Audio transcription failed');
-        return reply.send({
-          text: '',
-          message: 'Не удалось распознать речь. Говорите громче и ближе к микрофону.',
-        });
+        return reply.send(sttFailure(true)); // сбой сервиса — не «говорите громче»
       }
 
       if (!text) {
-        return reply.send({
-          text: '',
-          message: 'Не удалось распознать речь. Говорите громче и ближе к микрофону.',
-        });
+        return reply.send(sttFailure(false));
       }
 
       // Единый мозг (web search + агентные инструменты + travel-
@@ -224,6 +219,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         actions: [],
         suggestions: [],
         emotion: jarvis.emotion ?? 'neutral',
+        // «Открой задачи» в разговоре → мобилка откроет вкладку за экраном разговора.
+        openPanel: jarvis.openPanel ?? null,
       });
     } catch (err) {
       app.log.error(err);
@@ -260,6 +257,8 @@ export async function conversationRoutes(app: FastifyInstance): Promise<void> {
         actions: [],
         suggestions: [],
         emotion: jarvis.emotion ?? 'neutral',
+        // «Открой задачи» в разговоре → мобилка откроет вкладку за экраном разговора.
+        openPanel: jarvis.openPanel ?? null,
       });
     } catch (err) {
       app.log.error(err);

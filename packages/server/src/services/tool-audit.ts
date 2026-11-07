@@ -63,6 +63,17 @@ async function safeSink(sink: AuditSink, rec: ToolCallRecord): Promise<void> {
  * строку ToolCall (успех ИЛИ ошибка), не бросает из слоя аудита,
  * пробрасывает исходную ошибку хендлера дальше без изменений.
  */
+/** Причина отказа, если инструмент вернул «не сделал» без исключения; иначе null. */
+export function refusalOf(out: unknown): string | null {
+  if (!out || typeof out !== 'object') return null;
+  const r = out as Record<string, unknown>;
+  if (typeof r.error === 'string' && r.error.length > 0) return r.error;
+  if (r.notFound === true) return 'не найдено';
+  if (r.ambiguous === true) return 'нужно уточнение';
+  if (r.ok === false) return typeof r.reason === 'string' ? r.reason : 'не выполнено';
+  return null;
+}
+
 export async function auditToolCall<T>(
   userId: string,
   toolName: string,
@@ -79,7 +90,9 @@ export async function auditToolCall<T>(
       inputJson: input,
       outputJson: out,
       durationMs: Date.now() - start,
-      error: null,
+      // Отказ без исключения («функция отключена», «не найдено», «уточни») —
+      // тоже НЕ выполнено: раньше писался как успех и шёл в бейдж действий.
+      error: refusalOf(out),
     });
     return out;
   } catch (err) {

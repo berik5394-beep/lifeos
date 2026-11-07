@@ -21,6 +21,7 @@ import { rateLimiter, aiDailyLimiter, cheapAiDailyLimiter } from '../middleware/
 import { handleMessage } from '../services/jarvis-orchestrator.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { localDateOnlyUTC } from '../lib/tz.js';
+import { sttFailure } from '../lib/stt-messages.js';
 
 // Voice assistant/transcribe are expensive (Groq Whisper + Claude API) — cap per IP
 const assistantRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'voice-assistant' });
@@ -292,10 +293,8 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
         if (lastError) {
           app.log.error({ lastError }, 'Voice transcription failed');
         }
-        return reply.send({
-          text: '',
-          message: 'Не удалось распознать речь. Говорите громче и ближе к микрофону.',
-        });
+        // Сбой сервиса (Groq/ключ/лимит) — честно «у меня сбой»; пусто без ошибки — тишина.
+        return reply.send(sttFailure(!!lastError));
       }
 
       return reply.send({ text });

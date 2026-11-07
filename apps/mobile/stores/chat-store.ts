@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api, ApiError } from '@/services/api';
+import { api, ApiError, BRAIN_TIMEOUT_MS } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { confirmPendingVoiceAction, isConfirmable, type PendingActionInfo } from '@/services/voice-followup';
 import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
@@ -96,6 +96,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         '/voice/chat',
         { text, webSearch: webSearch ?? false },
         token,
+        // Мозг думает дольше 15 с (поиск, инструменты): раньше телефон обрывал
+        // ожидание, писал «нет интернета», а сервер доделывал — повтор = дубль.
+        { timeoutMs: BRAIN_TIMEOUT_MS },
       );
 
       const assistantMessage: ChatMessage = {
@@ -119,7 +122,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       useScheduleStore.getState().bump();
     } catch (err) {
       // Дневной лимит (429) и «нет интернета» — показываем понятный текст сервера/сети.
-      const known = err instanceof ApiError && (err.status === 429 || err.status === 0);
+      // 429 лимит, 0 нет сети, 408 «думаю дольше обычного» — показываем честный текст.
+      const known = err instanceof ApiError && (err.status === 429 || err.status === 0 || err.status === 408);
       const errorMessage: ChatMessage = {
         id: uniqueId('error'),
         role: 'assistant',

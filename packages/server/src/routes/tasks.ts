@@ -8,6 +8,7 @@ import { NotFoundError } from '../lib/errors.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { onTaskCompleted } from '../services/coins.js';
 import { proposeReschedule } from '../services/reschedule.js';
+import { withIdempotency } from '../lib/idempotency.js';
 
 // Максимум задач на один запрос — защита от OOM на клиенте у power users
 const MAX_TASKS_PER_REQUEST = 500;
@@ -136,7 +137,8 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/tasks', {
     preHandler: validate(createTaskSchema),
-  }, async (request, reply) => {
+    // Idempotency-Key: повтор офлайн-очереди не создаст задачу второй раз.
+  }, async (request, reply) => withIdempotency(request, reply, async () => {
     const data = request.body as z.infer<typeof createTaskSchema>;
     // B.3 (IDOR): parentId раньше писался без проверки владения —
     // можно было вложить свою задачу в ЧУЖУЮ. Проверяем ownership.
@@ -146,9 +148,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
         select: { id: true },
       });
       if (!parent) {
-        return reply
-          .status(404)
-          .send({ message: 'Родительская задача не найдена' });
+        return { status: 404, body: { message: 'Родительская задача не найдена' } };
       }
     }
     const task = await prisma.task.create({
@@ -180,9 +180,9 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
     // Перегруз дня (флаг): робот предлагает сдвинуть график одним касанием.
     // Предложение уже в PendingAction; мобилка показывает его облачком.
     const proposal = await proposeReschedule(request.userId, data.date, task.id, new Date(), { fromCard: true });
-    if (proposal) return reply.status(201).send({ ...task, proposal: { text: proposal.text, staged: proposal.staged } });
-    return reply.status(201).send(task);
-  });
+    if (proposal) return { status: 201, body: { ...task, proposal: { text: proposal.text, staged: proposal.staged } } };
+    return { status: 201, body: task };
+  }));
 
   app.put('/tasks/:id', {
     preHandler: validate(updateTaskSchema),

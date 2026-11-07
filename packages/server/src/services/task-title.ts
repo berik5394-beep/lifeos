@@ -52,6 +52,30 @@ export function matchTaskByWholeWords<T extends { title: string }>(query: string
   return hits.length === 1 ? hits[0] : null;
 }
 
+/**
+ * Выбор задачи для «закрой задачу X» без угадывания. Одна подходящая — она;
+ * несколько — если ровно одна совпадает названием целиком, она; иначе
+ * «какую из?» со списком. Раньше бралась самая свежая молча: при «отчёт для
+ * банка» и «отчёт по дому» закрывалась не та, и юзер узнавал об этом позже.
+ */
+export function pickOpenTask<T extends { title: string; createdAt: Date }>(
+  query: string,
+  candidates: T[],
+): { kind: 'one'; task: T } | { kind: 'many'; tasks: T[] } | { kind: 'none' } {
+  const q = sanitizeTaskTitle(query).toLowerCase();
+  if (q.length === 0) return { kind: 'none' };
+  const matches = candidates.filter((c) => {
+    const t = sanitizeTaskTitle(c.title).toLowerCase();
+    return t.length > 0 && (t.includes(q) || q.includes(t));
+  });
+  if (matches.length === 0) return { kind: 'none' };
+  if (matches.length === 1) return { kind: 'one', task: matches[0] };
+  const exact = matches.filter((c) => sanitizeTaskTitle(c.title).toLowerCase() === q);
+  if (exact.length === 1) return { kind: 'one', task: exact[0] };
+  const newestFirst = [...matches].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return { kind: 'many', tasks: newestFirst.slice(0, 5) };
+}
+
 export function matchOpenTask<T extends { title: string; createdAt: Date }>(
   query: string,
   candidates: T[],

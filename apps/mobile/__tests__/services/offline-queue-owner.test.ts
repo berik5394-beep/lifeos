@@ -64,3 +64,20 @@ describe('выход из аккаунта чистит телефон', () => {
     expect(storage.getString('themeName')).toBe('dark');
   });
 });
+
+describe('повтор записи без дублей (Idempotency-Key)', () => {
+  it('ключ хранится в записи очереди и уходит при отправке тот же', async () => {
+    await offlineQueue.enqueue({ ...m('A', '/finance/expenses'), idempotencyKey: 'm-key-123456' });
+    const exec = jest.fn(async () => true);
+    await offlineQueue.sync(exec, 'A');
+    expect(exec).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'm-key-123456' }));
+  });
+
+  it('ключ подходит под формат сервера и не повторяется', () => {
+    const { newIdempotencyKey } = jest.requireActual('@/services/api') as typeof import('@/services/api');
+    const a = newIdempotencyKey();
+    const b = newIdempotencyKey();
+    expect(a).toMatch(/^[A-Za-z0-9_-]{8,80}$/);
+    expect(a).not.toBe(b);
+  });
+});

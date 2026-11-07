@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { storage } from '@/services/storage';
-import { api } from '@/services/api';
+import { api, BRAIN_TIMEOUT_MS } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { formatDate } from '@/utils/dates';
 import { useChatStore } from '@/stores/chat-store';
@@ -43,6 +43,7 @@ export function useMorningGreeting(): UseMorningGreetingResult {
         '/voice/assistant',
         { text: 'Доброе утро' },
         token,
+        { timeoutMs: BRAIN_TIMEOUT_MS },
       )
       .then((response) => {
         setGreeting(response.reply);

@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth as validateMonth, invalidDateReply } from '../middleware/validate.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
+import { withIdempotency } from '../lib/idempotency.js';
 
 // B.3: enum-валидация категории (аудит 3.12 — раньше любая строка).
 // Список из CLAUDE.md (expenseCategories).
@@ -113,7 +114,8 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/finance/expenses', {
     preHandler: validate(createExpenseSchema),
-  }, async (request, reply) => {
+  // Idempotency-Key: повтор офлайн-очереди не запишет трату второй раз.
+  }, async (request, reply) => withIdempotency(request, reply, async () => {
     const data = request.body as z.infer<typeof createExpenseSchema>;
 
     const expenseDate = new Date(data.date);
@@ -191,11 +193,14 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
       type: 'expense_added',
       content: `Расход ${data.amount} ₸ · ${data.category} · ${data.description}`,
     });
-    return reply.status(201).send({
-      ...expense,
-      ...(budgetInfo ? { budgetInfo } : {}),
-    });
-  });
+    return {
+      status: 201,
+      body: {
+        ...expense,
+        ...(budgetInfo ? { budgetInfo } : {}),
+      },
+    };
+  }));
 
   app.delete('/finance/expenses/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
@@ -237,7 +242,7 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/finance/incomes', {
     preHandler: validate(createIncomeSchema),
-  }, async (request, reply) => {
+  }, async (request, reply) => withIdempotency(request, reply, async () => {
     const data = request.body as z.infer<typeof createIncomeSchema>;
     const income = await prisma.income.create({
       data: {
@@ -251,8 +256,8 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
       type: 'income_added',
       content: `Доход ${data.amount} ₸ · ${data.source}`,
     });
-    return reply.status(201).send(income);
-  });
+    return { status: 201, body: income };
+  }));
 
   app.delete('/finance/incomes/:id', async (request, reply) => {
     const { id } = request.params as { id: string };

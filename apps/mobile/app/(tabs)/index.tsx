@@ -276,9 +276,10 @@ export default function PlannerScreen() {
     fetchLogs(weekStartStr, formatDate(sundayDate));
   }, [weekStartStr, sundayDate, fetchTasks, fetchWeeklyGoals, fetchHabits, fetchLogs, scheduleRevision]);
 
+  // «Спал 7 часов» роботу → сводка дневника на «Сегодня» обновится (по сигналу).
   useEffect(() => {
     fetchJournalEntry(todayStr);
-  }, [todayStr, fetchJournalEntry]);
+  }, [todayStr, fetchJournalEntry, scheduleRevision]);
 
   // Today's summary data
   const todayTasks = useMemo(

@@ -1,4 +1,4 @@
-import { api } from '@/services/api';
+import { api, BRAIN_TIMEOUT_MS } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
 
@@ -78,6 +78,7 @@ export async function confirmPendingVoiceAction(
       '/voice/confirm-action',
       action ? { confirm, action } : { confirm },
       token || undefined,
+      { timeoutMs: BRAIN_TIMEOUT_MS },
     );
     return {
       message: res.message,

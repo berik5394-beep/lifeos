@@ -69,6 +69,8 @@ export interface QueuedMutation {
   /** Чья запись. Отправляется только от имени этого же пользователя: иначе
    *  записи А (дневник, траты) уходили в аккаунт Б, вошедшего на том же телефоне. */
   userId?: string;
+  /** Ключ повтора (Idempotency-Key): тот же при каждой попытке — без дублей на сервере. */
+  idempotencyKey?: string;
 }
 
 const QUEUE_KEY = 'lifeos_offline_queue';

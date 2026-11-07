@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { kanbanForCompletion } from '../services/kanban-signals.js';
 import { prisma } from '../lib/prisma.js';
-import { matchOpenTask } from '../services/task-title.js';
+import { pickOpenTask } from '../services/task-title.js';
 import { defineTool } from './_types.js';
 import { onTaskCompleted } from '../services/coins.js';
 
@@ -37,7 +37,16 @@ export const completeTaskTool = defineTool({
         orderBy: { createdAt: 'desc' },
         take: 50,
       });
-      task = matchOpenTask(input.title, candidates);
+      const pick = pickOpenTask(input.title, candidates);
+      if (pick.kind === 'many') {
+        // Не угадываем — спрашиваем (раньше молча закрывалась самая свежая).
+        return {
+          ambiguous: true,
+          message: `Под «${input.title}» подходит несколько задач: ${pick.tasks.map((t) => `«${t.title}»`).join(', ')}. Какую закрыть?`,
+          candidates: pick.tasks.map((t) => ({ taskId: t.id, title: t.title })),
+        };
+      }
+      if (pick.kind === 'one') task = pick.task;
     }
     if (!task) return { message: 'Задача не найдена', notFound: true };
     await prisma.task.update({

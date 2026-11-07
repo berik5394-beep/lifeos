@@ -65,7 +65,7 @@ describe('перегруз дня: предложение из карточки'
 
     await useChatStore.getState().confirmPendingAction(id, true);
 
-    expect(mockApi.post).toHaveBeenLastCalledWith('/voice/confirm-action', { confirm: true, action: 'apply_reschedule' }, expect.anything());
+    expect(mockApi.post).toHaveBeenLastCalledWith('/voice/confirm-action', { confirm: true, action: 'apply_reschedule' }, expect.anything(), { timeoutMs: 60_000 });
     expect(useChatStore.getState().messages[0]).toMatchObject({ content: 'Готово, график сдвинут', kind: 'proposal' });
     expect(useScheduleStore.getState().revision).toBe(1);
   });

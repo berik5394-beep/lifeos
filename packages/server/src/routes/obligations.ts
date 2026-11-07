@@ -5,6 +5,7 @@ import { validate } from '../middleware/validate.js';
 import { MAX_MONEY_AMOUNT } from '../lib/money.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { createObligation, listObligations, settleObligation, cancelObligation } from '../services/obligations/index.js';
+import { withIdempotency } from '../lib/idempotency.js';
 
 /**
  * Долги в «Финансах» (этап 3, честность). Раньше экран держал долги в памяти
@@ -29,7 +30,7 @@ export async function obligationRoutes(app: FastifyInstance): Promise<void> {
     return { obligations: all.filter((o) => o.kind === 'money') };
   });
 
-  app.post('/obligations', { preHandler: validate(createSchema) }, async (request, reply) => {
+  app.post('/obligations', { preHandler: validate(createSchema) }, async (request, reply) => withIdempotency(request, reply, async () => {
     const b = request.body as z.infer<typeof createSchema>;
     const o = await createObligation({
       userId: request.userId,
@@ -50,8 +51,8 @@ export async function obligationRoutes(app: FastifyInstance): Promise<void> {
           : `Долг: ${b.personName} должен мне ${b.amount} ₸${b.dueDate ? ` до ${b.dueDate}` : ''}`,
       importance: 6,
     });
-    return reply.status(201).send({ obligation: o });
-  });
+    return { status: 201, body: { obligation: o } };
+  }));
 
   /** Вернули / отдал — закрыть. */
   app.post('/obligations/:id/settle', async (request, reply) => {

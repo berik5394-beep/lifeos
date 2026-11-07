@@ -5,7 +5,7 @@ import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Speech from 'expo-speech';
 import * as Haptics from 'expo-haptics';
-import { api } from '@/services/api';
+import { api, BRAIN_TIMEOUT_MS } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { storage } from '@/services/storage';
 import { getPreferredVoiceIdentifier } from '@/hooks/use-voice';
@@ -20,6 +20,10 @@ import {
   openURL,
 } from '@/services/deep-links';
 import { scheduleAlarmNotification } from '@/services/alarm-notifications';
+import { useScheduleStore } from '@/stores/schedule-store';
+import { useRoomToolStore } from '@/stores/room-tool-store';
+import { isToolKey } from '@/services/room-tools';
+import { openScreen } from '@/navigation/open-screen';
 
 // ----------------------------------------------------------------
 // Types
@@ -76,6 +80,8 @@ interface MessageResponse {
   clientAction?: ClientAction;
   actions?: Array<{ tool: string; status: string; clientAction?: ClientAction }>;
   done?: boolean;
+  /** «Открой задачи» → вкладка дома (за экраном разговора). */
+  openPanel?: string | null;
 }
 
 export interface UseVoiceConversationReturn {
@@ -375,7 +381,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
           break;
         case 'navigate':
           if (action.screen) {
-            navigation.navigate(action.screen as never, (action.params ?? {}) as never);
+            openScreen(action.screen, (r, p) => navigation.navigate(r as never, (p ?? {}) as never), action.params ?? undefined);
           }
           break;
         default:
@@ -404,6 +410,12 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         // Insert user message before assistant response
         addUserMessage(data.transcription);
       }
+
+      // Мозг мог что-то сделать (задача, привычка, трата) — вкладки перечитают
+      // данные; «открой задачи» — откроем вкладку за экраном разговора.
+      // Раньше созданное в разговоре появлялось на вкладках только через 30 с.
+      useScheduleStore.getState().bump();
+      if (isToolKey(data.openPanel)) useRoomToolStore.getState().openTool(data.openPanel);
 
       // Handle client actions
       const clientActions = extractClientActions(data);
@@ -475,6 +487,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
             format: Platform.OS === 'ios' ? 'm4a' : 'm4a',
           },
           token,
+          { timeoutMs: BRAIN_TIMEOUT_MS }, // распознавание + мозг > 15 с
         );
 
         const text = extractResponseText(data);
@@ -792,6 +805,7 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
             text: text.trim(),
           },
           token,
+          { timeoutMs: BRAIN_TIMEOUT_MS },
         );
 
         await processResponse(data);

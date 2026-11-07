@@ -108,6 +108,7 @@ model User {
   deals                  Deal[]
   salesPlans             SalesPlan[]
   weekNotes              WeekNote[]
+  idempotencyKeys        IdempotencyKey[]
 }
 
 // Дедуп проактивных уведомлений: планировщик тикает каждые ~10 мин и
@@ -406,6 +407,23 @@ model JournalEntry {
   notes      String?
 
   @@unique([userId, date])
+}
+
+/// Защита записей от повтора: телефон шлёт Idempotency-Key с офлайн-записью
+/// (трата, задача…), повтор с тем же ключом получает сохранённый ответ, а не
+/// вторую запись (ответ потерялся в сети → очередь отправила ещё раз).
+model IdempotencyKey {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key        String
+  /// 0 — запрос ещё выполняется (заявка), иначе HTTP-статус сохранённого ответа.
+  statusCode Int      @default(0)
+  response   Json?
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, key])
+  @@index([createdAt])
 }
 
 /// Заметки недели из планера: заметки / что улучшить / благодарность / победы.

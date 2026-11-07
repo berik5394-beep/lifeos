@@ -138,6 +138,9 @@ interface VoiceResult {
 
 interface TranscribeResponse {
   text: string;
+  /** Пусто — почему: тишина или сбой сервиса (сервер говорит честно). */
+  message?: string;
+  reason?: 'silence' | 'service';
 }
 
 export interface UseVoiceReturn {
@@ -657,7 +660,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
       }
 
       if (!transcript) {
-        setError('Не удалось распознать речь. Говорите громче и чётче.');
+        setError('Не расслышал — скажи ещё раз, чуть ближе к микрофону.');
         setState('error');
         hapticError();
         return;
@@ -738,7 +741,9 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
         setLiveTranscript(transcript);
 
         if (!transcript) {
-          setError('Не удалось распознать речь. Говорите громче и чётче.');
+          // Сервер различает тишину и свой сбой («сбой на моей стороне, не у
+          // тебя») — показываем его слова, а не «говорите громче» на всё.
+          setError(data.message || 'Не расслышал — скажи ещё раз, чуть ближе к микрофону.');
           setState('error');
           hapticError();
           return;

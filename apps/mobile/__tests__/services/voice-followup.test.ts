@@ -45,7 +45,8 @@ describe('confirmPendingVoiceAction', () => {
   it('200 → текст и интент сервера, шлёт confirm на /voice/confirm-action', async () => {
     mockApi.post.mockResolvedValueOnce({ message: 'Записал расход 3000₸', intent: 'add_expense', done: true, emotion: 'happy' });
     await expect(confirmPendingVoiceAction(true)).resolves.toEqual({ message: 'Записал расход 3000₸', intent: 'add_expense', emotion: 'happy', pendingAction: null, confirmationText: null });
-    expect(mockApi.post).toHaveBeenCalledWith('/voice/confirm-action', { confirm: true }, 'test-token-123');
+    // Подтверждение исполняет мозг — ждём до минуты (раньше 15 с → ложное «нет интернета»).
+    expect(mockApi.post).toHaveBeenCalledWith('/voice/confirm-action', { confirm: true }, 'test-token-123', { timeoutMs: 60_000 });
   });
   it('409 → «устарело», не бросает', async () => {
     mockApi.post.mockRejectedValueOnce(Object.assign(new Error('conflict'), { status: 409 }));

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeTaskTitle, matchOpenTask } from './task-title.js';
+import { sanitizeTaskTitle, matchOpenTask, pickOpenTask } from './task-title.js';
 
 describe('sanitizeTaskTitle', () => {
   it('strips trailing relative-date phrase «на сегодня»', () => {
@@ -54,5 +54,23 @@ describe('matchOpenTask', () => {
   });
   it('empty query → null', () => {
     expect(matchOpenTask('', tasks)).toBeNull();
+  });
+});
+
+describe('pickOpenTask — «закрой задачу X» без угадывания', () => {
+  const t = (title: string, minsAgo: number) => ({ title, createdAt: new Date(Date.now() - minsAgo * 60_000) });
+  it('одна подходящая — она', () => {
+    expect(pickOpenTask('отчёт', [t('отчёт для банка', 5), t('купить хлеб', 1)])).toMatchObject({ kind: 'one', task: { title: 'отчёт для банка' } });
+  });
+  it('две подходящие — спросить «какую?» (свежие первыми)', () => {
+    const r = pickOpenTask('отчёт', [t('отчёт для банка', 5), t('отчёт по дому', 1)]);
+    expect(r.kind).toBe('many');
+    expect(r.kind === 'many' && r.tasks.map((x) => x.title)).toEqual(['отчёт по дому', 'отчёт для банка']);
+  });
+  it('несколько, но одна совпадает названием целиком — она', () => {
+    expect(pickOpenTask('отчёт', [t('отчёт', 5), t('отчёт по дому', 1)])).toMatchObject({ kind: 'one', task: { title: 'отчёт' } });
+  });
+  it('ничего — none', () => {
+    expect(pickOpenTask('сайт', [t('отчёт', 1)])).toEqual({ kind: 'none' });
   });
 });
