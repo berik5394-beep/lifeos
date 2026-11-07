@@ -9,6 +9,7 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -20,7 +21,9 @@ import { AnimatedProgressBar } from '@/components/ui/animated-progress-bar';
 import { SkeletonList } from '@/components/ui/skeleton';
 import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize, borderRadius } from '@/constants';
-import { api } from '@/services/api';
+import { api, ApiError, BRAIN_TIMEOUT_MS } from '@/services/api';
+import { useAuthStore } from '@/stores/auth-store';
+import { toLifeAnalysis, type ExitStrategy, type LifeAnalysis, type Severity, type ServerLifeAnalysis } from '@/services/life-insights';
 import type { Theme } from '@/constants/themes';
 import { pluralN, DAYS } from '@/utils/plural';
 
@@ -31,73 +34,13 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// ---------- Types ----------
-
-interface MoneyDrain {
-  category: string;
-  label: string;
-  amount: number;
-  percent: number;
-  color: string;
-}
-
-interface FinancialTruth {
-  monthlyBurnRate: number;
-  savingsRate: number;
-  topDrains: MoneyDrain[];
-  apartmentTimeline: string;
-  daysUntilBroke: number | null;
-  dailyLifeCost: number;
-  badDecisions: string[];
-  cashFlowGaps: string[];
-}
-
-interface HealthTruth {
-  sleepHours: number;
-  sleepVerdict: string;
-  sleepSeverity: 'good' | 'warning' | 'danger';
-  stepsPerDay: number;
-  stepsVerdict: string;
-  stepsSeverity: 'good' | 'warning' | 'danger';
-  exerciseFrequency: string;
-  burnoutRisk: number;
-  bodyWarnings: string[];
-  mentalHealthFlags: string[];
-}
-
-interface LifeProgress {
-  goalsOnTrack: number;
-  goalsBehind: number;
-  goalsTotal: number;
-  habitConsistency: number;
-  worstHabits: { name: string; completion: number }[];
-  productivityTrend: 'up' | 'down' | 'flat';
-  currentStreak: number;
-}
-
-interface ExitStrategy {
-  id: string;
-  text: string;
-  actionType: 'task' | 'habit';
-  actionData: Record<string, string>;
-}
-
-interface LifeAnalysis {
-  financial: FinancialTruth;
-  health: HealthTruth;
-  progress: LifeProgress;
-  aiVerdict: string;
-  exitStrategies: ExitStrategy[];
-  generatedAt: string;
-}
-
 // ---------- Helpers ----------
 
 function formatMoney(amount: number): string {
   return amount.toLocaleString('ru-RU') + ' ₸';
 }
 
-function severityColor(severity: 'good' | 'warning' | 'danger', c: Theme): string {
+function severityColor(severity: Severity, c: Theme): string {
   switch (severity) {
     case 'good':
       return c.success;
@@ -166,12 +109,18 @@ export default function LifeInsightsScreen() {
   const [exitVisible, setExitVisible] = useState(false);
   const [creatingAction, setCreatingAction] = useState<string | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
+  const [actionDone, setActionDone] = useState<string[]>([]);
   const fetchAnalysis = useCallback(async () => {
     try {
-      const result = await api.post<LifeAnalysis>('/ai/life-analysis', {});
-      setData(result);
-    } catch {
-      // keep stale data if available
+      // Раньше запрос уходил без входа (401) и ответ сервера не совпадал с экраном.
+      const token = useAuthStore.getState().token;
+      const result = await api.post<ServerLifeAnalysis>('/ai/life-analysis', {}, token, { timeoutMs: BRAIN_TIMEOUT_MS });
+      setData(toLifeAnalysis(result));
+      setError(null);
+    } catch (e) {
+      // Старый разбор (если был) оставляем; причину — словами.
+      setError(e instanceof ApiError && (e.status === 429 || e.status === 0 || e.status === 408) ? e.message : 'Не получилось собрать разбор. Потяни вниз, чтобы попробовать ещё раз.');
     }
   }, []);
 
@@ -211,13 +160,15 @@ export default function LifeInsightsScreen() {
     async (strategy: ExitStrategy) => {
       setCreatingAction(strategy.id);
       try {
+        const token = useAuthStore.getState().token;
         if (strategy.actionType === 'task') {
-          await api.post('/tasks', strategy.actionData);
+          await api.post('/tasks', strategy.actionData, token);
         } else {
-          await api.post('/habits', strategy.actionData);
+          await api.post('/habits', strategy.actionData, token);
         }
+        setActionDone((d) => [...d, strategy.id]);
       } catch {
-        // silent fail
+        Alert.alert('Не получилось', 'Задача не создалась — проверь связь и попробуй ещё раз.');
       } finally {
         setCreatingAction(null);
       }
@@ -259,8 +210,12 @@ export default function LifeInsightsScreen() {
         <View style={styles.centered}>
           <Text style={styles.emptyIcon}>🔍</Text>
           <Text style={styles.emptyText}>
-            Не удалось загрузить анализ. Потяните вниз для обновления.
+            {error ?? 'Не получилось собрать разбор.'}
           </Text>
+          <TouchableOpacity onPress={handleRefresh} style={styles.actionButton} activeOpacity={0.7} accessibilityRole="button">
+            <Feather name="refresh-cw" size={16} color={c.primary} />
+            <Text style={styles.actionButtonText}>{refreshing ? 'Собираю…' : 'Попробовать ещё раз'}</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -295,6 +250,18 @@ export default function LifeInsightsScreen() {
           </View>
         </FadeInView>
 
+        {/* Данных почти нет — честно сказать, а не выдавать нули за «правду». */}
+        {data.sparse || error ? (
+          <FadeInView delay={50}>
+            <Card style={styles.sectionCard}>
+              <Text style={styles.insightText}>
+                {error ??
+                  'Данных пока мало — разбор станет точнее, когда появятся траты и доходы, привычки, цели и записи в дневнике (сон, настроение).'}
+              </Text>
+            </Card>
+          </FadeInView>
+        ) : null}
+
         {/* Financial Truth */}
         <FadeInView delay={100}>
           <AnimatedPress>
@@ -303,7 +270,7 @@ export default function LifeInsightsScreen() {
                 styles.sectionCard,
                 {
                   borderColor:
-                    financial.savingsRate < 0 ? c.danger : c.success,
+                    financial.savingsRate !== null && financial.savingsRate < 0 ? c.danger : c.success,
                   borderWidth: 1.5,
                 },
               ]}
@@ -319,6 +286,7 @@ export default function LifeInsightsScreen() {
                 </Text>
               </View>
 
+              {financial.savingsRate !== null ? (
               <View style={styles.statRow}>
                 <Text style={styles.statLabel}>Ты откладываешь</Text>
                 <Text
@@ -337,9 +305,10 @@ export default function LifeInsightsScreen() {
                   {financial.savingsRate}%
                 </Text>
               </View>
+              ) : null}
 
               {/* Top 3 money drains */}
-              <Text style={styles.subHeading}>Куда уходят деньги</Text>
+              {financial.topDrains.length > 0 ? <Text style={styles.subHeading}>Куда уходят деньги</Text> : null}
               {financial.topDrains.map((drain, idx) => (
                 <View key={idx} style={styles.drainRow}>
                   <View style={styles.drainLabelRow}>
@@ -358,12 +327,14 @@ export default function LifeInsightsScreen() {
               ))}
 
               {/* Apartment timeline */}
+              {financial.apartmentTimeline ? (
               <View style={styles.insightBox}>
                 <Feather name="home" size={16} color={c.textSecondary} />
                 <Text style={styles.insightText}>
                   {financial.apartmentTimeline}
                 </Text>
               </View>
+              ) : null}
 
               {/* Days until broke */}
               {financial.daysUntilBroke !== null ? (
@@ -428,7 +399,7 @@ export default function LifeInsightsScreen() {
                 <SeverityDot severity={health.sleepSeverity} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.statLabel}>
-                    Сон: {health.sleepHours} ч/ночь
+                    {health.sleepHours === null ? 'Сон' : `Сон: ${health.sleepHours} ч/ночь`}
                   </Text>
                   <Text
                     style={[
@@ -441,7 +412,8 @@ export default function LifeInsightsScreen() {
                 </View>
               </View>
 
-              {/* Steps */}
+              {/* Steps — только если шаги есть (шагомера в приложении нет) */}
+              {health.stepsPerDay > 0 ? (
               <View style={styles.healthRow}>
                 <SeverityDot severity={health.stepsSeverity} />
                 <View style={{ flex: 1 }}>
@@ -458,6 +430,7 @@ export default function LifeInsightsScreen() {
                   </Text>
                 </View>
               </View>
+              ) : null}
 
               {/* Exercise */}
               <View style={styles.statRow}>
@@ -601,14 +574,6 @@ export default function LifeInsightsScreen() {
                   {progress.worstHabits.map((h, idx) => (
                     <View key={idx} style={styles.worstRow}>
                       <Text style={styles.worstName}>{h.name}</Text>
-                      <Text
-                        style={[
-                          styles.worstPercent,
-                          { color: h.completion < 30 ? c.danger : '#F59E0B' },
-                        ]}
-                      >
-                        {h.completion}%
-                      </Text>
                     </View>
                   ))}
                 </View>
@@ -670,7 +635,7 @@ export default function LifeInsightsScreen() {
                 {aiVerdict}
               </Text>
 
-              {verdictExpanded ? (
+              {verdictExpanded && exitStrategies.length > 0 ? (
                 <TouchableOpacity
                   onPress={toggleExit}
                   style={styles.actionButton}
@@ -702,7 +667,7 @@ export default function LifeInsightsScreen() {
                   </View>
                   <TouchableOpacity
                     onPress={() => handleCreateAction(strategy)}
-                    disabled={creatingAction === strategy.id}
+                    disabled={creatingAction === strategy.id || actionDone.includes(strategy.id)}
                     style={[
                       styles.strategyButton,
                       {
@@ -738,6 +703,8 @@ export default function LifeInsightsScreen() {
                     >
                       {creatingAction === strategy.id
                         ? '...'
+                        : actionDone.includes(strategy.id)
+                        ? 'Добавлено ✓'
                         : strategy.actionType === 'task'
                         ? 'Создать задачу'
                         : 'Создать привычку'}

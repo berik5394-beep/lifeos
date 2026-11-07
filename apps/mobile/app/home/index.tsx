@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useColors } from '@/hooks/use-colors';
 import { ChatInputRow } from '@/components/room/chat-input-row';
@@ -42,9 +43,27 @@ export default function HomeScreen() {
   );
 }
 
+/** Клавиатура открыта? Тогда строка робота прямо над ней, без отступа под «домой». */
+function useKeyboardOpen(): boolean {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const a = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setOpen(true));
+    const b = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setOpen(false));
+    return () => {
+      a.remove();
+      b.remove();
+    };
+  }, []);
+  return open;
+}
+
 function HomePager() {
   const c = useColors();
   const { width } = useWindowDimensions();
+  // Строка «Скажи роботу» лежала на полоске «домой» (Berik: «будто лежат на
+  // полу»). Как на остальных экранах — над ней; с клавиатурой — без отступа.
+  const insets = useSafeAreaInsets();
+  const kbOpen = useKeyboardOpen();
   const pager = useRef<ScrollView>(null);
   const [page, setPage] = useState(TOOLS_PAGE);
   // Хоть раз открывал комнату? Нет — у точек подсказка, где она.
@@ -55,6 +74,15 @@ function HomePager() {
     setRoomSeen(true);
   }, [page, roomSeen]);
   const [tab, setTab] = useState<ToolKey>('today');
+  // Жест «от левого края — на Сегодня» невидим: подсказка, пока ни разу не пользовался.
+  const [edgeSeen, setEdgeSeen] = useState(() => storage.getBoolean('edge_back_seen') === true);
+  const onTab = useCallback((t: ToolKey, via?: 'edge') => {
+    setTab(t);
+    if (via === 'edge') {
+      storage.setBoolean('edge_back_seen', true);
+      setEdgeSeen(true);
+    }
+  }, []);
 
   const token = useAuthStore((s) => s.token);
   const isFeatureVisible = useUIStore((s) => s.isFeatureVisible);
@@ -125,7 +153,7 @@ function HomePager() {
         style={styles.container}
       >
         <View style={{ width }}>
-          <ToolsPage tools={tools} tab={shownTab} onTab={setTab} width={width} />
+          <ToolsPage tools={tools} tab={shownTab} onTab={onTab} width={width} />
         </View>
         <View style={{ width }}>
           <RoomPage active={page === ROOM_PAGE} />
@@ -133,6 +161,11 @@ function HomePager() {
       </ScrollView>
       {/* Новичок не знает про комнату робота (тур живёт там): одна строка у
           точек, пока он ни разу туда не заходил. */}
+      {roomSeen && !edgeSeen && page === TOOLS_PAGE && shownTab !== 'today' && (
+        <Text style={[styles.roomHint, { color: c.textSecondary }]} pointerEvents="none">
+          Проведи от левого края вправо — вернёшься на «Сегодня»
+        </Text>
+      )}
       {!roomSeen && page === TOOLS_PAGE && (
         <Text style={[styles.roomHint, { color: c.textSecondary }]} pointerEvents="none">
           Смахни влево — там комната робота 🤖
@@ -144,7 +177,9 @@ function HomePager() {
           <View key={p} style={[styles.dot, { backgroundColor: p === page ? c.text : c.surfaceLight }]} />
         ))}
       </View>
-      <ChatInputRow />
+      <View style={{ paddingBottom: kbOpen ? 0 : insets.bottom }}>
+        <ChatInputRow />
+      </View>
     </View>
   );
 }

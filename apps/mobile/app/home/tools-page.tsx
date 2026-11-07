@@ -2,6 +2,7 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
 import { RobotAvatar } from '@/components/robot/robot-avatar';
 import { RobotSpeechBubble } from '@/components/robot/robot-speech-bubble';
@@ -33,11 +34,16 @@ const FRESH_REPLY_MS = 90_000;
 const VOICE_NOTE_MS = 4000;
 /** Вкладка простояла дольше — при возврате перечитать данные. */
 const STALE_TAB_MS = 30_000;
+/** Жест «назад на Сегодня»: начать у левого края и вести вправо (как «Назад» в iPhone). */
+const EDGE_PX = 28;
+const EDGE_GO_PX = 40;
+const EDGE_SLOP_Y = 24;
 
 /**
  * Экран инструментов (Berik: «комнату отдельно, инструменты отдельно»).
  * Сверху — вкладки, под ними инструмент на весь экран; маленький робот в углу
- * отвечает и подсказывает. Свайп влево — комната робота.
+ * отвечает и подсказывает. Свайп влево — комната робота; от левого края
+ * вправо — назад на «Сегодня».
  */
 export const ToolsPage = memo(function ToolsPage({
   tools,
@@ -47,7 +53,8 @@ export const ToolsPage = memo(function ToolsPage({
 }: {
   tools: PanelDef[];
   tab: ToolKey;
-  onTab: (t: ToolKey) => void;
+  /** via='edge' — вернулись жестом от левого края. */
+  onTab: (t: ToolKey, via?: 'edge') => void;
   width: number;
 }) {
   const c = useColors();
@@ -183,6 +190,37 @@ export const ToolsPage = memo(function ToolsPage({
     tabsRef.current?.scrollTo({ x: Math.max(0, l.x - (width - l.w) / 2), animated: true });
   }, [tab, width]);
 
+  // Быстрый возврат на «Сегодня» (Berik: «листать вкладки назад по одной —
+  // непонятно, как выйти»): палец от левого края вправо. Смахивание влево
+  // по-прежнему открывает комнату робота.
+  const edgeStart = useRef({ x: 0, y: 0 });
+  const edgeBack = useMemo(
+    () =>
+      Gesture.Pan()
+        .manualActivation(true)
+        .runOnJS(true)
+        .onTouchesDown((e, sm) => {
+          const t = e.allTouches[0];
+          if (!t || tab === 'today' || t.absoluteX > EDGE_PX) {
+            sm.fail();
+            return;
+          }
+          edgeStart.current = { x: t.absoluteX, y: t.absoluteY };
+        })
+        .onTouchesMove((e, sm) => {
+          const t = e.allTouches[0];
+          if (!t) return;
+          const dx = t.absoluteX - edgeStart.current.x;
+          const dy = Math.abs(t.absoluteY - edgeStart.current.y);
+          if (dy > EDGE_SLOP_Y || dx < -8) sm.fail();
+          else if (dx > EDGE_GO_PX) {
+            sm.activate();
+            onTab('today', 'edge');
+          }
+        }),
+    [tab, onTab],
+  );
+
   const bubble = voiceBubble ? (
     <ChatReplyBubble text={voiceBubble} tail="left" />
   ) : showReply ? (
@@ -232,6 +270,7 @@ export const ToolsPage = memo(function ToolsPage({
         })}
       </ScrollView>
 
+      <GestureDetector gesture={edgeBack}>
       <View style={styles.body}>
         <RobotDodgeContext.Provider value={dodge}>
         <ContentWidthContext.Provider value={width}>
@@ -248,6 +287,7 @@ export const ToolsPage = memo(function ToolsPage({
         </ContentWidthContext.Provider>
         </RobotDodgeContext.Provider>
       </View>
+      </GestureDetector>
 
       {/* Маленький робот поверх инструмента, в углу; облачко — справа от него. */}
       {!kbOpen && (

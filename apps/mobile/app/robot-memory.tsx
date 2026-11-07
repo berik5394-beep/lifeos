@@ -7,6 +7,8 @@ import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { formatDate } from '@/utils/dates';
 import { hapticLight } from '@/services/haptics';
+import { useSharedVoice } from '@/hooks/shared-voice';
+import { useChatStore } from '@/stores/chat-store';
 import {
   factsAbout,
   groupFacts,
@@ -20,6 +22,10 @@ import {
 type Colors = ReturnType<typeof useColors>;
 /** Сколько висит «Забыл. Вернуть?» после «Неправда». */
 const UNDO_MS = 6000;
+/** Робот запоминает в фоне после ответа — перечитать память чуть позже. */
+const RELOAD_AFTER_REPLY_MS = 8000;
+/** С чего робот начнёт расспрашивать по кнопке «Рассказать о себе». */
+const TELL_ABOUT_ME = 'Хочу рассказать тебе о себе — расспроси меня по одному вопросу';
 
 /**
  * «Что я о тебе помню» (робот-друг, пункт 1). Человек видит, что робот его
@@ -53,6 +59,20 @@ export default function RobotMemoryScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+  // Рассказал что-то роботу в строке внизу — через пару секунд оно появится тут.
+  const voice = useSharedVoice();
+  const lastReply = useChatStore((st) => (st.messages[0]?.role === 'assistant' ? st.messages[0].id : null));
+  const seenReply = useRef(lastReply);
+  useEffect(() => {
+    if (!lastReply || lastReply === seenReply.current) return;
+    seenReply.current = lastReply;
+    const t = setTimeout(() => void load(), RELOAD_AFTER_REPLY_MS);
+    return () => clearTimeout(t);
+  }, [lastReply, load]);
+  const tellAboutMe = useCallback(() => {
+    hapticLight();
+    voice.send(TELL_ABOUT_ME);
+  }, [voice]);
   useEffect(() => () => {
     if (undoTimer.current) clearTimeout(undoTimer.current);
   }, []);
@@ -111,13 +131,25 @@ export default function RobotMemoryScreen() {
           <Text style={styles.introText}>
             Это то, что я запомнил из наших разговоров. Если что-то не так — нажми «Неправда», и я забуду.
           </Text>
+          <Text style={styles.introText}>
+            Рассказывай мне в строке «Скажи роботу» внизу — текстом или голосом. Что запомню, появится здесь.
+          </Text>
+          <Pressable
+            style={styles.tellBtn}
+            onPress={tellAboutMe}
+            accessibilityRole="button"
+            accessibilityLabel="Рассказать о себе — робот задаст вопросы"
+          >
+            <Feather name="message-circle" size={16} color={c.text} />
+            <Text style={styles.tellText}>Рассказать о себе</Text>
+          </Pressable>
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {isEmpty(data) && !error ? (
           <Text style={styles.empty}>
-            Пока я мало о тебе знаю. Расскажи о себе, о близких, о том, что для тебя важно, — я запомню.
+            Пока я мало о тебе знаю. Нажми «Рассказать о себе» — я буду спрашивать по одному вопросу, а ты отвечай в строке внизу.
           </Text>
         ) : null}
 
@@ -247,7 +279,19 @@ function createStyles(c: Colors) {
     content: { padding: spacing.md, paddingBottom: spacing.xl },
     flex: { flex: 1 },
     intro: { backgroundColor: c.surface, borderRadius: borderRadius.lg, padding: spacing.md, marginBottom: spacing.md },
-    introText: { fontSize: fontSize.sm, color: c.textSecondary, lineHeight: 20 },
+    introText: { fontSize: fontSize.sm, color: c.textSecondary, lineHeight: 20, marginBottom: spacing.xs },
+    tellBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: spacing.xs,
+      marginTop: spacing.xs,
+      paddingHorizontal: spacing.md,
+      minHeight: 40,
+      borderRadius: borderRadius.lg,
+      backgroundColor: c.primary,
+    },
+    tellText: { fontSize: fontSize.sm, fontWeight: '600', color: c.text },
     error: { color: c.danger, fontSize: fontSize.sm, marginBottom: spacing.md },
     empty: { color: c.textSecondary, fontSize: fontSize.md, textAlign: 'center', marginTop: spacing.xl, lineHeight: 22 },
     section: { marginBottom: spacing.lg },
