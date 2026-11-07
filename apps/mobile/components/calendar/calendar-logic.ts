@@ -164,3 +164,28 @@ export function dayPriorityColors(tasks: ColoredTaskLike[]): Record<string, stri
   }
   return out;
 }
+
+/**
+ * «14:00 встреча с Ахметом», «в 9:30 стоматолог», «встреча 15-16» → время + название
+ * (для строки «Новое событие» в окне дня). Без времени — событие на весь день.
+ */
+export function parseEventLine(raw: string): { title: string; startTime?: string; endTime?: string } | null {
+  let t = raw.trim();
+  if (!t) return null;
+  const hhmm = (h: string, m?: string) => `${h.padStart(2, '0')}:${(m ?? '00').padStart(2, '0')}`;
+  let startTime: string | undefined;
+  let endTime: string | undefined;
+  const range = t.match(/(?:^|\s)(?:с\s*)?(\d{1,2})(?:[:.](\d{2}))?\s*[-–до]+\s*(\d{1,2})(?:[:.](\d{2}))?(?=\s|$)/i);
+  const single = t.match(/(?:^|\s)(?:в\s+)?(\d{1,2})[:.](\d{2})(?=\s|$)/i);
+  if (range && Number(range[1]) < 24 && Number(range[3]) < 24) {
+    startTime = hhmm(range[1], range[2]);
+    endTime = hhmm(range[3], range[4]);
+    t = t.replace(range[0], ' ');
+  } else if (single && Number(single[1]) < 24) {
+    startTime = hhmm(single[1], single[2]);
+    t = t.replace(single[0], ' ');
+  }
+  const title = t.replace(/\s+/g, ' ').trim();
+  if (!title) return null;
+  return { title: title[0].toUpperCase() + title.slice(1), startTime, endTime };
+}

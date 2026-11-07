@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
 import { Feather } from '@expo/vector-icons';
 import { Card } from '@/components/ui';
@@ -11,7 +11,7 @@ import { useEventStore } from '@/stores/event-store';
 import { useScheduleStore } from '@/stores/schedule-store';
 import { MonthGrid } from '@/components/calendar/month-grid';
 import { DayDetailSheet } from '@/components/calendar/day-detail-sheet';
-import { computeDayStats, dayKey, dayPriorityColors, nextPriority } from '@/components/calendar/calendar-logic';
+import { computeDayStats, dayKey, dayPriorityColors, nextPriority, parseEventLine } from '@/components/calendar/calendar-logic';
 
 export default function CalendarScreen() {
   const colors = useColors();
@@ -70,6 +70,16 @@ export default function CalendarScreen() {
     },
     [selectedDay, createTask],
   );
+  // Событие на выбранный день прямо из окна дня (время из строки).
+  const addEvent = useCallback(
+    async (line: string) => {
+      if (!selectedDay) return;
+      const p = parseEventLine(line);
+      if (!p) throw new Error('Напиши, что за событие: «14:00 встреча с Ахметом».');
+      await useEventStore.getState().createEvent({ title: p.title, date: selectedDay, startTime: p.startTime, endTime: p.endTime });
+    },
+    [selectedDay],
+  );
   const cycleColor = useCallback(
     (t: { id: string; priority?: string | null }) => {
       void updateTask(t.id, { priority: nextPriority(t.priority) }).catch(fail);
@@ -86,9 +96,11 @@ export default function CalendarScreen() {
           <Feather name="chevron-left" size={24} color={colors.text} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>
-            {RU_MONTHS[month]} {year}
-          </Text>
+          <Pressable onPress={() => setCursor(new Date())} accessibilityRole="button" accessibilityLabel="Вернуться к текущему месяцу">
+            <Text style={[styles.headerTitle, { color: colors.text }]}>
+              {RU_MONTHS[month]} {year}
+            </Text>
+          </Pressable>
           {isLoadingTasks && <ActivityIndicator size="small" color={colors.primary} />}
         </View>
         <TouchableOpacity onPress={nextMonth} hitSlop={12}>
@@ -113,12 +125,13 @@ export default function CalendarScreen() {
         events={dayEvents}
         onClose={() => setSelectedDay(null)}
         onAddTask={addTask}
+        onAddEvent={addEvent}
         onCycleColor={cycleColor}
         onToggle={toggle}
         onDelete={remove}
       />
       <Text style={[styles.legend, { color: colors.textSecondary }]}>
-        Нажми на число, чтобы добавить задачу на этот день
+        Нажми на число, чтобы добавить задачу или событие на этот день
       </Text>
     </ScreenSafeArea>
   );

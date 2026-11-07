@@ -25,6 +25,8 @@ interface DayDetailSheetProps {
   onClose: () => void;
   /** Новая задача на этот день (тап по бледной строке). */
   onAddTask: (title: string) => void | Promise<unknown>;
+  /** Новое событие на этот день: «14:00 встреча с Ахметом». */
+  onAddEvent?: (line: string) => void | Promise<unknown>;
   /** Тап по цветной точке — следующий цвет (= важность). */
   onCycleColor: (task: DayTask) => void;
   onToggle: (task: DayTask) => void;
@@ -46,6 +48,7 @@ export function DayDetailSheet({
   events,
   onClose,
   onAddTask,
+  onAddEvent,
   onCycleColor,
   onToggle,
   onDelete,
@@ -55,7 +58,7 @@ export function DayDetailSheet({
   return (
     <Modal visible={dateKey !== null} onClose={onClose} title={dateKey ? ruDate(dateKey) : ''}>
       <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-        {events.length > 0 && (
+        {(events.length > 0 || onAddEvent) && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>События</Text>
             {events.map((e) => (
@@ -64,6 +67,7 @@ export function DayDetailSheet({
                 {e.title}
               </Text>
             ))}
+            {onAddEvent ? <TapToAdd hint="Новое событие: «14:00 встреча»" onSubmit={onAddEvent} /> : null}
           </View>
         )}
 

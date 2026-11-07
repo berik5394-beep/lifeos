@@ -4,6 +4,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   RefreshControl,
   Alert,
   LayoutAnimation,
@@ -36,6 +37,7 @@ import { goalPercent, GOAL_STEP_PCT } from '@/utils/goal-progress';
 import { useInTools } from '@/hooks/use-content-width';
 import { pluralN, HABITS } from '@/utils/plural';
 import { useScheduleStore } from '@/stores/schedule-store';
+import { InlineEntry } from '@/components/ui/inline-entry';
 
 // Enable LayoutAnimation on Android
 if (
@@ -175,7 +177,7 @@ const HabitItem = React.memo(function HabitItem({
         )}
       </TouchableOpacity>
 
-      <View style={{ flex: 1 }}>
+      <Pressable style={{ flex: 1 }} onPress={handleToggle} accessibilityRole="checkbox" accessibilityState={{ checked: todayCompleted }}>
         <Text
           style={{
             fontSize: fontSize.sm,
@@ -191,7 +193,7 @@ const HabitItem = React.memo(function HabitItem({
           {getFrequencyLabel(habit.frequency)}
           {streak > 0 ? ` · 🔥 ${streak} дн.` : ''}
         </Text>
-      </View>
+      </Pressable>
 
       <TouchableOpacity onPress={handleUnlink} style={{ padding: spacing.xs }}>
         <Text style={{ fontSize: 16, color: c.textSecondary }}>✕</Text>
@@ -214,7 +216,9 @@ interface GoalItemProps {
   areaColor: string;
   onEdit: (goal: { id: string; goalText: string; progress: number; area: string }) => void;
   onDelete: (id: string) => void;
-  onProgressChange: (id: string, progress: number) => void;
+  onProgressChange: (id: string, progress: number) => void | Promise<unknown>;
+  /** Переписать цель прямо в строке. */
+  onRename: (id: string, goalText: string) => void | Promise<unknown>;
   c: ReturnType<typeof useColors>;
   styles: ScreenStyles;
 }
@@ -229,6 +233,7 @@ const GoalItem = React.memo(function GoalItem({
   onEdit,
   onDelete,
   onProgressChange,
+  onRename,
   c,
   styles,
 }: GoalItemProps) {
@@ -264,19 +269,24 @@ const GoalItem = React.memo(function GoalItem({
             textColor={isComplete ? areaColor : c.text}
           />
 
-          <TouchableOpacity
-            onPress={handleEdit}
+          {/* Тап — прямо здесь: новый текст или «60%»; удержание — полная правка. */}
+          <InlineEntry
             style={styles.goalTextWrap}
-            activeOpacity={0.6}
-            accessibilityRole="button"
-            accessibilityLabel={`${goal.goalText}, прогресс ${progressPercent}%`}
-            accessibilityHint="Нажми, чтобы изменить цель"
+            placeholder="Новый текст или «60%»"
+            onSubmit={(t) => {
+              const pct = t.match(/^(\d{1,3})\s*%$/);
+              if (pct) return onProgressChange(goal.id, Math.min(100, Number(pct[1])));
+              return onRename(goal.id, t);
+            }}
+            accessibilityLabel={`${goal.goalText}, прогресс ${progressPercent}%. Нажми — переписать или задать процент`}
           >
-            <Text style={styles.goalText}>
-              {isComplete ? '🎉 ' : ''}
-              {goal.goalText}
-            </Text>
-          </TouchableOpacity>
+            <Pressable onLongPress={handleEdit} delayLongPress={350}>
+              <Text style={styles.goalText}>
+                {isComplete ? '🎉 ' : ''}
+                {goal.goalText}
+              </Text>
+            </Pressable>
+          </InlineEntry>
 
           <View style={styles.goalStepper}>
             <TouchableOpacity
@@ -330,7 +340,8 @@ interface AreaCardProps {
   onQuickAddGoal: (area: GoalAreaKey, text: string) => Promise<void>;
   onEditGoal: (goal: { id: string; goalText: string; progress: number; area: string }) => void;
   onDeleteGoal: (id: string) => void;
-  onProgressChange: (id: string, progress: number) => void;
+  onProgressChange: (id: string, progress: number) => void | Promise<unknown>;
+  onRenameGoal: (id: string, goalText: string) => void | Promise<unknown>;
   onToggleHabit: (habitId: string, completed: boolean) => void;
   onUnlinkHabit: (habitId: string) => void;
   onLinkHabit: (area: GoalAreaKey) => void;
@@ -350,6 +361,7 @@ const AreaCard = React.memo(function AreaCard({
   onEditGoal,
   onDeleteGoal,
   onProgressChange,
+  onRenameGoal,
   onToggleHabit,
   onUnlinkHabit,
   onLinkHabit,
@@ -585,6 +597,7 @@ const AreaCard = React.memo(function AreaCard({
                     onEdit={onEditGoal}
                     onDelete={onDeleteGoal}
                     onProgressChange={onProgressChange}
+                    onRename={onRenameGoal}
                     c={c}
                     styles={styles}
                   />
@@ -1174,6 +1187,11 @@ export default function GoalsScreen() {
     [deleteYearlyGoal],
   );
 
+  const handleRenameGoal = useCallback(
+    (id: string, goalText: string) => updateYearlyGoal(id, { goalText }),
+    [updateYearlyGoal],
+  );
+
   const handleProgressChange = useCallback(
     async (id: string, progress: number) => {
       try {
@@ -1329,7 +1347,9 @@ export default function GoalsScreen() {
           <TouchableOpacity onPress={handlePrevYear} style={styles.yearArrow} activeOpacity={0.6}>
             <Text style={styles.yearArrowText}>◀</Text>
           </TouchableOpacity>
-          <Text style={styles.yearText}>{year}</Text>
+          <Pressable onPress={() => setYear(CURRENT_YEAR)} accessibilityRole="button" accessibilityLabel="Вернуться к текущему году">
+            <Text style={styles.yearText}>{year}</Text>
+          </Pressable>
           <TouchableOpacity onPress={handleNextYear} style={styles.yearArrow} activeOpacity={0.6}>
             <Text style={styles.yearArrowText}>▶</Text>
           </TouchableOpacity>
@@ -1407,6 +1427,7 @@ export default function GoalsScreen() {
             onEditGoal={handleEditGoal}
             onDeleteGoal={handleDeleteGoal}
             onProgressChange={handleProgressChange}
+            onRenameGoal={handleRenameGoal}
             onToggleHabit={handleToggleHabit}
             onUnlinkHabit={handleUnlinkHabit}
             onLinkHabit={handleOpenLinkModal}

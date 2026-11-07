@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   FlatList,
   ScrollView,
   Alert,
@@ -38,6 +39,7 @@ import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
 import { bestWeekday } from '@/utils/task-stats';
 import { useWeekNotes } from '@/hooks/use-week-notes';
 import { useInTools } from '@/hooks/use-content-width';
+import { useRoomToolStore } from '@/stores/room-tool-store';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -262,6 +264,8 @@ interface WeekDayColumnProps {
   isCurrentDay: boolean;
   onToggle: (id: string) => void;
   onAddTask: (date: Date, title: string) => Promise<void>;
+  /** Тап по задаче — карточка (важность, день, время). */
+  onOpen: (task: TaskItem) => void;
   colors: ReturnType<typeof useColors>;
 }
 
@@ -273,6 +277,7 @@ const WeekDayColumn = React.memo(function WeekDayColumn({
   isCurrentDay,
   onToggle,
   onAddTask,
+  onOpen,
   colors: c,
 }: WeekDayColumnProps) {
   const styles = useMemo(() => createStyles(c), [c]);
@@ -307,17 +312,19 @@ const WeekDayColumn = React.memo(function WeekDayColumn({
                 { borderLeftColor: prioInfo?.color ?? c.border },
                 task.completed && styles.weekDayTaskCompleted,
               ]}
-              onPress={() => onToggle(task.id)}
+              onPress={() => onOpen(task)}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={`${task.title}: открыть задачу`}
             >
-              <View style={styles.weekDayTaskCheck}>
+              <Pressable style={styles.weekDayTaskCheck} onPress={() => onToggle(task.id)} hitSlop={6} accessibilityRole="checkbox" accessibilityState={{ checked: task.completed }}>
                 <View style={[
                   styles.miniCheckbox,
                   task.completed && { backgroundColor: c.success, borderColor: c.success },
                 ]}>
                   {task.completed && <Text style={styles.miniCheckmark}>{'\u2713'}</Text>}
                 </View>
-              </View>
+              </Pressable>
               <Text
                 style={[
                   styles.weekDayTaskText,
@@ -478,26 +485,38 @@ interface HabitMiniRowProps {
   icon: string;
   daysCompleted: boolean[];
   colors: ReturnType<typeof useColors>;
+  /** Тап по клетке — отметить/снять привычку за этот день недели. */
+  onToggleDay?: (dayIdx: number, done: boolean) => void;
+  /** Тап по названию — вкладка «Привычки». */
+  onOpen?: () => void;
 }
 
-const HabitMiniRow = React.memo(function HabitMiniRow({ name, icon, daysCompleted, colors: c }: HabitMiniRowProps) {
+const HabitMiniRow = React.memo(function HabitMiniRow({ name, icon, daysCompleted, colors: c, onToggleDay, onOpen }: HabitMiniRowProps) {
   const styles = useMemo(() => createStyles(c), [c]);
   return (
     <View style={styles.habitMiniRow}>
-      <View style={styles.habitMiniLabel}>
+      <Pressable style={styles.habitMiniLabel} onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${name}: открыть привычки`}>
         <Text style={styles.habitMiniIcon}>{icon}</Text>
         <Text style={styles.habitMiniName} numberOfLines={1}>{name}</Text>
-      </View>
+      </Pressable>
       <View style={styles.habitMiniDays}>
         {RUSSIAN_DAYS_SHORT.map((dayLabel, idx) => (
-          <View key={idx} style={styles.habitMiniDayCell}>
+          <Pressable
+            key={idx}
+            style={styles.habitMiniDayCell}
+            onPress={() => onToggleDay?.(idx, !daysCompleted[idx])}
+            hitSlop={4}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: daysCompleted[idx] }}
+            accessibilityLabel={`${name}, ${dayLabel}`}
+          >
             <View style={[
               styles.habitMiniCheckbox,
               daysCompleted[idx] && { backgroundColor: c.success, borderColor: c.success },
             ]}>
               {daysCompleted[idx] && <Text style={styles.habitMiniCheck}>{'\u2713'}</Text>}
             </View>
-          </View>
+          </Pressable>
         ))}
       </View>
     </View>
@@ -866,7 +885,9 @@ export default function TasksScreen() {
           <TouchableOpacity onPress={handlePrevMonth} style={styles.navArrow}>
             <Text style={styles.navArrowText}>{'\u25C0'}</Text>
           </TouchableOpacity>
-          <Text style={styles.monthTitle}>{monthName}</Text>
+          <Pressable onPress={() => setCurrentMonth(new Date())} accessibilityRole="button" accessibilityLabel="Вернуться к текущему месяцу">
+            <Text style={styles.monthTitle}>{monthName}</Text>
+          </Pressable>
           <TouchableOpacity onPress={handleNextMonth} style={styles.navArrow}>
             <Text style={styles.navArrowText}>{'\u25B6'}</Text>
           </TouchableOpacity>
@@ -971,7 +992,9 @@ export default function TasksScreen() {
           <TouchableOpacity onPress={handlePrevWeek} style={styles.navArrow}>
             <Text style={styles.navArrowText}>{'\u25C0'}</Text>
           </TouchableOpacity>
-          <Text style={styles.monthTitle}>{getWeekRange(currentWeek)}</Text>
+          <Pressable onPress={() => setCurrentWeek(new Date())} accessibilityRole="button" accessibilityLabel="Вернуться к текущей неделе">
+            <Text style={styles.monthTitle}>{getWeekRange(currentWeek)}</Text>
+          </Pressable>
           <TouchableOpacity onPress={handleNextWeek} style={styles.navArrow}>
             <Text style={styles.navArrowText}>{'\u25B6'}</Text>
           </TouchableOpacity>
@@ -1012,6 +1035,7 @@ export default function TasksScreen() {
                     isCurrentDay={isToday(day.date)}
                     onToggle={handleToggleComplete}
                     onAddTask={handleAddTaskForDay}
+                    onOpen={handleEditTask}
                     colors={c}
                   />
                 );
@@ -1059,6 +1083,10 @@ export default function TasksScreen() {
                 icon={h.icon}
                 daysCompleted={h.daysCompleted}
                 colors={c}
+                onToggleDay={(idx, done) =>
+                  void useHabitStore.getState().toggleHabitLog(h.id, toDateString(weekDays[idx].date), done).catch(() => {})
+                }
+                onOpen={() => useRoomToolStore.getState().openTool('habits')}
               />
             ))}
           </Card>
@@ -1100,7 +1128,7 @@ export default function TasksScreen() {
   }, [
     currentWeek, weekDays, weekTasksByDay, weekStats, weekNotes, weekImprove, weekGratitude,
     habitMiniData, refreshing, handleRefresh, handlePrevWeek, handleNextWeek,
-    handleToggleComplete, handleAddTaskForDay, styles, c,
+    handleToggleComplete, handleAddTaskForDay, handleEditTask, setWeekNotes, setWeekImprove, setWeekGratitude, styles, c,
   ]);
 
   // ─── Render: Slide 3 — Insights ─────────────────────────────────────────

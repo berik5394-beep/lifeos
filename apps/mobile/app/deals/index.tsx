@@ -5,6 +5,7 @@ import { useColors } from '@/hooks/use-colors';
 import { TapToAdd } from '@/components/ui';
 import { borderRadius, fontSize, spacing } from '@/constants';
 import { useDealStore } from '@/stores/deal-store';
+import { parseDealLine } from '@/utils/deal-line';
 import { useChatStore } from '@/stores/chat-store';
 import { useScheduleStore } from '@/stores/schedule-store';
 import { groupDeals } from '@/services/deals';
@@ -59,6 +60,16 @@ export default function DealsScreen() {
   const closeDeal = useCallback(() => setOpenId(null), []);
   const toggleClosed = useCallback(() => setShowClosed((v) => !v), []);
   const openAdd = useCallback(() => setAdding(true), []);
+  // Новая сделка прямо в строке: «Ахмет — оборудование 2 млн» (форма — если нужно больше).
+  const createDeal = useDealStore((s) => s.create);
+  const quickAddDeal = useCallback(
+    async (line: string) => {
+      const p = parseDealLine(line);
+      if (!p) throw new Error('Кто клиент и что продаём: «Ахмет — оборудование 2 млн».');
+      await createDeal(p);
+    },
+    [createDeal],
+  );
   const closeAdd = useCallback(() => setAdding(false), []);
   const openPlan = useCallback(() => setEditingPlan(true), []);
   const closePlan = useCallback(() => setEditingPlan(false), []);
@@ -94,7 +105,7 @@ export default function DealsScreen() {
           ))
         )}
         {/* Добавление без плюсиков: пустая строка в конце открытых сделок открывает форму. */}
-        <TapToAdd hint="Новая сделка" onPress={openAdd} />
+        <TapToAdd hint="Новая сделка: «Ахмет — оборудование 2 млн»" onSubmit={quickAddDeal} />
         <Pressable onPress={toggleClosed} style={styles.closedToggle} accessibilityRole="button">
           <Text style={styles.groupTitle}>{`${showClosed ? '▾' : '▸'} Закрытые`}</Text>
         </Pressable>
