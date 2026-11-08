@@ -9,16 +9,14 @@ import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { AppError, AiModelError } from '../lib/errors.js';
 import { analyzeFinancePhoto, buildFinancePending } from '../services/finance-vision.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
+import { afterBulkTasksCreated, dayForWeekday, startTimeOf } from '../services/bulk-tasks.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
 
 /** День задач из фото: присланный телефоном или «сегодня» по календарю юзера (не UTC сервера). */
 async function captureDay(userId: string, dateISO?: string): Promise<Date> {
-  if (dateISO) {
-    const d = new Date(dateISO);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
+  // dateOnlyUTC — не зависит от пояса сервера (setHours сдвигал бы день при TZ≠UTC).
+  if (dateISO && /^\d{4}-\d{2}-\d{2}/.test(dateISO)) return dateOnlyUTC(dateISO.slice(0, 10));
   return dateOnlyUTC(civilDayRefs(await getUserTimezone(userId)).today);
 }
 
@@ -222,16 +220,17 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
 
   // ----- Import schedule items as tasks -----------------------------------
   const importScheduleSchema = z.object({
+    // Предел: недельное расписание ≤ ~60 пар; без него — неограниченная запись.
     items: z.array(
       z.object({
-        day: z.string().optional().default(''),
-        time: z.string().optional().default(''),
-        subject: z.string().min(1),
-        room: z.string().optional().default(''),
-        teacher: z.string().optional().default(''),
-        notes: z.string().optional().default(''),
+        day: z.string().max(40).optional().default(''),
+        time: z.string().max(40).optional().default(''),
+        subject: z.string().min(1).max(200),
+        room: z.string().max(100).optional().default(''),
+        teacher: z.string().max(100).optional().default(''),
+        notes: z.string().max(500).optional().default(''),
       }),
-    ),
+    ).max(100),
     dateISO: z.string().optional(), // yyyy-mm-dd — if provided, creates tasks for that date
   });
 
@@ -327,25 +326,28 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
     try {
       const baseDate = await captureDay(userId, dateISO);
 
-      const result = await prisma.task.createMany({
+      const created = await prisma.task.createManyAndReturn({
         data: tasks.map((t) => ({
           userId,
           title: t.title,
           category: t.category,
           priority: t.priority,
           date: baseDate,
-          time: t.time || null,
+          time: (t.time && startTimeOf(t.time)) || null,
           notes: t.notes || null,
         })),
+        select: { id: true, title: true, date: true, time: true },
       });
 
-      if (result.count > 0) {
+      if (created.length > 0) {
         captureActivity(userId, {
           type: 'tasks_captured',
-          content: `Снял задачи с фото (${result.count}): ${titlesPreview(tasks.map((t) => t.title))}`,
+          content: `Снял задачи с фото (${created.length}): ${titlesPreview(tasks.map((t) => t.title))}`,
         });
       }
-      return reply.send({ ok: true, created: result.count });
+      // Как у задач с экрана: привязка к цели, наложение, перегруз дня.
+      const checks = await afterBulkTasksCreated(userId, created);
+      return reply.send({ ok: true, created: created.length, ...checks });
     } catch (err) {
       app.log.error({ err }, 'Save captured tasks error');
       return reply.status(500).send({ message: 'Не удалось сохранить задачи' });
@@ -367,31 +369,37 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
 
       // BUG FIX: Task model has `notes` and `time`, not `description`/`timeBlock`.
       // Previous version used `as any` + swallowed errors → feature was silently broken.
-      const result = await prisma.task.createMany({
+      // День недели из фото («Понедельник») → ближайшая такая дата (раньше day
+      // игнорировался и вся неделя ложилась на один день); «9:00–10:30» → «09:00».
+      const baseDay = baseDate.toISOString().slice(0, 10);
+      const created = await prisma.task.createManyAndReturn({
         data: items.map((item) => ({
           userId,
           title: item.subject + (item.room ? ` (${item.room})` : ''),
-          date: baseDate,
+          date: new Date(`${dayForWeekday(item.day, baseDay)}T00:00:00Z`),
           category: 'education',
           priority: 'medium',
-          time: item.time || null,
+          time: startTimeOf(item.time),
           notes:
             [item.teacher && `👨‍🏫 ${item.teacher}`, item.notes]
               .filter(Boolean)
               .join(' • ') || null,
         })),
+        select: { id: true, title: true, date: true, time: true },
       });
 
-      if (result.count > 0) {
+      if (created.length > 0) {
         captureActivity(userId, {
           type: 'schedule_imported',
-          content: `Загрузил расписание (${result.count} пар): ${titlesPreview(items.map((i) => i.subject))}`,
+          content: `Загрузил расписание (${created.length} пар): ${titlesPreview(items.map((i) => i.subject))}`,
         });
       }
+      const checks = await afterBulkTasksCreated(userId, created);
       return reply.send({
         ok: true,
-        created: result.count,
+        created: created.length,
         total: items.length,
+        ...checks,
       });
     } catch (err) {
       app.log.error({ err }, 'Import schedule error');

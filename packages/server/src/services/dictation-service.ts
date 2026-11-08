@@ -11,6 +11,8 @@ import { writeMemory } from './episodic-memory.js';
 import { isV2MemQualityEnabled } from '../lib/feature-flags.js';
 import { civilDayRefs } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
+import { captureActivity } from './tool-activity-summary.js';
+import { afterBulkTasksCreated } from './bulk-tasks.js';
 
 /**
  * Переиспользуемый пайплайн диктофона: audio → Whisper (Groq) → Claude
@@ -325,6 +327,7 @@ export async function processDictation(
       }
     }
 
+    await noteDictatedTasks(userId, result.createdTasks);
     return {
       sessionId: result.session.id,
       transcript,
@@ -388,6 +391,7 @@ export async function processDictation(
     return { session, createdTasks, createdMemories };
   });
 
+  await noteDictatedTasks(userId, result.createdTasks);
   return {
     sessionId: result.session.id,
     transcript,
@@ -396,4 +400,27 @@ export async function processDictation(
     tasksCreated: result.createdTasks,
     memoriesCreated: result.createdMemories,
   };
+}
+
+/**
+ * Задачи из диктовки: в память мозга (раньше её не было — робот не знал о
+ * надиктованном) и привязка к цели. Наложение/перегруз не считаем: экран
+ * диктовки их не покажет, а невидимое предложение сдвига опасно. Best-effort.
+ */
+async function noteDictatedTasks(
+  userId: string,
+  tasks: Array<{ id: string; title: string; date: Date; time: string | null }>,
+): Promise<void> {
+  if (tasks.length === 0) return;
+  try {
+    const head = tasks.slice(0, 3).map((t) => `«${t.title}»`).join(', ');
+    captureActivity(userId, {
+      type: 'tasks_dictated',
+      content: `Надиктовал задачи (${tasks.length}): ${head}${tasks.length > 3 ? ` и ещё ${tasks.length - 3}` : ''}`,
+    });
+    // checks:false — экран диктовки предупреждения не показывает (см. bulk-tasks).
+    await afterBulkTasksCreated(userId, tasks, { checks: false });
+  } catch {
+    /* best-effort: ответ диктовки не ломаем */
+  }
 }

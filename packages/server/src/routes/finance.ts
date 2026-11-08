@@ -5,6 +5,8 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth as validateMonth, invalidDateReply } from '../middleware/validate.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { withIdempotency } from '../lib/idempotency.js';
+import { localDateStr } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 
 // B.3: enum-валидация категории (аудит 3.12 — раньше любая строка).
 // Список из CLAUDE.md (expenseCategories).
@@ -42,6 +44,12 @@ function parseMonthLocal(month: string) {
   const result = validateMonth(month);
   return result;
 }
+
+/** Ключ категории трат → по-русски (как в приложении: constants/categories). */
+const EXPENSE_LABELS: Record<string, string> = {
+  food: 'Еда', transport: 'Транспорт', entertainment: 'Развлечения', health: 'Здоровье',
+  education: 'Образование', clothing: 'Одежда', housing: 'Жильё', home: 'Дом', other: 'Другое',
+};
 
 export async function financeRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -325,14 +333,14 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
   // --- Financial Advice ---
 
   app.get('/finance/advice', async (request) => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const monthStart = new Date(year, month - 1, 1);
-    const monthEnd = new Date(year, month, 1);
+    // Месяц и «сегодня» — по поясу юзера (раньше по UTC сервера). daysRemaining —
+    // БЕЗ сегодня, как плитка «Дней до конца месяца» на экране и бриф.
+    const todayCivil = localDateStr(await getUserTimezone(request.userId), new Date());
+    const [year, month, currentDay] = todayCivil.split('-').map(Number);
+    const monthStart = new Date(Date.UTC(year, month - 1, 1));
+    const monthEnd = new Date(Date.UTC(year, month, 1));
 
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const currentDay = now.getDate();
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const daysRemaining = daysInMonth - currentDay;
 
     const [expensesByCategory, budgetLimits, totalExpenses] = await Promise.all([
@@ -381,37 +389,32 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
 
     const totalSpent = totalExpenses._sum.amount ?? 0;
     const totalBudget = budgetLimits.reduce((sum, b) => sum + b.monthlyLimit, 0);
-    const dailyBudget = daysRemaining > 0
-      ? Math.round((totalBudget - totalSpent) / daysRemaining)
-      : 0;
+    // «По N ₸/день» — только из категорий С лимитом (раньше траты всех категорий
+    // вычитались из суммы лимитов части из них — цифра была неверной).
+    const budgetedSpent = categories.filter((c) => c.limit > 0).reduce((s2, c) => s2 + c.spent, 0);
+    // «В день» — считая сегодня (сегодня ещё можно тратить): остаток / (дни после сегодня + 1).
+    const left = totalBudget - budgetedSpent;
+    const dailyBudget = Math.round(left / (daysRemaining + 1));
 
+    const label = (k: string) => EXPENSE_LABELS[k] ?? k;
+    const money = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₸`;
     const adviceParts: string[] = [];
-
     for (const cat of categories) {
       if (cat.status === 'exceeded') {
-        adviceParts.push(
-          `На "${cat.category}" потрачено ${cat.percentage}% лимита — превышение!`,
-        );
+        adviceParts.push(`«${label(cat.category)}»: ${cat.percentage}% лимита — превышен.`);
       } else if (cat.status === 'warning') {
-        adviceParts.push(
-          `На "${cat.category}" потрачено ${cat.percentage}% лимита.`,
-        );
+        adviceParts.push(`«${label(cat.category)}»: ${cat.percentage}% лимита.`);
       }
     }
-
-    if (daysRemaining > 0 && dailyBudget > 0) {
-      adviceParts.push(
-        `Осталось ${daysRemaining} дней, по ${dailyBudget}₸/день.`,
-      );
-    } else if (daysRemaining > 0 && totalBudget > 0 && totalSpent >= totalBudget) {
-      adviceParts.push(
-        `Бюджет на месяц исчерпан. Осталось ${daysRemaining} дней.`,
-      );
+    if (totalBudget > 0) {
+      if (left > 0) {
+        adviceParts.push(`По лимитам осталось ${money(left)} — по ${money(dailyBudget)} в день, считая сегодня.`);
+      } else {
+        adviceParts.push(`Лимиты на месяц исчерпаны, а до конца месяца ${daysRemaining} дн.`);
+      }
     }
-
-    const advice = adviceParts.length > 0
-      ? adviceParts.join(' ')
-      : 'Финансы в порядке. Продолжайте в том же духе!';
+    // Лимитов нет — совета нет (раньше «Финансы в порядке. Продолжайте!» без данных).
+    const advice = adviceParts.join(' ');
 
     return {
       categories,

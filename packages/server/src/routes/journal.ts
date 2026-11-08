@@ -12,6 +12,8 @@ const journalSchema = z.object({
   energy: z.number().min(1).max(10).nullable().optional(),
   mood: z.number().min(1).max(10).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
+  // 'health' — сон пришёл из «Здоровья» сам, человек ничего не писал.
+  source: z.enum(['manual', 'health']).optional(),
 });
 
 export async function journalRoutes(app: FastifyInstance): Promise<void> {
@@ -85,6 +87,10 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
         notes: data.notes ?? undefined,
       },
     });
+    // Сон из «Здоровья» — не запись в дневнике: без монеты (раньше синк забирал
+    // дневную монету, и ручная запись потом её не получала) и без «Дневник за…»
+    // в памяти мозга. Сон мозг и так читает из дневника (reflection-context).
+    if (data.source === 'health') return reply.send(entry);
     void onJournalWritten(request.userId);
 
     const journalParts = [
