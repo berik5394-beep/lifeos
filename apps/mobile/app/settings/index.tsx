@@ -6,6 +6,7 @@ import {
   Alert,
   ScrollView,
   TextInput,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { storage } from '@/services/storage';
@@ -22,6 +23,7 @@ import { useUIStore, type UIComplexity } from '@/stores/ui-store';
 import { AnimatedPress } from '@/components/ui/animated-press';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { chooseUiLevel } from '@/services/ui-level-sync';
+import { disableHealth, enableHealth, isHealthAvailable, isHealthEnabled } from '@/services/health-sync';
 
 
 /** Фон приложения (Berik 2026-11-07: вернуть выбор, по умолчанию светлая «слоновая кость»). */
@@ -363,6 +365,20 @@ export default function SettingsScreen() {
 
   // Робот-друг №2: «как ты?» без повода — настройка на сервере (детектор там).
   const [checkIns, setCheckIns] = useState(true);
+  // «Здоровье» iPhone: сон → дневник, шаги → журнал (сборка №15+).
+  const [healthOn, setHealthOn] = useState(() => isHealthEnabled());
+  const healthAvailable = Platform.OS === 'ios' && isHealthAvailable();
+  const handleToggleHealth = useCallback(async () => {
+    if (healthOn) {
+      disableHealth();
+      setHealthOn(false);
+      return;
+    }
+    const ok = await enableHealth();
+    setHealthOn(ok);
+    if (!ok) Alert.alert('«Здоровье»', 'Не получилось подключить. Разрешить можно в Настройках iPhone → Здоровье → Доступ к данным → LifeOS.');
+  }, [healthOn]);
+
   const handleToggleCheckIns = useCallback(() => {
     const next = !checkIns;
     setCheckIns(next);
@@ -703,6 +719,12 @@ export default function SettingsScreen() {
           <SettingRow icon="🔔" label="Напоминания о задачах" isToggle toggleValue={taskReminders} onPress={handleToggleTasks} styles={styles} />
           <View style={styles.separator} />
           <SettingRow icon="💬" label="Робот спрашивает «как ты?»" isToggle toggleValue={checkIns} onPress={handleToggleCheckIns} styles={styles} />
+          {healthAvailable ? (
+            <>
+              <View style={styles.separator} />
+              <SettingRow icon="❤️" label="«Здоровье»: сон и шаги" isToggle toggleValue={healthOn} onPress={() => void handleToggleHealth()} styles={styles} />
+            </>
+          ) : null}
         </Card>
       </FadeInView>
 

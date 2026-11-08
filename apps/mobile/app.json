@@ -17,10 +17,19 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "kz.lifeos.app",
+      "appleTeamId": "62RS26WT53",
       "entitlements": {
-        "com.apple.developer.usernotifications.time-sensitive": true
+        "com.apple.developer.usernotifications.time-sensitive": true,
+        "com.apple.security.application-groups": [
+          "group.kz.lifeos.app"
+        ]
       },
       "infoPlist": {
+        "CFBundleDevelopmentRegion": "ru",
+        "INAlternativeAppNames": [
+          { "INAlternativeAppName": "ЛайфОС", "INAlternativeAppNamePronunciationHint": "Лайф О Эс" },
+          { "INAlternativeAppName": "Лайф ОС" }
+        ],
         "NSMicrophoneUsageDescription": "LifeOS использует микрофон для голосового ввода задач, привычек и общения с AI-помощником",
         "NSSpeechRecognitionUsageDescription": "LifeOS использует распознавание речи для голосовых команд",
         "NSCameraUsageDescription": "LifeOS использует камеру для сканирования расписания и заметок",
@@ -110,7 +119,8 @@
         "expo-notifications",
         {
           "sounds": [
-            "./assets/alarm.wav"
+            "./assets/alarm.wav",
+            "./assets/lifeos_chime.wav"
           ],
           "icon": "./assets/notification-icon.png",
           "color": "#6366F1"
@@ -130,7 +140,24 @@
       ],
       "expo-localization",
       "./plugins/with-pods-min-ios",
-      "./plugins/with-scene-lifecycle"
+      "./plugins/with-scene-lifecycle",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "LifeOS использует геолокацию, пока приложение открыто: подсказать, когда выезжать на встречу, и напомнить о деле рядом",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "LifeOS читает сон и шаги из «Здоровья», чтобы сам заполнять дневник и отмечать привычки",
+          "NSHealthUpdateUsageDescription": false,
+          "background": false
+        }
+      ],
+      "@bacons/apple-targets"
     ],
     "extra": {
       "eas": {

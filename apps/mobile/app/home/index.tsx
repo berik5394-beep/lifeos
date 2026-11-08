@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Platform, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AppState, Keyboard, KeyboardAvoidingView, Platform, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { dragOffset, swipeDecision } from '@/services/home-swipe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +20,9 @@ import { startRobotNudges } from '@/services/robot-nudges';
 import { storage } from '@/services/storage';
 import { isIntroDone } from '@/services/room-intro';
 import { syncUiLevel } from '@/services/ui-level-sync';
+import { syncHealth } from '@/services/health-sync';
+import { syncWidget } from '@/services/widget-sync';
+import { useScheduleStore } from '@/stores/schedule-store';
 
 const TOOLS_PAGE = 0;
 const ROOM_PAGE = 1;
@@ -98,6 +101,27 @@ function HomePager() {
   useEffect(() => {
     void syncUiLevel();
   }, [token]);
+  // «Здоровье» (если включено): сон и шаги; виджет «Сегодня» — при открытии
+  // и возврате в приложение (сборка №15+, на остальных — тихо ничего).
+  useEffect(() => {
+    if (!token) return;
+    void syncHealth();
+    void syncWidget(true);
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') {
+        void syncHealth();
+        void syncWidget();
+      } else if (st === 'background') void syncWidget(true); // уходя — свежий виджет
+    });
+    return () => sub.remove();
+  }, [token]);
+  // Мозг/экраны что-то поменяли (задача, привычка, встреча) — виджет догоняет.
+  const scheduleRev = useScheduleStore((s) => s.revision);
+  useEffect(() => {
+    if (!token || scheduleRev === 0) return;
+    const t = setTimeout(() => void syncWidget(true), 2000);
+    return () => clearTimeout(t);
+  }, [scheduleRev, token]);
   // Робот сам говорит, что заметил (нуджи мозга) — облачком при открытии приложения.
   useEffect(() => (token ? startRobotNudges(token) : undefined), [token]);
   const tools = useMemo(() => visiblePanels(isFeatureVisible, { dealsAvailable }), [isFeatureVisible, dealsAvailable]);
