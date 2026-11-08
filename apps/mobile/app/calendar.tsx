@@ -81,6 +81,21 @@ export default function CalendarScreen() {
     },
     [selectedDay],
   );
+  // Встреча: тап — перенести/переименовать строкой, сдвиг — удалить. Раньше с
+  // экрана её нельзя было ни перенести, ни удалить (только через робота).
+  const editEvent = useCallback(
+    async (e: { id: string }, next: { title: string; startTime?: string; endTime?: string }) => {
+      await useEventStore.getState().updateEvent(e.id, {
+        title: next.title,
+        ...(next.startTime ? { startTime: next.startTime } : {}),
+        ...(next.endTime ? { endTime: next.endTime } : {}),
+      });
+    },
+    [],
+  );
+  const removeEvent = useCallback((e: { id: string }) => {
+    void useEventStore.getState().deleteEvent(e.id).catch(fail);
+  }, []);
   const cycleColor = useCallback(
     (t: { id: string; priority?: string | null }) => {
       void updateTask(t.id, { priority: nextPriority(t.priority) }).catch(fail);
@@ -135,6 +150,8 @@ export default function CalendarScreen() {
         onCycleColor={cycleColor}
         onToggle={toggle}
         onDelete={remove}
+        onEditEvent={editEvent}
+        onDeleteEvent={removeEvent}
       />
       <Text style={[styles.legend, { color: colors.textSecondary }]}>
         Нажми на число, чтобы добавить задачу или событие на этот день

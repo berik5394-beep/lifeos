@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
-import { useChatStore } from '@/stores/chat-store';
 import { surfaceCreateWarnings } from '@/services/create-warnings';
+import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 import type { RescheduleProposal } from '@/stores/schedule-store';
 
 export interface CalendarEvent {
@@ -101,20 +101,23 @@ export const useEventStore = create<EventState>((set) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    const { proposal, conflicts: _conflicts, ...updated } = await api.put<
-      CalendarEvent & { conflicts?: CalendarEvent[]; proposal?: RescheduleProposal }
+    const { proposal, conflicts: _conflicts, conflictWarning, ...updated } = await api.put<
+      CalendarEvent & { conflicts?: CalendarEvent[]; proposal?: RescheduleProposal; conflictWarning?: string }
     >(`/events/${id}`, data, token);
     set((state) => ({
       events: state.events.map((e) => (e.id === id ? updated : e)),
     }));
-    if (proposal) useChatStore.getState().showProposal(proposal);
+    // Перегруз дня и наложение по новому времени (или «в Google не обновилась») — одним облачком.
+    surfaceCreateWarnings(proposal, conflictWarning);
   },
 
   deleteEvent: async (id) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
 
-    await api.delete(`/events/${id}`, token);
+    const res = await api.delete<{ success: boolean; warning?: string }>(`/events/${id}`, token);
+    // «В Google не удалилась — убери там» — честно облачком.
+    if (res?.warning) useRobotReactionStore.getState().react('worried', res.warning);
     set((state) => ({
       events: state.events.filter((e) => e.id !== id),
       upcoming: state.upcoming.filter((e) => e.id !== id),

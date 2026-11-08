@@ -5,6 +5,7 @@ import { spacing, fontSize } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 import { RU_MONTHS_GENITIVE } from '@/utils/dates';
 import { priorityColor } from './calendar-logic';
+import { EventLine } from './event-line';
 
 interface DayTask {
   id: string;
@@ -16,6 +17,7 @@ interface DayEvent {
   id: string;
   title: string;
   startTime: string | null;
+  endTime?: string | null;
 }
 
 interface DayDetailSheetProps {
@@ -31,6 +33,10 @@ interface DayDetailSheetProps {
   onCycleColor: (task: DayTask) => void;
   onToggle: (task: DayTask) => void;
   onDelete: (task: DayTask) => void;
+  /** Тап по встрече — правка строкой («16:00 встреча»): время/название. */
+  onEditEvent?: (event: DayEvent, next: { title: string; startTime?: string; endTime?: string }) => Promise<unknown>;
+  /** Сдвиг встречи — удалить. */
+  onDeleteEvent?: (event: DayEvent) => void;
 }
 
 function ruDate(dateKey: string): string {
@@ -52,6 +58,8 @@ export function DayDetailSheet({
   onCycleColor,
   onToggle,
   onDelete,
+  onEditEvent,
+  onDeleteEvent,
 }: DayDetailSheetProps) {
   const colors = useColors();
 
@@ -61,12 +69,16 @@ export function DayDetailSheet({
         {(events.length > 0 || onAddEvent) && (
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>События</Text>
-            {events.map((e) => (
-              <Text key={e.id} style={[styles.row, { color: colors.text }]}>
-                {e.startTime ? `${e.startTime} · ` : ''}
-                {e.title}
-              </Text>
-            ))}
+            {events.map((e) =>
+              onEditEvent && onDeleteEvent ? (
+                <EventLine key={e.id} event={e} onEdit={onEditEvent} onDelete={onDeleteEvent} />
+              ) : (
+                <Text key={e.id} style={[styles.row, { color: colors.text }]}>
+                  {e.startTime ? `${e.startTime} · ` : ''}
+                  {e.title}
+                </Text>
+              ),
+            )}
             {onAddEvent ? <TapToAdd hint="Новое событие: «14:00 встреча»" onSubmit={onAddEvent} /> : null}
           </View>
         )}
@@ -96,7 +108,7 @@ export function DayDetailSheet({
         </View>
         {tasks.length > 0 && (
           <Text style={[styles.hint, { color: colors.textSecondary }]}>
-            Цвет — важность: тап по кружку меняет его. Тап по задаче — выполнено.
+            Цвет — важность: тап по кружку меняет его. Тап по задаче — выполнено. Тап по встрече — перенести.
           </Text>
         )}
       </ScrollView>

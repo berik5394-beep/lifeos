@@ -5,7 +5,6 @@ import { formatDate } from '@/utils/dates';
 import { useAuthStore } from '@/stores/auth-store';
 import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 import { surfaceCreateWarnings } from '@/services/create-warnings';
-import { useChatStore } from '@/stores/chat-store';
 import type { RescheduleProposal } from '@/stores/schedule-store';
 import { persistStoreData, restoreStoreData } from '@/services/store-persist';
 
@@ -138,11 +137,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!token) return;
 
     try {
-      const { proposal, ...updated } = await api.put<Task & { proposal?: RescheduleProposal }>(`/tasks/${id}`, data, token, QUEUE_OFFLINE);
+      const { proposal, conflictWarning, ...updated } = await api.put<
+        Task & { proposal?: RescheduleProposal; conflictWarning?: string }
+      >(`/tasks/${id}`, data, token, QUEUE_OFFLINE);
       set((state) => ({
         tasks: state.tasks.map((t) => (t.id === id ? updated : t)),
       }));
-      if (proposal) useChatStore.getState().showProposal(proposal);
+      // Перенос поверх встречи / перегруз нового дня — одним облачком.
+      surfaceCreateWarnings(proposal, conflictWarning);
     } catch (err) {
       if (isOfflineQueued(err)) {
         set((state) => ({ tasks: state.tasks.map((t) => (t.id === id ? { ...t, ...data } : t)) }));

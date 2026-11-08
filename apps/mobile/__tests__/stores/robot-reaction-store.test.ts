@@ -167,3 +167,20 @@ describe('перегруз дня и наложение сразу', () => {
     expect(useRobotReactionStore.getState().reaction).toBeNull();
   });
 });
+
+describe('перенос и удаление встречи с экрана', () => {
+  it('правка: наложение / «в Google не обновилась» → облачко', async () => {
+    useEventStore.setState({ events: [{ id: 'e5', title: 'Встреча', date: '2026-12-01', startTime: '14:00' }] } as never);
+    mockApi.put.mockResolvedValueOnce({ id: 'e5', title: 'Встреча', date: '2026-12-01', startTime: '16:00', endTime: '17:00', conflictWarning: 'Накладывается на время с задачей «Почта» в 16:30.' });
+    await useEventStore.getState().updateEvent('e5', { startTime: '16:00' } as never);
+    expect(useRobotReactionStore.getState().reaction?.text).toContain('Почта');
+    expect(useEventStore.getState().events[0]).not.toHaveProperty('conflictWarning');
+  });
+  it('удаление: сервер предупредил про Google → облачко; встреча убрана из списка', async () => {
+    useEventStore.setState({ events: [{ id: 'e6', title: 'Из Google', date: '2026-12-01', startTime: null }], upcoming: [] } as never);
+    mockApi.delete.mockResolvedValueOnce({ success: true, warning: 'В Google Календаре не удалилась — убери там, иначе синхронизация вернёт её.' });
+    await useEventStore.getState().deleteEvent('e6');
+    expect(useRobotReactionStore.getState().reaction?.text).toContain('Google');
+    expect(useEventStore.getState().events).toHaveLength(0);
+  });
+});
