@@ -31,6 +31,9 @@ interface AuthState {
   loadStoredAuth: () => Promise<void>;
 }
 
+/** Идёт выход — прощальные запросы уже отправлены (защита от цикла через 401). */
+let loggingOut = false;
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   token: null,
   refreshToken: null,
@@ -83,6 +86,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    // Пока токен ещё есть: отписать пуши этого телефона и отозвать refresh-токены
+    // на сервере (раньше не делалось — шли пуши вышедшего аккаунта). Без сети /
+    // протух токен — не мешаем выходу (не дольше 3 с).
+    const current = get().token;
+    // Повторный вход в logout (протухший токен → 401 → refreshAuth → logout)
+    // прощальные запросы не повторяет — иначе цикл.
+    if (current && !loggingOut) {
+      loggingOut = true;
+      const bye = Promise.allSettled([
+        api.delete('/notifications/register-token', current),
+        api.post('/auth/logout', {}, current),
+      ]);
+      await Promise.race([bye, new Promise((r) => setTimeout(r, 3000))]);
+      loggingOut = false;
+    }
     await SecureStore.deleteItemAsync('token');
     await SecureStore.deleteItemAsync('refreshToken');
     storage.remove('user');

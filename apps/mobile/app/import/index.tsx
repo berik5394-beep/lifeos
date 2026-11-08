@@ -11,6 +11,7 @@ import {
 import * as DocumentPicker from 'expo-document-picker';
 // File upload via api.upload (FormData with 401-retry)
 import { useAuthStore } from '@/stores/auth-store';
+import { useScheduleStore } from '@/stores/schedule-store';
 import { api, ApiError } from '@/services/api';
 import { Card, Button } from '@/components/ui';
 import { spacing, fontSize, borderRadius } from '@/constants';
@@ -46,10 +47,12 @@ interface ImportPreviewItem {
   [key: string]: unknown;
 }
 
+/** Ответ POST /import/file (routes/import.ts): распознано / реально добавлено. */
 interface ImportResult {
   purpose: string;
   itemCount: number;
-  preview: ImportPreviewItem[];
+  created: number;
+  items: ImportPreviewItem[];
 }
 
 interface ImportHistoryItem {
@@ -126,6 +129,8 @@ export default function ImportScreen() {
       try {
         const data = await api.upload<ImportResult>('/import/file', formData, token);
         setImportResult(data);
+        // Импорт создал задачи/встречи/траты — экраны перечитают данные.
+        if (data.created > 0) useScheduleStore.getState().bump();
         setSelectedFile(null);
         loadHistory();
       } catch (err) {
@@ -234,14 +239,17 @@ export default function ImportScreen() {
                 </Text>
               </View>
               <Text style={styles.itemCount}>
-                {pluralN(importResult.itemCount, RECORDS)}
+                {/* Честно: распознано ≠ добавлено (pdf/«не определено» — 0). */}
+                {importResult.created > 0
+                  ? `добавлено ${pluralN(importResult.created, RECORDS)}`
+                  : `распознано ${pluralN(importResult.itemCount, RECORDS)}, добавить не получилось`}
               </Text>
             </View>
 
-            {importResult.preview.length > 0 && (
+            {(importResult.items ?? []).length > 0 && (
               <View style={styles.previewSection}>
                 <Text style={styles.previewTitle}>Предпросмотр:</Text>
-                {importResult.preview.slice(0, 5).map((item, index) => (
+                {(importResult.items ?? []).slice(0, 5).map((item, index) => (
                   <View key={index} style={styles.previewItem}>
                     <Text style={styles.previewText} numberOfLines={2}>
                       {Object.values(item)
@@ -250,9 +258,9 @@ export default function ImportScreen() {
                     </Text>
                   </View>
                 ))}
-                {importResult.preview.length > 5 && (
+                {(importResult.items ?? []).length > 5 && (
                   <Text style={styles.previewMore}>
-                    ...и ещё {importResult.preview.length - 5}
+                    ...и ещё {(importResult.items ?? []).length - 5}
                   </Text>
                 )}
               </View>
@@ -296,7 +304,7 @@ export default function ImportScreen() {
                     {new Date(item.createdAt).toLocaleDateString('ru-RU')}
                   </Text>
                   <Text style={styles.historyCount}>
-                    {item.itemCount} шт.
+                    {item.itemCount != null ? `${item.itemCount} шт.` : ''}
                   </Text>
                 </View>
               </View>
