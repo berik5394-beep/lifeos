@@ -14,7 +14,8 @@ export const rememberEntityTool = defineTool({
     'Запомнить (или обновить) entity в долгосрочной памяти юзера: ' +
     'человека, место, концепцию, цель, организацию. Вызывай когда юзер ' +
     'явно просит «запомни X» или когда из разговора выделил нового важного. ' +
-    'День рождения («запомни, у Ахмета ДР 12 мая») — ТОЛЬКО set_birthday, не я.',
+    'День рождения («запомни, у Ахмета ДР 12 мая») — ТОЛЬКО set_birthday, не я. ' +
+    'Почта человека («почта Серика serik@mail.kz») — attributes.email (по ней send_email отправит письмо).',
   category: 'memory',
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: { entityType: 'type', entityName: 'name', title: 'name' },

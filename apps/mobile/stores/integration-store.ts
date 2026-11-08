@@ -2,6 +2,16 @@ import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 
+/**
+ * Ключ провайдера как на сервере: 'google-calendar' → 'google_calendar'.
+ * Раньше экран спрашивал 'google-calendar', а сервер хранит 'google_calendar' —
+ * подключённый Google выглядел неподключённым, «Отключить» отвечало 404.
+ */
+export const providerKey = (p: string) => p.replace(/-/g, '_');
+
+/** Право Gmail «отправлять письма» (выдаётся при подключении Google). */
+export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+
 interface Integration {
   id: string;
   provider: string;
@@ -26,6 +36,8 @@ interface IntegrationState {
   requestTelegramLink: () => Promise<TelegramLink | null>;
   disconnect: (provider: string) => Promise<void>;
   isConnected: (provider: string) => boolean;
+  /** Google выдал право отправлять письма (робот пишет письма после «да»). */
+  canSendMail: () => boolean;
 }
 
 export const useIntegrationStore = create<IntegrationState>((set, get) => ({
@@ -92,9 +104,9 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
 
     set({ isLoading: true });
     try {
-      await api.delete(`/integrations/${provider}`, token);
+      await api.delete(`/integrations/${providerKey(provider)}`, token);
       set((state) => ({
-        integrations: state.integrations.filter((i) => i.provider !== provider),
+        integrations: state.integrations.filter((i) => providerKey(i.provider) !== providerKey(provider)),
         isLoading: false,
       }));
     } catch (err) {
@@ -105,6 +117,12 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
   },
 
   isConnected: (provider: string): boolean => {
-    return get().integrations.some((i) => i.provider === provider && i.active);
+    return get().integrations.some((i) => providerKey(i.provider) === providerKey(provider) && i.active);
+  },
+
+  canSendMail: (): boolean => {
+    const g = get().integrations.find((i) => i.provider === 'google_calendar' && i.active);
+    const scopes = g?.settings?.scopes;
+    return Array.isArray(scopes) && scopes.includes(GMAIL_SEND_SCOPE);
   },
 }));

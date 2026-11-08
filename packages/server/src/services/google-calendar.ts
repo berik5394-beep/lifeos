@@ -121,7 +121,10 @@ export function createAuthUrl(userId: string): string {
     response_type: 'code',
     scope:
       'https://www.googleapis.com/auth/calendar ' +
-      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.readonly ' +
+      // Руки во внешнем мире (jarvis-roadmap №4): письма от имени пользователя —
+      // только после его «да» (send_email, needsConfirm).
+      GMAIL_SEND_SCOPE,
     access_type: 'offline',
     prompt: 'consent',
     include_granted_scopes: 'true',
@@ -148,7 +151,11 @@ export interface GoogleTokens {
   refreshToken: string | null;
   /** Unix ms когда access протухнет (с запасом 60с). */
   expiresAt: number;
+  /** Выданные права через пробел (Google отдаёт их при обмене кода). */
+  scope?: string;
 }
+
+export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 
 /** Обмен authorization code (PKCE) на токены. */
 export async function exchangeCode(params: {
@@ -184,12 +191,14 @@ export async function exchangeCode(params: {
     access_token: string;
     refresh_token?: string;
     expires_in: number;
+    scope?: string;
   };
 
   return {
     accessToken: data.access_token,
     refreshToken: data.refresh_token ?? null,
     expiresAt: Date.now() + (data.expires_in - 60) * 1000,
+    scope: data.scope,
   };
 }
 

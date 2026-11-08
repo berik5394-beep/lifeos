@@ -131,6 +131,10 @@ function summarizeOtherWrite(name: string, input: unknown, result: unknown): Act
       return { type: 'birthday_set', content: `День рождения${q(str(input, 'person'))}` };
     case 'set_person_type':
       return { type: 'person_type_set', content: `${str(input, 'person') ?? 'Человек'} — ${str(input, 'type') ?? 'тип'}` };
+    case 'send_email':
+      return result && typeof result === 'object' && (result as { sent?: boolean }).sent
+        ? { type: 'email_sent', content: `Письмо ${str(input, 'to') ?? ''}${q(str(input, 'subject'))}`, importance: 6 }
+        : null;
     case 'set_hour_rate':
       return { type: 'hour_rate_set', content: 'Цена часа обновлена' };
     case 'clear_overdue':

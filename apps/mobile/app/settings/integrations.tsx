@@ -68,6 +68,8 @@ function GoogleCalendarSection() {
     isLoading,
   } = useIntegrationStore();
   const connected = isConnected('google-calendar');
+  // Подключили Google раньше — права на письма нет: робот попросит переподключить.
+  const canSendMail = useIntegrationStore((st) => st.canSendMail());
 
   // Phase 3.1: серверный OAuth-redirect. Web-клиент Google не принимает
   // кастомную схему мобилки (lifeos://), а Expo-прокси в SDK54 удалён.
@@ -135,6 +137,21 @@ function GoogleCalendarSection() {
         <Text style={styles.cardTitle}>📅  Google Calendar</Text>
         {connected && <ConnectedBadge />}
       </View>
+      {connected && !canSendMail ? (
+        <View style={styles.mailHint}>
+          <Text style={styles.mailHintText}>
+            Робот умеет писать письма от твоего имени — с черновиком и только после твоего «да». Для этого Google
+            должен разрешить отправку почты.
+          </Text>
+          <Button
+            title="Разрешить роботу отправлять письма"
+            onPress={handleConnect}
+            disabled={isLoading}
+            variant="secondary"
+            style={styles.connectButton}
+          />
+        </View>
+      ) : null}
       {connected ? (
         <View style={styles.cardActions}>
           <Button
@@ -826,6 +843,15 @@ function createStyles(c: ReturnType<typeof useColors>) {
   cardActions: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  mailHint: {
+    marginBottom: spacing.md,
+  },
+  mailHintText: {
+    fontSize: fontSize.sm,
+    color: c.textSecondary,
+    lineHeight: 20,
+    marginBottom: spacing.sm,
   },
   actionButton: {
     flex: 1,

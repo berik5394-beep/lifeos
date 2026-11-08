@@ -54,6 +54,7 @@ import { endRelationshipTool } from './end-relationship.js';
 import { setBirthdayTool } from './set-birthday.js';
 import { setPersonTypeTool } from './set-person-type.js';
 import { setHourRateTool } from './set-hour-rate.js';
+import { sendEmailTool } from './send-email.js';
 import { setBudgetTool } from './set-budget.js';
 import { deleteExpenseTool } from './delete-expense.js';
 import { editExpenseTool } from './edit-expense.js';
@@ -140,6 +141,7 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   setBirthdayTool,
   setPersonTypeTool,
   setHourRateTool,
+  sendEmailTool,
   suggestGoalTool,
   // Движок пересечения, горизонт ГОД — захват прогресса измеримой цели.
   updateGoalProgressTool,

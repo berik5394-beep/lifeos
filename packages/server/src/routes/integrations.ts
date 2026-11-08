@@ -36,7 +36,9 @@ async function storeGoogleTokens(
     : existing?.refreshToken ?? null;
   if (!refreshEnc) return false;
 
-  const settings = { expiresAt: tokens.expiresAt };
+  // scopes — какие права выдал человек (например, отправку писем); по ним робот
+  // честно говорит «переподключи Google», а не падает на отказе Google.
+  const settings = { expiresAt: tokens.expiresAt, scopes: (tokens.scope ?? '').split(' ').filter(Boolean) };
   await prisma.integration.upsert({
     where: { userId_provider: { userId, provider: 'google_calendar' } },
     update: {
