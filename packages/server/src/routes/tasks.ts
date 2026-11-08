@@ -207,6 +207,14 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
 
     // Атомарно: проверяем ownership и обновляем внутри одной транзакции.
     // Postgres MVCC гарантирует что никто не удалит/изменит задачу между findFirst и update.
+    // IDOR (аудит 2026-11-08): B.3 проверял parentId только в POST — через PUT
+    // свою задачу можно было вложить в ЧУЖУЮ (и её заголовок увидел бы владелец).
+    if (data.parentId) {
+      const parent = data.parentId === id
+        ? null
+        : await prisma.task.findFirst({ where: { id: data.parentId, userId: request.userId }, select: { id: true } });
+      if (!parent) throw new NotFoundError('Родительская задача');
+    }
     let previousDate: Date | null = null;
     const updated = await prisma.$transaction(async (tx) => {
       const task = await tx.task.findFirst({

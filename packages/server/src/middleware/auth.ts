@@ -17,7 +17,12 @@ export async function authMiddleware(
       return reply.status(401).send({ message: 'Токен не предоставлен' });
     }
 
-    const decoded = request.server.jwt.verify<{ sub: string }>(token);
+    const decoded = request.server.jwt.verify<{ sub: string; type?: string }>(token);
+    // Refresh-токен (30 дней, тот же секрет) — только для /auth/refresh. Раньше он
+    // проходил как обычный: отозванный (logout, reuse-тревога) жил ещё 30 дней.
+    if (decoded.type === 'refresh') {
+      return reply.status(401).send({ message: 'Неверный токен' });
+    }
     request.userId = decoded.sub;
     // Real-Time Foundation: зафиксировать настоящий пояс устройства из заголовка
     // X-Timezone. Fire-and-forget, best-effort — НИКОГДА не влияет на auth.

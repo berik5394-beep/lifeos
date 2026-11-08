@@ -91,7 +91,8 @@ export const completeHabitTool = defineTool({
       const { isV2GoalHabitsEnabled } = await import('../lib/feature-flags.js');
       if (habit.goalId && isV2GoalHabitsEnabled(userId)) {
         const [goal, streak] = await Promise.all([
-          prisma.yearlyGoal.findUnique({ where: { id: habit.goalId }, select: { goalText: true } }),
+          // userId — вторая линия защиты: старые привязки к чужой цели (до IDOR-фикса /habits).
+          prisma.yearlyGoal.findFirst({ where: { id: habit.goalId, userId }, select: { goalText: true } }),
           import('../services/streak-service.js').then((m) => m.calculateStreak(userId)),
         ]);
         if (goal) suffix = ` — это к цели «${goal.goalText}», серия ${streak} дней`;

@@ -158,7 +158,8 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
       },
       include: {
         habits: {
-          where: { active: true },
+          // userId: чужие привычки, привязанные к цели до IDOR-фикса /habits, не показываем.
+          where: { active: true, userId: request.userId },
           select: { id: true, name: true, category: true },
         },
       },

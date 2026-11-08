@@ -230,7 +230,9 @@ export async function googleCalendarCallbackRoutes(
         );
 
     if (q.error) {
-      return html('Не удалось', `Google вернул ошибку: ${q.error}`);
+      // q.error — из адресной строки: экранируем (отражённый XSS на домене API).
+      const safe = String(q.error).replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`).slice(0, 200);
+      return html('Не удалось', `Google вернул ошибку: ${safe}`);
     }
     if (!q.code || !q.state) {
       return reply.status(400).header('Content-Type', 'text/html; charset=utf-8')
