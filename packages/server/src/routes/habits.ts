@@ -7,6 +7,8 @@ import { validate, parseMonth, invalidDateReply } from '../middleware/validate.j
 import { rateLimiter } from '../middleware/security.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { onHabitDone } from '../services/coins.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { localDateStr } from '../lib/tz.js';
 
 // POST /habits/:id/log. Нормальный юзер за минуту отмечает максимум 10-20
 // привычек, даже на полном свайп-списке.
@@ -34,6 +36,18 @@ const logHabitSchema = z.object({
   date: isoDate,
   completed: z.boolean(),
 });
+
+/** Самая длинная серия подряд идущих дней (даты @db.Date, UTC-полночь). */
+export function longestRun(dates: Date[]): number {
+  const days = [...new Set(dates.map((d) => Math.round(d.getTime() / 86_400_000)))].sort((a, b) => a - b);
+  let best = 0;
+  let run = 0;
+  for (let i = 0; i < days.length; i++) {
+    run = i > 0 && days[i] === days[i - 1] + 1 ? run + 1 : 1;
+    best = Math.max(best, run);
+  }
+  return best;
+}
 
 /** Цель принадлежит юзеру (для goalId привычки). */
 async function ownsGoal(userId: string, goalId: string): Promise<boolean> {
@@ -221,12 +235,29 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
       },
     });
 
-    return habits.map((habit) => ({
-      id: habit.id,
-      name: habit.name,
-      category: habit.category,
-      completedDays: habit.logs.length,
-      totalDays: Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
-    }));
+    const DAY = 86_400_000;
+    const totalDays = Math.ceil((end.getTime() - start.getTime()) / DAY);
+    // Прошедшие дни месяца (текущий — по сегодня включительно по поясу юзера):
+    // «За месяц %» раньше делилось на все дни месяца и в начале месяца было провальным.
+    const todayCivil = localDateStr(await getUserTimezone(request.userId), new Date());
+    const todayStart = new Date(`${todayCivil}T00:00:00Z`).getTime();
+    const elapsed = Math.max(0, Math.min(totalDays, Math.floor((todayStart - start.getTime()) / DAY) + 1));
+    return habits.map((habit) => {
+      const completed = habit.logs.length;
+      return {
+        // Поля, которые читает приложение (раньше их не было → «NaN» на экране привычек).
+        habitId: habit.id,
+        habitName: habit.name,
+        completed,
+        total: elapsed,
+        streak: longestRun(habit.logs.map((l) => l.date)),
+        // Прежние поля — для совместимости.
+        id: habit.id,
+        name: habit.name,
+        category: habit.category,
+        completedDays: completed,
+        totalDays,
+      };
+    });
   });
 }

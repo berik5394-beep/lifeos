@@ -226,10 +226,16 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: validate(registerTokenSchema) },
     async (request, reply) => {
       const { token } = request.body as z.infer<typeof registerTokenSchema>;
-      await prisma.user.update({
-        where: { id: request.userId },
-        data: { expoPushToken: token },
-      });
+      // Токен принадлежит ТЕЛЕФОНУ: вышел из аккаунта A и вошёл в B — тот же
+      // токен. Раньше он оставался и у A → на телефон шли пуши чужого
+      // (вышедшего) аккаунта. Теперь у всех остальных снимаем.
+      await prisma.$transaction([
+        prisma.user.updateMany({
+          where: { expoPushToken: token, id: { not: request.userId } },
+          data: { expoPushToken: null },
+        }),
+        prisma.user.update({ where: { id: request.userId }, data: { expoPushToken: token } }),
+      ]);
       return reply.send({ ok: true });
     },
   );

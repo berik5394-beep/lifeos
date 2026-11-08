@@ -504,11 +504,17 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
   // --- Import history ---
 
   app.get('/import/history', async (request) => {
-    return prisma.importedFile.findMany({
+    const rows = await prisma.importedFile.findMany({
       where: { userId: request.userId },
       orderBy: { createdAt: 'desc' },
       take: 20,
     });
+    // itemCount — экран истории его показывает («N шт.»), а строка его не хранит
+    // (раньше было «undefined шт.»). parsedData — массив распознанного.
+    return rows.map(({ parsedData, ...r }) => ({
+      ...r,
+      itemCount: Array.isArray(parsedData) ? parsedData.length : 0,
+    }));
   });
 
   // --- Delete imported file ---

@@ -430,6 +430,26 @@ export const DEGRADED_ACTIONABLE_REFUSAL =
   'Извини, сейчас не получается это выполнить — сбой на моей стороне, ' +
   'не у тебя. Действие НЕ выполнено. Попробуй, пожалуйста, ещё раз через минуту.';
 
+/**
+ * «да / давай / да, привяжи» в ответ на ПРЕДЛОЖЕНИЕ робота, когда pending нет
+ * (разбор цели «Скажи «да»», нудж «закину в план?», «разгрести вместе?»).
+ * Раньше короткое «да» шло к модели БЕЗ инструментов (меньше 8 символов —
+ * «болтовня»): она отвечала «привязал / закинул», ничего не сделав (аудит
+ * 2026-11-08, H1). Теперь такое согласие всегда идёт с инструментами.
+ */
+const ACCEPT_OFFER =
+  /^(?:да|ага|угу|давай(?:те)?|ок(?:ей)?|хорошо|конечно|го|сделай|поставь|привяжи|разбей|закинь|запланируй|сдвинь|перенеси|разгреби)(?![а-яё])/i;
+const OFFER_MARK = /скажи\s+«да»|\?\s*$/im;
+export function acceptsRecentOffer(
+  text: string,
+  history: Array<{ role: 'user' | 'assistant'; content: string }>,
+): boolean {
+  const t = text.trim();
+  if (t.length === 0 || t.length > 60 || !ACCEPT_OFFER.test(t)) return false;
+  const last = history[history.length - 1];
+  return !!last && last.role === 'assistant' && OFFER_MARK.test(last.content.trim());
+}
+
 export function mayNeedLocalTools(text: string): boolean {
   const t = text.trim();
   if (t.length < MIN_TOOL_TEXT) return false; // короткие реплики = болтовня
@@ -1657,7 +1677,9 @@ async function handleMessageCore(
       '\nДлинная встреча или дело не по уровню пользователя — можешь честно сказать, сколько это стоит его времени, и предложить отдать человеку из команды (только с его «да»).';
   }
   const skillReply: string | null = skill.reply;
-  const hermesForceTools = skill.instruction !== null;
+  // Согласие на предложение робота без pending — с инструментами (иначе «да»
+  // на «Скажи «да» — закину в план» давало выдуманное «закинул»).
+  const hermesForceTools = skill.instruction !== null || acceptsRecentOffer(text, history);
   if (skill.instruction) system = system + '\n\n' + skill.instruction;
 
   let reply: string;

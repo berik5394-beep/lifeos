@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../test/integration/build-test-app.js';
 import { taskRoutes } from './tasks.js';
+import { notificationRoutes } from './notifications.js';
 
 /**
  * Аудит безопасности 2026-11-08 — настоящие роуты и тест-БД:
@@ -12,7 +13,7 @@ import { taskRoutes } from './tasks.js';
 const prisma = new PrismaClient();
 let app: FastifyInstance;
 beforeAll(async () => {
-  app = await buildTestApp([taskRoutes]);
+  app = await buildTestApp([taskRoutes, notificationRoutes]);
 });
 afterAll(async () => {
   await app.close();
@@ -58,5 +59,17 @@ describe('refresh-токен не пускает в обычные роуты', 
     const refresh = app.jwt.sign({ sub: a.userId, type: 'refresh', jti: 'x' });
     expect((await app.inject({ method: 'GET', url: '/tasks', headers: { authorization: `Bearer ${refresh}` } })).statusCode).toBe(401);
     expect((await app.inject({ method: 'GET', url: '/tasks', headers: a.headers })).statusCode).toBe(200);
+  });
+});
+
+describe('пуш-токен принадлежит телефону', () => {
+  it('вышел из A, вошёл в B → тот же токен снят с A (пуши вышедшего не идут)', async () => {
+    const a = await user('pa');
+    const b = await user('pb');
+    const token = `ExponentPushToken[sec-${Date.now()}]`;
+    expect((await app.inject({ method: 'POST', url: '/notifications/register-token', headers: a.headers, payload: { token } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/notifications/register-token', headers: b.headers, payload: { token } })).statusCode).toBe(200);
+    expect((await prisma.user.findUnique({ where: { id: a.userId } }))?.expoPushToken).toBeNull();
+    expect((await prisma.user.findUnique({ where: { id: b.userId } }))?.expoPushToken).toBe(token);
   });
 });
