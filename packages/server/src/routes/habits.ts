@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth, invalidDateReply } from '../middleware/validate.js';
 import { rateLimiter } from '../middleware/security.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { onHabitDone } from '../services/coins.js';
+import { habitAutoCompleteSchema } from '../services/habit-auto.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { localDateStr } from '../lib/tz.js';
 
@@ -20,7 +21,8 @@ const createHabitSchema = z.object({
   category: z.string(),
   frequency: z.string(),
   goalId: z.string().nullable().optional(),
-  autoComplete: z.record(z.unknown()).nullable().optional(),
+  // Строго { type:'steps', min } или null (раньше — любой JSON; null не очищал).
+  autoComplete: habitAutoCompleteSchema.nullable().optional(),
 });
 
 const updateHabitSchema = createHabitSchema.partial().extend({
@@ -85,7 +87,7 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
         category: data.category,
         frequency: data.frequency,
         goalId: data.goalId ?? undefined,
-        autoComplete: (data.autoComplete ?? undefined) as Prisma.InputJsonValue | undefined,
+        autoComplete: data.autoComplete ? (data.autoComplete as Prisma.InputJsonValue) : undefined,
         userId: request.userId,
         order: (maxOrder._max.order ?? -1) + 1,
       },
@@ -121,7 +123,8 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
     if (data.order !== undefined) updateData.order = data.order;
     if (data.goalId !== undefined) updateData.goalId = data.goalId;
     if (data.autoComplete !== undefined) {
-      updateData.autoComplete = (data.autoComplete ?? undefined) as Prisma.InputJsonValue | undefined;
+      // null — выключить (раньше null превращался в undefined и не очищал).
+      updateData.autoComplete = data.autoComplete === null ? Prisma.DbNull : (data.autoComplete as Prisma.InputJsonValue);
     }
 
     const updated = await prisma.habit.update({

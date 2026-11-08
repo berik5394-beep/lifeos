@@ -4,8 +4,20 @@
  * присылают свободный текст («еда», «бензин», «компьютер») — раньше он
  * попадал в БД как есть, и график такой расход не видел.
  */
-export const EXPENSE_CATEGORIES = ['food', 'transport', 'entertainment', 'clothing', 'health', 'home', 'other'] as const;
+/**
+ * ЕДИНЫЙ список с приложением (apps/mobile/constants/categories.ts). Раньше тут
+ * был 'home', а приложение показывает/шлёт 'housing' и 'education' — REST их
+ * отвергал (400), а траты робота «за квартиру» не попадали в таблицу.
+ * Старое 'home' принимаем и превращаем в 'housing' (миграция перевела записи).
+ */
+export const EXPENSE_CATEGORIES = ['food', 'transport', 'entertainment', 'clothing', 'health', 'education', 'housing', 'other'] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+/** По-русски — как в приложении. 'home' — старый ключ (= Жильё). */
+export const EXPENSE_LABELS: Record<string, string> = {
+  food: 'Еда', transport: 'Транспорт', entertainment: 'Развлечения', clothing: 'Одежда', health: 'Здоровье',
+  education: 'Образование', housing: 'Жильё', home: 'Жильё', other: 'Другое',
+};
 
 /** Основы слов (нижний регистр, ё→е). Проверяются как начало любого слова. */
 const STEMS: Record<Exclude<ExpenseCategory, 'other'>, string[]> = {
@@ -27,9 +39,13 @@ const STEMS: Record<Exclude<ExpenseCategory, 'other'>, string[]> = {
     'здоров', 'аптек', 'лекарств', 'врач', 'доктор', 'клиник', 'больниц', 'анализ', 'стоматолог', 'зуб', 'спортзал',
     'фитнес', 'зал', 'массаж', 'витамин', 'health', 'pharmacy',
   ],
-  home: [
-    'дом', 'квартир', 'аренд', 'коммунал', 'свет', 'газ', 'вода', 'интернет', 'ремонт', 'мебел', 'посуд', 'быт',
-    'уборк', 'хозтовар', 'home', 'rent',
+  housing: [
+    'дом', 'жиль', 'квартир', 'аренд', 'коммунал', 'свет', 'газ', 'вода', 'интернет', 'ремонт', 'мебел', 'посуд', 'быт',
+    'уборк', 'хозтовар', 'home', 'housing', 'rent',
+  ],
+  education: [
+    'образован', 'обучен', 'учеб', 'курс', 'школ', 'универ', 'репетитор', 'тренинг', 'семинар', 'книг', 'учебник',
+    'education', 'course',
   ],
 };
 
@@ -62,5 +78,6 @@ export function normalizeExpenseCategory(raw?: string | null, description?: stri
   const r = raw ? norm(raw) : '';
   if ((EXPENSE_CATEGORIES as readonly string[]).includes(r)) return r as ExpenseCategory;
   if (r === 'прочее' || r === 'другое') return 'other';
+  if (r === 'home') return 'housing'; // старый ключ сервера
   return (r && matchStems(r)) || (description && matchStems(description)) || 'other';
 }

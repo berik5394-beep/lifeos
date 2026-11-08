@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { defineTool } from './_types.js';
 import { matchHabit } from './_habit-match.js';
+import { MAX_AUTO_STEPS, MIN_AUTO_STEPS } from '../services/habit-auto.js';
 
 /**
  * Завести новую привычку из чата (аудит-фикс MISSING — раньше можно было
@@ -18,7 +19,8 @@ export const createHabitTool = defineTool({
   description:
     'Завести НОВУЮ привычку («заведи привычку зарядка», «новая привычка ' +
     'чтение»). Можно привязать к годовой цели (передай goal) — тогда буду ' +
-    'напоминать, если будешь её забрасывать. Категории: health, work, personal.',
+    'напоминать, если будешь её забрасывать. autoSteps — отмечать саму по шагам ' +
+    '(«ходьба 8000 шагов, отмечай сама»). Категории: health, work, personal.',
   category: 'habit',
   aliases: { habit: 'name', title: 'name', habitName: 'name', habit_name: 'name', goalName: 'goal', goalText: 'goal', goal_text: 'goal' },
   schema: z.object({
@@ -26,6 +28,8 @@ export const createHabitTool = defineTool({
     category: z.string().max(40).optional(),
     frequency: z.string().max(40).optional(),
     goal: z.string().max(200).optional(),
+    // Отмечать саму по шагам из «Здоровья» («ходьба, отмечай сама от 8000 шагов»).
+    autoSteps: z.coerce.number().int().min(MIN_AUTO_STEPS).max(MAX_AUTO_STEPS).optional(),
   }),
   needsConfirm: false,
   sideEffects: 'write',
@@ -60,9 +64,19 @@ export const createHabitTool = defineTool({
     const frequency = input.frequency ?? 'daily';
     const maxOrder = await prisma.habit.aggregate({ where: { userId }, _max: { order: true } });
     const habit = await prisma.habit.create({
-      data: { userId, name: input.name, category, frequency, goalId, order: (maxOrder._max.order ?? -1) + 1 },
+      data: {
+        userId,
+        name: input.name,
+        category,
+        frequency,
+        goalId,
+        order: (maxOrder._max.order ?? -1) + 1,
+        ...(input.autoSteps ? { autoComplete: { type: 'steps', min: input.autoSteps } } : {}),
+      },
     });
-    const suffix = goalText ? ` — привязал к цели «${goalText}», буду напоминать, если забросишь` : '';
+    const suffix =
+      (goalText ? ` — привязал к цели «${goalText}», буду напоминать, если забросишь` : '') +
+      (input.autoSteps ? `; отмечу сама, когда пройдёшь ${input.autoSteps.toLocaleString('ru-RU')} шагов (по «Здоровью»)` : '');
     return { message: `Завёл привычку «${habit.name}»${suffix}. Отмечай — буду считать серию.`, habitId: habit.id, goalId };
   },
 });

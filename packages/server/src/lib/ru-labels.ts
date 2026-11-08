@@ -5,7 +5,7 @@
  */
 const EXPENSE: Record<string, string> = {
   food: 'Еда', transport: 'Транспорт', entertainment: 'Развлечения', clothing: 'Одежда',
-  health: 'Здоровье', home: 'Дом', other: 'Прочее',
+  health: 'Здоровье', education: 'Образование', housing: 'Жильё', home: 'Жильё', other: 'Прочее',
 };
 const TASK: Record<string, string> = {
   work: 'Работа', personal: 'Личное', health: 'Здоровье', finance: 'Финансы', education: 'Образование', home: 'Дом',

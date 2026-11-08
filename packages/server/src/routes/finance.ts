@@ -5,20 +5,16 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseMonth as validateMonth, invalidDateReply } from '../middleware/validate.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { withIdempotency } from '../lib/idempotency.js';
+import { EXPENSE_LABELS } from '../lib/expense-category.js';
 import { localDateStr } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 
 // B.3: enum-валидация категории (аудит 3.12 — раньше любая строка).
 // Список из CLAUDE.md (expenseCategories).
-const EXPENSE_CATEGORY = z.enum([
-  'food',
-  'transport',
-  'entertainment',
-  'clothing',
-  'health',
-  'home',
-  'other',
-]);
+// Ключи — как в приложении; старое 'home' (клиенты до 2026-11-08) → 'housing'.
+const EXPENSE_CATEGORY = z
+  .enum(['food', 'transport', 'entertainment', 'clothing', 'health', 'education', 'housing', 'home', 'other'])
+  .transform((c) => (c === 'home' ? 'housing' : c));
 
 const createExpenseSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD'),
@@ -44,12 +40,6 @@ function parseMonthLocal(month: string) {
   const result = validateMonth(month);
   return result;
 }
-
-/** Ключ категории трат → по-русски (как в приложении: constants/categories). */
-const EXPENSE_LABELS: Record<string, string> = {
-  food: 'Еда', transport: 'Транспорт', entertainment: 'Развлечения', health: 'Здоровье',
-  education: 'Образование', clothing: 'Одежда', housing: 'Жильё', home: 'Дом', other: 'Другое',
-};
 
 export async function financeRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);

@@ -245,7 +245,9 @@ async function generateBudgetAlerts(
     entertainment: 'Развлечения',
     clothing: 'Одежда',
     health: 'Здоровье',
-    home: 'Дом',
+    education: 'Образование',
+    housing: 'Жильё',
+    home: 'Жильё',
     other: 'Прочее',
   };
 

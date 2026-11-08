@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC, localDateStr } from '../lib/tz.js';
+import { dateOnlyUTC, localDateStr } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 
@@ -39,15 +39,11 @@ export const getBudgetTool = defineTool({
     const lastDayOfMonth = new Date(year, monthNum, 0).getDate();
     // monthStart/monthEnd = UTC instant начала первого/последнего дня
     // месяца в tz юзера (mid-day UTC trick для надёжного попадания).
-    const monthStart = localDayStartUTC(
-      tz,
-      new Date(`${yearStr}-${monthStr}-01T12:00:00Z`),
-    );
+    // @db.Date — КАЛЕНДАРНЫЕ границы месяца (UTC-полночь дат). Инстанты локальной
+    // полуночи (localDayStartUTC) выкидывали последний день месяца (ревью 2026-11-08).
+    const monthStart = dateOnlyUTC(`${yearStr}-${monthStr}-01`);
     const lastDayStr = String(lastDayOfMonth).padStart(2, '0');
-    const monthEnd = localDayStartUTC(
-      tz,
-      new Date(`${yearStr}-${monthStr}-${lastDayStr}T12:00:00Z`),
-    );
+    const monthEnd = dateOnlyUTC(`${yearStr}-${monthStr}-${lastDayStr}`);
 
     const [expenses, incomes, limits] = await Promise.all([
       prisma.expense.findMany({

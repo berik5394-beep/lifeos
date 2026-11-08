@@ -14,7 +14,10 @@ describe('normalizeExpenseCategory', () => {
     expect(normalizeExpenseCategory('Такси')).toBe('transport');
     expect(normalizeExpenseCategory('кроссовки')).toBe('clothing');
     expect(normalizeExpenseCategory('аптека')).toBe('health');
-    expect(normalizeExpenseCategory('коммуналка')).toBe('home');
+    expect(normalizeExpenseCategory('коммуналка')).toBe('housing');
+    // Единые ключи с приложением (2026-11-08): старый 'home' → 'housing', есть «Образование».
+    expect(normalizeExpenseCategory('home')).toBe('housing');
+    expect(normalizeExpenseCategory('курсы английского')).toBe('education');
     expect(normalizeExpenseCategory('кино')).toBe('entertainment');
     expect(normalizeExpenseCategory('прочее')).toBe('other');
   });

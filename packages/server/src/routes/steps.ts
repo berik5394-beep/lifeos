@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
+import { closeHabitsBySteps } from '../services/habit-auto.js';
 
 /**
  * Шаги из «Здоровья» iPhone (jarvis-roadmap / сборка №15): приложение само
@@ -27,6 +28,8 @@ export async function stepsRoutes(app: FastifyInstance): Promise<void> {
       create: { userId: request.userId, date, steps: d.steps, distanceKm: d.distanceKm ?? null },
       update: { steps: d.steps, ...(d.distanceKm != null ? { distanceKm: d.distanceKm } : {}) },
     });
-    return { ok: true, date: d.date, steps: row.steps };
+    // Привычки «по шагам» (Habit.autoComplete) — закрыть, если порог пройден.
+    const autoCompleted = await closeHabitsBySteps(request.userId, d.date, row.steps);
+    return { ok: true, date: d.date, steps: row.steps, autoCompleted };
   });
 }

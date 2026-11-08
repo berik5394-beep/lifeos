@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { isV2DecisionsEnabled } from '../lib/feature-flags.js';
 import { defineTool } from './_types.js';
@@ -30,7 +30,8 @@ export const logDecisionTool = defineTool({
   handler: async (input, ctx) => {
     if (!isV2DecisionsEnabled(ctx.userId)) return { error: 'функция отключена' };
     const tz = await getUserTimezone(ctx.userId);
-    const today = localDayStartUTC(tz);
+    // reviewDate — @db.Date: от календарной даты (раньше на день раньше в UTC+).
+    const today = localDateOnlyUTC(tz);
     let reviewDate = new Date(today.getTime() + 90 * DAY_MS);
     if (input.reviewDate) {
       const d = new Date(input.reviewDate);

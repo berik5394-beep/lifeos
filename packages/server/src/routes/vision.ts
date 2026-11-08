@@ -11,7 +11,8 @@ import { analyzeFinancePhoto, buildFinancePending } from '../services/finance-vi
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { afterBulkTasksCreated, dayForWeekday, startTimeOf } from '../services/bulk-tasks.js';
 import { getUserTimezone } from '../lib/user-context.js';
-import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
+import { civilDayRefs, dateOnlyUTC, localDateOnlyUTC } from '../lib/tz.js';
+import { setPendingAction } from '../services/pending-actions.js';
 
 /** День задач из фото: присланный телефоном или «сегодня» по календарю юзера (не UTC сервера). */
 async function captureDay(userId: string, dateISO?: string): Promise<Date> {
@@ -205,13 +206,48 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
     bodyLimit: PHOTO_BODY_LIMIT,
     preHandler: [visionRateLimit, aiDailyLimiter, validate(analyzeFinanceSchema)],
   }, async (request, reply) => {
+    const { image, mediaType } = request.body as { image: string; mediaType: typeof SUPPORTED_MEDIA_TYPES[number] };
+    // Размер — до вызова модели (как у остальных фото-роутов; здесь проверки не было).
+    assertImageSizeOk(image, mediaType);
     try {
-      const { image, mediaType } = request.body as { image: string; mediaType: typeof SUPPORTED_MEDIA_TYPES[number] };
+      const userId = request.userId;
       const result = await analyzeFinancePhoto(image, mediaType);
-      const pending = buildFinancePending(result);
-      // Возвращаем распознанное + готовую запись (если есть). НЕ пишем —
-      // запись только после подтверждения (confirm-FSM / клиент).
-      return reply.send({ result, pending });
+      const tz = await getUserTimezone(userId);
+      const built = buildFinancePending(result, localDateOnlyUTC(tz));
+      if (!built) {
+        return reply.send({
+          result,
+          pending: null,
+          confirmationText: null,
+          message: 'Не разобрал сумму на фото. Сфоткай чек ровнее, при свете — или скажи сумму: «3500 на еду».',
+        });
+      }
+      // Тот же чек дважды → честно спросим (одинаковая сумма в тот же день и тот же магазин/категория).
+      let text = built.confirmationText;
+      if (built.action === 'add_expense') {
+        const day = typeof built.input.date === 'string' ? dateOnlyUTC(built.input.date) : localDateOnlyUTC(tz);
+        const dup = await prisma.expense.findFirst({
+          where: {
+            userId,
+            date: day,
+            amount: Number(built.input.amount),
+            OR: [
+              { category: String(built.input.category) },
+              ...(built.input.description ? [{ description: String(built.input.description) }] : []),
+            ],
+          },
+          select: { id: true },
+        });
+        if (dup) text = `Похоже, эта трата уже записана. ${text.replace('Записать трату?', 'Всё равно записать?')}`;
+      }
+      // ЗАПИСЬ — только на «да»: тот же путь подтверждения, что у трат голосом/текстом
+      // (pending → runConfirmedAction → add_expense с лимитами, целями, памятью).
+      // Раньше ответ говорил «Ответь «да»», а pending не ставился — «да» уходило в пустоту.
+      await setPendingAction(userId, built.action, built.input, text);
+      // Вопрос — и в историю чата: «да» голосом/текстом придёт мозгу с контекстом,
+      // после перезапуска кнопки восстановятся по этому тексту.
+      await prisma.chatMessage.create({ data: { userId, role: 'assistant', content: text } }).catch(() => {});
+      return reply.send({ result, pending: { action: built.action, input: built.input }, confirmationText: text });
     } catch (err) {
       app.log.error({ err }, 'Vision analyze-finance error');
       return reply.status(500).send({ message: 'Ошибка чтения фото' });

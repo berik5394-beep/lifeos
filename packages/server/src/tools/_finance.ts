@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { getUserTimezone } from '../lib/user-context.js';
-import { localDayStartUTC, localDateStr } from '../lib/tz.js';
+import { dateOnlyUTC, localDateStr } from '../lib/tz.js';
+import { EXPENSE_LABELS } from '../lib/expense-category.js';
 
 /**
  * SSOT Step 6 — чистый бюджет-анализ после расхода. Вынесен из
@@ -35,15 +36,11 @@ export async function analyzeBudgetAfterExpense(
   const lastDayOfMonth = new Date(year, monthNum, 0).getDate();
   // UTC-инстанты начала первого/последнего ЛОКАЛЬНОГО дня месяца
   // (mid-day trick — как в get-budget — для надёжного попадания в день).
-  const monthStart = localDayStartUTC(
-    tz,
-    new Date(`${yearStr}-${monthStr}-01T12:00:00Z`),
-  );
+  // @db.Date — КАЛЕНДАРНЫЕ границы месяца (UTC-полночь дат). Инстанты локальной
+    // полуночи (localDayStartUTC) выкидывали последний день месяца (ревью 2026-11-08).
+    const monthStart = dateOnlyUTC(`${yearStr}-${monthStr}-01`);
   const lastDayStr = String(lastDayOfMonth).padStart(2, '0');
-  const monthEnd = localDayStartUTC(
-    tz,
-    new Date(`${yearStr}-${monthStr}-${lastDayStr}T12:00:00Z`),
-  );
+  const monthEnd = dateOnlyUTC(`${yearStr}-${monthStr}-${lastDayStr}`);
 
   const [expenses, limit] = await Promise.all([
     prisma.expense.aggregate({
@@ -70,7 +67,7 @@ export async function analyzeBudgetAfterExpense(
   let warning = '';
   if (budgetLimit > 0) {
     if (percentage > 100)
-      warning = `⚠️ Бюджет на ${category} превышен на ${Math.round(
+      warning = `⚠️ Бюджет на «${EXPENSE_LABELS[category] ?? category}» превышен на ${Math.round(
         percentage - 100,
       )}%!`;
     else if (percentage > 80)

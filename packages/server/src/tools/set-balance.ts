@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { isV2RunwayBalanceEnabled } from '../lib/feature-flags.js';
 import { defineTool } from './_types.js';
@@ -34,7 +34,8 @@ export const setBalanceTool = defineTool({
   handler: async (input, ctx) => {
     if (!isV2RunwayBalanceEnabled(ctx.userId)) return { error: 'функция отключена' };
     const tz = await getUserTimezone(ctx.userId);
-    let asOf = localDayStartUTC(tz);
+    // asOf — @db.Date: календарная дата юзера (раньше баланс датировался вчера в UTC+).
+    let asOf = localDateOnlyUTC(tz);
     if (input.asOf) {
       const d = new Date(input.asOf);
       if (!Number.isNaN(d.getTime())) asOf = d;

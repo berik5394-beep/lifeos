@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { analyzeBudgetAfterExpense } from './_finance.js';
@@ -14,6 +14,16 @@ import { normalizeExpenseCategory } from '../lib/expense-category.js';
  * (Step 4 confirm-FSM, Postgres). Корневой фикс #1: реальная запись
  * через аудируемый реестр, а не выдумка чат-агента.
  */
+const DAY_MS = 86_400_000;
+/** Дата траты: YYYY-MM-DD в окне [сегодня−62 дн; сегодня], иначе сегодня (будущее/мусор не пишем). */
+export function expenseDay(date: string | undefined, today: Date): Date {
+  if (!date) return today;
+  const d = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return today;
+  if (d.getTime() > today.getTime() || today.getTime() - d.getTime() > 62 * DAY_MS) return today;
+  return d;
+}
+
 export const addExpenseTool = defineTool({
   name: 'add_expense',
   description:
@@ -26,6 +36,9 @@ export const addExpenseTool = defineTool({
     amount: z.coerce.number().positive().max(MAX_MONEY_AMOUNT),
     category: z.string().max(40).optional(),
     description: z.string().max(300).optional(),
+    // Дата траты (чек вчерашний, «вчера потратил») — YYYY-MM-DD, не будущее и не
+    // старше ~2 мес; иначе сегодня. Раньше трата всегда ложилась на «сегодня».
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   }),
   needsConfirm: true,
   sideEffects: 'write',
@@ -44,19 +57,23 @@ export const addExpenseTool = defineTool({
     // в 00:30 локально (= 19:30 UTC prev day) expense попадал в
     // ПРЕДЫДУЩИЙ день → wrong month aggregation для budget tools).
     const tz = await getUserTimezone(userId);
-    const today = localDayStartUTC(tz);
+    // @db.Date = КАЛЕНДАРНАЯ дата юзера (localDateOnlyUTC). localDayStartUTC — инстант
+    // локальной полуночи (Алматы: 19:00 вчера UTC) → Postgres сохранял ВЧЕРА (баг 2026-11-08).
+    const today = localDateOnlyUTC(tz);
+    const day = expenseDay(input.date, today);
     const expense = await prisma.expense.create({
       data: {
         userId,
-        date: today,
+        date: day,
         amount: input.amount,
         category,
         description,
       },
     });
     const analysis = await analyzeBudgetAfterExpense(userId, category);
+    const when = day.getTime() !== today.getTime() ? ` за ${day.toISOString().slice(8, 10)}.${day.toISOString().slice(5, 7)}` : '';
     return {
-      message: `Расход ${input.amount} ₸ записан${
+      message: `Расход ${input.amount} ₸${when} записан${
         description ? ' (' + description + ')' : ''
       }. ${analysis.warning || ''}`.trim(),
       expenseId: expense.id,

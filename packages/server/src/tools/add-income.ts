@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
+import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { MAX_MONEY_AMOUNT } from '../lib/money.js';
@@ -28,7 +28,8 @@ export const addIncomeTool = defineTool({
   handler: async (input, ctx) => {
     // R9 TZ-aware: «сегодня» в локальной TZ юзера.
     const tz = await getUserTimezone(ctx.userId);
-    const today = localDayStartUTC(tz);
+    // @db.Date = календарная дата юзера (см. add-expense: раньше доход ложился во вчера).
+    const today = localDateOnlyUTC(tz);
     const income = await prisma.income.create({
       data: {
         userId: ctx.userId,

@@ -52,7 +52,9 @@ const CATEGORY_RU: Record<string, string> = {
   entertainment: 'развлечения',
   clothing: 'одежда',
   health: 'здоровье',
-  home: 'дом',
+  education: 'образование',
+  housing: 'жильё',
+  home: 'жильё',
   other: 'прочее',
 };
 const cat = (c: string) => CATEGORY_RU[c] ?? c;

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { defineTool } from './_types.js';
+import { autoStepsOf } from '../services/habit-auto.js';
 import { localDateStr, addCivilDays, dateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 
@@ -27,7 +28,7 @@ export const getHabitsTool = defineTool({
     const [habits, logs] = await Promise.all([
       prisma.habit.findMany({
         where: { userId: ctx.userId, active: true },
-        select: { id: true, name: true, category: true },
+        select: { id: true, name: true, category: true, autoComplete: true },
         orderBy: { order: 'asc' },
         take: 40,
       }),
@@ -46,6 +47,8 @@ export const getHabitsTool = defineTool({
           category: h.category,
           doneToday: mine.some((l) => l.date.getTime() === todayKey),
           doneLast7Days: mine.length,
+          // Отмечается сама по шагам (порог) — чтобы мозг не спрашивал «отметить?».
+          ...(autoStepsOf(h.autoComplete) ? { autoBySteps: autoStepsOf(h.autoComplete) } : {}),
         };
       }),
     };

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
+import { localDateStr } from '../lib/tz.js';
+import { EXPENSE_LABELS, normalizeExpenseCategory } from '../lib/expense-category.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 
@@ -34,17 +35,21 @@ export const setBudgetTool = defineTool({
     const userId = ctx.userId;
     // tz-aware текущий месяц/год — чтобы совпасть с бакетингом расходов.
     const tz = await getUserTimezone(userId);
-    const localDay = localDayStartUTC(tz);
-    const month = input.month ?? localDay.getUTCMonth() + 1;
-    const year = input.year ?? localDay.getUTCFullYear();
-    const category = input.category;
+    // Месяц — по календарю юзера (localDayStartUTC = инстант полуночи: 1-го числа
+    // в Алматы это ещё прошлый месяц по UTC → лимит ставился не на тот месяц).
+    const [y, m] = localDateStr(tz).split('-').map(Number);
+    const month = input.month ?? m;
+    const year = input.year ?? y;
+    // Ключ как у трат (food/housing…): раньше «еда» сохранялась как есть и
+    // лимит не совпадал ни с одной тратой — предупреждения не работали.
+    const category = normalizeExpenseCategory(input.category);
     await prisma.budgetLimit.upsert({
       where: { userId_category_month_year: { userId, category, month, year } },
       update: { monthlyLimit: input.monthlyLimit },
       create: { userId, category, monthlyLimit: input.monthlyLimit, month, year },
     });
     return {
-      message: `Лимит на «${category}»: ${input.monthlyLimit} ₸/мес поставлен. Предупрежу, если начнёшь превышать.`,
+      message: `Лимит на «${EXPENSE_LABELS[category] ?? category}»: ${input.monthlyLimit} ₸/мес поставлен. Предупрежу, если начнёшь превышать.`,
       category,
       monthlyLimit: input.monthlyLimit,
       month,

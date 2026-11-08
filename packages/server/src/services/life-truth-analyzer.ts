@@ -307,7 +307,7 @@ function analyzeFinances(data: RawUserData): FinancialTruth {
   }
 
   for (const drain of topMoneyDrains) {
-    if (drain.percentOfIncome > 30 && drain.category !== 'home') {
+    if (drain.percentOfIncome > 30 && drain.category !== 'home' && drain.category !== 'housing') {
       financialDecisionsToPoverty.push(
         `${drain.category}: ${drain.percentOfIncome}% дохода — слишком много на одну категорию.`,
       );

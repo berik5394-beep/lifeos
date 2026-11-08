@@ -21,15 +21,21 @@ describe('analyzeBudgetAfterExpense — месяц ЮЗЕРА, не сервер
     await prisma.budgetLimit.create({
       data: { userId: uid, category: 'food', monthlyLimit: 10_000, month: 7, year: 2026 },
     });
-    // Расход 1 июля Алматы (add-expense пишет date=localDayStartUTC → 2026-06-30T19:00Z)
+    // Расход 1 июля Алматы — add_expense пишет КАЛЕНДАРНУЮ дату (2026-11-08: было
+    // localDayStartUTC → «30 июня»). Плюс трата 31 июля — последний день месяца
+    // раньше выпадал из итога (ревью 2026-11-08).
     await prisma.expense.create({
-      data: {
-        userId: uid,
-        category: 'food',
-        description: 'продукты',
-        amount: 9_000,
-        date: new Date('2026-06-30T19:00:00.000Z'),
-      },
+      data: { userId: uid, category: 'food', description: 'продукты', amount: 5_000, date: new Date('2026-07-01T00:00:00.000Z') },
+    });
+    await prisma.expense.create({
+      data: { userId: uid, category: 'food', description: 'ужин', amount: 4_000, date: new Date('2026-07-31T00:00:00.000Z') },
+    });
+    // Соседние месяцы — не считаются.
+    await prisma.expense.create({
+      data: { userId: uid, category: 'food', description: 'июнь', amount: 70_000, date: new Date('2026-06-30T00:00:00.000Z') },
+    });
+    await prisma.expense.create({
+      data: { userId: uid, category: 'food', description: 'август', amount: 70_000, date: new Date('2026-08-01T00:00:00.000Z') },
     });
     // «Сейчас» = 2026-07-01 01:00 Алматы = 2026-06-30T20:00Z (сервер ещё в июне!)
     const now = new Date('2026-06-30T20:00:00.000Z');

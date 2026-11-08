@@ -30,6 +30,7 @@ import { moveEventTool } from './move-event.js';
 import { cancelEventTool } from './cancel-event.js';
 import { moveTaskTool } from './move-task.js';
 import { completePeriodGoalTool } from './complete-period-goal.js';
+import { setHabitAutoTool } from './set-habit-auto.js';
 import { createWeeklyGoalTool } from './create-weekly-goal.js';
 import { createMonthlyGoalTool } from './create-monthly-goal.js';
 import { getMonthlyPlanTool } from './get-monthly-plan.js';
@@ -107,6 +108,7 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   cancelEventTool,
   moveTaskTool,
   completePeriodGoalTool,
+  setHabitAutoTool,
   createWeeklyGoalTool,
   createMonthlyGoalTool,
   getMonthlyPlanTool,
@@ -437,7 +439,10 @@ export function capabilityText(): string {
       ? `Денежные/необратимые (${confirm.join(
           ', ',
         )}) — сначала подтверждение, дождись «да».`
-      : '')
+      : '') +
+    // Чек с фото: фото в чате ты не видишь, но камера в приложении есть.
+    ' Трата по фото чека — через камеру приложения: пусть скажет «сфоткай чек» (откроется камера) ' +
+    'или нажмёт «📷 Чек» в Финансах — ты прочитаешь сумму и спросишь «да». Не говори, что не умеешь.'
   );
 }
 
