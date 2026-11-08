@@ -672,7 +672,9 @@ function generateLifeTruthPrompt(
   lines.push('4. ВСЕГДА давай конкретные стратегии выхода (не абстрактные советы).');
   lines.push('5. Валюта — ₸ (тенге). Все суммы в тенге.');
   lines.push('6. Пиши на русском языке.');
-  lines.push('7. Формат: сначала жёсткий диагноз (3-4 абзаца), потом план действий (5-7 конкретных шагов).');
+  // Коротко: экран показывает вывод в 4 строки (раскрыть — по тапу); длинный текст
+  // писался ~50 с при пределе ожидания телефона 60 с.
+  lines.push('7. Формат: диагноз — 1 короткий абзац (3–4 предложения), потом 3–5 конкретных шагов списком. Без markdown. Не больше 900 знаков.');
   lines.push('8. Обращайся на "ты" по имени.');
   lines.push(`9. Имя пользователя: ${data.userName}.`);
 
@@ -715,7 +717,7 @@ async function callClaude(systemPrompt: string): Promise<string> {
   try {
     const response = await client.messages.create({
       model: MODELS.sonnet,
-      max_tokens: 2048,
+      max_tokens: 700,
       messages: [
         { role: 'user', content: 'Проанализируй мою жизнь. Будь жёстким и честным.' },
       ],
