@@ -6,6 +6,20 @@ import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 /** Разбор цели длиннее обычной реплики — облачко держим дольше. */
 const INTAKE_BUBBLE_MS = 20000;
 
+/**
+ * Разбор цели (деньги/время/привычка + «да») — фоном: сохранение не ждёт
+ * расчёта, робот скажет облачком, когда придёт. Сбой/флаг выкл. — молчит.
+ * Promise.resolve().then: даже синхронный сбой вызова не ломает сохранение цели.
+ */
+function requestIntake(path: string, token: string): void {
+  void Promise.resolve()
+    .then(() => api.post<{ text: string | null }>(path, {}, token))
+    .then((r) => {
+      if (r?.text) useRobotReactionStore.getState().react('thinking', r.text, INTAKE_BUBBLE_MS);
+    })
+    .catch(() => {});
+}
+
 interface WeeklyGoal {
   id: string;
   userId: string;
@@ -74,6 +88,7 @@ export const useGoalStore = create<GoalState>((set) => ({
       token,
     );
     set((state) => ({ weeklyGoals: [...state.weeklyGoals, goal] }));
+    requestIntake(`/goals/weekly/${goal.id}/intake`, token);
   },
 
   updateWeeklyGoal: async (id: string, data: Partial<WeeklyGoal>) => {
@@ -120,15 +135,7 @@ export const useGoalStore = create<GoalState>((set) => ({
 
     const goal = await api.post<YearlyGoal>('/goals/yearly', data, token);
     set((state) => ({ yearlyGoals: [...state.yearlyGoals, goal] }));
-    // Разбор цели (деньги/время/привычка + «да») — фоном: сохранение не ждёт
-    // расчёта, робот скажет облачком, когда придёт. Сбой — просто молчит.
-    // Promise.resolve().then: даже синхронный сбой вызова не ломает сохранение цели.
-    void Promise.resolve()
-      .then(() => api.post<{ text: string | null }>(`/goals/yearly/${goal.id}/intake`, {}, token))
-      .then((r) => {
-        if (r?.text) useRobotReactionStore.getState().react('thinking', r.text, INTAKE_BUBBLE_MS);
-      })
-      .catch(() => {});
+    requestIntake(`/goals/yearly/${goal.id}/intake`, token);
   },
 
   updateYearlyGoal: async (id: string, data: Partial<YearlyGoal>) => {

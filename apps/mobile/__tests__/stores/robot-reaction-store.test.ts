@@ -111,3 +111,41 @@ describe('разбор цели после постановки с экрана'
     expect(useRobotReactionStore.getState().reaction).toBeNull();
   });
 });
+
+import { useEventStore } from '@/stores/event-store';
+describe('наложение по времени с экрана', () => {
+  it('задача поверх встречи → тревога + текст сервера; conflictWarning не попадает в список', async () => {
+    useTaskStore.setState({ tasks: [] });
+    mockApi.post.mockResolvedValueOnce({ id: 't9', title: 'Позвонить', completed: false, conflictWarning: 'Накладывается на время с встречей «Планёрка» 10:00–11:00.' });
+    await useTaskStore.getState().createTask({ title: 'Позвонить', category: 'work', priority: 'medium', date: '2026-12-01', time: '10:30' } as never);
+    const r = useRobotReactionStore.getState().reaction;
+    expect(r?.emotion).toBe('worried');
+    expect(r?.text).toContain('Планёрка');
+    expect(useTaskStore.getState().tasks[0]).not.toHaveProperty('conflictWarning');
+  });
+
+  it('встреча поверх задачи → тревога; без наложения — молчит', async () => {
+    useEventStore.setState({ events: [] } as never);
+    mockApi.post.mockResolvedValueOnce({ id: 'e1', title: 'Встреча', date: '2026-12-01', conflictWarning: 'Накладывается на время с задачей «Отчёт» в 14:15.' });
+    await useEventStore.getState().createEvent({ title: 'Встреча', date: '2026-12-01', startTime: '14:00', endTime: '15:00' } as never);
+    expect(useRobotReactionStore.getState().reaction?.text).toContain('Отчёт');
+
+    useRobotReactionStore.setState({ reaction: null });
+    mockApi.post.mockResolvedValueOnce({ id: 'e2', title: 'Обед', date: '2026-12-01' });
+    await useEventStore.getState().createEvent({ title: 'Обед', date: '2026-12-01', startTime: '13:00' } as never);
+    expect(useRobotReactionStore.getState().reaction).toBeNull();
+  });
+});
+
+describe('быстрая строка задачи со временем', () => {
+  it('сервер нашёл наложение → облачко', async () => {
+    useTaskStore.setState({ tasks: [] });
+    mockApi.post.mockResolvedValueOnce({
+      task: { id: 't10', title: 'Позвонить', completed: false },
+      conflictWarning: 'Накладывается на время с встречей «Планёрка» 10:00–11:00.',
+    });
+    await useTaskStore.getState().quickAdd('позвонить завтра в 10:30');
+    expect(useRobotReactionStore.getState().reaction?.text).toContain('Планёрка');
+    expect(useTaskStore.getState().tasks[0]).toEqual({ id: 't10', title: 'Позвонить', completed: false });
+  });
+});

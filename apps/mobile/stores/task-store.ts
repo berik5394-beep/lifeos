@@ -102,10 +102,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     if (!token) return;
 
     try {
-      const { proposal, ...task } = await api.post<Task & { proposal?: RescheduleProposal }>('/tasks', data, token, QUEUE_OFFLINE);
+      const { proposal, conflictWarning, ...task } = await api.post<
+        Task & { proposal?: RescheduleProposal; conflictWarning?: string }
+      >('/tasks', data, token, QUEUE_OFFLINE);
       set((state) => ({ tasks: [...state.tasks, task] }));
       // Перегруз дня: робот предлагает сдвинуть график (облачко + «Подтвердить»).
       if (proposal) useChatStore.getState().showProposal(proposal);
+      // Наложение на встречу/задачу того же времени — облачком робота.
+      if (conflictWarning) useRobotReactionStore.getState().react('worried', conflictWarning);
     } catch (err) {
       // Без сети: запись в очереди — показываем задачу сразу, после отправки
       // список перечитается и временный id сменится настоящим.
@@ -223,9 +227,15 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     try {
       // Сервер отдаёт { task, parsed, confidence, proposal? } — раньше в список
       // попадала вся обёртка вместо задачи.
-      const res = await api.post<{ task: Task; proposal?: RescheduleProposal }>('/tasks/quick-add', { text }, token);
+      const res = await api.post<{ task: Task; proposal?: RescheduleProposal; conflictWarning?: string }>(
+        '/tasks/quick-add',
+        { text },
+        token,
+      );
       set((state) => ({ tasks: [...state.tasks, res.task] }));
       if (res.proposal) useChatStore.getState().showProposal(res.proposal);
+      // «позвонить завтра в 10:30» поверх встречи — облачком робота.
+      if (res.conflictWarning) useRobotReactionStore.getState().react('worried', res.conflictWarning);
     } catch (err) {
       // Разбор фразы (ИИ) не сработал или нет сети — задачу не теряем: пишем как
       // есть, на сегодня (без сети — в очередь, видна сразу).
