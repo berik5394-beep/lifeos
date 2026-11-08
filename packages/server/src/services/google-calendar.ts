@@ -332,17 +332,78 @@ export async function listEvents(
 }
 
 /** Push: создать локальное событие в Google. Возвращает googleEventId. */
-export async function insertEvent(
-  accessToken: string,
-  ev: {
-    title: string;
-    date: string; // YYYY-MM-DD
-    startTime: string | null; // HH:MM
-    endTime: string | null;
-    location: string | null;
-    description: string | null;
-  },
-): Promise<string> {
+export interface LocalEventShape {
+  title: string;
+  date: string; // YYYY-MM-DD
+  startTime: string | null; // HH:MM
+  endTime: string | null;
+  location: string | null;
+  description: string | null;
+}
+
+export async function insertEvent(accessToken: string, ev: LocalEventShape): Promise<string> {
+  const res = await fetchTimeout(GOOGLE_CAL_BASE, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(googleEventBody(ev)),
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new GoogleCalendarError(
+      `Google Calendar API ошибка создания (${res.status}): ${txt.slice(0, 200)}`,
+      'api_error',
+    );
+  }
+
+  const data = (await res.json()) as { id: string };
+  return data.id;
+}
+
+/**
+ * Перенос/правка встречи В GOOGLE. Без этого синхронизация (pull перезаписывает
+ * локальную строку данными Google) откатывала перенос на старое время.
+ */
+export async function patchEvent(accessToken: string, externalId: string, ev: LocalEventShape): Promise<void> {
+  const res = await fetchTimeout(`${GOOGLE_CAL_BASE}/${encodeURIComponent(externalId)}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(googlePatchBody(ev)),
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new GoogleCalendarError(`Google Calendar API ошибка правки (${res.status}): ${txt.slice(0, 200)}`, 'api_error');
+  }
+}
+
+/** Удалить встречу в Google. Уже нет (404/410) — тоже успех. */
+export async function deleteRemoteEvent(accessToken: string, externalId: string): Promise<void> {
+  const res = await fetchTimeout(`${GOOGLE_CAL_BASE}/${encodeURIComponent(externalId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok && res.status !== 404 && res.status !== 410) {
+    const txt = await res.text().catch(() => '');
+    throw new GoogleCalendarError(`Google Calendar API ошибка удаления (${res.status}): ${txt.slice(0, 200)}`, 'api_error');
+  }
+}
+
+/**
+ * PATCH сливает вложенные объекты: у встречи «на весь день» остался бы
+ * start.date рядом с новым start.dateTime → Google 400. Явно обнуляем чужое.
+ */
+export function googlePatchBody(ev: LocalEventShape): Record<string, unknown> {
+  const body = googleEventBody(ev);
+  const clear = ev.startTime ? { date: null } : { dateTime: null, timeZone: null };
+  body.start = { ...(body.start as object), ...clear };
+  body.end = { ...(body.end as object), ...clear };
+  return body;
+}
+
+function googleEventBody(ev: LocalEventShape): Record<string, unknown> {
   const body: Record<string, unknown> = {
     summary: ev.title,
     ...(ev.location ? { location: ev.location } : {}),
@@ -360,26 +421,7 @@ export async function insertEvent(
     body.start = { date: ev.date };
     body.end = { date: next.toISOString().slice(0, 10) };
   }
-
-  const res = await fetchTimeout(GOOGLE_CAL_BASE, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new GoogleCalendarError(
-      `Google Calendar API ошибка создания (${res.status}): ${txt.slice(0, 200)}`,
-      'api_error',
-    );
-  }
-
-  const data = (await res.json()) as { id: string };
-  return data.id;
+  return body;
 }
 
 /**

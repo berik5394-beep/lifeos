@@ -31,6 +31,8 @@ import { isFailedResult } from './tool-activity-summary.js';
 import { maybeSavingsCoachLine } from './savings-coach.js';
 import { commitGoal, type CommitGoalInput } from './goal-commit.js';
 import { getToolCounts } from './tool-audit.js';
+import { DELETE_EVENT_ACTION } from '../tools/cancel-event.js';
+import { googleNote, removeEvent, whenText } from './event-change.js';
 import {
   peekPendingAction,
   pendingStagedSince,
@@ -723,6 +725,18 @@ export async function runConfirmedAction(
     // Захват цели: «да» на предложение suggest_goal → реальная запись
     // (create-or-update + target/срок). Деньгами не двигает; commit_goal —
     // НЕ зарегистрированный tool, исполняется здесь (как run_skill_actions).
+    // Удаление встречи: «да» на «Удалить «X» 12.11 в 14:00?» — удаляем ИМЕННО ту,
+    // что показали (id из pending, найден до вопроса). НЕ tool реестра: модель
+    // не может вызвать удаление в обход вопроса.
+    if (action === DELETE_EVENT_ACTION) {
+      const r = await removeEvent(userId, String(input.eventId ?? ''));
+      const message = r
+        ? `Удалил встречу «${r.removed.title}» ${whenText(r.removed)}.${googleNote(r.google, 'delete')}`
+        : 'Этой встречи уже нет в календаре.';
+      await saveTurn(userId, '(подтверждено)', message);
+      return message;
+    }
+
     if (action === 'commit_goal') {
       const message = await commitGoal(
         userId,

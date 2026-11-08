@@ -23,10 +23,10 @@ import { proposeReschedule } from '../services/reschedule.js';
 export const createEventTool = defineTool({
   name: 'create_event',
   description:
-    'Создать или перенести встречу/событие в календаре: с людьми, местом ' +
-    'или временем «с–до». Похожее событие в ±3 дня обновляется (не плодит ' +
-    'дубль). Дело без встречи («купить», «сделать отчёт», «позвонить») — ' +
-    'create_task, не я.',
+    'Создать НОВУЮ встречу/событие в календаре: с людьми, местом или ' +
+    'временем «с–до». Перенести существующую — move_event, отменить — ' +
+    'cancel_event, не я. Дело без встречи («купить», «сделать отчёт», ' +
+    '«позвонить») — create_task.',
   category: 'calendar',
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
   aliases: { name: 'title', eventTitle: 'title', due_date: 'date', dueDate: 'date', day: 'date', place: 'location', desc: 'description', notes: 'description', note: 'description' },

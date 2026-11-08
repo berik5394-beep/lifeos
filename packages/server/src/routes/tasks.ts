@@ -243,13 +243,22 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       type: 'task_updated',
       content: `Изменил задачу «${updated.title}»`,
     });
+    // Наложение по времени при ПРАВКЕ (раньше только при создании): поменяли
+    // время/день у невыполненной — проверяем новое место.
+    const timeTouched = data.time !== undefined || data.date !== undefined;
+    const conflictWarning =
+      timeTouched && !updated.completed && !updated.cancelled
+        ? await screenConflictText(request.userId, updated.date, { kind: 'task', title: updated.title, start: updated.time }, { taskId: updated.id })
+        : null;
     // Перегруз дня (флаг): задачу перенесли на другой день → проверяем новый день.
     const moved = !!data.date && previousDate !== null && (previousDate as Date).toISOString().slice(0, 10) !== data.date;
     if (moved && !updated.completed && !updated.cancelled) {
       const proposal = await proposeReschedule(request.userId, data.date as string, updated.id, new Date(), { fromCard: true });
-      if (proposal) return reply.send({ ...updated, proposal: { text: proposal.text, staged: proposal.staged } });
+      if (proposal) {
+        return reply.send({ ...updated, proposal: { text: proposal.text, staged: proposal.staged }, ...(conflictWarning ? { conflictWarning } : {}) });
+      }
     }
-    return reply.send(updated);
+    return reply.send(conflictWarning ? { ...updated, conflictWarning } : updated);
   });
 
   app.delete('/tasks/:id', async (request, reply) => {

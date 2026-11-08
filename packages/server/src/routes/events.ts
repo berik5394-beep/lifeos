@@ -7,6 +7,7 @@ import { captureActivity } from '../services/tool-activity-summary.js';
 import { proposeReschedule } from '../services/reschedule.js';
 import { withIdempotency } from '../lib/idempotency.js';
 import { screenConflictText } from '../services/schedule-conflict/index.js';
+import { googleNote, pushToGoogle, shiftTimes } from '../services/event-change.js';
 
 const createEventSchema = z.object({
   title: z.string().min(1, 'Название обязательно').max(500),
@@ -200,10 +201,11 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const eventDate = data.date ? new Date(data.date) : existing.date;
-      const startTime =
-        data.startTime !== undefined ? data.startTime : existing.startTime;
-      const endTime =
-        data.endTime !== undefined ? data.endTime : existing.endTime;
+      // Новое начало без конца — длительность сохраняем (14:00–15:00 → 16:00–17:00);
+      // раньше конец оставался старым и мог стать раньше начала.
+      const times = shiftTimes(existing, { startTime: data.startTime, endTime: data.endTime });
+      const startTime = times.startTime;
+      const endTime = times.endTime;
 
       const conflicts = await findConflicts(
         request.userId,
@@ -218,10 +220,7 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
         data: {
           ...(data.title !== undefined ? { title: data.title } : {}),
           ...(data.date !== undefined ? { date: eventDate } : {}),
-          ...(data.startTime !== undefined
-            ? { startTime: data.startTime }
-            : {}),
-          ...(data.endTime !== undefined ? { endTime: data.endTime } : {}),
+          ...(data.startTime !== undefined || data.endTime !== undefined ? { startTime, endTime } : {}),
           ...(data.location !== undefined ? { location: data.location } : {}),
           ...(data.description !== undefined
             ? { description: data.description }
@@ -244,10 +243,26 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
         timeChanged && updated.startTime && updated.endTime && updated.source !== 'imported'
           ? await proposeReschedule(request.userId, updated.date.toISOString().slice(0, 10), null, new Date(), { fromCard: true })
           : null;
+      // Встреча из Google (или уже выгруженная): правку — и туда, иначе следующая
+      // синхронизация перезапишет её старыми данными.
+      const contentChanged =
+        timeChanged || updated.title !== existing.title || updated.location !== existing.location || updated.description !== existing.description;
+      const google = contentChanged ? await pushToGoogle(request.userId, updated, 'patch') : 'none';
+      // Наложение по новому времени (встречи И задачи) — облачком, как при создании.
+      const overlap = timeChanged
+        ? await screenConflictText(
+            request.userId,
+            updated.date,
+            { kind: 'event', title: updated.title, start: updated.startTime, end: updated.endTime },
+            { eventId: updated.id },
+          )
+        : null;
+      const conflictWarning = [overlap, googleNote(google, 'patch').trim()].filter(Boolean).join(' ') || null;
       return reply.send({
         ...updated,
         ...(conflicts.length > 0 ? { conflicts } : {}),
         ...(proposal ? { proposal: { text: proposal.text, staged: proposal.staged } } : {}),
+        ...(conflictWarning ? { conflictWarning } : {}),
       });
     },
   );
@@ -264,11 +279,14 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ message: 'Событие не найдено' });
     }
 
+    // Из Google тоже — иначе синхронизация вернёт удалённую встречу.
+    const google = await pushToGoogle(request.userId, event, 'delete');
     await prisma.calendarEvent.delete({ where: { id } });
     captureActivity(request.userId, {
       type: 'event_deleted',
       content: `Убрал встречу «${event.title}»`,
     });
-    return reply.send({ success: true });
+    const note = googleNote(google, 'delete').trim();
+    return reply.send({ success: true, ...(note ? { warning: note } : {}) });
   });
 }

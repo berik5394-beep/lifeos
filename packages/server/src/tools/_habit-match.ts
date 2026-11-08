@@ -27,7 +27,7 @@ function stemJoined(s: string): string {
   return stem(normalizeHabit(s).replace(/\s+/g, ''));
 }
 
-function stemTokens(s: string): string[] {
+export function stemTokens(s: string): string[] {
   return normalizeHabit(s).split(' ').filter(Boolean).map(stem);
 }
 
