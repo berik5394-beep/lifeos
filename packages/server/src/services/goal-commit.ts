@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { parseGoalDeadline } from './goal-deadline.js';
 import { decideGoalWrite } from './goal-write.js';
+import { maybeGoalIntake } from './goal-intake-gather.js';
 
 /**
  * Запись цели ПОСЛЕ подтверждения «да». Вызывается из runConfirmedAction
@@ -56,13 +57,15 @@ export async function commitGoal(
   };
 
   let verb: string;
+  let createdId: string | null = null;
   if (decision.mode === 'update') {
     await prisma.yearlyGoal.update({ where: { id: decision.goalId }, data: fields });
     verb = 'обновлена';
   } else {
-    await prisma.yearlyGoal.create({
+    const created = await prisma.yearlyGoal.create({
       data: { userId, year, area: input.area, ...fields },
     });
+    createdId = created?.id ?? null;
     verb = 'записана';
   }
 
@@ -71,5 +74,12 @@ export async function commitGoal(
     parts.push(`${Math.round(target)}${input.area === 'finance' ? '₸' : ''}`);
   }
   if (targetDate) parts.push(`к ${targetDate.toISOString().slice(0, 10)}`);
-  return `Цель ${verb}: ${parts.join(' ')} (${input.area}). Буду вести.`;
+  const head = `Цель ${verb}: ${parts.join(' ')} (${input.area}). Буду вести.`;
+  // Разбор при постановке (флаг): деньги/темп/время/привычка + одно «да».
+  // Только для НОВОЙ цели (правка старой — не постановка). Ответ уходит в
+  // историю (saveTurn) → «да» приходит агенту с контекстом предложения.
+  const intake = createdId ? await maybeGoalIntake(userId, createdId, now) : null;
+  return intake ? `${head}
+
+${intake}` : head;
 }

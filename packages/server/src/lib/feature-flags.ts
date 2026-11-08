@@ -494,3 +494,12 @@ export function isV2RescheduleEnabled(userId: string): boolean {
 export function isV2DealsEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_DEALS, userId);
 }
+
+/**
+ * Разбор цели при постановке (спека 2026-11-08-goal-intake-check): после записи
+ * годовой цели — деньги/темп/время/привычки + одно предложение «да». OFF → ответ
+ * «Цель записана…» байт-в-байт как раньше, разбор не считается и не пишется.
+ */
+export function isV2GoalIntakeEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_GOAL_INTAKE, userId);
+}

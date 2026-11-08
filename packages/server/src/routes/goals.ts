@@ -5,6 +5,8 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseYear, invalidDateReply } from '../middleware/validate.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { estimateWeeklyGoalMinutesInBackground } from '../services/estimate-goal-minutes.js';
+import { maybeGoalIntake } from '../services/goal-intake-gather.js';
+import { clearPendingAction } from '../services/pending-actions.js';
 
 // B.3: enum/диапазоны (аудит 3.12). area из CLAUDE.md (goalAreas),
 // year ограничен, weekStart — строгий ISO (раньше z.string() →
@@ -180,6 +182,42 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
       content: `Годовая цель «${goal.goalText}» (${data.area}, ${data.year})`,
     });
     return reply.status(201).send(goal);
+  });
+
+  // Разбор цели при постановке с ЭКРАНА (флаг FEATURE_V2_GOAL_INTAKE). Отдельным
+  // запросом ПОСЛЕ создания: само сохранение не ждёт 2–3 с расчёта. Текст кладём
+  // в чат сообщением робота — чтобы «да» (голосом/текстом) пришло мозгу с
+  // контекстом предложения. Только свежая цель (≤10 мин) и без повтора в чате.
+  app.post('/goals/yearly/:id/intake', async (request) => {
+    const { id } = request.params as { id: string };
+    const goal = await prisma.yearlyGoal.findFirst({
+      where: { id, userId: request.userId },
+      select: { id: true, goalText: true, createdAt: true },
+    });
+    const freshMs = 10 * 60_000;
+    if (!goal || Date.now() - goal.createdAt.getTime() > freshMs) return { text: null };
+    const intake = await maybeGoalIntake(request.userId, goal.id);
+    if (!intake) return { text: null };
+    const text = `Про цель «${goal.goalText}»:\n${intake}`;
+    const dup = await prisma.chatMessage.count({
+      // По началу «Про цель «…»:», а не точному тексту: цифры в разборе плывут со временем.
+      where: {
+        userId: request.userId,
+        role: 'assistant',
+        content: { startsWith: `Про цель «${goal.goalText}»:` },
+        createdAt: { gte: new Date(Date.now() - freshMs) },
+      },
+    });
+    if (dup === 0) {
+      // Старое неотвеченное предложение («записать расход…?») снимаем: иначе
+      // «да» на разбор цели подтвердило бы его вслепую (pending проверяется
+      // раньше истории). То же правило, что «сменил тему» в оркестраторе.
+      await clearPendingAction(request.userId).catch(() => {});
+      await prisma.chatMessage
+        .create({ data: { userId: request.userId, role: 'assistant', content: text } })
+        .catch(() => {});
+    }
+    return { text };
   });
 
   app.put('/goals/yearly/:id', {
