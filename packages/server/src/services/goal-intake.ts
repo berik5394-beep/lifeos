@@ -135,11 +135,13 @@ function timeLine(f: Pick<GoalIntakeFacts, 'time' | 'moodDown'>): string | null 
   return `${head}; до конца этой недели свободно ${hours(freeMin)} — ${verdict}.`;
 }
 
-function habitLine(linkableHabit: string | null): string {
+/**
+ * canLink: годовая цель — есть link_habit_to_goal, «могу привязать» честно.
+ * Цель недели/месяца — Habit.goalId только к годовой, поэтому только факт.
+ */
+function habitLine(linkableHabit: string | null, canLink: boolean): string {
   return linkableHabit
-    // Факт, без «могу привязать»: инструмента привязки существующей привычки
-    // к цели нет — обещать нельзя (ревью 2026-11-08).
-    ? `Под неё подходит твоя привычка «${linkableHabit}».`
+    ? `Под неё подходит твоя привычка «${linkableHabit}»${canLink ? ' — могу привязать' : ''}.`
     : 'К цели пока не привязана ни одна привычка.';
 }
 
@@ -169,7 +171,7 @@ export function buildGoalIntake(f: GoalIntakeFacts): string {
     if (ml) lines.push(ml);
     const tl = timeLine(f);
     if (tl) lines.push(tl);
-    lines.push(habitLine(f.linkableHabit));
+    lines.push(habitLine(f.linkableHabit, true));
   }
   return [...lines.slice(0, 3), question(f, isMoney)].join('\n');
 }
@@ -191,7 +193,7 @@ export function buildShortGoalIntake(f: ShortGoalIntakeFacts): string | null {
   const lines: string[] = [];
   const tl = timeLine(f);
   if (tl) lines.push(tl);
-  if (f.linkableHabit) lines.push(habitLine(f.linkableHabit));
+  if (f.linkableHabit) lines.push(habitLine(f.linkableHabit, false));
   if (f.slot && !f.moodDown) {
     const d = f.slot.date;
     lines.push(`Поставить первое занятие на ${ruDayName(d)} (${d.slice(8, 10)}.${d.slice(5, 7)}) в ${f.slot.from}? Скажи «да».`);

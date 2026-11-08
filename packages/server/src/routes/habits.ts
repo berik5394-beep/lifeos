@@ -35,6 +35,11 @@ const logHabitSchema = z.object({
   completed: z.boolean(),
 });
 
+/** Цель принадлежит юзеру (для goalId привычки). */
+async function ownsGoal(userId: string, goalId: string): Promise<boolean> {
+  return (await prisma.yearlyGoal.count({ where: { id: goalId, userId } })) > 0;
+}
+
 export async function habitRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
@@ -49,6 +54,11 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
     preHandler: validate(createHabitSchema),
   }, async (request, reply) => {
     const data = request.body as z.infer<typeof createHabitSchema>;
+    // IDOR: goalId раньше писался без проверки владельца — привычку можно было
+    // привязать к ЧУЖОЙ цели (и детекторы показали бы её текст).
+    if (data.goalId && !(await ownsGoal(request.userId, data.goalId))) {
+      return reply.status(404).send({ message: 'Цель не найдена' });
+    }
 
     const maxOrder = await prisma.habit.aggregate({
       where: { userId: request.userId },
@@ -84,6 +94,9 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
     });
     if (!habit) {
       return reply.status(404).send({ message: 'Привычка не найдена' });
+    }
+    if (data.goalId && !(await ownsGoal(request.userId, data.goalId))) {
+      return reply.status(404).send({ message: 'Цель не найдена' });
     }
 
     const updateData: Prisma.HabitUncheckedUpdateInput = {};

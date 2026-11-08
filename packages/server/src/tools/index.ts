@@ -25,6 +25,7 @@ import { deferOverdueTool } from './defer-overdue.js';
 import { completeHabitTool } from './complete-habit.js';
 import { completeMultipleHabitsTool } from './complete-multiple-habits.js';
 import { createHabitTool } from './create-habit.js';
+import { linkHabitToGoalTool } from './link-habit-to-goal.js';
 import { createWeeklyGoalTool } from './create-weekly-goal.js';
 import { createMonthlyGoalTool } from './create-monthly-goal.js';
 import { getMonthlyPlanTool } from './get-monthly-plan.js';
@@ -98,6 +99,7 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   deferOverdueTool,
   completeHabitTool,
   createHabitTool,
+  linkHabitToGoalTool,
   createWeeklyGoalTool,
   createMonthlyGoalTool,
   getMonthlyPlanTool,
