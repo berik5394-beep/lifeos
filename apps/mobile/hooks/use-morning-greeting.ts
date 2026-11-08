@@ -38,16 +38,21 @@ export function useMorningGreeting(): UseMorningGreetingResult {
     setShouldShowGreeting(true);
     setIsLoading(true);
 
+    // Утренний бриф — тот же текст, что в пуше (задачи, встречи, бюджет, долги,
+    // перегруз, темп целей). Раньше тут было общее «Доброе утро! Чем помочь?»,
+    // и кто не открыл пуш, брифа не видел. Не вышло — прежнее приветствие.
     api
-      .post<AssistantResponse>(
-        '/voice/assistant',
-        { text: 'Доброе утро' },
-        token,
-        { timeoutMs: BRAIN_TIMEOUT_MS },
-      )
-      .then((response) => {
-        setGreeting(response.reply);
+      .get<{ title: string; text: string; day?: string }>('/briefing/today', token, { timeoutMs: BRAIN_TIMEOUT_MS })
+      .then((b) => {
+        // Без сети api.get может вернуть кэш — вчерашний бриф не показываем.
+        if (!b?.text || (b.day && b.day !== todayStr)) throw new Error('нет брифа на сегодня');
+        setGreeting(`${b.title} ${b.text}`);
       })
+      .catch(() =>
+        api
+          .post<AssistantResponse>('/voice/assistant', { text: 'Доброе утро' }, token, { timeoutMs: BRAIN_TIMEOUT_MS })
+          .then((response) => setGreeting(response.reply)),
+      )
       .catch(() => {
         setGreeting('Доброе утро! Отличного дня!');
       })
