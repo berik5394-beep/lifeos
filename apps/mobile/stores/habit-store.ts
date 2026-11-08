@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api, isOfflineQueued, QUEUE_OFFLINE } from '@/services/api';
 import { offlineId } from '@/utils/offline-id';
 import { useAuthStore } from '@/stores/auth-store';
+import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 import { persistStoreData } from '@/services/store-persist';
 
 interface Habit {
@@ -187,6 +188,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       });
     try {
       putLog(await api.post<HabitLog>(`/habits/${habitId}/log`, { date, completed }, token, QUEUE_OFFLINE));
+      if (completed) useRobotReactionStore.getState().react('happy');
     } catch (err) {
       // Без сети отметка в очереди — показываем её сразу.
       if (isOfflineQueued(err)) {

@@ -12,6 +12,7 @@ import { ContentWidthContext, ToolActiveContext } from '@/hooks/use-content-widt
 import { RobotDodgeContext, type RobotDodge } from '@/hooks/use-robot-dodge';
 import { useColors } from '@/hooks/use-colors';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
+import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 import { useSharedVoice } from '@/hooks/shared-voice';
 import { useChatStore } from '@/stores/chat-store';
 import { useScheduleStore } from '@/stores/schedule-store';
@@ -109,7 +110,19 @@ export const ToolsPage = memo(function ToolsPage({
       ? latest
       : undefined;
   const replyEmotion = useRobotReaction(reply?.emotion, reply?.id ?? null);
-  const emotion = chatLoading ? 'thinking' : replyEmotion;
+  // Действие с экрана (задача/привычка/трата сверх лимита) — робот реагирует сразу.
+  const screenReaction = useRobotReactionStore((s) => s.reaction);
+  const freshScreen =
+    screenReaction && Date.now() - screenReaction.at < BUBBLE_MS ? screenReaction : null;
+  const screenEmotion = useRobotReaction(freshScreen?.emotion, freshScreen?.id ?? null);
+  const emotion = chatLoading ? 'thinking' : screenEmotion !== 'neutral' ? screenEmotion : replyEmotion;
+  const [screenDismissed, setScreenDismissed] = useState<string | null>(null);
+  useEffect(() => {
+    if (!freshScreen?.text) return;
+    const t = setTimeout(() => setScreenDismissed(freshScreen.id), BUBBLE_MS);
+    return () => clearTimeout(t);
+  }, [freshScreen?.id, freshScreen?.text]);
+  const screenText = freshScreen?.text && screenDismissed !== freshScreen.id ? freshScreen : null;
 
   // Ответ робота: виден, пока не смахнули; без кнопок — уходит сам.
   const [dismissed, setDismissed] = useState<string | null>(null);
@@ -197,6 +210,14 @@ export const ToolsPage = memo(function ToolsPage({
       onConfirm={(yes) => reply && void confirmPendingAction(reply.id, yes)}
       onDismiss={reply ? () => setDismissed(reply.id) : undefined}
     />
+  ) : screenText ? (
+    <Pressable
+      onPress={() => setScreenDismissed(screenText.id)}
+      accessibilityRole="button"
+      accessibilityLabel="Убрать подсказку робота"
+    >
+      <RobotSpeechBubble text={screenText.text ?? ''} tail="left" />
+    </Pressable>
   ) : explaining ? (
     <ChatReplyBubble text="" thinking tail="left" />
   ) : explain && explain.tab === tab ? (

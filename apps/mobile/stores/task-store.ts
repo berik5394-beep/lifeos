@@ -3,6 +3,7 @@ import { api, ApiError, isOfflineQueued, QUEUE_OFFLINE } from '@/services/api';
 import { offlineId } from '@/utils/offline-id';
 import { formatDate } from '@/utils/dates';
 import { useAuthStore } from '@/stores/auth-store';
+import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 import { useChatStore } from '@/stores/chat-store';
 import type { RescheduleProposal } from '@/stores/schedule-store';
 import { persistStoreData, restoreStoreData } from '@/services/store-persist';
@@ -202,6 +203,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set((state) => ({
         tasks: state.tasks.map((t) => (t.id === id ? updated : t)),
       }));
+      if (updated.completed) useRobotReactionStore.getState().react('happy');
     } catch (err) {
       // Без сети отметка в очереди — оставляем как отметил.
       if (isOfflineQueued(err)) return;

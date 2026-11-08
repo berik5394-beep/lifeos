@@ -3,6 +3,7 @@ import { api, isOfflineQueued, QUEUE_OFFLINE } from '@/services/api';
 import { offlineId } from '@/utils/offline-id';
 import { useAuthStore } from '@/stores/auth-store';
 import { persistStoreData } from '@/services/store-persist';
+import { budgetReactionText, useRobotReactionStore, type BudgetInfo } from '@/stores/robot-reaction-store';
 
 interface Expense {
   id: string;
@@ -137,8 +138,16 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     if (!token) return;
 
     try {
-      const expense = await api.post<Expense>('/finance/expenses', data, token, QUEUE_OFFLINE);
+      const { budgetInfo, ...expense } = await api.post<Expense & { budgetInfo?: BudgetInfo }>(
+        '/finance/expenses',
+        data,
+        token,
+        QUEUE_OFFLINE,
+      );
       set((state) => ({ expenses: [expense, ...state.expenses] }));
+      // Сервер предупредил про лимит — робот говорит сразу, а не в следующий тик.
+      const warn = budgetReactionText(data.category, budgetInfo);
+      if (warn) useRobotReactionStore.getState().react('worried', warn);
     } catch (err) {
       // Без сети: трата в очереди — видна сразу, после отправки список перечитается.
       if (isOfflineQueued(err)) {

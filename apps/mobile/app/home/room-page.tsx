@@ -28,6 +28,7 @@ import { useScheduleStore } from '@/stores/schedule-store';
 import { RoomIntro } from '@/components/room/room-intro';
 import { useColors } from '@/hooks/use-colors';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
+import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 import { useSharedVoice } from '@/hooks/shared-voice';
 import { useRoomStore } from '@/stores/room-store';
 import { useRoomToolStore } from '@/stores/room-tool-store';
@@ -160,7 +161,18 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
       : undefined;
   const replyEmotion = useRobotReaction(reply?.emotion, reply?.id ?? null);
   const happy = useRobotReaction('happy', reactionKey);
-  const emotion = chatLoading ? 'thinking' : reactionKey && happy !== 'neutral' ? happy : replyEmotion;
+  // Действие с экрана инструментов — эмоцию видно и здесь, если свайпнул сразу.
+  const screenReaction = useRobotReactionStore((s) => s.reaction);
+  const freshScreen =
+    screenReaction && Date.now() - screenReaction.at < REPLY_BUBBLE_MS ? screenReaction : null;
+  const screenEmotion = useRobotReaction(freshScreen?.emotion, freshScreen?.id ?? null);
+  const emotion = chatLoading
+    ? 'thinking'
+    : reactionKey && happy !== 'neutral'
+      ? happy
+      : screenEmotion !== 'neutral'
+        ? screenEmotion
+        : replyEmotion;
 
   const hour = new Date().getHours();
   const tint = timeTint(hour);
