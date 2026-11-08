@@ -26,6 +26,7 @@ import { formatDate, getMonthKey, getWeekDays, isToday, isSameDay } from '@/util
 import { useColors } from '@/hooks/use-colors';
 import { hapticSelection } from '@/services/haptics';
 import { useNavigation } from '@react-navigation/native';
+import { navigateTo } from '@/navigation/ref';
 import { goalPercent } from '@/utils/goal-progress';
 import { useInTools } from '@/hooks/use-content-width';
 import { pluralN, RECORDS } from '@/utils/plural';
@@ -1184,9 +1185,20 @@ export default function FinanceScreen() {
             <Text style={[styles.tableTitle, { color: c.danger }]}>
               РАСХОДЫ
             </Text>
-            <TouchableOpacity onPress={openBudgetModal} hitSlop={8}>
-              <Text style={styles.tableTitleAction}>Лимиты</Text>
-            </TouchableOpacity>
+            <View style={styles.tableTitleActions}>
+              {/* Чек с фото → трата (сервер читает, спрашивает «да»). */}
+              <TouchableOpacity
+                onPress={() => navigateTo('ReceiptScan')}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Сфоткать чек и записать трату"
+              >
+                <Text style={styles.tableTitleAction}>📷 Чек</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={openBudgetModal} hitSlop={8}>
+                <Text style={styles.tableTitleAction}>Лимиты</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.tableContainer}>
@@ -2103,6 +2115,7 @@ function createStyles(c: C) {
       fontSize: fontSize.sm,
       fontWeight: '600',
     },
+    tableTitleActions: { flexDirection: 'row', gap: spacing.md },
     adviceLine: {
       color: c.textSecondary,
       fontSize: fontSize.sm,

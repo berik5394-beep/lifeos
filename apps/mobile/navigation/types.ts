@@ -15,6 +15,7 @@ export type RootStackParamList = {
   Import: undefined;
   ScheduleImport: undefined;
   TaskCapture: undefined;
+  ReceiptScan: undefined;
   VoiceConversation: undefined;
   FocusMode: { taskId: string; taskTitle: string };
   KanbanBoard: undefined;

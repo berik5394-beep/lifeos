@@ -58,6 +58,12 @@ interface ChatState {
   showProposal: (proposal: RescheduleProposal) => void;
   /** Нудж робота (с сервера, при открытии приложения) → облачко у робота + история. */
   showNudge: (insightId: string, content: string) => void;
+  /**
+   * Вопрос «Записать?» с кнопками, поставленный НЕ ходом чата (чек с фото):
+   * сервер уже ждёт ответа (pending). Возвращает id сообщения — экран может
+   * сразу подтвердить через confirmPendingAction (тот же путь, что в чате).
+   */
+  showPendingQuestion: (content: string, pending: PendingActionInfo) => string;
 }
 
 /**
@@ -104,6 +110,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     return d;
   },
   hasMore: true,
+
+  showPendingQuestion: (content: string, pending: PendingActionInfo) => {
+    const id = uniqueId('pending');
+    const message: ChatMessage = {
+      id,
+      role: 'assistant',
+      content,
+      emotion: 'thinking',
+      pendingAction: isConfirmable(pending) ? pending : null,
+      createdAt: new Date().toISOString(),
+    };
+    // Старые кнопки снимаем: на сервере ждёт только одно (последнее) действие.
+    set((state) => ({ messages: [message, ...state.messages.map((m) => (m.pendingAction ? { ...m, pendingAction: null } : m))] }));
+    return id;
+  },
 
   showNudge: (insightId: string, content: string) => {
     const id = `nudge-${insightId}`;

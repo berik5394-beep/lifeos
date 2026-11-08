@@ -152,6 +152,11 @@ function HomePager() {
     if (!latest || latest.role !== 'assistant' || openedFor.current === latest.id) return;
     if (Date.now() - new Date(latest.createdAt).getTime() > FRESH_REPLY_MS) return;
     openedFor.current = latest.id;
+    // «Сфоткай чек» → камера чека (не вкладка).
+    if (latest.openPanel === 'receipt') {
+      navigateTo('ReceiptScan');
+      return;
+    }
     if (!isToolKey(latest.openPanel)) return;
     // Скрытая вкладка: сказать почему, а не молча открыть «Сегодня».
     const why = hiddenPanelReason(latest.openPanel, isFeatureVisible, { dealsAvailable });

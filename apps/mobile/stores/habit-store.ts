@@ -14,6 +14,8 @@ interface Habit {
   goalId: string | null;
   order: number;
   active: boolean;
+  /** Отмечается сама по шагам из «Здоровья» (сервер: habit-auto). */
+  autoComplete?: { type: 'steps'; min: number } | null;
   createdAt: string;
 }
 
@@ -47,6 +49,7 @@ interface UpdateHabitData {
   active?: boolean;
   order?: number;
   goalId?: string | null;
+  autoComplete?: { type: 'steps'; min: number } | null;
 }
 
 interface HabitState {

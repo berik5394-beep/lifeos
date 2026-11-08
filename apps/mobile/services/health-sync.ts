@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import { api } from '@/services/api';
 import { storage } from '@/services/storage';
 import { useAuthStore } from '@/stores/auth-store';
+import { useRobotReactionStore } from '@/stores/robot-reaction-store';
+import { useScheduleStore } from '@/stores/schedule-store';
 import { formatDate } from '@/utils/dates';
 
 /**
@@ -109,8 +111,18 @@ export async function syncHealth(force = false, now: Date = new Date()): Promise
     todayStart.setHours(0, 0, 0, 0);
     const yStart = new Date(todayStart.getTime() - DAY);
     const [today, yesterday] = await Promise.all([stepsBetween(hk, todayStart, now), stepsBetween(hk, yStart, todayStart)]);
-    if (yesterday > 0) await api.post('/steps', { date: formatDate(yStart), steps: yesterday }, token);
-    if (today > 0) await api.post('/steps', { date: formatDate(todayStart), steps: today }, token);
+    // Сервер закрывает привычки «по шагам» (autoCompleted) — робот радуется, экраны перечитают.
+    const closed: string[] = [];
+    for (const [d, n] of [[yStart, yesterday], [todayStart, today]] as const) {
+      if (n <= 0) continue;
+      const r = await api.post<{ autoCompleted?: string[] }>('/steps', { date: formatDate(d), steps: n }, token);
+      if (Array.isArray(r?.autoCompleted)) closed.push(...r.autoCompleted);
+    }
+    if (closed.length > 0) {
+      const names = closed.slice(0, 3).map((n) => `«${n}»`).join(', ');
+      useRobotReactionStore.getState().react('happy', `${names} — ${closed.length > 1 ? 'отмечены' : 'отмечена'} по шагам 👟`);
+      useScheduleStore.getState().bump();
+    }
 
     // Сон прошлой ночи: с 18:00 вчера до 14:00 сегодня.
     const from = new Date(todayStart.getTime() - 6 * 3_600_000);

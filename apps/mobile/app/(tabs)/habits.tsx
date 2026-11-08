@@ -12,6 +12,7 @@ import {
   Animated,
   Easing,
   Vibration,
+  Platform,
 } from 'react-native';
 import { KbScrollView } from '@/components/shared/kb-scroll-view';
 import { ScreenSafeArea } from '@/components/shared/screen-safe-area';
@@ -871,6 +872,8 @@ export default function HabitsScreen() {
   const [editName, setEditName] = useState('');
   const [editCategory, setEditCategory] = useState('health');
   const [editFrequency, setEditFrequency] = useState('daily');
+  // «Отмечать саму при N шагов» (только iPhone — шаги из «Здоровья»). Пусто — выкл.
+  const [editAutoSteps, setEditAutoSteps] = useState('');
 
   // Calendar state (Slide 2)
   const [calMonth, setCalMonth] = useState(todayDate.getMonth());
@@ -1236,6 +1239,7 @@ export default function HabitsScreen() {
       setEditName(habit.name);
       setEditCategory(habit.category);
       setEditFrequency(habit.frequency);
+      setEditAutoSteps(habit.autoComplete?.min ? String(habit.autoComplete.min) : '');
       setShowEditModal(true);
     },
     [habits],
@@ -1263,18 +1267,25 @@ export default function HabitsScreen() {
 
   const handleSaveEdit = useCallback(async () => {
     if (!editingHabitId || !editName.trim()) return;
+    const rawSteps = editAutoSteps.replace(/\s/g, '');
+    const steps = rawSteps ? Number(rawSteps) : null;
+    if (steps !== null && (!Number.isInteger(steps) || steps < 500 || steps > 100000)) {
+      Alert.alert('Шаги', 'Порог — от 500 до 100 000 шагов. Или оставь пустым, чтобы отмечать вручную.');
+      return;
+    }
     try {
       await updateHabit(editingHabitId, {
         name: editName.trim(),
         category: editCategory,
         frequency: editFrequency,
+        ...(Platform.OS === 'ios' ? { autoComplete: steps ? { type: 'steps' as const, min: steps } : null } : {}),
       });
       setShowEditModal(false);
       setEditingHabitId(null);
     } catch {
       Alert.alert('Ошибка', 'Не удалось обновить привычку');
     }
-  }, [editingHabitId, editName, editCategory, editFrequency, updateHabit]);
+  }, [editingHabitId, editName, editCategory, editFrequency, editAutoSteps, updateHabit]);
 
   const handleCalGridToggle = useCallback(
     async (habitId: string, dateKey: string, currentlyCompleted: boolean) => {
@@ -2102,6 +2113,21 @@ export default function HabitsScreen() {
           })}
         </View>
 
+        {Platform.OS === 'ios' ? (
+          <>
+            <Text style={[styles.modalLabel, { marginTop: spacing.md }]}>Отмечать саму по шагам</Text>
+            <Input
+              value={editAutoSteps}
+              onChangeText={setEditAutoSteps}
+              placeholder="Например, 8000 — пусто, чтобы отмечать вручную"
+              keyboardType="number-pad"
+            />
+            <Text style={styles.autoHint}>
+              Шаги — из «Здоровья». Снимешь галочку вручную — заново не поставлю.
+            </Text>
+          </>
+        ) : null}
+
         <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
           <Button
             title="Сохранить"
@@ -2117,7 +2143,7 @@ export default function HabitsScreen() {
         </View>
       </View>
     </Modal>
-  ), [showEditModal, editName, editCategory, editFrequency, handleSaveEdit, handleCloseEditModal, c, styles]);
+  ), [showEditModal, editName, editCategory, editFrequency, editAutoSteps, handleSaveEdit, handleCloseEditModal, c, styles]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // MAIN RENDER
@@ -2461,6 +2487,11 @@ function createStyles(c: C, SCREEN_WIDTH: number) {
       fontWeight: '600',
       color: c.text,
       marginBottom: spacing.sm,
+    },
+    autoHint: {
+      fontSize: fontSize.xs,
+      color: c.textSecondary,
+      marginTop: spacing.xs,
     },
     chipRow: {
       flexDirection: 'row',

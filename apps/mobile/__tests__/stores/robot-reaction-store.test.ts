@@ -218,3 +218,14 @@ describe('кнопка «Подтвердить» после перезапус�
     expect(useChatStore.getState().messages[0].pendingAction ?? null).toBeNull();
   });
 });
+
+describe('чек с фото: вопрос с кнопками', () => {
+  it('showPendingQuestion → сообщение робота с кнопками; старые кнопки сняты; «Записать» = обычное подтверждение', async () => {
+    useChatStore.setState({ messages: [{ id: 'old', role: 'assistant', content: 'старый вопрос', pendingAction: { action: 'add_income', input: {} }, createdAt: '2026-11-08T09:00:00Z' }] } as never);
+    const id = useChatStore.getState().showPendingQuestion('С чека: 3 500 ₸ · Magnum · Еда. Записать трату?', { action: 'add_expense', input: { amount: 3500 } });
+    const [first, second] = useChatStore.getState().messages;
+    expect(first.id).toBe(id);
+    expect(first.pendingAction).toMatchObject({ action: 'add_expense' });
+    expect(second.pendingAction ?? null).toBeNull();
+  });
+});

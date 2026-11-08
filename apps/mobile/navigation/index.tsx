@@ -39,6 +39,7 @@ const IntegrationsScreen = React.lazy(() => import('@/screens/integrations'));
 const ImportScreen = React.lazy(() => import('@/screens/import'));
 const ScheduleImportScreen = React.lazy(() => import('@/screens/schedule-import'));
 const TaskCaptureScreen = React.lazy(() => import('@/screens/task-capture'));
+const ReceiptScanScreen = React.lazy(() => import('@/screens/receipt-scan'));
 const VoiceConversationScreen = React.lazy(() => import('@/screens/voice-conversation'));
 const FocusModeScreen = React.lazy(() => import('@/screens/focus-mode'));
 const KanbanBoardScreen = React.lazy(() => import('@/screens/kanban-board'));
@@ -241,6 +242,7 @@ export default function Navigation() {
             />
             <RootStack.Screen name="ScheduleImport" component={ScheduleImportScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="TaskCapture" component={TaskCaptureScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
+            <RootStack.Screen name="ReceiptScan" component={ReceiptScanScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="VoiceConversation" component={VoiceConversationScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="FocusMode" component={FocusModeScreen} options={{ headerShown: false, animation: 'slide_from_bottom' }} />
             <RootStack.Screen name="KanbanBoard" component={KanbanBoardScreen} options={{ headerShown: false }} />
