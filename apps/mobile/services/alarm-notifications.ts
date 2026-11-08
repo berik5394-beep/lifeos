@@ -56,6 +56,8 @@ export async function scheduleAlarmNotification(params: {
       title,
       body,
       sound: Platform.OS === 'android' ? 'alarm.wav' : true,
+      // iOS «Срочно» (Time Sensitive): будильник задачи/встречи пробивает «Фокус».
+      interruptionLevel: 'timeSensitive',
       priority: Notifications.AndroidNotificationPriority.MAX,
       vibrate: [0, 500, 200, 500, 200, 500, 200, 500],
       ...(Platform.OS === 'android' && {

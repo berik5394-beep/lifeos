@@ -22,6 +22,23 @@ interface ExpoPushMessage {
   sound: 'default';
   priority: 'high';
   data?: Record<string, unknown>;
+  /** iOS: 'time-sensitive' — пробивается через «Фокус» и «Не беспокоить». */
+  interruptionLevel?: 'active' | 'time-sensitive';
+}
+
+/**
+ * Срочные (Time Sensitive) — только то, что нельзя пропустить по времени:
+ * встреча через час / 30 мин, задача через 30 мин. Остальное (бриф, итоги,
+ * советы) «Фокус» не пробивает — иначе срочность обесценится.
+ */
+export const TIME_SENSITIVE_TYPES: ReadonlySet<string> = new Set([
+  'event_reminder_1h',
+  'event_reminder_30m',
+  'task_reminder_30m',
+]);
+
+export function interruptionLevelFor(type: unknown): 'time-sensitive' | undefined {
+  return typeof type === 'string' && TIME_SENSITIVE_TYPES.has(type) ? 'time-sensitive' : undefined;
 }
 
 /** Валидный Expo push token: ExponentPushToken[...] или ExpoPushToken[...] */
@@ -57,6 +74,8 @@ async function sendExpoPush(
     priority: 'high',
     ...(data ? { data } : {}),
   };
+  const level = interruptionLevelFor(data?.type);
+  if (level) msg.interruptionLevel = level;
   try {
     const res = await fetch(EXPO_PUSH_URL, {
       method: 'POST',

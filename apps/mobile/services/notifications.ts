@@ -121,6 +121,8 @@ export async function scheduleEventReminder(
         title: 'Встреча через 1 час',
         body: title,
         sound: true,
+        // iOS «Срочно»: напоминание о встрече пробивает «Фокус».
+        interruptionLevel: 'timeSensitive',
         data: { type: 'event', eventId },
       },
       trigger: {
@@ -137,6 +139,8 @@ export async function scheduleEventReminder(
         title: 'Встреча через 30 минут',
         body: title,
         sound: true,
+        // iOS «Срочно»: напоминание о встрече пробивает «Фокус».
+        interruptionLevel: 'timeSensitive',
         data: { type: 'event', eventId },
       },
       trigger: {

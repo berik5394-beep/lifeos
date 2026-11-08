@@ -17,6 +17,9 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "kz.lifeos.app",
+      "entitlements": {
+        "com.apple.developer.usernotifications.time-sensitive": true
+      },
       "infoPlist": {
         "NSMicrophoneUsageDescription": "LifeOS использует микрофон для голосового ввода задач, привычек и общения с AI-помощником",
         "NSSpeechRecognitionUsageDescription": "LifeOS использует распознавание речи для голосовых команд",

@@ -98,7 +98,7 @@ export async function syncTaskReminders(
     if (r.kind === 'soft') {
       await Notifications.scheduleNotificationAsync({
         identifier: r.identifier,
-        content: { title: 'Напоминание', body: `Через ${SOFT_MINUTES} минут: ${r.title}`, sound: true, data: { type: 'task', taskId: r.taskId } },
+        content: { title: 'Напоминание', body: `Через ${SOFT_MINUTES} минут: ${r.title}`, sound: true, interruptionLevel: 'timeSensitive', data: { type: 'task', taskId: r.taskId } },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: r.at },
       });
     } else {
