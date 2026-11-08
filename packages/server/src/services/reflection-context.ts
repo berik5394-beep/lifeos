@@ -106,9 +106,37 @@ export function formatWeekNotesSection(current: WeekNoteRow | null, previous: We
   return null;
 }
 
+export type StepRow = { date: string; steps: number };
+
+const fmtInt = (n: number) => Math.round(n).toLocaleString('ru-RU');
+
+/**
+ * Шаги из «Здоровья» за ~неделю. Раньше StepLog читал только «Разбор» —
+ * мозг (чат, бриф) про шаги не знал. Считаем только дни, за которые телефон
+ * прислал шаги; сегодняшние — «пока» (день не закончен). Нет данных — null.
+ */
+export function formatStepsSection(rows: StepRow[], today: string): string | null {
+  const days = rows.filter((r) => r.steps > 0);
+  if (days.length === 0) return null;
+  const parts: string[] = [];
+  const t = days.find((r) => r.date === today);
+  if (t) parts.push(`сегодня пока ${fmtInt(t.steps)}`);
+  const y = days.find((r) => r.date === addCivilDays(today, -1));
+  if (y) parts.push(`вчера ${fmtInt(y.steps)}`);
+  const past = days.filter((r) => r.date !== today);
+  if (past.length >= 2) {
+    const mean = past.reduce((a, r) => a + r.steps, 0) / past.length;
+    parts.push(`в среднем ${fmtInt(mean)} в день (${past.length} дн. с данными)`);
+  }
+  if (parts.length === 0) return null;
+  return `Шаги (из «Здоровья»): ${parts.join(', ')}`;
+}
+
 export interface ReflectionContext {
   journal: string | null;
   weekNotes: string | null;
+  /** Шаги из «Здоровья» за неделю (чат/мозг). */
+  steps: string | null;
   /** Для брифа: коротко про вчера/сегодня. */
   briefLine: string | null;
   lowStreakDays: number;
@@ -119,7 +147,7 @@ export async function gatherReflection(userId: string, now: Date = new Date()): 
   const today = localDateStr(tz, now);
   const from = addCivilDays(today, -6);
   const monday = mondayOf(today);
-  const [journalRaw, notes] = await Promise.all([
+  const [journalRaw, notes, stepRaw] = await Promise.all([
     prisma.journalEntry.findMany({
       where: { userId, date: { gte: dateOnlyUTC(from), lte: dateOnlyUTC(today) } },
       select: { date: true, sleepHours: true, energy: true, mood: true, notes: true },
@@ -128,7 +156,12 @@ export async function gatherReflection(userId: string, now: Date = new Date()): 
       where: { userId, weekStart: { in: [dateOnlyUTC(monday), dateOnlyUTC(addCivilDays(monday, -7))] } },
       select: { weekStart: true, notes: true, improve: true, gratitude: true, wins: true },
     }),
+    prisma.stepLog.findMany({
+      where: { userId, date: { gte: dateOnlyUTC(from), lte: dateOnlyUTC(today) } },
+      select: { date: true, steps: true },
+    }),
   ]);
+  const stepRows: StepRow[] = stepRaw.map((r) => ({ date: r.date.toISOString().slice(0, 10), steps: r.steps }));
   const rows: JournalRow[] = journalRaw.map((j) => ({ ...j, date: j.date.toISOString().slice(0, 10) }));
   const cur = notes.find((n) => n.weekStart.toISOString().slice(0, 10) === monday) ?? null;
   const prev = notes.find((n) => n.weekStart.toISOString().slice(0, 10) !== monday) ?? null;
@@ -139,12 +172,18 @@ export async function gatherReflection(userId: string, now: Date = new Date()): 
   if (y?.sleepHours != null) yParts.push(`сон ${y.sleepHours} ч`);
   if (y?.mood != null) yParts.push(`настроение ${y.mood}/10`);
   if (y?.energy != null) yParts.push(`энергия ${y.energy}/10`);
+  const ySteps = stepRows.find((r) => r.date === yesterday && r.steps > 0);
   const focus = cur?.improve.trim() ? `фокус недели (сам записал): «${short(cur.improve, 60)}»` : null;
-  const briefParts = [yParts.length ? `вчера по дневнику: ${yParts.join(', ')}` : null, focus].filter(Boolean);
+  const briefParts = [
+    yParts.length ? `вчера по дневнику: ${yParts.join(', ')}` : null,
+    ySteps ? `вчера ${fmtInt(ySteps.steps)} шагов (из «Здоровья»)` : null,
+    focus,
+  ].filter(Boolean);
 
   return {
     journal: formatJournalSection(rows, today),
     weekNotes: formatWeekNotesSection(cur, prev),
+    steps: formatStepsSection(stepRows, today),
     briefLine: briefParts.length ? briefParts.join('; ') : null,
     lowStreakDays: lowStreak(rows, today),
   };

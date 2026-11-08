@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatJournalSection, formatWeekNotesSection, lowStreak, mondayOf, type JournalRow } from './reflection-context.js';
+import { formatJournalSection, formatStepsSection, formatWeekNotesSection, lowStreak, mondayOf, type JournalRow } from './reflection-context.js';
 import { scoreSignificance } from './v2-proactivity-engine.js';
 
 const row = (date: string, mood: number | null, energy: number | null = null, sleepHours: number | null = null, notes: string | null = null): JournalRow => ({ date, mood, energy, sleepHours, notes });
@@ -59,5 +59,29 @@ describe('нудж «тяжело по дневнику»', () => {
     expect(c(3)).toBeGreaterThanOrEqual(0.6);
     expect(c(5)).toBeGreaterThan(c(3));
     expect(c(30)).toBe(0.85);
+  });
+});
+
+describe('шаги для мозга (из «Здоровья»)', () => {
+  const today = '2026-11-08';
+  it('нет данных или одни нули → молчим (не выдумываем «0 шагов»)', () => {
+    expect(formatStepsSection([], today)).toBeNull();
+    expect(formatStepsSection([{ date: today, steps: 0 }], today)).toBeNull();
+  });
+
+  it('сегодня — «пока», вчера и среднее только по прошлым дням с данными', () => {
+    const t = formatStepsSection(
+      [
+        { date: today, steps: 3200 },
+        { date: '2026-11-07', steps: 9000 },
+        { date: '2026-11-05', steps: 11000 },
+      ],
+      today,
+    );
+    expect(t).toBe('Шаги (из «Здоровья»): сегодня пока 3 200, вчера 9 000, в среднем 10 000 в день (2 дн. с данными)');
+  });
+
+  it('один прошлый день — без «среднего»', () => {
+    expect(formatStepsSection([{ date: '2026-11-07', steps: 5000 }], today)).toBe('Шаги (из «Здоровья»): вчера 5 000');
   });
 });

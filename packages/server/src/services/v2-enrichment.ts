@@ -123,6 +123,8 @@ export type V2EnrichmentData = {
   room?: string | null;
   /** Дневник за неделю: сон/энергия/настроение/тренд/последняя запись или null. */
   journal?: string | null;
+  /** Шаги из «Здоровья» за неделю (reflection-context). */
+  steps?: string | null;
   /** Заметки недели (что получилось / улучшить / благодарность) или null. */
   weekNotes?: string | null;
 };
@@ -236,6 +238,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (data.openLoops) lines.push(data.openLoops);
   if (data.deals) lines.push(data.deals);
   if (data.journal) lines.push(data.journal);
+  if (data.steps) lines.push(data.steps);
   if (data.weekNotes) lines.push(data.weekNotes);
   if (data.room) lines.push(data.room);
   return lines.join('\n');
@@ -651,6 +654,7 @@ export async function fetchV2EnrichmentData(
       deals,
       room,
       journal: reflection?.journal ?? null,
+      steps: reflection?.steps ?? null,
       weekNotes: reflection?.weekNotes ?? null,
     };
   } catch (err) {
