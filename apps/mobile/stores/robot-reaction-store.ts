@@ -14,21 +14,25 @@ export interface RobotReaction {
   emotion: RobotEmotion;
   /** Облачко робота; без текста — только эмоция. */
   text?: string;
+  /** Сколько держать облачко (мс); нет — обычное время экрана. */
+  holdMs?: number;
 }
 
 interface RobotReactionState {
   reaction: RobotReaction | null;
-  react: (emotion: RobotEmotion, text?: string) => void;
+  react: (emotion: RobotEmotion, text?: string, holdMs?: number) => void;
 }
 
 let seq = 0;
 
 export const useRobotReactionStore = create<RobotReactionState>((set) => ({
   reaction: null,
-  react: (emotion, text) => {
+  react: (emotion, text, holdMs) => {
     seq += 1;
     const at = Date.now();
-    set({ reaction: { id: `screen-${at}-${seq}`, at, emotion, ...(text ? { text } : {}) } });
+    set({
+      reaction: { id: `screen-${at}-${seq}`, at, emotion, ...(text ? { text } : {}), ...(holdMs ? { holdMs } : {}) },
+    });
   },
 }));
 

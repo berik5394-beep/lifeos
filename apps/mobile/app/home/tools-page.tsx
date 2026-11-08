@@ -113,15 +113,15 @@ export const ToolsPage = memo(function ToolsPage({
   // Действие с экрана (задача/привычка/трата сверх лимита) — робот реагирует сразу.
   const screenReaction = useRobotReactionStore((s) => s.reaction);
   const freshScreen =
-    screenReaction && Date.now() - screenReaction.at < BUBBLE_MS ? screenReaction : null;
+    screenReaction && Date.now() - screenReaction.at < (screenReaction.holdMs ?? BUBBLE_MS) ? screenReaction : null;
   const screenEmotion = useRobotReaction(freshScreen?.emotion, freshScreen?.id ?? null);
   const emotion = chatLoading ? 'thinking' : screenEmotion !== 'neutral' ? screenEmotion : replyEmotion;
   const [screenDismissed, setScreenDismissed] = useState<string | null>(null);
   useEffect(() => {
     if (!freshScreen?.text) return;
-    const t = setTimeout(() => setScreenDismissed(freshScreen.id), BUBBLE_MS);
+    const t = setTimeout(() => setScreenDismissed(freshScreen.id), freshScreen.holdMs ?? BUBBLE_MS);
     return () => clearTimeout(t);
-  }, [freshScreen?.id, freshScreen?.text]);
+  }, [freshScreen?.id, freshScreen?.text, freshScreen?.holdMs]);
   const screenText = freshScreen?.text && screenDismissed !== freshScreen.id ? freshScreen : null;
 
   // Ответ робота: виден, пока не смахнули; без кнопок — уходит сам.

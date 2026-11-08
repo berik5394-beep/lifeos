@@ -2,6 +2,7 @@ import { api } from '@/services/api';
 import { useFinanceStore } from '@/stores/finance-store';
 import { useTaskStore } from '@/stores/task-store';
 import { useHabitStore } from '@/stores/habit-store';
+import { useGoalStore } from '@/stores/goal-store';
 import { budgetReactionText, useRobotReactionStore } from '@/stores/robot-reaction-store';
 
 const mockApi = api as jest.Mocked<typeof api>;
@@ -80,5 +81,33 @@ describe('реакция робота на действия с экрана', ()
     mockApi.post.mockResolvedValueOnce({ id: 'l1', habitId: 'h1', userId: 'u', date: '2026-11-08', completed: true, autoCompleted: false });
     await useHabitStore.getState().toggleHabitLog('h1', '2026-11-08', true);
     expect(useRobotReactionStore.getState().reaction?.emotion).toBe('happy');
+  });
+});
+
+describe('разбор цели после постановки с экрана', () => {
+  const GOAL = { id: 'g1', userId: 'u', year: 2026, area: 'finance', goalText: 'Миллион', progress: 0 };
+
+  it('цель сохраняется сразу, разбор приходит облачком «thinking» и держится дольше', async () => {
+    useGoalStore.setState({ yearlyGoals: [] });
+    mockApi.post
+      .mockResolvedValueOnce(GOAL)
+      .mockResolvedValueOnce({ text: 'Про цель «Миллион»:\nЭто 100 000 ₸ в месяц…' });
+    await useGoalStore.getState().createYearlyGoal({ year: 2026, area: 'finance', goalText: 'Миллион' });
+    expect(useGoalStore.getState().yearlyGoals).toHaveLength(1);
+    expect(mockApi.post).toHaveBeenLastCalledWith('/goals/yearly/g1/intake', {}, 'test-token-123');
+    await new Promise((r) => setImmediate(r));
+    const r = useRobotReactionStore.getState().reaction;
+    expect(r?.emotion).toBe('thinking');
+    expect(r?.text).toContain('Про цель «Миллион»');
+    expect(r?.holdMs).toBeGreaterThan(9000);
+  });
+
+  it('разбора нет (флаг выкл.) или сбой — робот молчит, цель сохранена', async () => {
+    useGoalStore.setState({ yearlyGoals: [] });
+    mockApi.post.mockResolvedValueOnce(GOAL).mockRejectedValueOnce(new Error('сеть'));
+    await useGoalStore.getState().createYearlyGoal({ year: 2026, area: 'finance', goalText: 'Миллион' });
+    await new Promise((r) => setImmediate(r));
+    expect(useGoalStore.getState().yearlyGoals).toHaveLength(1);
+    expect(useRobotReactionStore.getState().reaction).toBeNull();
   });
 });
