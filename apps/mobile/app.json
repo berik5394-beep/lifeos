@@ -114,7 +114,12 @@
           "photosPermission": "LifeOS использует фото для распознавания расписаний и заметок"
         }
       ],
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "LifeOS может защищать вход в приложение с помощью Face ID"
+        }
+      ],
       [
         "expo-notifications",
         {
@@ -135,7 +140,8 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": "LifeOS синхронизирует события с вашим календарём для умных напоминаний"
+          "calendarPermission": "LifeOS синхронизирует события с вашим календарём для умных напоминаний",
+          "remindersPermission": "LifeOS может брать дела из «Напоминаний», чтобы держать задачи в одном месте"
         }
       ],
       "expo-localization",
@@ -145,6 +151,8 @@
         "expo-location",
         {
           "locationWhenInUsePermission": "LifeOS использует геолокацию, пока приложение открыто: подсказать, когда выезжать на встречу, и напомнить о деле рядом",
+          "locationAlwaysAndWhenInUsePermission": "LifeOS использует геолокацию только пока приложение открыто: подсказать, когда выезжать на встречу",
+          "locationAlwaysPermission": "LifeOS использует геолокацию только пока приложение открыто: подсказать, когда выезжать на встречу",
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
         }
@@ -153,7 +161,7 @@
         "@kingstinct/react-native-healthkit",
         {
           "NSHealthShareUsageDescription": "LifeOS читает сон и шаги из «Здоровья», чтобы сам заполнять дневник и отмечать привычки",
-          "NSHealthUpdateUsageDescription": false,
+          "NSHealthUpdateUsageDescription": "LifeOS ничего не записывает в «Здоровье» — только читает сон и шаги для дневника и привычек",
           "background": false
         }
       ],
