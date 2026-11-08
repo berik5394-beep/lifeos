@@ -266,6 +266,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       set((state) => ({
         tasks: state.tasks.map((t) => (t.id === taskId ? updated : t)),
       }));
+      // «Готово» в канбане = выполнена — робот радуется, как на галочку.
+      if (status === 'done' && updated.completed) useRobotReactionStore.getState().react('happy');
     } catch (err) {
       if (isOfflineQueued(err)) return;
       // Revert on error — refetch to restore correct state

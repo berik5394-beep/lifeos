@@ -21,6 +21,8 @@ import * as Haptics from 'expo-haptics';
 import { useNavigation } from '@react-navigation/native';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { useScheduleStore, type RescheduleProposal } from '@/stores/schedule-store';
+import { surfaceCreateWarnings } from '@/services/create-warnings';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { taskCategories } from '@/constants/categories';
 import { SectionHeader } from '@/components/ui';
@@ -205,7 +207,7 @@ export default function TaskCapture() {
     }
     setSaving(true);
     try {
-      const res = await api.post<{ ok: boolean; created: number }>(
+      const res = await api.post<{ ok: boolean; created: number; conflictWarning?: string; proposal?: RescheduleProposal }>(
         '/vision/save-captured-tasks',
         {
           tasks: toSave.map((t) => ({
@@ -219,6 +221,9 @@ export default function TaskCapture() {
         token,
       );
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      // Задачи с фото — как с экрана: списки перечитаются, наложение/перегруз — облачком.
+      useScheduleStore.getState().bump();
+      surfaceCreateWarnings(res.proposal, res.conflictWarning);
       Alert.alert(
         'Готово',
         `Сохранено задач: ${res.created}`,

@@ -15,6 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import { Card } from '@/components/ui/card';
+import { useTaskStore } from '@/stores/task-store';
+import { formatDate } from '@/utils/dates';
 import { AnimatedPress } from '@/components/ui/animated-press';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { AnimatedProgressBar } from '@/components/ui/animated-progress-bar';
@@ -162,7 +164,15 @@ export default function LifeInsightsScreen() {
       try {
         const token = useAuthStore.getState().token;
         if (strategy.actionType === 'task') {
-          await api.post('/tasks', strategy.actionData, token);
+          // Через стор: задача сразу в списках + перегруз/наложение облачком
+          // (прямой POST шёл мимо стора — ни списка, ни предупреждений).
+          const d = strategy.actionData;
+          await useTaskStore.getState().createTask({
+            title: d.title ?? strategy.text,
+            category: d.category || 'personal',
+            priority: d.priority || 'medium',
+            date: d.date || formatDate(new Date()),
+          });
         } else {
           await api.post('/habits', strategy.actionData, token);
         }

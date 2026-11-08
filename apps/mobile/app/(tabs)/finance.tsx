@@ -646,10 +646,11 @@ export default function FinanceScreen() {
       fetchExpenses(monthKey),
       fetchIncomes(monthKey),
       fetchBudgets(monthKey),
+      fetchAdvice().catch(() => {}),
       fetchDebts().catch(() => {}),
       fetchYearlyGoals().catch(() => {}),
     ]);
-  }, [monthKey, fetchSummary, fetchExpenses, fetchIncomes, fetchBudgets, fetchDebts, fetchYearlyGoals]);
+  }, [monthKey, fetchSummary, fetchExpenses, fetchIncomes, fetchBudgets, fetchAdvice, fetchDebts, fetchYearlyGoals]);
 
   // Робот что-то записал или вернулись на вкладку после паузы — перечитать.
   const scheduleRevision = useScheduleStore((st) => st.revision);
@@ -1240,6 +1241,11 @@ export default function FinanceScreen() {
               )}
             />
           </View>
+          {/* Совет по лимитам (/finance/advice): считался на сервере, но не показывался.
+              Только текущий месяц и только если лимиты есть (иначе сервер молчит). */}
+          {monthKey === getMonthKey(new Date()) && advice?.advice ? (
+            <Text style={styles.adviceLine}>{advice.advice}</Text>
+          ) : null}
         </Card>
 
         {/* SAVINGS */}
@@ -2096,6 +2102,12 @@ function createStyles(c: C) {
       color: c.primary,
       fontSize: fontSize.sm,
       fontWeight: '600',
+    },
+    adviceLine: {
+      color: c.textSecondary,
+      fontSize: fontSize.sm,
+      marginTop: spacing.sm,
+      lineHeight: 20,
     },
     tableContainer: {
       borderWidth: 1,

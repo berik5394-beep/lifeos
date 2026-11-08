@@ -107,10 +107,11 @@ function GoogleCalendarSection() {
 
   const handleSync = useCallback(async () => {
     try {
-      await syncGoogleCalendar();
-      Alert.alert('Готово', 'Календарь синхронизирован');
-    } catch {
-      Alert.alert('Ошибка', 'Не удалось синхронизировать');
+      const msg = await syncGoogleCalendar();
+      Alert.alert('Готово', msg ?? 'Календарь синхронизирован');
+    } catch (err) {
+      // Текст сервера («переподключи Google…») важнее общего «не удалось».
+      Alert.alert('Ошибка', err instanceof Error && err.message ? err.message : 'Не удалось синхронизировать');
     }
   }, [syncGoogleCalendar]);
 

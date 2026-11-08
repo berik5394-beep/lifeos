@@ -184,3 +184,37 @@ describe('перенос и удаление встречи с экрана', ()
     expect(useEventStore.getState().events).toHaveLength(0);
   });
 });
+
+describe('канбан «Готово» = выполнено', () => {
+  it('перетащил в «Готово» → робот радуется', async () => {
+    useTaskStore.setState({ tasks: [{ id: 'k1', title: 'Отчёт', completed: false, kanbanStatus: 'todo' } as never] });
+    mockApi.patch.mockResolvedValueOnce({ id: 'k1', title: 'Отчёт', completed: true, kanbanStatus: 'done' });
+    await useTaskStore.getState().updateKanbanStatus('k1', 'done');
+    expect(useRobotReactionStore.getState().reaction?.emotion).toBe('happy');
+  });
+});
+
+describe('кнопка «Подтвердить» после перезапуска', () => {
+  it('сервер ждёт ответа → кнопки возвращаются на ТО сообщение', async () => {
+    useChatStore.setState({ messages: [] } as never);
+    const ask = 'Записать расход 5000 ₸ (обед)? Подтверди — запишу.';
+    mockApi.get
+      .mockResolvedValueOnce([
+        { id: 'm2', role: 'assistant', content: ask, createdAt: '2026-11-08T10:01:00Z' },
+        { id: 'm1', role: 'user', content: 'потратил 5000 на обед', createdAt: '2026-11-08T10:00:00Z' },
+      ])
+      .mockResolvedValueOnce({ pending: { action: 'add_expense', input: { amount: 5000 } }, confirmationText: ask });
+    await useChatStore.getState().fetchHistory(0);
+    const msg = useChatStore.getState().messages.find((m) => m.id === 'm2');
+    expect(msg?.pendingAction).toMatchObject({ action: 'add_expense' });
+    expect(mockApi.get).toHaveBeenLastCalledWith('/voice/pending-action', 'test-token-123');
+  });
+  it('текст не совпал → кнопки не вешаем на чужое сообщение', async () => {
+    useChatStore.setState({ messages: [] } as never);
+    mockApi.get
+      .mockResolvedValueOnce([{ id: 'm3', role: 'assistant', content: 'Привет!', createdAt: '2026-11-08T10:00:00Z' }])
+      .mockResolvedValueOnce({ pending: { action: 'add_expense', input: {} }, confirmationText: 'Записать расход?' });
+    await useChatStore.getState().fetchHistory(0);
+    expect(useChatStore.getState().messages[0].pendingAction ?? null).toBeNull();
+  });
+});

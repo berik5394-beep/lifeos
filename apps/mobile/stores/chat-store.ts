@@ -60,6 +60,33 @@ interface ChatState {
   showNudge: (insightId: string, content: string) => void;
 }
 
+/**
+ * После перезапуска история с сервера приходит без кнопок «Подтвердить», хотя
+ * сервер всё ещё ждёт ответа (GET /voice/pending-action раньше никто не звал).
+ * Возвращаем кнопки на ТО сообщение, текст которого = вопрос подтверждения.
+ */
+async function restorePendingButtons(
+  token: string,
+  set: (fn: (s: ChatState) => Partial<ChatState>) => void,
+  get: () => ChatState,
+): Promise<void> {
+  if (get().messages.some((m) => m.pendingAction)) return;
+  try {
+    const r = await api.get<{ pending: PendingActionInfo | null; confirmationText?: string }>('/voice/pending-action', token);
+    if (!r?.pending || !isConfirmable(r.pending) || !r.confirmationText) return;
+    const text = r.confirmationText.trim();
+    set((state) => {
+      // Пока ждали ответ, могло прийти новое предложение со своими кнопками — не трогаем.
+      if (state.messages.some((m) => m.pendingAction)) return {};
+      const i = state.messages.findIndex((m) => m.role === 'assistant' && m.content.trim() === text);
+      if (i < 0) return {};
+      return { messages: state.messages.map((m, j) => (j === i ? { ...m, pendingAction: r.pending } : m)) };
+    });
+  } catch {
+    /* не вышло — просто без кнопок, как раньше */
+  }
+}
+
 let _msgSeq = 0;
 function uniqueId(prefix: string): string {
   return `${prefix}-${Date.now()}-${++_msgSeq}`;
@@ -249,6 +276,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const newMessages = reversed.filter(m => !existingIds.has(m.id));
         return { messages: [...state.messages, ...newMessages], hasMore: serverHasMore };
       });
+      if (currentOffset === 0) await restorePendingButtons(token, set, get);
     } catch {
       // Silently fail for history fetch
     }

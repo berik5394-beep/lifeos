@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { useScheduleStore } from '@/stores/schedule-store';
 
 /**
  * Ключ провайдера как на сервере: 'google-calendar' → 'google_calendar'.
@@ -31,7 +32,8 @@ interface IntegrationState {
   isLoading: boolean;
   fetchIntegrations: () => Promise<void>;
   getGoogleAuthUrl: () => Promise<string | null>;
-  syncGoogleCalendar: () => Promise<void>;
+  /** Итог с сервера («2 из Google, 1 в Google») или null. */
+  syncGoogleCalendar: () => Promise<string | null>;
   /** Одноразовый код привязки + deep-link в бота (чат доказывает владение сам). */
   requestTelegramLink: () => Promise<TelegramLink | null>;
   disconnect: (provider: string) => Promise<void>;
@@ -73,16 +75,21 @@ export const useIntegrationStore = create<IntegrationState>((set, get) => ({
 
   syncGoogleCalendar: async () => {
     const token = useAuthStore.getState().token;
-    if (!token) return;
+    if (!token) return null;
 
     set({ isLoading: true });
     try {
-      await api.post<{ synced: number }>(
+      // Сервер отдаёт eventsImported/eventsExported/message — раньше ответ
+      // выбрасывался и экран писал общее «синхронизирован».
+      const res = await api.post<{ synced: boolean; eventsImported?: number; eventsExported?: number; message?: string }>(
         '/integrations/google-calendar/sync',
         {},
         token,
       );
       set({ isLoading: false });
+      // Календарь и экраны перечитают встречи.
+      useScheduleStore.getState().bump();
+      return res?.message ?? null;
     } catch (err) {
       console.error('Ошибка синхронизации Google Calendar:', err);
       set({ isLoading: false });

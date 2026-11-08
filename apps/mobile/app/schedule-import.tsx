@@ -15,6 +15,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
+import { useScheduleStore, type RescheduleProposal } from '@/stores/schedule-store';
+import { surfaceCreateWarnings } from '@/services/create-warnings';
 import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize, borderRadius } from '@/constants';
 
@@ -98,12 +100,14 @@ export default function ScheduleImportScreen(): React.ReactElement {
     if (!analysis || !token) return;
     setImporting(true);
     try {
-      const res = await api.post<{ created: number }>(
+      const res = await api.post<{ created: number; conflictWarning?: string; proposal?: RescheduleProposal }>(
         '/vision/import-schedule',
         { items: analysis.items },
         token,
       );
-      Alert.alert('Готово', `Добавлено ${res.created} уроков в задачи.`);
+      useScheduleStore.getState().bump();
+      surfaceCreateWarnings(res.proposal, res.conflictWarning);
+      Alert.alert('Готово', `Добавлено ${res.created} уроков в задачи — по дням недели из расписания.`);
       navigation.goBack();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Не удалось импортировать';

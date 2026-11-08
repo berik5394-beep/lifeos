@@ -122,7 +122,8 @@ export async function syncHealth(force = false, now: Date = new Date()): Promise
     const hours = sleepHoursFromSamples(
       samples.map((s) => ({ value: Number(s.value), startDate: new Date(s.startDate), endDate: new Date(s.endDate) })),
     );
-    if (hours > 0) await api.post('/journal', { date: formatDate(todayStart), sleepHours: hours }, token);
+    // source: 'health' — сервер не считает это записью в дневнике (монета, память).
+    if (hours > 0) await api.post('/journal', { date: formatDate(todayStart), sleepHours: hours, source: 'health' }, token);
   } catch (err) {
     console.warn('[health] sync failed:', err instanceof Error ? err.message : err);
   }
