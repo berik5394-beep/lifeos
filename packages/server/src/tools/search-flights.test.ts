@@ -37,7 +37,10 @@ describe('search_flights — graceful fallback без env', () => {
       connected: false,
       reason: 'not_configured',
     });
-    expect((result as { message: string }).message).toContain('Berik');
+    // Честно и без обещаний: никого не уведомляем, имя разработчика не светим.
+    const msg = (result as { message: string }).message;
+    expect(msg).not.toMatch(/Berik|попробую/i);
+    expect(msg).toContain('aviasales.kz');
   });
 
   it('invalid IATA (не 3 буквы) → zod schema rejects (до handler)', async () => {

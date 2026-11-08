@@ -135,7 +135,7 @@ describe('TOOLFIX — регресс-гард: все аудированные t
   // 21 инструмент, которым в TOOLFIX 3 добавлены алиасы. Если кто-то
   // удалит — этот тест упадёт (а не молча вернётся «барахлит»).
   const TOOLS_WITH_ALIASES = [
-    'add_expense', 'add_income', 'apply_insight', 'complete_habit',
+    'add_expense', 'add_income', 'complete_habit',
     'complete_multiple_habits', 'complete_task', 'create_event', 'create_skill',
     'create_task', 'decompose_goal', 'get_calendar', 'get_free_slots',
     'get_goal_progress', 'get_weather', 'journal_entry', 'link_relationship',

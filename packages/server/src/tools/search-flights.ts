@@ -102,7 +102,8 @@ export const searchFlightsTool = defineTool({
             connected: false,
             reason: 'not_configured',
             message:
-              'Поиск билетов сейчас не подключён. Скажу Berik\'у — он добавит ключи.',
+              // Честно: никого не уведомляем и сами не повторим (раньше «Скажу Berik'у» видели все).
+              'Поиск билетов в LifeOS пока не подключён — посмотри на aviasales.kz.',
           };
         }
         if (err.code === 'invalid_input') {
@@ -119,15 +120,15 @@ export const searchFlightsTool = defineTool({
           connected: false,
           reason: 'api_error',
           message:
-            'Поиск билетов временно недоступен (Aviasales API). ' +
-            'Попробую позже — пока поищи сам на aviasales.kz.',
+            'Поиск билетов сейчас не отвечает (Aviasales). Спроси меня ещё раз ' +
+            'через пару минут или поищи на aviasales.kz.',
         };
       }
       console.warn('[search_flights] unexpected:', err);
       return {
         connected: false,
         reason: 'unexpected_error',
-        message: 'Не смог найти билеты сейчас, попробую позже.',
+        message: 'Не смог найти билеты сейчас — спроси ещё раз чуть позже.',
       };
     }
   },

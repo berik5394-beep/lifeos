@@ -132,10 +132,14 @@ export function delegationHints(
   return out;
 }
 
-/** «Сверить акты» — по части Айгуль (бухгалтер). Передать? */
+/**
+ * «Сверить акты» — по части Айгуль (бухгалтер): можно отдать ей.
+ * Без «Передать?»: поручить человеку робот не умеет (пуш «Завтра» и не в
+ * истории — у «да» не было бы предмета). Совет, а не обещание.
+ */
 export function delegationLine(h: { task: string; member: TeamMember }): string {
   const role = h.member.role ? ` (${h.member.role})` : '';
-  return `«${h.task}» — по части ${h.member.name}${role}. Передать?`;
+  return `«${h.task}» — по части ${h.member.name}${role}: можно отдать.`;
 }
 
 /** Строки для контекста мозга: цена часа и команда (пусто — нет строк). */

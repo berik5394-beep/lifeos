@@ -26,6 +26,7 @@ export function buildConfirmPrompt(
       return `Отправить письмо ${s(args.to)}?\nТема: «${s(args.subject)}»\n\n${shown}\n\nНапиши «да» — отправлю.`;
     }
     default:
-      return `Выполнить действие ${tool}? Напиши «да» — сделаю.`;
+      // Без сырого имени инструмента (раньше «Выполнить действие delete_expense?»).
+      return 'Сделать это? Напиши «да» — выполню.';
   }
 }

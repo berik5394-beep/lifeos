@@ -29,6 +29,7 @@ import { linkHabitToGoalTool } from './link-habit-to-goal.js';
 import { moveEventTool } from './move-event.js';
 import { cancelEventTool } from './cancel-event.js';
 import { moveTaskTool } from './move-task.js';
+import { completePeriodGoalTool } from './complete-period-goal.js';
 import { createWeeklyGoalTool } from './create-weekly-goal.js';
 import { createMonthlyGoalTool } from './create-monthly-goal.js';
 import { getMonthlyPlanTool } from './get-monthly-plan.js';
@@ -50,7 +51,6 @@ import { searchFlightsTool } from './search-flights.js';
 import { getGoalProgressTool } from './get-goal-progress.js';
 import { sendTelegramTool } from './send-telegram.js';
 import { decomposeGoalTool } from './decompose-goal.js';
-import { applyInsightTool } from './apply-insight.js';
 import { createSkillTool } from './create-skill.js';
 import { rememberEntityTool } from './remember-entity.js';
 import { linkRelationshipTool } from './link-relationship.js';
@@ -106,6 +106,7 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   moveEventTool,
   cancelEventTool,
   moveTaskTool,
+  completePeriodGoalTool,
   createWeeklyGoalTool,
   createMonthlyGoalTool,
   getMonthlyPlanTool,
@@ -129,7 +130,9 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   // planner (Phase 5 P2) — декомпозиция цели в дерево (заглушка, шаг 2)
   decomposeGoalTool,
   // P3/R8 — применение инсайта рефлектора ТОЛЬКО через confirm-гейт
-  applyInsightTool,
+  // apply_insight снят (аудит 2026-11-08): искал инсайт по id, которого мозг не
+  // видит, и suggestedAction.action никто не пишет — на «сделай как предложил»
+  // всегда отказ. Теперь «да» на предложение идёт с инструментами по истории.
   // v2.0 Phase B4 C1 — explicit skill creation (needsConfirm:true)
   createSkillTool,
   // agent-only read-tools, миграция 9A (claude-agent свич — 9A.8)

@@ -547,6 +547,17 @@ function confirmationText(action: string, input: Record<string, unknown>): strin
   return 'Подтверди действие — выполню.';
 }
 
+/** Деньги/Telegram — человеческие тексты confirmationText (с суммой и описанием). */
+const CONFIRM_TEXT_TOOLS = new Set(['add_expense', 'add_income', 'send_telegram', 'delete_expense', 'edit_expense', 'delete_income']);
+/**
+ * Текст подтверждения для confirm-tool из цикла агента. Раньше для денег шёл
+ * общий buildConfirmPrompt → «Выполнить действие delete_expense?» (аудит
+ * 2026-11-08); красивые confirmationText здесь не использовались.
+ */
+export function confirmPromptFor(tool: string, args: Record<string, unknown>): string {
+  return CONFIRM_TEXT_TOOLS.has(tool) ? confirmationText(tool, args) : buildConfirmPrompt(tool, args);
+}
+
 /**
  * Подсказка на «да»/«Подтвердить» при переспросе «какая сделка оплачена?» (ревью-3 I3):
  * примеры — из настоящих сделок переспроса, а не выдуманный «Ахмет оплатил оборудование».
@@ -1688,7 +1699,7 @@ async function handleMessageCore(
     system +=
       '\n\n' +
       timeLines.join('\n') +
-      '\nДлинная встреча или дело не по уровню пользователя — можешь честно сказать, сколько это стоит его времени, и предложить отдать человеку из команды (только с его «да»).';
+      '\nДлинная встреча или дело не по уровню пользователя — можешь честно сказать, сколько это стоит его времени, и посоветовать отдать человеку из команды. Сам поручить ему ты НЕ можешь — не спрашивай «передать?» (письмо — только send_email, если его почта известна).';
   }
   const skillReply: string | null = skill.reply;
   // Согласие на предложение робота без pending — с инструментами (иначе «да»
@@ -1727,7 +1738,7 @@ async function handleMessageCore(
         // НЕ исполняется в цикле — стейджим pending + детерминир. текст,
         // запись только на «да» через peekPendingAction→runConfirmedAction.
         onConfirmTool: async (tool, args) => {
-          const prompt = buildConfirmPrompt(tool, args);
+          const prompt = confirmPromptFor(tool, args);
           await setPendingAction(userId, tool, args, prompt);
           return prompt;
         },
@@ -1749,7 +1760,7 @@ async function handleMessageCore(
             localTools: true,
             userId,
             onConfirmTool: async (tool, args) => {
-              const prompt = buildConfirmPrompt(tool, args);
+              const prompt = confirmPromptFor(tool, args);
               await setPendingAction(userId, tool, args, prompt);
               return prompt;
             },

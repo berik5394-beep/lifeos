@@ -247,6 +247,12 @@ async function tick(): Promise<void> {
         });
         if (res.push || res.telegram) {
           delivered++;
+          // Пуш с вопросом («…Начнём?» в брифе) — и в историю чата: иначе ответ
+          // «да» приходил мозгу без контекста, ответить было не на что (аудит
+          // 2026-11-08). Как доставленные нуджи (insight-store). Best-effort.
+          if (n.type === 'morning_briefing' || /\?\s*$/.test(body.trim())) {
+            await prisma.chatMessage.create({ data: { userId, role: 'assistant', content: body } }).catch(() => {});
+          }
           await prisma.sentNotification
             .updateMany({
               where: { userId, type: n.type, scheduledFor: n.scheduledFor },

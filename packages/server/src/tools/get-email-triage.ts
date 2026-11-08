@@ -70,8 +70,8 @@ export const getEmailTriageTool = defineTool({
           connected: false,
           reason: 'api_error',
           message:
-            'Gmail сейчас временно недоступен (Google API). Попробую ' +
-            'позже — если сразу нужно, разбирай руками.',
+            'Gmail сейчас не отвечает (Google). Спроси меня ещё раз через ' +
+            'пару минут — сам я не повторю.',
         };
       }
       // Неизвестная ошибка — тоже graceful (не падаем в orchestrator).
@@ -79,7 +79,7 @@ export const getEmailTriageTool = defineTool({
       return {
         connected: false,
         reason: 'unexpected_error',
-        message: 'Не смог получить почту сейчас, попробую позже.',
+        message: 'Не смог получить почту сейчас — спроси ещё раз чуть позже.',
       };
     }
   },

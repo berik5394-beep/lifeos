@@ -225,13 +225,13 @@ export function describeProposal(args: {
     lines.push('Предлагаю сдвинуть:');
     for (const m of plan.moves) lines.push(`• «${m.title}» → ${targetPhrase(m.toDate, today)}`);
     if (plan.after > plan.capacity) {
-      lines.push(`Даже после этого останется ~${fmtMinutes(plan.after)} дел на ~${fmtMinutes(plan.capacity)} — что-то ещё отменить или делегировать?`);
+      lines.push(`Даже после этого останется ~${fmtMinutes(plan.after)} дел на ~${fmtMinutes(plan.capacity)} — что-то ещё отменить или отдать кому-то?`);
     }
   }
   if (plan.stuck.length > 0) {
     const names = plan.stuck.slice(0, 2).map((s) => `«${s.title}»`).join(', ');
     const more = plan.stuck.length > 2 ? ` и ещё ${plan.stuck.length - 2}` : '';
-    lines.push(`Неделя забита — для ${names}${more} места нет. Отменить или делегировать?`);
+    lines.push(`Неделя забита — для ${names}${more} места нет. Что-то из этого отменить?`);
   } else if (plan.moves.length === 0) {
     lines.push('Сдвигать нечего: остальное — со временем или критичное. Что-то отменить?');
   }
@@ -435,7 +435,7 @@ export async function proposeReschedule(
       const other = await peekPendingAction(userId);
       if (other && other.action !== RESCHEDULE_ACTION) {
         staged = false;
-        text = text.replace(/\nПодтвердить перенос\?$/, '\nСначала ответь на прошлое подтверждение — потом сдвину.');
+        text = text.replace(/\nПодтвердить перенос\?$/, '\nСначала ответь на прошлое подтверждение — сам я этот перенос потом не предложу.');
       }
     }
     if (staged) await setPendingAction(userId, RESCHEDULE_ACTION, { moves: plan.moves }, text);

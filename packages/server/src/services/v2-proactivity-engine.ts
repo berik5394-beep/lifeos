@@ -268,7 +268,7 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     gentle: 'Ты обещал {{person}}: «{{description}}» — срок {{dueLabel}}. Закрыл?',
     curious: 'Как там с {{person}} — «{{description}}»? {{dueLabel}}.',
     supportive:
-      '{{person}} ждёт «{{description}}». Срок {{dueLabel}} — напомнить или закрыть?',
+      '{{person}} ждёт «{{description}}». Срок {{dueLabel}} — сделал? Скажи — закрою.',
   },
   decision_review: {
     gentle: '{{weeks}} нед назад ты решил «{{title}}»{{expectedSuffix}} — как вышло?',
@@ -278,7 +278,7 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
   },
   birthday_upcoming: {
     gentle: '{{whenLabel}} ДР у {{name}}{{ageSuffix}} — поздравишь?',
-    curious: 'У {{name}} {{whenLabel}} день рождения{{ageSuffix}}. Напомнить заранее?',
+    curious: 'У {{name}} {{whenLabel}} день рождения{{ageSuffix}}. Поставить задачу поздравить?',
     supportive:
       '{{whenLabel}} ДР у {{name}}{{ageSuffix}}. Хороший повод написать тёплое слово!',
   },
@@ -347,15 +347,15 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     curious:
       'Цель «{{goal}}» — тишина уже {{daysSilent}} дней. Цель ещё актуальна?',
     gentle:
-      'Давно не двигали «{{goal}}». Скорректировать или отпустить?',
+      'Давно не двигали «{{goal}}». Поправить срок/сумму или разбить на шаги?',
   },
   identity_growth: {
     // identity_growth uses growth narrative (Claude haiku), not templates.
     // Leave empty to skip template lookup in generateNudge.
   },
   skill_suggestion: {
-    curious: 'Заметил, что ты часто просишь одно и то же подряд. Хочешь, соберу это в навык — будешь запускать одной фразой?',
-    gentle: 'Могу сделать тебе навык из того, что ты часто делаешь вместе. Сэкономит время. Сделать?',
+    curious: 'Заметил, что ты часто делаешь вместе: {{actions}}. Хочешь, соберу это в навык — будешь запускать одной фразой? Скажи «да».',
+    gentle: 'Ты часто делаешь вместе: {{actions}}. Могу собрать это в навык — сэкономит время. Скажи «да».',
   },
   goal_impact: {
     gentle: '«{{category}}» съела {{share}}% месячной нормы на цель «{{goal}}». Поднажмём?',
@@ -377,6 +377,30 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
     curious: 'Кстати, {{name}} — {{days}} дн тишины, а у вас открыто «{{description}}». Решим?',
     supportive: '{{name}} давно без вестей ({{days}} дн), и есть «{{description}}». Хочешь — помогу составить сообщение.',
   },
+};
+
+/** Инструмент → «что ты делаешь» (для текста предложения навыка). Нет в списке — не называем. */
+const SKILL_TOOL_LABELS: Record<string, string> = {
+  get_today: 'смотришь план дня',
+  get_tasks: 'смотришь задачи',
+  create_task: 'добавляешь задачи',
+  complete_task: 'закрываешь задачи',
+  complete_habit: 'отмечаешь привычки',
+  complete_multiple_habits: 'отмечаешь привычки',
+  get_habits: 'смотришь привычки',
+  add_expense: 'записываешь траты',
+  add_income: 'записываешь доходы',
+  get_budget: 'смотришь бюджет',
+  get_calendar: 'смотришь календарь',
+  create_event: 'ставишь встречи',
+  get_weather: 'смотришь погоду',
+  journal_entry: 'пишешь в дневник',
+  get_journal: 'смотришь дневник',
+  get_goal_progress: 'смотришь цели',
+  log_goal_progress: 'отмечаешь прогресс целей',
+  get_free_slots: 'ищешь свободное время',
+  get_weekly_plan: 'смотришь план недели',
+  list_deals: 'смотришь сделки',
 };
 
 // ---- Detectors (A2-A3) -------------------------------------------------------
@@ -1465,10 +1489,14 @@ export async function detectSkillOpportunity(
       .map(([t]) => t);
     if (cluster.length < 3) return [];
     const recurrence = Math.max(...cluster.map((t) => dayCount.get(t) ?? 0));
+    // В текст — ЧТО повторяется (по-русски): без этого «да» на «соберу навык?»
+    // было не из чего собрать (список жил только в payload, аудит 2026-11-08).
+    const labels = cluster.map((t) => SKILL_TOOL_LABELS[t]).filter((l): l is string => !!l);
+    if (labels.length < 2) return [];
     const candidate: NudgeCandidate = {
       source: 'skill_suggestion',
       significance: 0,
-      payload: { cluster, clusterSize: cluster.length, recurrence },
+      payload: { cluster, clusterSize: cluster.length, recurrence, actions: labels.join(', ') },
       toneHint: 'curious',
     };
     candidate.significance = scoreSignificance(candidate);
