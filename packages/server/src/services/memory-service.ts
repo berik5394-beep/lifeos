@@ -149,8 +149,11 @@ export async function getRelevantMemories(
   // (инвалидированные записи скрыты — supersession). OFF → пусто →
   // SQL/where байт-идентичны сегодняшним во всех трёх путях.
   const forget = isV2ForgetEnabled(userId);
+  // Время «забыто ли» — часы ПРИЛОЖЕНИЯ (`now`), как у писателя forgetMemory
+  // и у ветки без запроса ниже; NOW() базы, отстающей на мс, оставлял только
+  // что забытое видимым (флейк дедупа 2026-11-08). ISO от new Date() — не ввод юзера.
   const forgetSql = forget
-    ? `AND m.type <> 'message' AND (m."invalidAt" IS NULL OR m."invalidAt" > NOW())`
+    ? `AND m.type <> 'message' AND (m."invalidAt" IS NULL OR m."invalidAt" > '${now.toISOString()}'::timestamptz)`
     : '';
 
   // Task 4 read-side decay Part 2: importance в FTS-скоринге умножается на

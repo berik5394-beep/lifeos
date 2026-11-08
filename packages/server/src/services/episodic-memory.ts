@@ -194,7 +194,10 @@ export async function writeMemory(
           AND m.type = ${input.type}
           -- Забытое («Неправда», supersede) — не цель дедупа: иначе новое
           -- знание сольётся в скрытую строку и тоже станет невидимым.
-          AND (m."invalidAt" IS NULL OR m."invalidAt" > NOW())
+          -- Время — часы ПРИЛОЖЕНИЯ, как у писателя (forgetMemory ставит
+          -- invalidAt = new Date()). С NOW() базы, отстающей хоть на 1 мс,
+          -- только что забытое считалось живым (флейк 2026-11-08).
+          AND (m."invalidAt" IS NULL OR m."invalidAt" > ${new Date()})
           AND to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${content})
         ORDER BY ts_rank(
           to_tsvector('russian', coalesce(m.content, '')),

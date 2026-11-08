@@ -256,7 +256,10 @@ describe('episodic-memory.ts structural — writeMemory (единый писат
 
   it('never-throws: тело обёрнуто в try/catch (best-effort)', () => {
     const start = SRC.indexOf('export async function writeMemory');
-    const body = SRC.slice(start, start + 4000);
+    // До следующего export, а не фикс-окно: окно в 4000 символов выталкивало
+    // catch при любом новом комментарии в теле.
+    const next = SRC.indexOf('\nexport ', start + 1);
+    const body = SRC.slice(start, next === -1 ? undefined : next);
     expect(body).toContain('try {');
     expect(body).toMatch(/catch\s*\(/);
     expect(body).toMatch(/console\.warn\(\s*['`]\[memory\]/);
