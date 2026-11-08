@@ -2,6 +2,8 @@ import { prisma } from '../lib/prisma.js';
 import { generateProactiveNotifications } from './proactive-notifications.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { composeMorningBrief } from './morning-brief.js';
+import { rememberBrief } from './today-brief.js';
+import { localDateStr } from '../lib/tz.js';
 import { deliverNotification } from './push-service.js';
 import { deliverTopInsight } from './insight-store.js';
 import { runReflectorDaily } from './reflector-service.js';
@@ -242,6 +244,11 @@ async function tick(): Promise<void> {
           n.type === 'morning_briefing'
             ? await withTimeout(composeMorningBrief(userId, n.body), 10_000, n.body).catch(() => n.body)
             : n.body;
+        // Тот же бриф покажет приложение утром (карточка приветствия), а не другой текст.
+        if (n.type === 'morning_briefing') {
+          const tz = (await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } }))?.timezone || 'UTC';
+          rememberBrief(userId, localDateStr(tz, new Date()), { title: n.title, text: body });
+        }
         const res = await deliverNotification(userId, n.title, body, {
           type: n.type,
         });

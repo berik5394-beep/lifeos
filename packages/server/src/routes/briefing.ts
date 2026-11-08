@@ -7,6 +7,7 @@ import { getUserTimezone } from '../lib/user-context.js';
 import { calculateStreak } from '../services/streak-service.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { listDealStepsForDay } from '../services/deals/service.js';
+import { getTodayBrief } from '../services/today-brief.js';
 
 // Брифинг делает 8 параллельных запросов к БД за раз — не AI, но тяжело.
 // Нет смысла вызывать чаще чем раз в 2 секунды (пользователь не обновляет
@@ -47,6 +48,21 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
   // GET /briefing/morning — утренний брифинг
+  // Бриф на сегодня для карточки утреннего приветствия — тот же текст, что в
+  // пуше (today-brief). Кладём в историю чата один раз: ответ «да» на его
+  // вопрос придёт мозгу с контекстом.
+  app.get('/briefing/today', { preHandler: briefingLimiter }, async (request) => {
+    const brief = await getTodayBrief(request.userId);
+    const since = new Date(Date.now() - 20 * 3_600_000);
+    const seen = await prisma.chatMessage.count({
+      where: { userId: request.userId, role: 'assistant', content: brief.text, createdAt: { gte: since } },
+    });
+    if (seen === 0) {
+      await prisma.chatMessage.create({ data: { userId: request.userId, role: 'assistant', content: brief.text } }).catch(() => {});
+    }
+    return brief;
+  });
+
   app.get('/briefing/morning', { preHandler: briefingLimiter }, async (request) => {
     const userId = request.userId;
     const tz = await getUserTimezone(userId);
