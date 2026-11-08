@@ -98,6 +98,9 @@ export const SwipeableRow = React.memo(function SwipeableRow({
       rightThreshold={24}
       // Короткий горизонтальный сдвиг — строке; вертикальный — прокрутке списка.
       dragOffsetFromRightEdge={8}
+      // Сдвиг вправо строке не нужен (действий слева нет) — он уходит свайпу
+      // дома: «назад на Сегодня» работает и со строки.
+      dragOffsetFromLeftEdge={100_000}
     >
       <View>{children}</View>
     </Swipeable>

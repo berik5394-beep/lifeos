@@ -42,6 +42,8 @@ import { pluralN, DAYS } from '@/utils/plural';
 import { useWeekNotes, mondayKey } from '@/hooks/use-week-notes';
 import { storage } from '@/services/storage';
 import { formatDate } from '@/utils/dates';
+// Горизонтальные полосы — жест-скролл RNGH: листаются сами, не уводя в комнату (свайп дома).
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1642,7 +1644,7 @@ export default function HabitsScreen() {
         {/* Grid Table */}
         {calendarGridData.length > 0 ? (
           <View style={styles.gridContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <GHScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View>
                 {/* Header row: day numbers */}
                 <View style={styles.gridRow}>
@@ -1724,7 +1726,7 @@ export default function HabitsScreen() {
                   );
                 })}
               </View>
-            </ScrollView>
+            </GHScrollView>
           </View>
         ) : (
           <View style={styles.emptyState}>

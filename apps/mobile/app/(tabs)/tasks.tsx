@@ -40,6 +40,8 @@ import { bestWeekday } from '@/utils/task-stats';
 import { useWeekNotes } from '@/hooks/use-week-notes';
 import { useInTools } from '@/hooks/use-content-width';
 import { useRoomToolStore } from '@/stores/room-tool-store';
+// Горизонтальные полосы — жест-скролл RNGH: листаются сами, не уводя в комнату (свайп дома).
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -1022,7 +1024,7 @@ export default function TasksScreen() {
 
         {/* Week Grid */}
         <Card style={styles.weekGridCard}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <GHScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.weekGrid}>
               {weekDays.map((day, idx) => {
                 const key = toDateString(day.date);
@@ -1043,7 +1045,7 @@ export default function TasksScreen() {
                 );
               })}
             </View>
-          </ScrollView>
+          </GHScrollView>
         </Card>
 
         {/* Weekly Notes */}
@@ -1345,7 +1347,7 @@ export default function TasksScreen() {
       )}
 
       {/* View Mode Toolbar */}
-      <ScrollView
+      <GHScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.viewModeBar}
@@ -1371,7 +1373,7 @@ export default function TasksScreen() {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </GHScrollView>
 
       {isLoading && tasks.length === 0 ? (
         <View style={styles.loadingContainer}>

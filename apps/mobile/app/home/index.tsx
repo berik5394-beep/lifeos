@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Platform, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
+import { dragOffset, swipeDecision } from '@/services/home-swipe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNotifications } from '@/hooks/use-notifications';
 import { useColors } from '@/hooks/use-colors';
@@ -77,9 +78,9 @@ function HomePager() {
   const [tab, setTab] = useState<ToolKey>('today');
   // Жест «от левого края — на Сегодня» невидим: подсказка, пока ни разу не пользовался.
   const [edgeSeen, setEdgeSeen] = useState(() => storage.getBoolean('edge_back_seen') === true);
-  const onTab = useCallback((t: ToolKey, via?: 'edge') => {
+  const onTab = useCallback((t: ToolKey, via?: 'edge' | 'swipe') => {
     setTab(t);
-    if (via === 'edge') {
+    if (via === 'edge' || via === 'swipe') {
       storage.setBoolean('edge_back_seen', true);
       setEdgeSeen(true);
     }
@@ -140,6 +141,36 @@ function HomePager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latest]);
 
+  // Свайп с любого места, как в Instagram (services/home-swipe.ts): на
+  // инструментах влево — комната, вправо — «Сегодня»; в комнате вправо — «Сегодня».
+  // Экран тянется за пальцем. Вертикальная прокрутка, полосы-карусели и
+  // «минус» на строках (сдвиг влево) срабатывают раньше — им не мешаем.
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  const tabRef = useRef(shownTab);
+  tabRef.current = shownTab;
+  const homeSwipe = useMemo(
+    () =>
+      Gesture.Pan()
+        .runOnJS(true)
+        .activeOffsetX([-22, 22])
+        .failOffsetY([-14, 14])
+        .onUpdate((e) => {
+          const x = dragOffset(pageRef.current === ROOM_PAGE ? 'room' : 'tools', e.translationX, width);
+          if (x !== null) pager.current?.scrollTo({ x, animated: false });
+        })
+        .onEnd((e) => {
+          const cur = pageRef.current === ROOM_PAGE ? 'room' : 'tools';
+          const act = swipeDecision(cur, e.translationX, e.velocityX, width, tabRef.current === 'today');
+          if (act === 'room') goPage(ROOM_PAGE);
+          else if (act === 'today') {
+            onTab('today', 'swipe');
+            goPage(TOOLS_PAGE);
+          } else goPage(cur === 'room' ? ROOM_PAGE : TOOLS_PAGE); // вернуть на место
+        }),
+    [width, goPage, onTab],
+  );
+
   const onMomentumEnd = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => setPage(Math.round(e.nativeEvent.contentOffset.x / width)),
     [width],
@@ -147,28 +178,35 @@ function HomePager() {
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        ref={pager}
-        horizontal
-        pagingEnabled
-        bounces={false}
-        showsHorizontalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        onMomentumScrollEnd={onMomentumEnd}
-        style={styles.container}
-      >
-        <View style={{ width }}>
-          <ToolsPage tools={tools} tab={shownTab} onTab={onTab} width={width} />
+      <GestureDetector gesture={homeSwipe}>
+        <View style={styles.container}>
+          <ScrollView
+            ref={pager}
+            horizontal
+            pagingEnabled
+            bounces={false}
+            // Листаем своим жестом (homeSwipe) — с любого места экрана, а не
+            // только там, где под пальцем нет списка.
+            scrollEnabled={false}
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            onMomentumScrollEnd={onMomentumEnd}
+            style={styles.container}
+          >
+            <View style={{ width }}>
+              <ToolsPage tools={tools} tab={shownTab} onTab={onTab} width={width} />
+            </View>
+            <View style={{ width }}>
+              <RoomPage active={page === ROOM_PAGE} />
+            </View>
+          </ScrollView>
         </View>
-        <View style={{ width }}>
-          <RoomPage active={page === ROOM_PAGE} />
-        </View>
-      </ScrollView>
+      </GestureDetector>
       {/* Новичок не знает про комнату робота (тур живёт там): одна строка у
           точек, пока он ни разу туда не заходил. */}
       {roomSeen && !edgeSeen && page === TOOLS_PAGE && shownTab !== 'today' && (
         <Text style={[styles.roomHint, { color: c.textSecondary }]} pointerEvents="none">
-          Проведи от левого края вправо — вернёшься на «Сегодня»
+          Смахни вправо — вернёшься на «Сегодня»
         </Text>
       )}
       {!roomSeen && page === TOOLS_PAGE && (

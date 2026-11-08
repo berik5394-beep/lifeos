@@ -1,5 +1,7 @@
 import React, { memo, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+// Ленты листаются сами (жест-скролл RNGH выигрывает у свайпа дома).
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import {
@@ -50,7 +52,7 @@ export const RoomShop = memo(function RoomShop({
 
   return (
     <View style={styles.wrap}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+      <GHScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
         {TABS.map((t) => (
           <Pressable
             key={t}
@@ -67,13 +69,13 @@ export const RoomShop = memo(function RoomShop({
             </Text>
           </Pressable>
         ))}
-      </ScrollView>
+      </GHScrollView>
 
       {tab === 'storage' ? (
         stored.length === 0 ? (
           <Text style={styles.empty}>Кладовка пуста. Пока открыто «Обставить», убери предмет долгим нажатием — он появится здесь.</Text>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards}>
+          <GHScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards}>
             {stored.map((o) => (
               <View key={o.id} style={styles.card}>
                 <Text style={styles.emoji}>{roomItemEmoji(o.itemKey)}</Text>
@@ -85,7 +87,7 @@ export const RoomShop = memo(function RoomShop({
                 </Pressable>
               </View>
             ))}
-          </ScrollView>
+          </GHScrollView>
         )
       ) : catalog.length === 0 ? (
         <Text style={styles.empty}>Магазин загрузится, когда будет связь.</Text>
@@ -106,7 +108,7 @@ export const RoomShop = memo(function RoomShop({
             <Text style={styles.friendHint}>Растёт, когда мы разговариваем и закрываются дела. Не падает.</Text>
           </View>
         )}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards}>
+        <GHScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cards}>
           {catalog
             .filter((v) => v.tier === tab)
             .map((v) => {
@@ -151,7 +153,7 @@ export const RoomShop = memo(function RoomShop({
                 </View>
               );
             })}
-        </ScrollView>
+        </GHScrollView>
         </>
       )}
     </View>
