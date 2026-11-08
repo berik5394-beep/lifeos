@@ -149,3 +149,21 @@ describe('быстрая строка задачи со временем', () =>
     expect(useTaskStore.getState().tasks[0]).toEqual({ id: 't10', title: 'Позвонить', completed: false });
   });
 });
+
+import { useChatStore } from '@/stores/chat-store';
+describe('перегруз дня и наложение сразу', () => {
+  it('одно облачко: наложение первой строкой предложения, кнопка «Подтвердить» сохранена', async () => {
+    useTaskStore.setState({ tasks: [] });
+    useChatStore.setState({ messages: [] } as never);
+    mockApi.post.mockResolvedValueOnce({
+      task: { id: 't11', title: 'Позвонить', completed: false },
+      proposal: { text: 'День перегружен — сдвинуть «Почту» на завтра?', staged: true },
+      conflictWarning: 'Накладывается на время с встречей «Планёрка» 10:00–11:00.',
+    });
+    await useTaskStore.getState().quickAdd('позвонить завтра в 10:30');
+    const msg = useChatStore.getState().messages[0];
+    expect(msg.content).toBe('Накладывается на время с встречей «Планёрка» 10:00–11:00.\nДень перегружен — сдвинуть «Почту» на завтра?');
+    expect(msg.pendingAction).not.toBeNull();
+    expect(useRobotReactionStore.getState().reaction).toBeNull();
+  });
+});

@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { useChatStore } from '@/stores/chat-store';
-import { useRobotReactionStore } from '@/stores/robot-reaction-store';
+import { surfaceCreateWarnings } from '@/services/create-warnings';
 import type { RescheduleProposal } from '@/stores/schedule-store';
 
 export interface CalendarEvent {
@@ -92,10 +92,8 @@ export const useEventStore = create<EventState>((set) => ({
       CalendarEvent & { conflicts?: CalendarEvent[]; proposal?: RescheduleProposal; conflictWarning?: string }
     >('/events', data, token);
     set((state) => ({ events: [event, ...state.events] }));
-    // Перегруз дня: встреча съела время → робот предлагает сдвинуть задачи.
-    if (proposal) useChatStore.getState().showProposal(proposal);
-    // Наложение по времени — облачком робота (раньше ответ сервера терялся).
-    if (conflictWarning) useRobotReactionStore.getState().react('worried', conflictWarning);
+    // Перегруз дня (встреча съела время) и наложение по времени — одним облачком.
+    surfaceCreateWarnings(proposal, conflictWarning);
     return { event, conflicts };
   },
 

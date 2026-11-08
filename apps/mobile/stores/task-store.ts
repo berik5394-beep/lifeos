@@ -4,6 +4,7 @@ import { offlineId } from '@/utils/offline-id';
 import { formatDate } from '@/utils/dates';
 import { useAuthStore } from '@/stores/auth-store';
 import { useRobotReactionStore } from '@/stores/robot-reaction-store';
+import { surfaceCreateWarnings } from '@/services/create-warnings';
 import { useChatStore } from '@/stores/chat-store';
 import type { RescheduleProposal } from '@/stores/schedule-store';
 import { persistStoreData, restoreStoreData } from '@/services/store-persist';
@@ -106,10 +107,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         Task & { proposal?: RescheduleProposal; conflictWarning?: string }
       >('/tasks', data, token, QUEUE_OFFLINE);
       set((state) => ({ tasks: [...state.tasks, task] }));
-      // Перегруз дня: робот предлагает сдвинуть график (облачко + «Подтвердить»).
-      if (proposal) useChatStore.getState().showProposal(proposal);
-      // Наложение на встречу/задачу того же времени — облачком робота.
-      if (conflictWarning) useRobotReactionStore.getState().react('worried', conflictWarning);
+      // Перегруз дня (облачко + «Подтвердить») и наложение по времени — одним облачком.
+      surfaceCreateWarnings(proposal, conflictWarning);
     } catch (err) {
       // Без сети: запись в очереди — показываем задачу сразу, после отправки
       // список перечитается и временный id сменится настоящим.
@@ -233,9 +232,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         token,
       );
       set((state) => ({ tasks: [...state.tasks, res.task] }));
-      if (res.proposal) useChatStore.getState().showProposal(res.proposal);
-      // «позвонить завтра в 10:30» поверх встречи — облачком робота.
-      if (res.conflictWarning) useRobotReactionStore.getState().react('worried', res.conflictWarning);
+      // «позвонить завтра в 10:30» поверх встречи + перегруз дня — одним облачком.
+      surfaceCreateWarnings(res.proposal, res.conflictWarning);
     } catch (err) {
       // Разбор фразы (ИИ) не сработал или нет сети — задачу не теряем: пишем как
       // есть, на сегодня (без сети — в очередь, видна сразу).
