@@ -503,3 +503,12 @@ export function isV2DealsEnabled(userId: string): boolean {
 export function isV2GoalIntakeEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_GOAL_INTAKE, userId);
 }
+
+/**
+ * Задача↔цель: после создания задачи фоном (haiku) привязать её к годовой
+ * цели, если она явный шаг к ней — детектор «цель стоит» видит работу по цели.
+ * OFF → задачи не привязываются (как раньше), вызова ИИ нет.
+ */
+export function isV2TaskGoalLinkEnabled(userId: string): boolean {
+  return isEnabledForUser(process.env.FEATURE_V2_TASK_GOAL_LINK, userId);
+}

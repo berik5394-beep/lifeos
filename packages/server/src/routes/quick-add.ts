@@ -8,6 +8,8 @@ import { validate } from '../middleware/validate.js';
 import { rateLimiter, aiDailyLimiter } from '../middleware/security.js';
 import { proposeReschedule } from '../services/reschedule.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
+import { linkTaskToGoalInBackground } from '../services/task-goal-link.js';
+import { screenConflictText } from '../services/schedule-conflict/index.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { civilDayRefs } from '../lib/tz.js';
 
@@ -100,14 +102,24 @@ export async function quickAddRoutes(app: FastifyInstance): Promise<void> {
         type: 'task_created',
         content: `Создал задачу «${task.title}» на ${parsed.date}${parsed.time ? ` в ${parsed.time}` : ''}`,
       });
+      linkTaskToGoalInBackground(request.userId, task.id, task.title);
 
       // Перегруз дня (флаг): быстрое добавление — тот же движок, что POST /tasks.
       const proposal = await proposeReschedule(request.userId, parsed.date, task.id, new Date(), { fromCard: true });
+      // Наложение по времени («позвонить завтра в 10:30» поверх встречи) — главный
+      // путь задач со временем с экрана (POST /tasks приложение шлёт без времени).
+      const conflictWarning = await screenConflictText(
+        request.userId,
+        task.date,
+        { kind: 'task', title: task.title, start: task.time },
+        { taskId: task.id },
+      );
       return reply.status(201).send({
         task,
         parsed,
         confidence: parsed.confidence,
         ...(proposal ? { proposal: { text: proposal.text, staged: proposal.staged } } : {}),
+        ...(conflictWarning ? { conflictWarning } : {}),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка парсинга';

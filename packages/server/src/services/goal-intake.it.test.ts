@@ -92,6 +92,7 @@ describe('разбор цели — экран (POST /goals/yearly/:id/intake)',
     expect(text.startsWith('Про цель «Прочитать 24 книги»:\n')).toBe(true);
     expect(text).toMatch(/Это ~[\d,]+ в месяц/);
     expect(text).toContain('привычка «Читать 20 минут»');
+    expect(text).not.toContain('могу привязать');
     expect(text).not.toContain('Зарядка');
     expect(text).not.toContain('По времени'); // нет ИИ-оценки → не выдумываем
     expect(text).toMatch(/Скажи «да»\.$/);

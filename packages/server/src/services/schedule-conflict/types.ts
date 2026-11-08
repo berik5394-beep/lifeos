@@ -103,6 +103,23 @@ export function findOverlaps(newItem: SchedItem, others: SchedItem[]): SchedItem
 }
 
 /** inline-предупреждение для ответа на создание; '' если пересечений нет. */
+/**
+ * Облачко робота после создания С ЭКРАНА: без «перенести?» (там не ответишь
+ * «да»). Пусто → ''. Числа/названия — только из найденных пересечений.
+ */
+export function formatScreenConflict(overlaps: SchedItem[]): string {
+  if (!overlaps.length) return '';
+  const items = overlaps
+    .slice(0, 3)
+    .map((o) =>
+      o.kind === 'event'
+        ? `встречей «${o.title}» ${minToHM(o.startMin)}–${minToHM(o.endMin)}`
+        : `задачей «${o.title}» в ${minToHM(o.startMin)}`,
+    )
+    .join(', ');
+  return `Накладывается на время с ${items}.`;
+}
+
 export function formatCreationConflict(overlaps: SchedItem[]): string {
   if (!overlaps.length) return '';
   const items = overlaps

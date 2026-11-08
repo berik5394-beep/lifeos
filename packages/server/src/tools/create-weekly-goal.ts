@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { defineTool } from './_types.js';
+import { maybeShortGoalIntake } from '../services/goal-intake-gather.js';
 import { localWeekStartUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { normalizeHabit } from './_habit-match.js';
@@ -60,8 +61,11 @@ export const createWeeklyGoalTool = defineTool({
       },
     });
 
+    // Разбор при постановке (флаг FEATURE_V2_GOAL_INTAKE): время/привычка/окно.
+    const intake = await maybeShortGoalIntake(userId, { goalText: goal.goalText, horizon: 'week' });
+    const head = `Цель недели записана: «${goal.goalText}». Всего целей на эту неделю: ${week.length + 1}.`;
     return {
-      message: `Цель недели записана: «${goal.goalText}». Всего целей на эту неделю: ${week.length + 1}.`,
+      message: intake ? `${head}\n\n${intake}` : head,
       weeklyGoalId: goal.id,
     };
   },

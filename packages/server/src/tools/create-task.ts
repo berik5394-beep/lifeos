@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { dateOnlyUTC } from '../lib/tz.js';
 import { defineTool } from './_types.js';
+import { linkTaskToGoalInBackground } from '../services/task-goal-link.js';
 import { sanitizeTaskTitle } from '../services/task-title.js';
 import {
   estimateTaskMinutesInBackground,
@@ -59,6 +60,8 @@ export const createTaskTool = defineTool({
         priority: input.priority || 'medium',
       },
     });
+    // Задача — явный шаг к годовой цели? Фоном (флаг FEATURE_V2_TASK_GOAL_LINK).
+    linkTaskToGoalInBackground(ctx.userId, task.id, title);
     const message = `Задача "${title}" создана на ${input.date}${
       input.time ? ' в ' + input.time : ''
     }`;

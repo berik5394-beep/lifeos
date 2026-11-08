@@ -8,7 +8,7 @@ import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { isV2GoalIntakeEnabled, isV2MoodToneEnabled } from '../lib/feature-flags.js';
-import { buildGoalIntake, MONEY_WINDOW_MONTHS, type GoalIntakeFacts } from './goal-intake.js';
+import { buildGoalIntake, buildShortGoalIntake, MONEY_WINDOW_MONTHS, type GoalIntakeFacts } from './goal-intake.js';
 import { isMoneyGoal } from './goal-pace.js';
 import { gatherWeekLoad } from './week-load.js';
 import { findUpcomingSlot } from './goal-slot.js';
@@ -24,7 +24,14 @@ const FIN_RE = /financ|финанс/i;
  * недельную — для «24 книги за год» дал бы неделю на все книги). Сбой / нет
  * ключа → null: строку времени не показываем, а не подставляем «2 ч».
  */
-export async function estimateYearlyGoalWeeklyMinutes(goalText: string): Promise<number | null> {
+export type GoalHorizon = 'year' | 'month' | 'week';
+const HORIZON_TEXT: Record<GoalHorizon, string> = {
+  year: 'на год (или к сроку)',
+  month: 'на этот месяц',
+  week: 'на эту неделю',
+};
+
+export async function estimateYearlyGoalWeeklyMinutes(goalText: string, horizon: GoalHorizon = 'year'): Promise<number | null> {
   const apiKey = process.env.CLAUDE_API_KEY;
   if (!apiKey) return null;
   try {
@@ -33,7 +40,7 @@ export async function estimateYearlyGoalWeeklyMinutes(goalText: string): Promise
       model: MODELS.haiku,
       max_tokens: 16,
       system:
-        'Человек поставил цель на год (или к сроку). Оцени, сколько МИНУТ в НЕДЕЛЮ ' +
+        `Человек поставил цель ${HORIZON_TEXT[horizon]}. Оцени, сколько МИНУТ в НЕДЕЛЮ ` +
         'ему нужно регулярно уделять ей, чтобы успеть. Если цель не про затраты ' +
         'времени — верни 0. Верни ТОЛЬКО целое число минут, без слов.',
       messages: [{ role: 'user', content: `Цель: «${goalText}»` }],
@@ -209,4 +216,54 @@ export async function maybeGoalIntake(userId: string, goalId: string, now: Date 
     console.warn('[goal-intake] build failed:', err);
     return null;
   }
+}
+
+/**
+ * Разбор цели месяца/недели (тот же флаг FEATURE_V2_GOAL_INTAKE): время в
+ * неделю vs свободное до конца недели, привычка по корню, ближайшее окно.
+ * READ-ONLY, тот же бюджет, сбой → null (цель уже записана).
+ */
+export async function maybeShortGoalIntake(
+  userId: string,
+  goal: { goalText: string; horizon: 'month' | 'week' },
+  now: Date = new Date(),
+): Promise<string | null> {
+  if (!isV2GoalIntakeEnabled(userId)) return null;
+  const run = async (): Promise<string | null> => {
+    const moodP = isV2MoodToneEnabled(userId)
+      ? getEmotionalMemory()
+          .detectMoodShift(userId)
+          .then((m) => !!m?.shifted && m.direction === 'down')
+          .catch(() => false)
+      : Promise.resolve(false);
+    const [minutes, week, slot, habits, moodDown] = await Promise.all([
+      estimateYearlyGoalWeeklyMinutes(goal.goalText, goal.horizon),
+      gatherWeekLoad(userId, now).catch(() => null),
+      findUpcomingSlot(userId, now, 45),
+      prisma.habit.findMany({
+        where: { userId, active: true, goalId: null },
+        select: { name: true },
+        orderBy: { order: 'asc' },
+        take: 50,
+      }),
+      moodP,
+    ]);
+    return buildShortGoalIntake({
+      time:
+        minutes && minutes > 0 && week
+          ? { goalMinutesPerWeek: minutes, weekCapacity: week.capacity, weekDemand: week.items.reduce((s, i) => s + i.demand, 0) }
+          : null,
+      slot,
+      linkableHabit: pickLinkableHabit(goal.goalText, habits),
+      moodDown,
+    });
+  };
+  return withTimeout(
+    run().catch((err) => {
+      console.warn('[goal-intake] short failed:', err);
+      return null;
+    }),
+    GOAL_INTAKE_BUDGET_MS,
+    null,
+  );
 }

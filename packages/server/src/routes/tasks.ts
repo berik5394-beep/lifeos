@@ -9,6 +9,8 @@ import { captureActivity } from '../services/tool-activity-summary.js';
 import { onTaskCompleted } from '../services/coins.js';
 import { proposeReschedule } from '../services/reschedule.js';
 import { withIdempotency } from '../lib/idempotency.js';
+import { screenConflictText } from '../services/schedule-conflict/index.js';
+import { linkTaskToGoalInBackground } from '../services/task-goal-link.js';
 
 // Максимум задач на один запрос — защита от OOM на клиенте у power users
 const MAX_TASKS_PER_REQUEST = 500;
@@ -177,11 +179,24 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       type: 'task_created',
       content: `Создал задачу «${task.title}» на ${data.date}`,
     });
+    // Задача — явный шаг к годовой цели? Фоном (флаг): цель «видит» работу по ней.
+    if (!data.parentId) linkTaskToGoalInBackground(request.userId, task.id, task.title);
     // Перегруз дня (флаг): робот предлагает сдвинуть график одним касанием.
     // Предложение уже в PendingAction; мобилка показывает его облачком.
     const proposal = await proposeReschedule(request.userId, data.date, task.id, new Date(), { fromCard: true });
-    if (proposal) return { status: 201, body: { ...task, proposal: { text: proposal.text, staged: proposal.staged } } };
-    return { status: 201, body: task };
+    // Наложение на встречу/задачу того же времени — облачком робота (раньше с
+    // экрана не проверялось вовсе, только в чате).
+    const conflictWarning = task.completed ? null : await screenConflictText(
+      request.userId,
+      task.date,
+      { kind: 'task', title: task.title, start: task.time },
+      { taskId: task.id },
+    );
+    const extra = {
+      ...(proposal ? { proposal: { text: proposal.text, staged: proposal.staged } } : {}),
+      ...(conflictWarning ? { conflictWarning } : {}),
+    };
+    return { status: 201, body: { ...task, ...extra } };
   }));
 
   app.put('/tasks/:id', {

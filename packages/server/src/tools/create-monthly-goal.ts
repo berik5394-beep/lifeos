@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { defineTool } from './_types.js';
+import { maybeShortGoalIntake } from '../services/goal-intake-gather.js';
 import { localMonthOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { normalizeHabit } from './_habit-match.js';
@@ -62,8 +63,11 @@ export const createMonthlyGoalTool = defineTool({
       },
     });
 
+    // Разбор при постановке (флаг FEATURE_V2_GOAL_INTAKE): время/привычка/окно.
+    const intake = await maybeShortGoalIntake(userId, { goalText: goal.goalText, horizon: 'month' });
+    const head = `Цель месяца записана: «${goal.goalText}». Всего целей на этот месяц: ${month.length + 1}.`;
     return {
-      message: `Цель месяца записана: «${goal.goalText}». Всего целей на этот месяц: ${month.length + 1}.`,
+      message: intake ? `${head}\n\n${intake}` : head,
       monthlyGoalId: goal.id,
     };
   },

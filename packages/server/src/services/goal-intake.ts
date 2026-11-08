@@ -120,7 +120,7 @@ function measurableLine(f: GoalIntakeFacts, target: number): string | null {
   return `Это ${approx(pace.requiredMonthly)} в месяц${week} до ${fmtDeadline(deadline, f.now)}.`;
 }
 
-function timeLine(f: GoalIntakeFacts): string | null {
+function timeLine(f: Pick<GoalIntakeFacts, 'time' | 'moodDown'>): string | null {
   const t = f.time;
   if (!t || !(t.goalMinutesPerWeek > 0)) return null;
   const freeMin = Math.max(0, t.weekCapacity - t.weekDemand);
@@ -135,9 +135,11 @@ function timeLine(f: GoalIntakeFacts): string | null {
   return `${head}; до конца этой недели свободно ${hours(freeMin)} — ${verdict}.`;
 }
 
-function habitLine(f: GoalIntakeFacts): string {
-  return f.linkableHabit
-    ? `Под неё подходит привычка «${f.linkableHabit}» — могу привязать.`
+function habitLine(linkableHabit: string | null): string {
+  return linkableHabit
+    // Факт, без «могу привязать»: инструмента привязки существующей привычки
+    // к цели нет — обещать нельзя (ревью 2026-11-08).
+    ? `Под неё подходит твоя привычка «${linkableHabit}».`
     : 'К цели пока не привязана ни одна привычка.';
 }
 
@@ -167,7 +169,32 @@ export function buildGoalIntake(f: GoalIntakeFacts): string {
     if (ml) lines.push(ml);
     const tl = timeLine(f);
     if (tl) lines.push(tl);
-    lines.push(habitLine(f));
+    lines.push(habitLine(f.linkableHabit));
   }
   return [...lines.slice(0, 3), question(f, isMoney)].join('\n');
+}
+
+/** Короткая цель (месяц/неделя): без денег и темпа — время, привычка, окно. */
+export interface ShortGoalIntakeFacts {
+  time: GoalIntakeFacts['time'];
+  slot: FreeSlot | null;
+  linkableHabit: string | null;
+  moodDown: boolean;
+}
+
+/**
+ * Разбор цели месяца/недели: строка времени (если есть оценка), привычка
+ * (только если нашлась подходящая — у короткой цели «не привязана» шум) и
+ * вопрос про первое занятие (если есть окно и нет спада). Нечего сказать → null.
+ */
+export function buildShortGoalIntake(f: ShortGoalIntakeFacts): string | null {
+  const lines: string[] = [];
+  const tl = timeLine(f);
+  if (tl) lines.push(tl);
+  if (f.linkableHabit) lines.push(habitLine(f.linkableHabit));
+  if (f.slot && !f.moodDown) {
+    const d = f.slot.date;
+    lines.push(`Поставить первое занятие на ${ruDayName(d)} (${d.slice(8, 10)}.${d.slice(5, 7)}) в ${f.slot.from}? Скажи «да».`);
+  }
+  return lines.length ? lines.join('\n') : null;
 }

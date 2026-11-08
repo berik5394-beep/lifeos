@@ -6,9 +6,11 @@ import {
   formatScheduleConflict,
   findOverlaps,
   formatCreationConflict,
+  formatScreenConflict,
   itemWindow,
   type SchedItem,
 } from './types.js';
+import { isV2ScheduleConflictEnabled } from '../../lib/feature-flags.js';
 
 /**
  * Read-only reader конфликтов задача↔календарь на сегодня (кросс-домен слой B).
@@ -45,6 +47,20 @@ export async function findCreationConflict(
   newItem: SchedItem,
   exclude: { taskId?: string; eventId?: string },
 ): Promise<string | null> {
+  return formatCreationConflict(await findCreationOverlaps(userId, date, newItem, exclude)) || null;
+}
+
+/**
+ * С чем пересекается новое дело в тот же день (задачи со временем + встречи).
+ * Тот же поиск, что у findCreationConflict, но без текста — экран формулирует
+ * сам (formatScreenConflict: «перенести?» с экрана не ответишь).
+ */
+export async function findCreationOverlaps(
+  userId: string,
+  date: Date,
+  newItem: SchedItem,
+  exclude: { taskId?: string; eventId?: string },
+): Promise<SchedItem[]> {
   const [tasks, events] = await Promise.all([
     prisma.task.findMany({
       where: {
@@ -75,5 +91,27 @@ export async function findCreationConflict(
     const w = e.startTime ? itemWindow('event', e.startTime, e.endTime) : null;
     if (w) others.push({ title: e.title, kind: 'event', ...w });
   }
-  return formatCreationConflict(findOverlaps(newItem, others)) || null;
+  return findOverlaps(newItem, others);
+}
+
+/**
+ * Текст для облачка робота после создания С ЭКРАНА (задача/встреча со временем).
+ * Раньше с экрана наложение не проверялось вовсе (задачи) или ответ сервера
+ * мобилка выбрасывала (встречи). Флаг выкл. / нет времени / сбой → null.
+ */
+export async function screenConflictText(
+  userId: string,
+  date: Date,
+  item: { kind: 'task' | 'event'; title: string; start: string | null | undefined; end?: string | null },
+  exclude: { taskId?: string; eventId?: string },
+): Promise<string | null> {
+  if (!item.start || !isV2ScheduleConflictEnabled(userId)) return null;
+  try {
+    const w = itemWindow(item.kind, item.start, item.end ?? null);
+    if (!w) return null;
+    const overlaps = await findCreationOverlaps(userId, date, { title: item.title, kind: item.kind, ...w }, exclude);
+    return formatScreenConflict(overlaps) || null;
+  } catch {
+    return null;
+  }
 }

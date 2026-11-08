@@ -90,7 +90,7 @@ describe('разбор не-денежной цели', () => {
     expect(lines).toHaveLength(4);
     expect(lines[0]).toBe('Это ~2 в месяц до 31.12.');
     expect(lines[1]).toBe('По времени это 2 ч в неделю; до конца этой недели свободно 10 ч — влезает.');
-    expect(lines[2]).toBe('Под неё подходит привычка «Чтение» — могу привязать.');
+    expect(lines[2]).toBe('Под неё подходит твоя привычка «Чтение».');
     expect(lines[3]).toBe('Разбить на шаги и поставить первое занятие на четверг (08.01) в 18:00? Скажи «да».');
   });
 
@@ -189,3 +189,29 @@ describe('находки ревью', () => {
   });
 });
 const BOOKS_LATE = { text: 'Прочитать 24 книги', area: 'personal', target: 24, targetDate: null, year: 2026 };
+
+import { buildShortGoalIntake } from './goal-intake.js';
+describe('разбор цели недели/месяца', () => {
+  const SLOT = { date: '2026-01-08', from: '18:00', to: '20:00', durationMinutes: 120 };
+  it('время + привычка (если нашлась) + первое занятие', () => {
+    const t = buildShortGoalIntake({
+      time: { goalMinutesPerWeek: 90, weekCapacity: 600, weekDemand: 100 },
+      slot: SLOT,
+      linkableHabit: 'Бег',
+      moodDown: false,
+    });
+    expect(t?.split('\n')).toEqual([
+      'По времени это 1,5 ч в неделю; до конца этой недели свободно 8,3 ч — влезает.',
+      'Под неё подходит твоя привычка «Бег».',
+      'Поставить первое занятие на четверг (08.01) в 18:00? Скажи «да».',
+    ]);
+  });
+  it('нет привычки — строки нет (не шумим); спад — без вопроса', () => {
+    const t = buildShortGoalIntake({ time: { goalMinutesPerWeek: 60, weekCapacity: 600, weekDemand: 0 }, slot: SLOT, linkableHabit: null, moodDown: true });
+    expect(t).not.toContain('привычк');
+    expect(t).not.toContain('Скажи «да»');
+  });
+  it('нечего сказать → null', () => {
+    expect(buildShortGoalIntake({ time: null, slot: null, linkableHabit: null, moodDown: false })).toBeNull();
+  });
+});

@@ -5,8 +5,10 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate, parseDate, parseYear, invalidDateReply } from '../middleware/validate.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { estimateWeeklyGoalMinutesInBackground } from '../services/estimate-goal-minutes.js';
-import { maybeGoalIntake } from '../services/goal-intake-gather.js';
+import { maybeGoalIntake, maybeShortGoalIntake } from '../services/goal-intake-gather.js';
 import { clearPendingAction } from '../services/pending-actions.js';
+import { getUserTimezone } from '../lib/user-context.js';
+import { localWeekStartUTC } from '../lib/tz.js';
 
 // B.3: enum/диапазоны (аудит 3.12). area из CLAUDE.md (goalAreas),
 // year ограничен, weekStart — строгий ISO (раньше z.string() →
@@ -188,36 +190,55 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
   // запросом ПОСЛЕ создания: само сохранение не ждёт 2–3 с расчёта. Текст кладём
   // в чат сообщением робота — чтобы «да» (голосом/текстом) пришло мозгу с
   // контекстом предложения. Только свежая цель (≤10 мин) и без повтора в чате.
+  const INTAKE_FRESH_MS = 10 * 60_000;
+  async function deliverIntake(
+    userId: string,
+    goal: { goalText: string; createdAt: Date } | null,
+    compute: () => Promise<string | null>,
+  ): Promise<{ text: string | null }> {
+    if (!goal || Date.now() - goal.createdAt.getTime() > INTAKE_FRESH_MS) return { text: null };
+    const intake = await compute();
+    if (!intake) return { text: null };
+    const prefix = `Про цель «${goal.goalText}»:`;
+    const text = `${prefix}\n${intake}`;
+    const dup = await prisma.chatMessage.count({
+      // По началу «Про цель «…»:», а не точному тексту: цифры в разборе плывут со временем.
+      where: { userId, role: 'assistant', content: { startsWith: prefix }, createdAt: { gte: new Date(Date.now() - INTAKE_FRESH_MS) } },
+    });
+    if (dup === 0) {
+      // Старое неотвеченное предложение («записать расход…?») снимаем: иначе
+      // «да» на разбор цели подтвердило бы его вслепую (pending проверяется
+      // раньше истории). То же правило, что «сменил тему» в оркестраторе.
+      await clearPendingAction(userId).catch(() => {});
+      await prisma.chatMessage.create({ data: { userId, role: 'assistant', content: text } }).catch(() => {});
+    }
+    return { text };
+  }
+
   app.post('/goals/yearly/:id/intake', async (request) => {
     const { id } = request.params as { id: string };
     const goal = await prisma.yearlyGoal.findFirst({
       where: { id, userId: request.userId },
       select: { id: true, goalText: true, createdAt: true },
     });
-    const freshMs = 10 * 60_000;
-    if (!goal || Date.now() - goal.createdAt.getTime() > freshMs) return { text: null };
-    const intake = await maybeGoalIntake(request.userId, goal.id);
-    if (!intake) return { text: null };
-    const text = `Про цель «${goal.goalText}»:\n${intake}`;
-    const dup = await prisma.chatMessage.count({
-      // По началу «Про цель «…»:», а не точному тексту: цифры в разборе плывут со временем.
-      where: {
-        userId: request.userId,
-        role: 'assistant',
-        content: { startsWith: `Про цель «${goal.goalText}»:` },
-        createdAt: { gte: new Date(Date.now() - freshMs) },
-      },
+    return deliverIntake(request.userId, goal, () => maybeGoalIntake(request.userId, goal!.id));
+  });
+
+  app.post('/goals/weekly/:id/intake', async (request) => {
+    const { id } = request.params as { id: string };
+    const goal = await prisma.weeklyGoal.findFirst({
+      where: { id, userId: request.userId },
+      select: { goalText: true, createdAt: true, weekStart: true },
     });
-    if (dup === 0) {
-      // Старое неотвеченное предложение («записать расход…?») снимаем: иначе
-      // «да» на разбор цели подтвердило бы его вслепую (pending проверяется
-      // раньше истории). То же правило, что «сменил тему» в оркестраторе.
-      await clearPendingAction(request.userId).catch(() => {});
-      await prisma.chatMessage
-        .create({ data: { userId: request.userId, role: 'assistant', content: text } })
-        .catch(() => {});
+    // Цель на другую неделю: «свободно до конца этой недели» и окно на эту
+    // неделю были бы не о той неделе — не разбираем.
+    if (goal) {
+      const tz = await getUserTimezone(request.userId);
+      if (goal.weekStart.getTime() !== localWeekStartUTC(tz, new Date()).getTime()) return { text: null };
     }
-    return { text };
+    return deliverIntake(request.userId, goal, () =>
+      maybeShortGoalIntake(request.userId, { goalText: goal!.goalText, horizon: 'week' }),
+    );
   });
 
   app.put('/goals/yearly/:id', {
