@@ -14,12 +14,14 @@ import { isInQuietHours } from '../lib/tz.js';
  */
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+export const ROBOT_SOUND = 'lifeos_chime.wav' as const;
 
 interface ExpoPushMessage {
   to: string;
   title: string;
   body: string;
-  sound: 'default';
+  /** Имя звука из сборки (lifeos_chime.wav) или системный. Нет файла в сборке — iOS играет системный. */
+  sound: 'default' | 'lifeos_chime.wav';
   priority: 'high';
   data?: Record<string, unknown>;
   /** iOS: 'time-sensitive' — пробивается через «Фокус» и «Не беспокоить». */
@@ -70,7 +72,8 @@ async function sendExpoPush(
     to: token,
     title,
     body,
-    sound: 'default',
+    // Свой звук робота (сборка №15+); на старых сборках iOS играет системный.
+    sound: ROBOT_SOUND,
     priority: 'high',
     ...(data ? { data } : {}),
   };

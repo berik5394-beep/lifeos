@@ -21,7 +21,7 @@ describe('срочные уведомления', () => {
     vi.stubGlobal('fetch', f);
     const res = await deliverNotification(await user(), 'Через час: Встреча', 'Серик (клиент)…', { type: 'event_reminder_1h' });
     expect(res.push).toBe(true);
-    expect(sent(f)).toMatchObject({ interruptionLevel: 'time-sensitive', sound: 'default' });
+    expect(sent(f)).toMatchObject({ interruptionLevel: 'time-sensitive', sound: 'lifeos_chime.wav' });
   });
 
   it('утренний бриф — обычный (не пробивает «Фокус»)', async () => {
