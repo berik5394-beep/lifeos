@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../test/integration/build-test-app.js';
-import { habitRoutes, longestRun } from './habits.js';
+import { habitRoutes, longestRun, currentRun } from './habits.js';
 
 /**
  * GET /habits/stats/:month — форма, которую читает экран привычек
@@ -20,7 +20,7 @@ afterAll(async () => {
 });
 
 describe('статистика привычек за месяц', () => {
-  it('прошлый месяц: completed, total = все дни, streak = лучшая серия', async () => {
+  it('прошлый месяц: completed, total = все дни, bestInMonth = лучшая серия, streak = текущая', async () => {
     const u = await prisma.user.create({ data: { email: `hstat-${Date.now()}@a.test`, name: 'H', passwordHash: 'x', timezone: 'UTC' } });
     const headers = { authorization: `Bearer ${app.jwt.sign({ sub: u.id })}` };
     const h = await prisma.habit.create({ data: { userId: u.id, name: 'Бег', category: 'health', frequency: 'daily' } });
@@ -32,7 +32,7 @@ describe('статистика привычек за месяц', () => {
     const r = await app.inject({ method: 'GET', url: '/habits/stats/2026-01', headers });
     expect(r.statusCode).toBe(200);
     const [s] = r.json() as Array<Record<string, unknown>>;
-    expect(s).toMatchObject({ habitId: h.id, habitName: 'Бег', completed: 4, total: 31, streak: 3 });
+    expect(s).toMatchObject({ habitId: h.id, habitName: 'Бег', completed: 4, total: 31, bestInMonth: 3, streak: 0 });
     for (const k of ['completed', 'total', 'streak']) expect(Number.isFinite(s[k] as number)).toBe(true);
   });
 
@@ -48,5 +48,13 @@ describe('статистика привычек за месяц', () => {
     expect(longestRun([])).toBe(0);
     expect(longestRun([d('2026-01-01'), d('2026-01-02'), d('2026-01-04')])).toBe(2);
     expect(longestRun([d('2026-01-31'), d('2026-02-01')])).toBe(2);
+  });
+
+  it('currentRun — до сегодня или до вчера (аудит 2026-11-09)', () => {
+    const d = (s: string) => new Date(`${s}T00:00:00Z`);
+    const today = d('2026-11-09').getTime();
+    expect(currentRun([d('2026-11-07'), d('2026-11-08'), d('2026-11-09')], today)).toBe(3);
+    expect(currentRun([d('2026-11-07'), d('2026-11-08')], today)).toBe(2); // сегодня ещё не отметил
+    expect(currentRun([d('2026-11-01'), d('2026-11-02'), d('2026-11-07')], today)).toBe(0); // пропустил вчера
   });
 });

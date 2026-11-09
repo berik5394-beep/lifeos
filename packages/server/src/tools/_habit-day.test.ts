@@ -21,3 +21,15 @@ describe('быстрый путь: «сделал зарядку вчера»', 
     expect(deterministicIntent('сделал зарядку', 'Asia/Almaty', now)).toEqual({ action: 'complete_habit', habitName: 'зарядку' });
   });
 });
+
+import { normalizeFrequency } from './create-habit.js';
+describe('normalizeFrequency', () => {
+  it.each([
+    ['3 раза в неделю', 'weekly'],
+    ['по выходным', 'weekly'],
+    ['каждый день', 'daily'],
+    ['раз в месяц', 'monthly'],
+    [undefined, 'daily'],
+    ['weekly', 'weekly'],
+  ])('«%s» → %s', (raw, want) => expect(normalizeFrequency(raw as string | undefined)).toBe(want));
+});

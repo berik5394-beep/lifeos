@@ -40,6 +40,8 @@ interface CreateHabitData {
   name: string;
   category: string;
   frequency: string;
+  /** Сразу привязать к годовой цели (окно «Привязать привычку» на «Целях»). */
+  goalId?: string | null;
 }
 
 interface UpdateHabitData {
@@ -121,7 +123,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
           id: offlineId(),
           userId: '',
           ...data,
-          goalId: null,
+          goalId: data.goalId ?? null,
           order: get().habits.length,
           active: true,
           createdAt: new Date().toISOString(),

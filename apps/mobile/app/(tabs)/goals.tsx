@@ -1317,10 +1317,10 @@ export default function GoalsScreen() {
       }
 
       try {
-        await createHabit({ name, category, frequency });
+        // Сразу с привязкой к цели области (раньше создавалась без неё — «We'll link
+        // it in a follow-up» так и не случился; аудит 2026-11-09).
+        await createHabit({ name, category, frequency, goalId: goalsInArea[0].id });
         await fetchHabits();
-        // After creation, the newest habit is the one we just created
-        // We'll link it in a follow-up
         setShowCreateHabitForm(false);
       } catch {
         Alert.alert('Ошибка', 'Не удалось создать привычку');

@@ -284,6 +284,11 @@ export async function scheduleWeeklyReport(): Promise<string> {
 // ---------------------------------------------------------------------------
 // Streak reminder — 20:00 if habits not done today
 // ---------------------------------------------------------------------------
+/** Снять вечернее «Привычки 🔥» (всё уже отмечено). */
+export async function cancelStreakReminder(): Promise<void> {
+  await cancelByPrefix(PREFIX_STREAK);
+}
+
 export async function scheduleStreakReminder(
   streakDays: number,
 ): Promise<string> {

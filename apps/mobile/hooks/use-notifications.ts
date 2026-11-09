@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import {
   requestPermissions,
   scheduleStreakReminder,
+  cancelStreakReminder,
   rescheduleAllEventReminders,
   cancelAllEventReminders,
   setBadgeCount,
@@ -236,10 +237,15 @@ export function useNotifications(): UseNotificationsResult {
 
     const todayStr = formatDate(new Date());
     const todayLogs = logs[todayStr] ?? [];
-    const completedCount = todayLogs.filter((l) => l.completed).length;
-    const allDone = completedCount >= habits.filter((h) => h.active).length;
+    const active = new Set(habits.filter((h) => h.active).map((h) => h.id));
+    const completedCount = todayLogs.filter((l) => l.completed && active.has(l.habitId)).length;
+    const allDone = completedCount >= active.size;
 
-    if (!allDone) {
+    // Всё отмечено — вечернее «не забудь отметить» снимаем (аудит 2026-11-09:
+    // раньше ставилось утром и приходило в 20:00, даже когда всё сделано).
+    if (allDone) {
+      cancelStreakReminder().catch(() => {});
+    } else {
       // Calculate current streak from local storage
       const streakStr = storage.getString('currentStreak');
       const streak = streakStr ? parseInt(streakStr, 10) : 0;

@@ -40,6 +40,23 @@ const logHabitSchema = z.object({
 });
 
 /** Самая длинная серия подряд идущих дней (даты @db.Date, UTC-полночь). */
+/**
+ * Текущая серия: подряд до сегодня (или до вчера — сегодня ещё не отмечено).
+ * Аудит 2026-11-09: «🔥 N дн.» показывал самую длинную серию МЕСЯЦА — пропустил
+ * вчера, а огонёк всё ещё «10 дн.»; 1-го числа падал до 0–1.
+ */
+export function currentRun(dates: Date[], todayStartMs: number): number {
+  const days = new Set(dates.map((d) => Math.round(d.getTime() / 86_400_000)));
+  let day = Math.round(todayStartMs / 86_400_000);
+  if (!days.has(day)) day -= 1;
+  let run = 0;
+  while (days.has(day)) {
+    run++;
+    day--;
+  }
+  return run;
+}
+
 export function longestRun(dates: Date[]): number {
   const days = [...new Set(dates.map((d) => Math.round(d.getTime() / 86_400_000)))].sort((a, b) => a - b);
   let best = 0;
@@ -245,15 +262,29 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
     const todayCivil = localDateStr(await getUserTimezone(request.userId), new Date());
     const todayStart = new Date(`${todayCivil}T00:00:00Z`).getTime();
     const elapsed = Math.max(0, Math.min(totalDays, Math.floor((todayStart - start.getTime()) / DAY) + 1));
+    // Текущая серия — по логам за год, а не за месяц.
+    const yearLogs = await prisma.habitLog.findMany({
+      where: { habitId: { in: habits.map((h) => h.id) }, completed: true, date: { gte: new Date(todayStart - 366 * DAY), lte: new Date(todayStart) } },
+      select: { habitId: true, date: true },
+    });
+    const byHabit = new Map<string, Date[]>();
+    for (const l of yearLogs) byHabit.set(l.habitId, [...(byHabit.get(l.habitId) ?? []), l.date]);
     return habits.map((habit) => {
       const completed = habit.logs.length;
+      // «За месяц %» — с дня, когда привычку завели (заведённая 20-го не «провальная»).
+      // Отметки задним числом раньше даты заведения — считаем с первой из них.
+      const firstLog = habit.logs.reduce((m, l) => Math.min(m, l.date.getTime()), Infinity);
+      const created = Math.min(new Date(`${habit.createdAt.toISOString().slice(0, 10)}T00:00:00Z`).getTime(), firstLog);
+      const sinceCreated = created > start.getTime() ? Math.max(1, Math.floor((todayStart - created) / DAY) + 1) : elapsed;
+      const total = Math.min(elapsed, sinceCreated);
       return {
         // Поля, которые читает приложение (раньше их не было → «NaN» на экране привычек).
         habitId: habit.id,
         habitName: habit.name,
         completed,
-        total: elapsed,
-        streak: longestRun(habit.logs.map((l) => l.date)),
+        total,
+        streak: currentRun(byHabit.get(habit.id) ?? [], todayStart),
+        bestInMonth: longestRun(habit.logs.map((l) => l.date)),
         // Прежние поля — для совместимости.
         id: habit.id,
         name: habit.name,
