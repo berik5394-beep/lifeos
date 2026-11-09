@@ -512,3 +512,22 @@ export function isV2GoalIntakeEnabled(userId: string): boolean {
 export function isV2TaskGoalLinkEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_TASK_GOAL_LINK, userId);
 }
+
+/**
+ * Состояние всех флагов FEATURE_* одной строкой для лога при старте (чистка
+ * мёртвых веток, Berik 2026-11-09): значения не секрет — «all/none/true/false»,
+ * а список id показываем только числом, без самих id.
+ */
+export function featureFlagSnapshot(env: NodeJS.ProcessEnv = process.env): string {
+  return Object.keys(env)
+    .filter((k) => k.startsWith('FEATURE_'))
+    .sort()
+    .map((k) => {
+      const v = (env[k] ?? '').trim();
+      const shown = v === '' || ['all', 'none', 'true', 'false', 'on', 'off'].includes(v.toLowerCase())
+        ? v || '(пусто)'
+        : `список(${v.split(',').filter((x) => x.trim()).length})`;
+      return `${k.replace(/^FEATURE_/, '')}=${shown}`;
+    })
+    .join(' ');
+}

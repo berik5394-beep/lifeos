@@ -49,6 +49,7 @@ import { startBot, stopBot } from './services/telegram-bot.js';
 import { startRefreshTokenCleanup } from './services/token-cleanup.js';
 import { startProactiveScheduler, stopProactiveScheduler } from './services/proactive-scheduler.js';
 import { usageContextHook, startUsageFlusher, flushUsage } from './lib/ai-usage.js';
+import { featureFlagSnapshot } from './lib/feature-flags.js';
 import { registerSecurityHeaders, rateLimiter } from './middleware/security.js';
 import { registerErrorHandler } from './middleware/error-handler.js';
 import { attachLogger } from './lib/logger.js';
@@ -252,6 +253,7 @@ const start = async (): Promise<void> => {
     // напоминания в приложение (Expo Push) + зеркало в Telegram.
     startProactiveScheduler();
     startUsageFlusher();
+    console.log(`[flags] ${featureFlagSnapshot()}`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);
