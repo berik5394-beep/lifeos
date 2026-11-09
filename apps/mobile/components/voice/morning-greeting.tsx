@@ -168,7 +168,9 @@ function createStyles(c: ReturnType<typeof useColors>) {
   return StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+    // Фон из темы: был жёстко тёмно-синий, а текст — c.text; на светлой теме
+    // приветствие выходило тёмным по тёмному и не читалось.
+    backgroundColor: c.background,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
