@@ -1,8 +1,9 @@
+import { surfaceToScene, type Surface } from './room-geometry';
 /**
  * Робот-эпик, Части 4–6: комната робота. Цены и варианты — SSOT на сервере
  * (GET /room/catalog, packages/server/src/services/room-catalog.ts); здесь —
  * то, что нужно только экрану: виды предметов (значок, падеж для благодарности),
- * координаты ячеек на рисунке комнаты и чистая логика «защёлкнуть в ячейку».
+ * привычные места на рисунке комнаты и чистая логика свободной расстановки.
  */
 
 /** Виды предметов. Ключи совпадают с серверными RoomItem.itemKey. */
@@ -96,23 +97,34 @@ export const SLOT_POS: Record<PlaceSlot, { x: number; y: number }> = {
   'wall-right': { x: 0.87, y: 0.42 },
 };
 
-/** Купленный предмет (как отдаёт сервер). slot = null — в кладовке. */
+/**
+ * Купленный предмет (как отдаёт сервер). Мебель стоит на поверхности
+ * (surface + x, y — доли поверхности, см. room-geometry Surface); surface = null
+ * и нет slot — в кладовке. slot у отделки — finish-walls/finish-floor
+ * (у мебели сервер шлёт ближайшую старую ячейку — для приложений до обновления).
+ */
 export interface OwnedItem {
   id: string;
   itemKey: RoomItemKey;
   variantKey: string | null;
   slot: RoomSlot | null;
+  surface?: Surface | null;
+  x?: number;
+  y?: number;
 }
 
-/** Предмет на рисунке: координаты выводятся из ячейки. */
+/** Предмет на рисунке. */
 export interface RoomItem {
   id: string;
   itemKey: RoomItemKey;
-  /** Доли комнаты 0..1 (центр предмета). */
+  surface: Surface;
+  /** Точка на поверхности (доли). */
+  u: number;
+  v: number;
+  /** Где он на экране при обычном виде (доли сцены) — порядок по глубине, подсказки робота. */
   x: number;
   y: number;
   variantKey?: string | null;
-  slot?: PlaceSlot;
 }
 
 const KIND = new Map<string, (typeof ROOM_CATALOG)[number]>(ROOM_CATALOG.map((k) => [k.key, k]));
@@ -149,7 +161,7 @@ export function isPlaceSlot(slot: string | null | undefined): slot is PlaceSlot 
   return !!slot && Object.prototype.hasOwnProperty.call(SLOT_POS, slot);
 }
 
-/** Ячейки, куда можно поставить вид предмета (отделка — только в свою). */
+/** Ячейки вида (историческое; мебель теперь ставится свободно — см. defaultSpot). */
 export function slotsFor(key: RoomItemKey): readonly PlaceSlot[] {
   const spot = spotOf(key);
   return spot === 'wall' ? WALL_SLOTS : spot === 'floor' ? FLOOR_SLOTS : [];
@@ -170,44 +182,75 @@ export function nearestSlot(key: RoomItemKey, x: number, y: number): PlaceSlot |
   return best;
 }
 
-export interface Placement {
-  id: string;
-  slot: RoomSlot | null;
+/** Перестановка: мебель — точка на поверхности (surface null — в кладовку), отделка — ячейка. */
+export type Placement =
+  | { id: string; surface: Surface | null; x?: number; y?: number }
+  | { id: string; slot: RoomSlot | null };
+
+/** Отделка (finish) — в ячейке; остальное — на поверхности. */
+export function isFinish(o: OwnedItem): boolean {
+  return spotOf(o.itemKey) === 'finish';
+}
+
+/** Стоит ли в комнате (не в кладовке). */
+export function isPlaced(o: OwnedItem): boolean {
+  return isFinish(o) ? !!o.slot : !!o.surface;
 }
 
 /**
- * Отпустил предмет в точке (x, y) → какие перестановки отправить: защёлкнуть в
- * ближайшую подходящую ячейку; занята — соседа на освободившееся место (обмен).
- * Пусто — ничего не меняется. Чистая.
+ * Старая ячейка → та же точка на поверхности (зеркало сервера SLOT_SPOT,
+ * посчитано обратной перспективой диорамы). Привычные места для новых вещей.
  */
-export function planDrop(owned: readonly OwnedItem[], id: string, x: number, y: number): Placement[] {
-  const me = owned.find((o) => o.id === id);
-  if (!me) return [];
-  const target = nearestSlot(me.itemKey, x, y);
-  if (!target || target === me.slot) return [];
-  const other = owned.find((o) => o.slot === target && o.id !== id);
-  const out: Placement[] = [{ id, slot: target }];
-  if (other) out.push({ id: other.id, slot: isPlaceSlot(me.slot) ? me.slot : null });
-  return out;
-}
+export const SLOT_SPOT: Record<PlaceSlot, { surface: Surface; x: number; y: number }> = {
+  'floor-back-left': { surface: 'floor', x: 0.218, y: 0.27 },
+  'floor-back-center': { surface: 'floor', x: 0.5, y: 0.24 },
+  'floor-back-right': { surface: 'floor', x: 0.782, y: 0.27 },
+  'floor-mid-left': { surface: 'floor', x: 0.116, y: 0.581 },
+  'floor-mid-right': { surface: 'floor', x: 0.884, y: 0.581 },
+  'floor-front-left': { surface: 'floor', x: 0.093, y: 0.85 },
+  'floor-front-right': { surface: 'floor', x: 0.907, y: 0.85 },
+  'wall-left': { surface: 'wall-left', x: 0.401, y: 0.497 },
+  'wall-center': { surface: 'wall-back', x: 0.5, y: 0.167 },
+  'wall-right': { surface: 'wall-right', x: 0.599, y: 0.497 },
+};
 
-/** Первая свободная подходящая ячейка (для «поставить из кладовки»). */
-export function firstFreeSlot(owned: readonly OwnedItem[], key: RoomItemKey): PlaceSlot | null {
-  const taken = new Set(owned.map((o) => o.slot).filter(Boolean));
-  return slotsFor(key).find((s) => !taken.has(s)) ?? null;
+/** Куда поставить вещь из кладовки: первое привычное место, рядом с которым пусто (зеркало сервера). */
+export function defaultSpot(owned: readonly OwnedItem[], key: RoomItemKey): { surface: Surface; x: number; y: number } | null {
+  const spot = spotOf(key);
+  if (spot === 'finish') return null;
+  const order: PlaceSlot[] = spot === 'wall' ? ['wall-center', 'wall-left', 'wall-right'] : [...FLOOR_SLOTS];
+  const placed = owned.filter((o) => o.surface);
+  for (const s of order) {
+    const p = SLOT_SPOT[s];
+    if (!placed.some((o) => o.surface === p.surface && Math.hypot((o.x ?? 0) - p.x, (o.y ?? 0) - p.y) < 0.12)) return { ...p };
+  }
+  const p = SLOT_SPOT[order[0]];
+  const k = placed.length % 5;
+  return { surface: p.surface, x: Math.min(0.94, p.x + 0.06 * k), y: Math.min(0.9, p.y + 0.04 * k) };
 }
 
 /** Применить перестановки локально (оптимистично, до ответа сервера). */
 export function applyPlacements(owned: readonly OwnedItem[], placements: readonly Placement[]): OwnedItem[] {
-  const next = new Map(placements.map((p) => [p.id, p.slot]));
-  return owned.map((o) => (next.has(o.id) ? { ...o, slot: next.get(o.id) ?? null } : o));
+  const next = new Map(placements.map((p) => [p.id, p]));
+  return owned.map((o) => {
+    const p = next.get(o.id);
+    if (!p) return o;
+    if ('slot' in p) return { ...o, slot: p.slot };
+    return p.surface ? { ...o, slot: null, surface: p.surface, x: p.x, y: p.y } : { ...o, slot: null, surface: null };
+  });
 }
 
-/** Что рисовать: предметы в ячейках (без отделки и кладовки) с координатами. */
+/** Что рисовать: мебель на поверхностях (без отделки и кладовки). */
 export function placedItems(owned: readonly OwnedItem[]): RoomItem[] {
   return owned
-    .filter((o): o is OwnedItem & { slot: PlaceSlot } => isPlaceSlot(o.slot))
-    .map((o) => ({ id: o.id, itemKey: o.itemKey, variantKey: o.variantKey, slot: o.slot, ...SLOT_POS[o.slot] }));
+    .filter((o) => !isFinish(o) && !!o.surface)
+    .map((o) => {
+      const surface = o.surface as Surface;
+      const u = o.x ?? 0.5;
+      const v = o.y ?? 0.5;
+      const at = surfaceToScene(1, 1, { x: 0, y: 0 }, surface, u, v);
+      return { id: o.id, itemKey: o.itemKey, variantKey: o.variantKey, surface, u, v, x: at.x, y: at.y };
+    });
 }
 
 /** Класс текущей отделки стен/пола (null — исходная комната). */

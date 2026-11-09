@@ -103,3 +103,38 @@ describe('room-geometry — 3D-комната и приближение', () => 
     expect(side).toBeLessThan(0.8);
   });
 });
+
+import { placeAt, sceneToSurface, surfaceQuad, surfaceToScene, roomFaces as facesOf, type Surface } from '@/services/room-geometry';
+
+describe('свободная расстановка: поверхность ↔ экран', () => {
+  const W = 400;
+  const H = 800;
+  const cam = { x: 12, y: -6 };
+  it.each<[Surface, number, number]>([
+    ['floor', 0.3, 0.7],
+    ['wall-left', 0.6, 0.4],
+    ['wall-back', 0.2, 0.3],
+    ['wall-right', 0.35, 0.55],
+  ])('%s (%f, %f): туда и обратно — та же точка', (s, u, v) => {
+    const p = surfaceToScene(W, H, cam, s, u, v);
+    const back = sceneToSurface(surfaceQuad(facesOf(W, H, cam), s), p);
+    expect(back.x).toBeCloseTo(u, 5);
+    expect(back.y).toBeCloseTo(v, 5);
+  });
+
+  it('мебель, отпущенная где угодно, — на полу внутри краёв', () => {
+    const r = placeAt(W, H, cam, 'floor', { x: -50, y: 10 });
+    expect(r.surface).toBe('floor');
+    expect(r.u).toBeGreaterThanOrEqual(0.06);
+    expect(r.v).toBeGreaterThanOrEqual(0.06);
+  });
+
+  it('картина, отпущенная у левой стены, — на левой стене; у задней — на задней; не ниже пола', () => {
+    const left = placeAt(W, H, { x: 0, y: 0 }, 'wall', { x: W * 0.08, y: H * 0.4 });
+    expect(left.surface).toBe('wall-left');
+    const back = placeAt(W, H, { x: 0, y: 0 }, 'wall', { x: W * 0.5, y: H * 0.35 });
+    expect(back.surface).toBe('wall-back');
+    const low = placeAt(W, H, { x: 0, y: 0 }, 'wall', { x: W * 0.5, y: H * 0.9 });
+    expect(low.v).toBeLessThanOrEqual(0.78);
+  });
+});

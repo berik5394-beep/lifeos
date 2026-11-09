@@ -3,12 +3,12 @@ import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { useChatStore } from '@/stores/chat-store';
 import { isFriendship, type Friendship } from '@/services/friendship';
+import type { Surface } from '@/services/room-geometry';
 import {
   applyPlacements,
-  firstFreeSlot,
+  defaultSpot,
   isRoomItemKey,
   placedItems,
-  planDrop,
   spotOf,
   type RoomSlot,
   type OwnedItem,
@@ -19,8 +19,9 @@ import {
 
 /**
  * Робот-эпик, Части 4–6: комната робота. Предметы покупаются за монеты
- * (POST /room/buy) и стоят в ячейках — без наложений; убрал — в кладовку
- * (slot = null), вернуть бесплатно. Перестановки видны сразу (оптимистично),
+ * (POST /room/buy); мебель ставится КУДА УГОДНО на пол/стены (Berik
+ * 2026-11-09: «каждый сам дизайнер») — точка на поверхности; отделка — в свою
+ * ячейку. Убрал — в кладовку, вернуть бесплатно. Перестановки видны сразу (оптимистично),
  * на сервер (PUT /room { placements }) уходят строго по очереди; сбой —
  * перечитываем комнату с сервера (там правда).
  */
@@ -45,11 +46,11 @@ interface RoomState {
   fetchCatalog: () => Promise<void>;
   fetchCoins: () => Promise<void>;
   buy: (variantKey: string) => Promise<BuyResult>;
-  /** Отпустил предмет в точке (доли сцены) → ячейка/обмен. */
-  moveItem: (id: string, x: number, y: number) => void;
+  /** Отпустил предмет: точка на поверхности (доли). */
+  moveItem: (id: string, surface: Surface, u: number, v: number) => void;
   /** Долгое нажатие → в кладовку. */
   storeItem: (id: string) => void;
-  /** Из кладовки в первую свободную ячейку. false — свободных нет. */
+  /** Из кладовки — на свободное привычное место (дальше двигай куда хочешь). */
   placeFromStorage: (id: string) => boolean;
   /** Выход из аккаунта: чужая комната не должна достаться следующему юзеру. */
   reset: () => void;
@@ -185,7 +186,9 @@ export const useRoomStore = create<RoomState>((set, get) => {
           if (mySession !== session) return { ok: false, error: 'Нужно войти в аккаунт' };
           // Сервер мог убрать в кладовку то, что стояло в этой ячейке (или старую
           // отделку) — показываем сразу, правду потом сверим с сервером.
-          const owned = get().owned.map((o) => (res.item.slot && o.slot === res.item.slot ? { ...o, slot: null } : o));
+          // Новая отделка вытесняет старую в кладовку (мебель ничего не вытесняет).
+          const fin = spotOf(res.item.itemKey) === 'finish' ? res.item.slot : null;
+          const owned = get().owned.map((o) => (fin && o.slot === fin ? { ...o, slot: null } : o));
           set({ ...withOwned([...owned, res.item]), coins: res.balance });
           void get().fetchRoom();
           void get().fetchCoins(); // свежий кэш баланса (офлайн-кэш не покажет старый)
@@ -202,9 +205,13 @@ export const useRoomStore = create<RoomState>((set, get) => {
       });
     },
 
-    moveItem: (id, x, y) => place(planDrop(get().owned, id, x, y)),
+    moveItem: (id, surface, u, v) => place([{ id, surface, x: Math.round(u * 1000) / 1000, y: Math.round(v * 1000) / 1000 }]),
 
-    storeItem: (id) => place([{ id, slot: null }]),
+    storeItem: (id) => {
+      const me = get().owned.find((o) => o.id === id);
+      if (!me) return;
+      place([spotOf(me.itemKey) === 'finish' ? { id, slot: null } : { id, surface: null }]);
+    },
 
     placeFromStorage: (id) => {
       const me = get().owned.find((o) => o.id === id);
@@ -216,9 +223,9 @@ export const useRoomStore = create<RoomState>((set, get) => {
         place([...(cur ? [{ id: cur.id, slot: null }] : []), { id, slot: fin }]);
         return true;
       }
-      const slot = firstFreeSlot(get().owned, me.itemKey);
-      if (!slot) return false;
-      place([{ id, slot }]);
+      const spot = defaultSpot(get().owned, me.itemKey);
+      if (!spot) return false;
+      place([{ id, ...spot }]);
       return true;
     },
 

@@ -9,6 +9,7 @@ import {
   TIER_COLOR,
   TIER_LABEL,
   roomItemEmoji,
+  isPlaced,
   shopState,
   type OwnedItem,
   type RoomVariant,
@@ -48,7 +49,7 @@ export const RoomShop = memo(function RoomShop({
   const styles = useMemo(() => createStyles(c), [c]);
   const [tab, setTab] = useState<Tab>('budget');
   const labelOf = useMemo(() => new Map(catalog.map((v) => [v.key, v.label])), [catalog]);
-  const stored = owned.filter((o) => o.slot === null);
+  const stored = owned.filter((o) => !isPlaced(o));
 
   return (
     <View style={styles.wrap}>

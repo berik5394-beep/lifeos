@@ -2,11 +2,12 @@ import {
   ROOM_CATALOG,
   SLOT_POS,
   applyPlacements,
+  SLOT_SPOT,
+  defaultSpot,
   finishTier,
-  firstFreeSlot,
+  isPlaced,
   nearestSlot,
   placedItems,
-  planDrop,
   shopState,
   slotsFor,
   tierOf,
@@ -14,7 +15,7 @@ import {
   type RoomVariant,
 } from '@/services/room-catalog';
 
-/** Робот-эпик, Часть 6: ячейки вместо свободных координат — предметы не накладываются. */
+/** Комната: свободная расстановка мебели (2026-11-09); ячейки — только у отделки. */
 const own = (id: string, itemKey: OwnedItem['itemKey'], slot: OwnedItem['slot'], variantKey = `budget:${itemKey}`): OwnedItem => ({
   id,
   itemKey,
@@ -54,30 +55,45 @@ describe('room-catalog — виды и ячейки', () => {
   });
 });
 
-describe('защёлкивание и обмен', () => {
-  const owned = [own('a', 'sofa', 'floor-back-left'), own('b', 'desk', 'floor-front-right'), own('c', 'clock', 'wall-left')];
+describe('свободная расстановка (каждый сам дизайнер)', () => {
+  const at = (id: string, itemKey: OwnedItem['itemKey'], surface: 'floor' | 'wall-left' | 'wall-back' | 'wall-right', x: number, y: number): OwnedItem => ({
+    ...own(id, itemKey, null),
+    surface,
+    x,
+    y,
+  });
 
-  it('в свободную ячейку — один перенос', () => {
-    expect(planDrop(owned, 'a', 0.2, 0.76)).toEqual([{ id: 'a', slot: 'floor-mid-left' }]);
+  it('старые ячейки ↔ точки на поверхностях: та же точка экрана (зеркало сервера)', () => {
+    for (const [slot, spot] of Object.entries(SLOT_SPOT)) {
+      const [it] = placedItems([at('a', spot.surface === 'floor' ? 'sofa' : 'clock', spot.surface, spot.x, spot.y)]);
+      const p = SLOT_POS[slot as keyof typeof SLOT_POS];
+      expect(it.x).toBeCloseTo(p.x, 2);
+      expect(it.y).toBeCloseTo(p.y, 2);
+    }
   });
-  it('в занятую — обмен местами', () => {
-    expect(planDrop(owned, 'a', 0.87, 0.9)).toEqual([
-      { id: 'a', slot: 'floor-front-right' },
-      { id: 'b', slot: 'floor-back-left' },
-    ]);
+
+  it('applyPlacements: в любую точку, в кладовку и обратно; отделка — по ячейке', () => {
+    const owned = [at('a', 'sofa', 'floor', 0.2, 0.3), own('w', 'walls', 'finish-walls')];
+    const moved = applyPlacements(owned, [{ id: 'a', surface: 'floor', x: 0.61, y: 0.77 }]);
+    expect(moved[0]).toMatchObject({ surface: 'floor', x: 0.61, y: 0.77 });
+    const stored = applyPlacements(moved, [{ id: 'a', surface: null }, { id: 'w', slot: null }]);
+    expect(stored.map(isPlaced)).toEqual([false, false]);
+    expect(placedItems(stored)).toEqual([]);
   });
-  it('отпустил на своём месте — ничего', () => {
-    expect(planDrop(owned, 'a', 0.31, 0.64)).toEqual([]);
+
+  it('defaultSpot: первое пустое привычное место; рядом стоит — следующее', () => {
+    expect(defaultSpot([], 'clock')).toEqual(SLOT_SPOT['wall-center']);
+    expect(defaultSpot([at('p', 'picture', 'wall-back', 0.52, 0.18)], 'clock')).toEqual(SLOT_SPOT['wall-left']);
+    expect(defaultSpot([], 'walls')).toBeNull();
   });
-  it('applyPlacements + placedItems: координаты из ячейки, кладовка не рисуется', () => {
-    const next = applyPlacements(owned, [{ id: 'c', slot: null }]);
-    const items = placedItems(next);
-    expect(items.map((i) => i.id)).toEqual(['a', 'b']);
-    expect(items[0]).toMatchObject({ x: SLOT_POS['floor-back-left'].x, y: SLOT_POS['floor-back-left'].y });
+
+  it('placedItems: кладовка и отделка не рисуются, у предмета есть поверхность и точка', () => {
+    const items = placedItems([at('a', 'sofa', 'floor', 0.4, 0.5), own('s', 'desk', null), own('w', 'walls', 'finish-walls')]);
+    expect(items).toEqual([expect.objectContaining({ id: 'a', surface: 'floor', u: 0.4, v: 0.5 })]);
   });
-  it('firstFreeSlot: из кладовки в первую свободную подходящую', () => {
-    expect(firstFreeSlot(owned, 'picture')).toBe('wall-center');
-  });
+});
+
+describe('отделка', () => {
   it('finishTier: отделка стен/пола задаёт вид комнаты', () => {
     expect(finishTier([own('w', 'walls', 'finish-walls', 'luxury:walls')], 'walls')).toBe('luxury');
     expect(finishTier([own('w', 'walls', null, 'luxury:walls')], 'walls')).toBeNull();

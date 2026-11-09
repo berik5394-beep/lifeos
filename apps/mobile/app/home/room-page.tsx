@@ -19,7 +19,6 @@ import { RobotSpeechBubble } from '@/components/robot/robot-speech-bubble';
 import { ChatReplyBubble } from '@/components/room/chat-reply-bubble';
 import { RoomBottomBar } from '@/components/room/room-bottom-bar';
 import { RoomShop } from '@/components/room/room-shop';
-import { SlotGrid } from '@/components/room/slot-grid';
 import { CoinCounter } from '@/components/room/coin-counter';
 import { ROOM_INK, ROOM_INK_HALO } from '@/constants/room-ui';
 import { RoomTilt } from '@/components/room/room-tilt';
@@ -41,7 +40,7 @@ import { storage } from '@/services/storage';
 import { thanksFor } from '@/services/robot-thanks';
 import { visiblePanels } from '@/services/panels';
 import { ROBOT_SIDE_W, planPurchaseView, type SpeechLayout } from '@/services/speech-layout';
-import { SLOT_POS, finishTier, isPlaceSlot, roomItemLabel, spotOf, type RoomSpot, type RoomVariant } from '@/services/room-catalog';
+import { finishTier, placedItems, roomItemLabel, spotOf, type RoomVariant } from '@/services/room-catalog';
 import { RENDER_SCALE as R, ZOOM_IN, clampPan } from '@/services/room-geometry';
 import { furnitureTapNote, toolsInItem, type ToolKey } from '@/services/room-tools';
 import { TOOL_TITLE } from '@/components/room/tool-screens';
@@ -127,8 +126,6 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
       b.remove();
     };
   }, []);
-  const [dragSpot, setDragSpot] = useState<RoomSpot | null>(null);
-  const [dragging, setDragging] = useState(false);
   const [buying, setBuying] = useState<string | null>(null);
   const wallsTier = useMemo(() => finishTier(owned, 'walls'), [owned]);
   const floorTier = useMemo(() => finishTier(owned, 'floor'), [owned]);
@@ -371,18 +368,11 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
     [storeItem],
   );
 
-  const onDragState = useCallback(
-    (id: string, on: boolean) => {
-      setDragging(on);
-      const it = useRoomStore.getState().owned.find((o) => o.id === id);
-      setDragSpot(on && it ? spotOf(it.itemKey) : null);
-    },
-    [],
-  );
 
   const onPlace = useCallback(
     (id: string) => {
-      if (!placeFromStorage(id)) Alert.alert('Места нет', 'Все подходящие ячейки заняты — убери что-нибудь долгим нажатием.');
+      // Встаёт на свободное привычное место — дальше двигай пальцем куда хочешь.
+      placeFromStorage(id);
     },
     [placeFromStorage],
   );
@@ -420,21 +410,22 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
         return;
       }
       setReactionKey(String(Date.now()));
-      const slot = res.item.slot;
-      if (!slot) {
-        Alert.alert('Куплено — в кладовке', 'Подходящие ячейки заняты. Освободи место долгим нажатием и поставь из «Кладовки».');
+      const finish = spotOf(res.item.itemKey) === 'finish';
+      const placed = finish ? null : placedItems([res.item])[0] ?? null;
+      if (!finish && !placed) {
+        Alert.alert('Куплено — в кладовке', 'Поставь его из «Кладовки» и передвинь пальцем куда хочешь.');
         return;
       }
       if (size.w === 0) return;
       // Робот «понимает» экран: где окажется предмет и где свободно для реплики.
-      // Отделка — смотрим на стену/пол; мебель — на её ячейку.
-      const at = isPlaceSlot(slot) ? SLOT_POS[slot] : slot === 'finish-walls' ? { x: 0.5, y: 0.4 } : { x: 0.5, y: 0.78 };
+      // Отделка — смотрим на стену/пол; мебель — на её место.
+      const at = placed ? { x: placed.x, y: placed.y } : res.item.slot === 'finish-walls' ? { x: 0.5, y: 0.4 } : { x: 0.5, y: 0.78 };
       const text = thanksFor(v.kind, storage.getString('assistantStyle'), userName, Math.random, v.tier);
       const layout = planPurchaseView(at.x, at.y, size.w, size.h, text);
       zoomWithOffset(layout.offset);
       robotToSide(layout.robotSide);
       setPlan(layout);
-      setNewItemId(isPlaceSlot(slot) ? res.item.id : null);
+      setNewItemId(placed ? res.item.id : null);
       setThanks(text);
     },
     [buy, zoomWithOffset, robotToSide, size, userName],
@@ -526,9 +517,6 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
                 floorTier={floorTier}
               />
               <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-                {size.w > 0 && (furnishing || dragging) && (
-                  <SlotGrid width={size.w * R} height={size.h * R} owned={owned} dragSpot={dragSpot} cam={cam} />
-                )}
                 {size.w > 0 &&
                   byDepth.map((item) => (
                     <RoomFurnitureItem
@@ -546,7 +534,6 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
                       highlight={item.id === newItemId}
                       badge={furnitureBadge(item.itemKey, visibleToolKeys)}
                       pulseBadge={introTarget === 'furniture'}
-                      onDragState={(on) => onDragState(item.id, on)}
                     />
                   ))}
               </View>

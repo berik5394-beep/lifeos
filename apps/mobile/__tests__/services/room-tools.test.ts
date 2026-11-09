@@ -1,7 +1,7 @@
 import { TOOL_HOME, isToolKey, toolSource, toolsInItem, TOOL_KEYS } from '@/services/room-tools';
 import { ROOM_CATALOG, type RoomItem } from '@/services/room-catalog';
 
-const item = (id: string, itemKey: RoomItem['itemKey'], x: number, y: number): RoomItem => ({ id, itemKey, x, y });
+const item = (id: string, itemKey: RoomItem['itemKey'], x: number, y: number): RoomItem => ({ id, itemKey, x, y, surface: 'floor', u: x, v: y });
 
 describe('room-tools — инструменты живут в мебели', () => {
   it('раскладка Berik: шкаф — календарь и цели, стол — задачи и сделки, тумбочка — дневник и привычки, комод — финансы', () => {

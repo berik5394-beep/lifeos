@@ -12,13 +12,16 @@ import Animated, {
   withTiming,
   withSpring,
 } from 'react-native-reanimated';
-import { RENDER_SCALE as R, itemDepthScale, pointDepth, type Pt } from '@/services/room-geometry';
-import { TIER_COLOR, roomItemEmoji, roomItemLabel, slotsFor, SLOT_POS, spotOf, tierOf, type RoomItem } from '@/services/room-catalog';
+import { RENDER_SCALE as R, placeAt, surfaceScale, surfaceToScene, type Pt, type Surface } from '@/services/room-geometry';
+import { TIER_COLOR, roomItemEmoji, roomItemLabel, spotOf, tierOf, type RoomItem } from '@/services/room-catalog';
 import { SoftSpot } from '@/components/room/face-light';
 import { hapticLight, hapticMedium } from '@/services/haptics';
 
 const SIZE = 56 * R;
 const SPRING = { damping: 16, stiffness: 180 };
+/** Поверхность в shared value — индексом (строки в ворклетах дороже). */
+const SURF: Surface[] = ['floor', 'wall-left', 'wall-back', 'wall-right'];
+const surfIndex = (s: Surface) => SURF.indexOf(s);
 
 type BlockTarget = Parameters<GestureType['blocksExternalGesture']>[0];
 
@@ -32,7 +35,8 @@ interface RoomFurnitureItemProps {
   zoom: SharedValue<number>;
   /** Камера комнаты: дальние предметы сдвигаются вместе с задней стеной (объём). */
   cam: DerivedValue<Pt>;
-  onMove: (id: string, x: number, y: number) => void;
+  /** Отпустил: точка на поверхности (свободно, куда хочет юзер). */
+  onMove: (id: string, surface: Surface, u: number, v: number) => void;
   onRemove: (id: string) => void;
   /** Только что купленный предмет: «выпрыгивает» крупнее, пока робот на него показывает. */
   highlight?: boolean;
@@ -72,8 +76,6 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   pulseBadge = false,
   onDragState,
 }: RoomFurnitureItemProps) {
-  // Ячейки, куда можно защёлкнуть этот предмет (доли сцены) — для ворклета.
-  const targets = slotsFor(item.itemKey).map((s) => SLOT_POS[s]);
   const tier = tierOf(item.variantKey);
   const tierColor = tier && tier !== 'free' && tier !== 'friend' ? TIER_COLOR[tier] : null;
   const onWall = spotOf(item.itemKey) === 'wall';
@@ -84,17 +86,27 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
       : withTiming(1, { duration: 150 });
   }, [pulseBadge, badgeScale]);
   const badgeStyle = useAnimatedStyle(() => ({ transform: [{ scale: badgeScale.value }] }));
-  const px = useSharedValue(item.x * roomWidth);
-  const py = useSharedValue(item.y * roomHeight);
+  // Где стоит: поверхность + точка на ней. На экран — через перспективу граней,
+  // поэтому предмет «приклеен» к полу/стене при любом движении камеры.
+  const si = useSharedValue(surfIndex(item.surface));
+  const su = useSharedValue(item.u);
+  const sv = useSharedValue(item.v);
   const dx = useSharedValue(0);
   const dy = useSharedValue(0);
   const lift = useSharedValue(1);
 
-  // Позиция пришла снаружи (загрузка с сервера, поворот экрана) — синхронизируем.
+  // Позиция пришла снаружи (загрузка с сервера, кладовка) — синхронизируем.
   useEffect(() => {
-    px.value = withSpring(item.x * roomWidth, SPRING);
-    py.value = withSpring(item.y * roomHeight, SPRING);
-  }, [item.x, item.y, roomWidth, roomHeight, px, py]);
+    const idx = surfIndex(item.surface);
+    if (si.value !== idx) {
+      si.value = idx;
+      su.value = item.u;
+      sv.value = item.v;
+    } else {
+      su.value = withSpring(item.u, SPRING);
+      sv.value = withSpring(item.v, SPRING);
+    }
+  }, [item.surface, item.u, item.v, si, su, sv]);
 
   useEffect(() => {
     lift.value = highlight
@@ -116,31 +128,27 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
     })
     .onEnd(() => {
       if (roomWidth <= 0 || roomHeight <= 0) return;
-      // Часть 6: защёлкнуть в ближайшую подходящую ячейку (без наложений).
-      const fx = (px.value + dx.value) / roomWidth;
-      const fy = (py.value + dy.value) / roomHeight;
-      let bx = item.x;
-      let by = item.y;
-      let bd = Infinity;
-      for (const t of targets) {
-        const d = (t.x - fx) ** 2 + (t.y - fy) ** 2;
-        if (d < bd) {
-          bd = d;
-          bx = t.x;
-          by = t.y;
-        }
-      }
-      px.value = px.value + dx.value;
-      py.value = py.value + dy.value;
-      dx.value = 0;
-      dy.value = 0;
-      px.value = withSpring(bx * roomWidth, SPRING);
-      py.value = withSpring(by * roomHeight, SPRING);
-      runOnJS(onMove)(item.id, bx, by);
+      // Свободно: встаёт туда, где отпустил (пол — на полу, картина — на стене под пальцем).
+      const s = SURF[si.value];
+      const p = surfaceToScene(roomWidth, roomHeight, cam.value, s, su.value, sv.value);
+      const drop = { x: p.x + dx.value, y: p.y + dy.value };
+      const r = placeAt(roomWidth, roomHeight, cam.value, onWall ? 'wall' : 'floor', drop);
+      const np = surfaceToScene(roomWidth, roomHeight, cam.value, r.surface, r.u, r.v);
+      si.value = SURF.indexOf(r.surface);
+      su.value = r.u;
+      sv.value = r.v;
+      // Без скачка: из точки отпускания мягко доезжает до места на поверхности.
+      dx.value = drop.x - np.x;
+      dy.value = drop.y - np.y;
+      dx.value = withSpring(0, SPRING);
+      dy.value = withSpring(0, SPRING);
+      runOnJS(onMove)(item.id, r.surface, r.u, r.v);
     })
-    .onFinalize(() => {
-      dx.value = 0;
-      dy.value = 0;
+    .onFinalize((_e, success) => {
+      if (!success) {
+        dx.value = withSpring(0, SPRING);
+        dy.value = withSpring(0, SPRING);
+      }
       lift.value = withSpring(1, SPRING);
       if (onDragState) runOnJS(onDragState)(false);
     });
@@ -161,16 +169,14 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
     });
 
   const style = useAnimatedStyle(() => {
-    const fx = roomWidth > 0 ? (px.value + dx.value) / roomWidth : 0.5;
-    const fy = roomHeight > 0 ? (py.value + dy.value) / roomHeight : 0.5;
-    // Параллакс: предмет сдвигается с камерой настолько, насколько он далеко.
-    const depth = pointDepth(fx, fy);
+    const s = SURF[si.value];
+    const p = surfaceToScene(roomWidth, roomHeight, cam.value, s, su.value, sv.value);
     return {
       transform: [
-        { translateX: px.value + dx.value - SIZE / 2 + cam.value.x * depth },
-        { translateY: py.value + dy.value - SIZE / 2 + cam.value.y * depth },
+        { translateX: p.x + dx.value - SIZE / 2 },
+        { translateY: p.y + dy.value - SIZE / 2 },
         // Дальше от зрителя — мельче (перспектива комнаты).
-        { scale: lift.value * itemDepthScale(fy) },
+        { scale: lift.value * surfaceScale(s, su.value, sv.value) },
       ],
     };
   });

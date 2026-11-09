@@ -149,3 +149,86 @@ export function clampPan(t: Pt, W: number, H: number, scale: number): Pt {
 export function zoomOffset(p: Pt, W: number, H: number, scale: number): Pt {
   return clampPan({ x: (W / 2 - p.x) * scale, y: (H / 2 - p.y) * scale }, W, H, scale);
 }
+
+// ─── Свободная расстановка (Berik 2026-11-09: «каждый юзер сам дизайнер») ────
+/**
+ * Поверхность комнаты, на которой стоит/висит предмет. Позиция — (u, v) в долях
+ * поверхности, не в долях экрана: так предмет «приклеен» к стене/полу при любом
+ * движении камеры (и для будущего вида «встать перед предметом»).
+ *  - floor: u слева→направо, v от задней стены (0) к зрителю (1);
+ *  - wall-left: u от зрителя (0) к задней стене (1), v сверху вниз;
+ *  - wall-back: u слева→направо, v сверху вниз;
+ *  - wall-right: u от задней стены (0) к зрителю (1), v сверху вниз.
+ */
+export type Surface = 'floor' | 'wall-left' | 'wall-back' | 'wall-right';
+export const SURFACES: readonly Surface[] = ['floor', 'wall-left', 'wall-back', 'wall-right'];
+export const WALL_SURFACES: readonly Surface[] = ['wall-left', 'wall-back', 'wall-right'];
+
+export function surfaceQuad(faces: RoomFaces, s: Surface): Quad {
+  'worklet';
+  return s === 'floor' ? faces.floor : s === 'wall-left' ? faces.left : s === 'wall-back' ? faces.back : faces.right;
+}
+
+/** Точка (u, v) поверхности → пиксели сцены. */
+export function surfaceToScene(W: number, H: number, cam: Pt, s: Surface, u: number, v: number): Pt {
+  'worklet';
+  return applyMatrix(quadMatrix(1, 1, surfaceQuad(roomFaces(W, H, cam), s)), u, v);
+}
+
+/** Пиксели сцены → (u, v) на плоскости грани (обратная гомография). Может выйти за 0..1. */
+export function sceneToSurface(q: Quad, p: Pt): Pt {
+  'worklet';
+  const m = quadMatrix(1, 1, q);
+  // H = [[a b c],[d e f],[g h i]] из столбцовой 4×4.
+  const a = m[0], b = m[4], c = m[12];
+  const d = m[1], e = m[5], f = m[13];
+  const g = m[3], h = m[7], i = m[15];
+  const A = e * i - f * h, B = c * h - b * i, C = b * f - c * e;
+  const D = f * g - d * i, E = a * i - c * g, F = c * d - a * f;
+  const G = d * h - e * g, Hh = b * g - a * h, I = a * e - b * d;
+  const w = G * p.x + Hh * p.y + I;
+  return { x: (A * p.x + B * p.y + C) / w, y: (D * p.x + E * p.y + F) / w };
+}
+
+/** Поля, чтобы предмет не уходил за край поверхности. */
+const EDGE = 0.06;
+function clamp01(v: number, lo = EDGE, hi = 1 - EDGE): number {
+  'worklet';
+  return Math.min(hi, Math.max(lo, v));
+}
+
+/**
+ * Куда встанет предмет, отпущенный в точке экрана p: пол — на полу (с полями),
+ * настенный — на ту стену, над которой палец (или ближайшую), не ниже пола.
+ */
+export function placeAt(W: number, H: number, cam: Pt, spot: 'floor' | 'wall', p: Pt): { surface: Surface; u: number; v: number } {
+  'worklet';
+  const faces = roomFaces(W, H, cam);
+  if (spot === 'floor') {
+    const uv = sceneToSurface(faces.floor, p);
+    return { surface: 'floor', u: clamp01(uv.x), v: clamp01(uv.y) };
+  }
+  let best: { surface: Surface; u: number; v: number } = { surface: 'wall-back', u: 0.5, v: 0.4 };
+  let bestOut = Infinity;
+  const walls: Surface[] = ['wall-left', 'wall-back', 'wall-right'];
+  for (const s of walls) {
+    const uv = sceneToSurface(surfaceQuad(faces, s), p);
+    // Насколько точка вне грани (0 — внутри); w<0 (за плоскостью) — мимо.
+    if (!Number.isFinite(uv.x) || !Number.isFinite(uv.y)) continue;
+    const out = Math.max(0, -uv.x, uv.x - 1) + Math.max(0, -uv.y, uv.y - 1);
+    if (out < bestOut) {
+      bestOut = out;
+      best = { surface: s, u: clamp01(uv.x), v: clamp01(uv.y, 0.1, 0.78) };
+    }
+  }
+  return best;
+}
+
+/** Масштаб предмета по глубине: ближе к зрителю — крупнее. */
+export function surfaceScale(s: Surface, u: number, v: number): number {
+  'worklet';
+  if (s === 'floor') return 0.7 + 0.55 * v;
+  if (s === 'wall-back') return 0.72;
+  if (s === 'wall-left') return 1.2 - 0.48 * u;
+  return 0.72 + 0.48 * u;
+}

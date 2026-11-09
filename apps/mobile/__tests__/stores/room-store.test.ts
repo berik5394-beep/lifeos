@@ -1,7 +1,7 @@
 import { api } from '@/services/api';
 import { useRoomStore } from '@/stores/room-store';
 
-/** Робот-эпик, Часть 6: комната на ячейках, покупка за монеты, кладовка. */
+/** Комната: свободная расстановка, покупка за монеты, кладовка. */
 const mockedApi = api as jest.Mocked<typeof api>;
 const flush = () => new Promise((r) => setImmediate(r));
 
@@ -11,29 +11,29 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-const SOFA = { id: 'a', itemKey: 'sofa', variantKey: 'budget:sofa', slot: 'floor-back-left' } as const;
-const DESK = { id: 'b', itemKey: 'desk', variantKey: 'budget:desk', slot: 'floor-front-right' } as const;
+const SOFA = { id: 'a', itemKey: 'sofa', variantKey: 'budget:sofa', slot: null, surface: 'floor', x: 0.218, y: 0.27 } as const;
+const DESK = { id: 'b', itemKey: 'desk', variantKey: 'budget:desk', slot: null, surface: 'floor', x: 0.907, y: 0.85 } as const;
 
 describe('useRoomStore', () => {
-  it('fetchRoom: предметы в ячейках рисуются, кладовка — нет, неизвестные ключи отброшены', async () => {
+  it('fetchRoom: мебель на поверхностях рисуется, кладовка — нет, неизвестные ключи отброшены', async () => {
     mockedApi.get.mockResolvedValueOnce({
-      items: [SOFA, { id: 'c', itemKey: 'clock', variantKey: 'budget:clock', slot: null }, { id: 'z', itemKey: 'rocket', variantKey: null, slot: null }],
+      items: [SOFA, { id: 'c', itemKey: 'clock', variantKey: 'budget:clock', slot: null, surface: null }, { id: 'z', itemKey: 'rocket', variantKey: null, slot: null }],
     });
     await useRoomStore.getState().fetchRoom();
     expect(useRoomStore.getState().owned.map((o) => o.id)).toEqual(['a', 'c']);
-    expect(useRoomStore.getState().items).toEqual([expect.objectContaining({ id: 'a', x: 0.31, y: 0.64 })]);
+    expect(useRoomStore.getState().items).toEqual([expect.objectContaining({ id: 'a', surface: 'floor', u: 0.218, v: 0.27 })]);
   });
 
-  it('moveItem в занятую ячейку → обмен сразу на экране и PUT { placements }', async () => {
+  it('moveItem: куда отпустил — туда и встал (рядом с другим — можно), PUT { placements }', async () => {
     useRoomStore.setState({ owned: [SOFA, DESK] });
-    mockedApi.put.mockResolvedValueOnce({ items: [{ ...SOFA, slot: 'floor-front-right' }, { ...DESK, slot: 'floor-back-left' }] });
-    useRoomStore.getState().moveItem('a', 0.87, 0.9);
-    expect(useRoomStore.getState().owned.find((o) => o.id === 'a')?.slot).toBe('floor-front-right');
-    expect(useRoomStore.getState().owned.find((o) => o.id === 'b')?.slot).toBe('floor-back-left');
+    mockedApi.put.mockResolvedValueOnce({ items: [{ ...SOFA, x: 0.9, y: 0.84 }, DESK] });
+    useRoomStore.getState().moveItem('a', 'floor', 0.9, 0.84);
+    expect(useRoomStore.getState().owned.find((o) => o.id === 'a')).toMatchObject({ surface: 'floor', x: 0.9, y: 0.84 });
+    expect(useRoomStore.getState().owned.find((o) => o.id === 'b')).toMatchObject({ x: 0.907, y: 0.85 });
     await flush();
     expect(mockedApi.put).toHaveBeenCalledWith(
       '/room',
-      { placements: [{ id: 'a', slot: 'floor-front-right' }, { id: 'b', slot: 'floor-back-left' }] },
+      { placements: [{ id: 'a', surface: 'floor', x: 0.9, y: 0.84 }] },
       expect.anything(),
       { queueOffline: false },
     );
@@ -44,32 +44,37 @@ describe('useRoomStore', () => {
     mockedApi.put.mockRejectedValueOnce(new Error('500'));
     mockedApi.get.mockResolvedValueOnce({ items: [SOFA] });
     useRoomStore.getState().storeItem('a');
-    expect(useRoomStore.getState().owned[0].slot).toBeNull();
+    expect(useRoomStore.getState().owned[0].surface).toBeNull();
     await flush();
     await flush();
-    expect(useRoomStore.getState().owned[0].slot).toBe('floor-back-left');
+    expect(useRoomStore.getState().owned[0].surface).toBe('floor');
   });
 
-  it('placeFromStorage: в первую свободную; мест нет → false', () => {
+  it('placeFromStorage: на свободное привычное место; всё занято — всё равно в комнату (рядом)', () => {
     mockedApi.put.mockResolvedValue({ items: [] });
-    useRoomStore.setState({ owned: [{ ...SOFA, slot: null }] });
+    useRoomStore.setState({ owned: [{ ...SOFA, surface: null }] });
     expect(useRoomStore.getState().placeFromStorage('a')).toBe(true);
-    expect(useRoomStore.getState().owned[0].slot).toBe('floor-back-left');
-    const full = ['wall-left', 'wall-center', 'wall-right'].map((slot, i) => ({ id: `p${i}`, itemKey: 'picture' as const, variantKey: 'free:picture', slot: slot as 'wall-left' }));
-    useRoomStore.setState({ owned: [...full, { id: 'c', itemKey: 'clock', variantKey: 'budget:clock', slot: null }] });
-    expect(useRoomStore.getState().placeFromStorage('c')).toBe(false);
+    expect(useRoomStore.getState().owned[0]).toMatchObject({ surface: 'floor', x: 0.218, y: 0.27 });
+    const full = [
+      { s: 'wall-left', x: 0.401, y: 0.497 },
+      { s: 'wall-back', x: 0.5, y: 0.167 },
+      { s: 'wall-right', x: 0.599, y: 0.497 },
+    ].map((p, i) => ({ id: `p${i}`, itemKey: 'picture' as const, variantKey: 'free:picture', slot: null, surface: p.s as 'wall-left', x: p.x, y: p.y }));
+    useRoomStore.setState({ owned: [...full, { id: 'c', itemKey: 'clock', variantKey: 'budget:clock', slot: null, surface: null }] });
+    expect(useRoomStore.getState().placeFromStorage('c')).toBe(true);
+    expect(useRoomStore.getState().owned.find((o) => o.id === 'c')?.surface).toMatch(/^wall-/);
   });
 
-  it('buy: успех — предмет в комнате, баланс с сервера; занятая ячейка уходит в кладовку', async () => {
+  it('buy: успех — предмет в комнате, баланс с сервера; мебель никого не вытесняет', async () => {
     useRoomStore.setState({ owned: [SOFA], coins: 500 });
-    mockedApi.post.mockResolvedValueOnce({ item: { id: 'n', itemKey: 'desk', variantKey: 'mid:desk', slot: 'floor-back-left' }, balance: 200 });
-    mockedApi.get.mockResolvedValueOnce({ items: [{ ...SOFA, slot: null }, { id: 'n', itemKey: 'desk', variantKey: 'mid:desk', slot: 'floor-back-left' }] });
+    const NEW = { id: 'n', itemKey: 'desk', variantKey: 'mid:desk', slot: 'floor-back-center', surface: 'floor', x: 0.5, y: 0.24 };
+    mockedApi.post.mockResolvedValueOnce({ item: NEW, balance: 200 });
+    mockedApi.get.mockResolvedValueOnce({ items: [SOFA, NEW] });
     const res = await useRoomStore.getState().buy('mid:desk');
     expect(res.ok).toBe(true);
     expect(mockedApi.post).toHaveBeenCalledWith('/room/buy', { variantKey: 'mid:desk' }, expect.anything(), { queueOffline: false });
     expect(useRoomStore.getState().coins).toBe(200);
-    expect(useRoomStore.getState().owned.find((o) => o.id === 'a')?.slot).toBeNull();
-    expect(useRoomStore.getState().items.map((i) => i.id)).toEqual(['n']);
+    expect(useRoomStore.getState().items.map((i) => i.id).sort()).toEqual(['a', 'n']);
   });
 
   it('buy: не хватает монет → ошибка сервера юзеру, ничего не куплено', async () => {
@@ -118,10 +123,10 @@ describe('useRoomStore', () => {
     mockedApi.get.mockImplementationOnce(() => new Promise((r) => (resolveGet = r)) as never);
     mockedApi.put.mockImplementationOnce(() => new Promise(() => {}) as never); // PUT ещё летит
     const fetching = useRoomStore.getState().fetchRoom();
-    useRoomStore.getState().moveItem('a', 0.2, 0.76);
+    useRoomStore.getState().moveItem('a', 'floor', 0.116, 0.581);
     resolveGet({ items: [SOFA] });
     await fetching;
-    expect(useRoomStore.getState().owned[0].slot).toBe('floor-mid-left');
+    expect(useRoomStore.getState().owned[0]).toMatchObject({ x: 0.116, y: 0.581 });
   });
 
   it('гонка: GET /coins, начатый ДО покупки, не возвращает старый баланс и не даёт ложное «+N»', async () => {
