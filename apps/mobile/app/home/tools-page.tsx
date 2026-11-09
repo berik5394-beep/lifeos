@@ -20,6 +20,7 @@ import { useScheduleStore } from '@/stores/schedule-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/services/api';
 import { navigateTo } from '@/navigation/ref';
+import { openConversation } from '@/services/open-conversation';
 import { SkeletonList } from '@/components/ui/skeleton';
 import type { PanelDef } from '@/services/panels';
 import type { ToolKey } from '@/services/room-tools';
@@ -306,7 +307,15 @@ export const ToolsPage = memo(function ToolsPage({
       {/* Маленький робот поверх инструмента, в углу; облачко — справа от него. */}
       {!kbOpen && (
       <Animated.View style={[styles.robot, robotDodgeStyle]}>
-        <Pressable onPress={askExplain} hitSlop={8} accessibilityRole="button" accessibilityLabel="Робот, что тут важного?">
+        {/* Тап — живой разговор голосом; долгое нажатие — «что тут важного» по вкладке. */}
+        <Pressable
+          onPress={openConversation}
+          onLongPress={askExplain}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Поговорить с роботом голосом"
+          accessibilityHint="Долгое нажатие — робот объяснит, что важно на этой вкладке"
+        >
           {/* В покое — меньше и в самом углу (меньше закрывает данные снизу слева);
               говорит/реагирует/слушает — в полный рост. Без отдельной полосы (Berik 2026-11-07). */}
           <RobotAvatar

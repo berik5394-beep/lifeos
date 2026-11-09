@@ -408,11 +408,8 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       }
       setSuggestions(data.suggestions ?? []);
 
-      // Add user's transcription if present (from audio messages)
-      if (data.transcription) {
-        // Insert user message before assistant response
-        addUserMessage(data.transcription);
-      }
+      // Фразу юзера уже показал sendAudioToServer (до ответа). Здесь второй раз
+      // её добавлять нельзя: в разговоре она дублировалась под ответом робота.
 
       // Мозг мог что-то сделать (задача, привычка, трата) — вкладки перечитают
       // данные; «открой задачи» — откроем вкладку за экраном разговора.
@@ -594,7 +591,9 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
       setSuggestions(data.suggestions ?? []);
 
       setState('speaking');
-      await speakText(greeting);
+      // Вслух — только приветствие: памятка «я не врач…» под ним остаётся на
+      // экране, но не зачитывается каждый раз перед тем, как начать слушать.
+      await speakText(greeting.split('\n\n')[0]);
 
       if (!isMountedRef.current) return;
 

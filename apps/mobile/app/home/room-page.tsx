@@ -2,6 +2,7 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import { Alert, Keyboard, type LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { openConversation } from '@/services/open-conversation';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -665,12 +666,18 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
             />
           )}
 
-          <Animated.View style={[styles.robot, robotStyle]} pointerEvents="none">
+          {/* Тап по роботу — живой разговор голосом (Berik 2026-11-09). */}
+          <Animated.View style={[styles.robot, robotStyle]} pointerEvents="box-none">
             {/* Робот стоит на полу: мягкая тень под ногами. */}
-            <View style={styles.robotShadow}>
+            <View style={styles.robotShadow} pointerEvents="none">
               <SoftSpot id="robotShadow" cx={0.5} cy={0.5} rx={0.5} ry={0.5} color="#0E0802" opacity={0.8} />
             </View>
-            <View style={mirror ? styles.mirror : undefined}>
+            <Pressable
+              style={mirror ? styles.mirror : undefined}
+              onPress={openConversation}
+              accessibilityRole="button"
+              accessibilityLabel="Поговорить с роботом голосом"
+            >
               <RobotAvatar
                 emotion={emotion}
                 size={ROBOT_SIZE}
@@ -678,7 +685,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
                 pointing={pointing}
                 attention={typing || isRecording ? 'listening' : 'idle'}
               />
-            </View>
+            </Pressable>
           </Animated.View>
 
           <View style={[styles.topLeft, { top: topInset }]}>
