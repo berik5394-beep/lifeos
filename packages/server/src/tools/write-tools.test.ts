@@ -37,9 +37,10 @@ describe('zod-схемы принимают форму intent-parser', () => {
         category: 'personal',
       }).success,
     ).toBe(true);
-    expect(
-      registry.get('create_task')!.schema.safeParse({ title: 'x' }).success,
-    ).toBe(false); // нет date
+    // Без даты — можно (хендлер ставит на сегодня по поясу юзера): раньше
+    // zod падал на «поставь задачу X», и задача не создавалась (прод 2026-11-08).
+    expect(registry.get('create_task')!.schema.safeParse({ title: 'x' }).success).toBe(true);
+    expect(registry.get('create_task')!.schema.safeParse({ title: 'x', date: 'завтра-ish' }).success).toBe(false);
   });
 
   it('complete_task: { title } (после маппинга taskTitle→title)', () => {

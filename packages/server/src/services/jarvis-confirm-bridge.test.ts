@@ -9,7 +9,7 @@ describe('jarvis-orchestrator — confirm-bridge wiring (structural)', () => {
     expect(SRC).toMatch(/buildConfirmPrompt/);
   });
   it('пробрасывает onConfirmTool в runAgent (стейдж + текст)', () => {
-    expect(SRC).toMatch(/onConfirmTool:\s*async/);
+    expect(SRC).toMatch(/onConfirmTool:\s*(?:async|stageConfirm)/);
     expect(SRC).toMatch(/setPendingAction\(userId,\s*tool,\s*args/);
   });
 });

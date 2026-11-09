@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { dateOnlyUTC } from '../lib/tz.js';
+import { dateOnlyUTC, localDateStr } from '../lib/tz.js';
+import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { linkTaskToGoalInBackground } from '../services/task-goal-link.js';
 import { sanitizeTaskTitle } from '../services/task-title.js';
@@ -34,7 +35,10 @@ export const createTaskTool = defineTool({
   aliases: { name: 'title', taskTitle: 'title', task: 'title', due_date: 'date', dueDate: 'date', deadline: 'date' },
   schema: z.object({
     title: z.string().min(1).max(300),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD'),
+    // Без даты — сегодня (по поясу юзера). Раньше date был обязателен: модель
+    // на «поставь задачу X» без дня не передавала его → zod падал → задача не
+    // создавалась, а робот уже успел сказать «поставил» (прод 2026-11-08).
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD').optional(),
     time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
     category: z.string().max(40).optional(),
     priority: z.enum(['low', 'medium', 'high', 'critical']).optional(),
@@ -46,7 +50,8 @@ export const createTaskTool = defineTool({
     // FIX 2026-06-06: @db.Date = UTC-полночь КАЛЕНДАРНОЙ даты (input.date уже
     // tz-резолвнут resolveDate в локальную дату юзера). Раньше localDayStartUTC
     // писал civil−1 для Almaty (реальный инстант лок. полуночи = 19:00 вчера UTC).
-    const date = dateOnlyUTC(input.date);
+    const day = input.date ?? localDateStr(await getUserTimezone(ctx.userId));
+    const date = dateOnlyUTC(day);
     // Фикс A: модель оставляет хвостовой предлог/дату в названии
     // («…отчёт на сегодня» → date выдернута, но «на» прилипло). Чистим.
     const title = sanitizeTaskTitle(input.title);
@@ -62,7 +67,7 @@ export const createTaskTool = defineTool({
     });
     // Задача — явный шаг к годовой цели? Фоном (флаг FEATURE_V2_TASK_GOAL_LINK).
     linkTaskToGoalInBackground(ctx.userId, task.id, title);
-    const message = `Задача "${title}" создана на ${input.date}${
+    const message = `Задача "${title}" создана на ${day}${
       input.time ? ' в ' + input.time : ''
     }`;
     // #engine slice1: фоновая ИИ-оценка времени задачи (для точности дня,
@@ -77,7 +82,7 @@ export const createTaskTool = defineTool({
     // Перегруз дня (флаг): проверяем ДЕНЬ ЗАДАЧИ (не «сегодня» — прежний баг)
     // и предлагаем сдвинуть график одним касанием + цели. Есть предложение →
     // оно вместо каскада строк ниже; нет (флаг выкл./влезает) → как раньше.
-    const reschedule = await proposeReschedule(ctx.userId, input.date, task.id);
+    const reschedule = await proposeReschedule(ctx.userId, day, task.id);
     // #engine: каскад горизонтов — показываем самый ближний перегруженный.
     // Флаг вкл. → день задачи уже проверил движок выше; старую строку про
     // СЕГОДНЯ не показываем (для задачи на завтра она говорила не о том дне).

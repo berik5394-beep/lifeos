@@ -26,7 +26,7 @@ import { emotionForTurn, type RobotEmotion, type TurnFacts } from './robot-emoti
 import { isPlannerIntent } from './planner-service.js';
 import { writeMemory, supersedeByTopic } from './episodic-memory.js';
 import { trackInterests } from './interest-service.js';
-import { runRegistryTool, toolConfirmRequired } from '../tools/index.js';
+import { registry, runRegistryTool, toolConfirmRequired } from '../tools/index.js';
 import { isFailedResult } from './tool-activity-summary.js';
 import { maybeSavingsCoachLine } from './savings-coach.js';
 import { commitGoal, type CommitGoalInput } from './goal-commit.js';
@@ -424,6 +424,53 @@ const NEEDS_TOOLS_CLAIM =
 export function replyNeedsTools(reply: string): boolean {
   return NEEDS_TOOLS_REFUSAL.test(reply) || NEEDS_TOOLS_CLAIM.test(reply);
 }
+
+/**
+ * Главный баг 2026-11-09: «поставь задачу/цель/привычку» → робот отвечает
+ * «создал», а в экранах пусто. У агента ЕСТЬ инструменты, но модель иногда
+ * отвечает «создал» без вызова (или вызов упал). Сторож: просьба о действии +
+ * ответ «сделал» + ни одной реальной записи за ход → повтор с прямым
+ * требованием вызвать инструмент; снова пусто → честное «не сделал».
+ */
+const ACTION_REQUEST =
+  /(созда|создай|добав|постав|запиш|запис|впиш|впис|занес|занеси|отмет|напомн|запланир|заведи|внес|перенес|удали|сохрани|запомни|закинь|привяж|привычк|цел[ьиея]|задач|встреч|трат|расход|доход)/i;
+/** «записал/создала/добавил…» от лица робота — не «ты отметил». */
+const DONE_ACTIVE =
+  /(?:^|[^а-яё])(записал|добавил|сохранил|отметил|создал|запомнил|поставил|внёс|внес|перенёс|перенес|удалил|завёл|завел|закинул|запланировал|привязал)(?:а|и)?(?![а-яё])/gi;
+/** «задача создана», «привычка добавлена» — пассив тоже обещание. */
+const DONE_PASSIVE =
+  /(?:^|[^а-яё])(создан|добавлен|записан|сохран[её]н|поставлен|запланирован|заведен|заведён|отмечен|привязан)(?:а|о|ы)?(?![а-яё])/i;
+const OTHER_SUBJECT = /(?:^|[^а-яё])(?:ты|вы|он|она|они|кто-то)\s+(?:уже\s+|сам[аи]?\s+|ещё\s+|вчера\s+|сегодня\s+)?$/i;
+
+export function asksForAction(text: string): boolean {
+  return ACTION_REQUEST.test(text);
+}
+
+export function claimsDoneAction(reply: string): boolean {
+  if (DONE_PASSIVE.test(reply)) return true;
+  for (const m of reply.matchAll(DONE_ACTIVE)) {
+    const start = (m.index ?? 0) + m[0].indexOf(m[1]);
+    const before = reply.slice(Math.max(0, start - 30), start);
+    if (!OTHER_SUBJECT.test(before)) return true;
+  }
+  return false;
+}
+
+/** Инструмент изменил данные юзера (не чтение) и не вернул «не нашёл/ошибку». */
+export function isRealWrite(tool: string, result: unknown): boolean {
+  const t = registry.get(tool);
+  return !!t && t.sideEffects !== 'read' && !isFailedResult(result);
+}
+
+export const UNBACKED_CLAIM_NOTE =
+  'ВАЖНО: в прошлой попытке ты написал, что сделал действие, но НЕ вызвал ни одного ' +
+  'инструмента — в приложении ничего не появилось. Если пользователь просит создать, ' +
+  'записать, отметить, поставить или перенести — ВЫЗОВИ нужный инструмент сейчас ' +
+  '(дату без уточнения бери сегодняшнюю). Если сделать нельзя — честно скажи, что НЕ сделал и почему.';
+
+export const HONEST_NOT_DONE =
+  'Стоп, честно: я это ещё НЕ записал — в приложении пока ничего не появилось. ' +
+  'Скажи ещё раз чуть конкретнее (что и на какой день) — и я сразу запишу.';
 
 /**
  * ISSUE-1: честный отказ когда tool-путь упал, а запрос требовал
@@ -1715,6 +1762,17 @@ async function handleMessageCore(
     reply = skillReply;
   } else {
     const wantTools = hermesForceTools || toolsHint;
+    // Учёт хода: была ли реальная запись / поставлен ли вопрос «да?».
+    const acts = { wrote: false, staged: false };
+    const onToolResult = (tool: string, ok: boolean, result?: unknown) => {
+      if (ok && isRealWrite(tool, result)) acts.wrote = true;
+    };
+    const stageConfirm = async (tool: string, args: Record<string, unknown>) => {
+      acts.staged = true;
+      const prompt = confirmPromptFor(tool, args);
+      await setPendingAction(userId, tool, args, prompt);
+      return prompt;
+    };
     try {
       reply = await runAgent({
         system,
@@ -1740,11 +1798,8 @@ async function handleMessageCore(
         // Confirm-bridge: confirm-tool (set_balance/clear_overdue/решения…)
         // НЕ исполняется в цикле — стейджим pending + детерминир. текст,
         // запись только на «да» через peekPendingAction→runConfirmedAction.
-        onConfirmTool: async (tool, args) => {
-          const prompt = confirmPromptFor(tool, args);
-          await setPendingAction(userId, tool, args, prompt);
-          return prompt;
-        },
+        onConfirmTool: stageConfirm,
+        onToolResult,
       });
       // Словарь не узнал фразу, а ответ — про действие («не могу записать» /
       // выдуманное «записал») → тот же запрос с инструментами. Сбой повтора —
@@ -1762,11 +1817,8 @@ async function handleMessageCore(
             deadlineAt,
             localTools: true,
             userId,
-            onConfirmTool: async (tool, args) => {
-              const prompt = confirmPromptFor(tool, args);
-              await setPendingAction(userId, tool, args, prompt);
-              return prompt;
-            },
+            onConfirmTool: stageConfirm,
+            onToolResult,
           });
         } catch (retryErr) {
           if (retryErr instanceof AgentDeadlineError) throw retryErr;
@@ -1775,6 +1827,33 @@ async function handleMessageCore(
             retryErr instanceof Error ? retryErr.message : retryErr,
           );
           reply = DEGRADED_ACTIONABLE_REFUSAL;
+        }
+      }
+      // Сторож «сказал — сделал»: просили действие, ответ «создал/записал»,
+      // а записи за ход не было (и вопроса «да?» тоже) → ещё раз с прямым
+      // требованием вызвать инструмент; снова пусто → честное «не сделал».
+      if (asksForAction(text) && claimsDoneAction(reply) && !acts.wrote && !acts.staged) {
+        console.log(`[jarvis] user=${userId} «сделал» без записи → повтор с требованием инструмента`);
+        try {
+          const again = await runAgent({
+            system: system + '\n\n' + UNBACKED_CLAIM_NOTE,
+            userMessage: text,
+            history,
+            webSearch: false,
+            maxTokens: channel === 'voice' ? VOICE_MAX_TOKENS : 900,
+            deadlineAt,
+            localTools: true,
+            userId,
+            onConfirmTool: stageConfirm,
+            onToolResult,
+          });
+          reply = acts.wrote || acts.staged || !claimsDoneAction(again) ? again : HONEST_NOT_DONE;
+        } catch (guardErr) {
+          if (guardErr instanceof AgentDeadlineError) throw guardErr;
+          reply = HONEST_NOT_DONE;
+        }
+        if (reply === HONEST_NOT_DONE) {
+          console.warn(`[jarvis] user=${userId} «сделал» без записи и после повтора → честный отказ`);
         }
       }
     } catch (agentErr) {

@@ -14,6 +14,8 @@ const PREPS = 'на|в|во|к|ко|до|по|за';
 const TRAILING_DATE = new RegExp(`\\s+(?:${PREPS})?\\s*(?:${DATE_WORDS})\\s*$`, 'i');
 // Висячий предлог в самом конце («…отчёт на$»).
 const TRAILING_PREP = new RegExp(`\\s+(?:${PREPS})\\s*$`, 'i');
+// Голова «на завтра: отчёт» / «на : отчёт» (дата уже выдернута) / «— отчёт».
+const LEADING_LEAD = new RegExp(`^(?:(?:${PREPS})\\s+)?(?:(?:${DATE_WORDS})\\s*)?[:—–\\-,]\\s*`, 'i');
 
 /**
  * Срезать хвостовую дату-фразу и висячий предлог. Не опустошает: если результат
@@ -21,7 +23,7 @@ const TRAILING_PREP = new RegExp(`\\s+(?:${PREPS})\\s*$`, 'i');
  */
 export function sanitizeTaskTitle(raw: string): string {
   const original = raw.trim();
-  let out = original.replace(TRAILING_DATE, '').replace(TRAILING_PREP, '').trim();
+  let out = original.replace(LEADING_LEAD, '').replace(TRAILING_DATE, '').replace(TRAILING_PREP, '').trim();
   if (out.length === 0) return original;
   return out;
 }

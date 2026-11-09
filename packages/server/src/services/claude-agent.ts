@@ -121,6 +121,12 @@ export interface AgentOptions {
    */
   onConfirmTool?: (tool: string, args: Record<string, unknown>) => Promise<string>;
   /**
+   * Итог каждого исполненного локального инструмента (ok=false — бросил
+   * ошибку). Оркестратор так знает, было ли за ход реальное действие, и не
+   * отдаёт «создал/записал», если записи не было (баг 2026-11-09).
+   */
+  onToolResult?: (tool: string, ok: boolean, result?: unknown) => void;
+  /**
    * Предел хода (epoch ms): каждый вызов Claude получает остаток времени,
    * повторы SDK обрываются. Кончилось → AgentDeadlineError (не AiModelError),
    * чтобы оркестратор не запускал запасные пути, а честно сказал «не успел».
@@ -157,7 +163,15 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     onConfirmTool,
     deadlineAt,
     onText,
+    onToolResult,
   } = opts;
+  const report = (tool: string, ok: boolean, result?: unknown) => {
+    try {
+      onToolResult?.(tool, ok, result);
+    } catch {
+      /* учёт не должен ронять ход */
+    }
+  };
 
   // Один вызов Claude в пределах хода. Таймаут/обрыв по сроку → AgentDeadlineError.
   const create = async (body: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> => {
@@ -287,7 +301,9 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
         // structured {connected:false, reason, message} — это валидный
         // success result для агента (он видит честный статус и решает).
         out = typeof r === 'string' ? r : JSON.stringify(r);
+        report(tu.name, true, r);
       } catch (e) {
+        report(tu.name, false);
         // R9 honesty #25 fix: structured JSON + is_error вместо русского
         // prose. Раньше "Ошибка инструмента X: ..." Claude мог interpret
         // как success result и врать «записал»/«готово». Теперь явное
@@ -358,7 +374,9 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
             { userId: userId as string },
           );
           out = typeof r === 'string' ? r : JSON.stringify(r);
+          report(tu.name, true, r);
         } catch (e) {
+          report(tu.name, false);
           out = JSON.stringify({
             ok: false,
             error: e instanceof Error ? e.message : String(e),
