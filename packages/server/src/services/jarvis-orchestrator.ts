@@ -67,7 +67,6 @@ import {
   isV2InlineNudgeEnabled,
   isV2SavingsCoachEnabled,
   isV2AntiFabEnabled,
-  isV2SupersedeEnabled,
 } from '../lib/feature-flags.js';
 import {
   routeToSkill,
@@ -243,7 +242,7 @@ async function captureInBackground(
     // intent-TZ фикс: «сегодня/завтра» в извлечённых задачах = календарь юзера.
     const tz = await getUserTimezone(userId);
     const todayCivil = civilDayRefs(tz).today;
-    const extracted = await extractFromChat(text, user?.name || 'друг', { detectSupersede: isV2SupersedeEnabled(userId), tz });
+    const extracted = await extractFromChat(text, user?.name || 'друг', { tz });
     let tasks = 0;
     let memories = 0;
     if (!opts.memoriesOnly && extracted.tasks.length > 0) {
@@ -281,7 +280,7 @@ async function captureInBackground(
         importance: m.importance,
       });
       memories++;
-      if (isV2SupersedeEnabled(userId) && m.supersedesTopic && r.action !== 'skipped') {
+      if (m.supersedesTopic && r.action !== 'skipped') {
         await supersedeByTopic(userId, m.type, m.supersedesTopic, r.id).catch(() => null);
       }
     }

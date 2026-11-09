@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { PostgresEntityGraph } from './postgres-impl.js';
 
@@ -6,9 +6,6 @@ const prisma = new PrismaClient();
 const graph = new PostgresEntityGraph();
 afterAll(() => prisma.$disconnect());
 
-const KEY = 'FEATURE_V2_ENTITY_RESOLVE';
-const orig = process.env[KEY];
-afterEach(() => { if (orig === undefined) delete process.env[KEY]; else process.env[KEY] = orig; });
 
 async function mkUser(email: string) {
   const u = await prisma.user.create({ data: { email, name: 'EC', passwordHash: 'x', timezone: 'Asia/Almaty' } });
@@ -41,8 +38,7 @@ describe('resolveForMerge — real prisma', () => {
 });
 
 describe('upsertEntity resolve-then-merge', () => {
-  it('ФЛАГ ON: вариант мёржится в существующую (одна строка + alias)', async () => {
-    process.env[KEY] = 'all';
+  it('вариант мёржится в существующую (одна строка + alias)', async () => {
     const u = await mkUser(`ec-on-${Date.now()}@a.test`);
     await graph.upsertEntity(u, { type: 'person', name: 'Серик', aliases: ['Серый'] });
     await graph.upsertEntity(u, { type: 'person', name: 'Серый' }); // нет точного матча → Tier2 → merge
@@ -51,23 +47,14 @@ describe('upsertEntity resolve-then-merge', () => {
     expect(rows[0].name).toBe('Серик');
     expect(rows[0].aliases).toContain('Серый');
   });
-  it('ФЛАГ ON: разные люди НЕ мёржатся', async () => {
-    process.env[KEY] = 'all';
+  it('разные люди НЕ мёржатся', async () => {
     const u = await mkUser(`ec-diff-${Date.now()}@a.test`);
     await graph.upsertEntity(u, { type: 'person', name: 'Серик' });
     await graph.upsertEntity(u, { type: 'person', name: 'Айбек' });
     const rows = await prisma.entity.findMany({ where: { userId: u, type: 'person' } });
     expect(rows.length).toBe(2);
   });
-  it('ФЛАГ OFF: байт-идентично — вариант создаёт ДУБЛЬ, aliases пусты', async () => {
-    delete process.env[KEY];
-    const u = await mkUser(`ec-off-${Date.now()}@a.test`);
-    await graph.upsertEntity(u, { type: 'person', name: 'Серик', aliases: ['Серый'] });
-    await graph.upsertEntity(u, { type: 'person', name: 'Серый' });
-    const rows = await prisma.entity.findMany({ where: { userId: u, type: 'person' }, orderBy: { name: 'asc' } });
-    expect(rows.length).toBe(2);
-    expect(rows.every((r) => r.aliases.length === 0)).toBe(true);
-  });
+
 });
 
 describe('resolveForMerge — precision (stem-set equality, no over-merge)', () => {
@@ -87,8 +74,7 @@ describe('resolveForMerge — precision (stem-set equality, no over-merge)', () 
     await prisma.entity.create({ data: { userId: u, type: 'concept', name: 'Встреча завтра в 15:00' } });
     expect(await graph.resolveForMerge(u, 'Встреча', 'concept')).toBeNull();
   });
-  it('upsertEntity ON: Бюджет + Остаток бюджета → ДВЕ строки', async () => {
-    process.env[KEY] = 'all';
+  it('upsertEntity: Бюджет + Остаток бюджета → ДВЕ строки', async () => {
     const u = await mkUser(`ec-prec-up-${Date.now()}@a.test`);
     await graph.upsertEntity(u, { type: 'concept', name: 'Бюджет' });
     await graph.upsertEntity(u, { type: 'concept', name: 'Остаток бюджета' });

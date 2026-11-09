@@ -23,8 +23,7 @@ describe('intent-TZ wiring', () => {
     const src = read('src/services/jarvis-orchestrator.ts');
     expect(src).not.toMatch(UTC_TODAY);
     expect(src).toMatch(/parseIntent\(text, userTz[,)]/);
-    expect(src).toMatch(/isV2SupersedeEnabled\(userId\), tz \}/);
-    expect(src).toMatch(/extractFromChat\(text, [^\n]*, tz \}\)/);
+    expect(src).toMatch(/extractFromChat\(text, [^\n]*\{ tz \}\)/);
   });
   it('smart-booking: завтра/послезавтра от todayIso юзера, не от часов сервера', () => {
     const src = read('src/services/smart-booking.ts');

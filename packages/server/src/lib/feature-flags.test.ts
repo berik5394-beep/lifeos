@@ -6,37 +6,8 @@ import {
   isV2WeekLoadEnabled,
   isV2MonthLoadEnabled,
   isV2YearLoadEnabled,
-  isV2EntityResolveEnabled,
-  isV2PatternDedupEnabled,
-  isV2SupersedeEnabled,
-  isV2UnlinkEnabled,
 } from './feature-flags.js';
 
-
-describe('isV2EntityResolveEnabled', () => {
-  const KEY = 'FEATURE_V2_ENTITY_RESOLVE';
-  const orig = process.env[KEY];
-  afterEach(() => { if (orig === undefined) delete process.env[KEY]; else process.env[KEY] = orig; });
-  it('unset → false', () => { delete process.env[KEY]; expect(isV2EntityResolveEnabled('u1')).toBe(false); });
-  it('all → true', () => { process.env[KEY] = 'all'; expect(isV2EntityResolveEnabled('u1')).toBe(true); });
-  it('none/false/empty → false', () => {
-    for (const v of ['none', 'false', '']) { process.env[KEY] = v; expect(isV2EntityResolveEnabled('u1')).toBe(false); }
-  });
-  it('csv matches only listed user', () => {
-    process.env[KEY] = 'user-u1,user-u2';
-    expect(isV2EntityResolveEnabled('u1')).toBe(true);
-    expect(isV2EntityResolveEnabled('u3')).toBe(false);
-  });
-});
-
-describe('isV2PatternDedupEnabled', () => {
-  const KEY = 'FEATURE_V2_PATTERN_DEDUP'; const orig = process.env[KEY];
-  afterEach(() => { if (orig === undefined) delete process.env[KEY]; else process.env[KEY] = orig; });
-  it('unset → false', () => { delete process.env[KEY]; expect(isV2PatternDedupEnabled('u1')).toBe(false); });
-  it('all → true', () => { process.env[KEY] = 'all'; expect(isV2PatternDedupEnabled('u1')).toBe(true); });
-  it('none/false/empty → false', () => { for (const v of ['none','false','']) { process.env[KEY]=v; expect(isV2PatternDedupEnabled('u1')).toBe(false); } });
-  it('csv', () => { process.env[KEY]='user-u1'; expect(isV2PatternDedupEnabled('u1')).toBe(true); expect(isV2PatternDedupEnabled('u2')).toBe(false); });
-});
 
 describe('isV2YearLoadEnabled', () => {
   const ORIG = process.env.FEATURE_V2_YEAR_LOAD;
@@ -131,22 +102,6 @@ describe('isV2RealtimeEnabled', () => {
     expect(isV2RealtimeEnabled('berikId')).toBe(true);
     expect(isV2RealtimeEnabled('otherId')).toBe(false);
   });
-});
-
-describe('isV2SupersedeEnabled', () => {
-  const KEY = 'FEATURE_V2_SUPERSEDE'; const prev = process.env[KEY];
-  afterEach(() => { if (prev === undefined) delete process.env[KEY]; else process.env[KEY] = prev; });
-  it('all→true', () => { process.env[KEY] = 'all'; expect(isV2SupersedeEnabled('u')).toBe(true); });
-  it('unset/none/empty→false', () => { delete process.env[KEY]; expect(isV2SupersedeEnabled('u')).toBe(false); process.env[KEY]='none'; expect(isV2SupersedeEnabled('u')).toBe(false); process.env[KEY]=''; expect(isV2SupersedeEnabled('u')).toBe(false); });
-  it('csv', () => { process.env[KEY]='user-abc'; expect(isV2SupersedeEnabled('abc')).toBe(true); expect(isV2SupersedeEnabled('z')).toBe(false); });
-});
-
-describe('isV2UnlinkEnabled', () => {
-  const KEY = 'FEATURE_V2_UNLINK'; const prev = process.env[KEY];
-  afterEach(() => { if (prev === undefined) delete process.env[KEY]; else process.env[KEY] = prev; });
-  it('all→true', () => { process.env[KEY]='all'; expect(isV2UnlinkEnabled('u')).toBe(true); });
-  it('unset/none/empty→false', () => { delete process.env[KEY]; expect(isV2UnlinkEnabled('u')).toBe(false); process.env[KEY]='none'; expect(isV2UnlinkEnabled('u')).toBe(false); process.env[KEY]=''; expect(isV2UnlinkEnabled('u')).toBe(false); });
-  it('csv', () => { process.env[KEY]='user-abc'; expect(isV2UnlinkEnabled('abc')).toBe(true); expect(isV2UnlinkEnabled('z')).toBe(false); });
 });
 
 import { isV2GoalIntakeEnabled } from './feature-flags.js';

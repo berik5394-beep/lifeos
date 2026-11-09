@@ -23,35 +23,6 @@ function isEnabledForUser(envValue: string | undefined, userId: string): boolean
 }
 
 /**
- * T2 дедуп паттернов: экстракторы находят СВОЙ паттерн по identity-ключу в
- * payload (entityId / habitId / sourceMsgId / clusterIndex / weekNumber), а не
- * первый попавшийся по kind. Без этого недельный крон плодит дубликат на
- * каждом прогоне. off=байт-идентично (findFirst остаётся прежним).
- * Same shape: "all"/"true", "none"/"false"/unset, "user-X".
- */
-export function isV2PatternDedupEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_PATTERN_DEDUP;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
- * Entity coreference resolve-then-merge (T1, память-качество №1).
- * Same shape as the other per-user flags.
- */
-export function isV2EntityResolveEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_ENTITY_RESOLVE;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
  * D (spec 2026-06-01): inline-проактивность из длинного текста.
  * Off → байт-в-байт сегодняшнее поведение. Env FEATURE_V2_INLINE_NUDGE
  * в форме "all"/"true" / "none"/unset / "user-X,user-Y".
@@ -114,22 +85,6 @@ export function isV2MonthLoadEnabled(userId: string): boolean {
 /** Движок пересечения, горизонт ГОД (пейсинг измеримых целей). Off → байт-в-байт. */
 export function isV2YearLoadEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_YEAR_LOAD, userId);
-}
-
-/**
- * F2 явная коррекция: при ЯВНОЙ отмене факта инвалидируем старую противоречащую
- * память (обратимо). OFF → детект выключен + шаг инвалидации выключен → identical.
- */
-export function isV2SupersedeEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_SUPERSEDE, userId);
-}
-
-/**
- * F2-связи: явный ретайр отношения (end_relationship). OFF → handler {error},
- * связь не трогается (DB identical). Тул в capabilityText всегда (как cancel_obligation).
- */
-export function isV2UnlinkEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_UNLINK, userId);
 }
 
 /**

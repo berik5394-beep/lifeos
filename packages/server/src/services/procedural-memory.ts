@@ -22,7 +22,6 @@ import { localHour } from '../lib/tz.js';
 import type { Pattern } from '@prisma/client';
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
-import { isV2PatternDedupEnabled } from '../lib/feature-flags.js';
 
 const anthropic = createAnthropic();
 
@@ -394,17 +393,14 @@ export async function extractFrequencyPatterns(userId: string): Promise<Pattern[
       const description = `упоминает ${entity.name} каждые ~${payload.periodDays} дней`;
 
       // Upsert: look for existing active pattern with same kind+entityId.
-      // T2: за флагом фильтруем findFirst по entityId — иначе при ≥2 сущностях
+      // T2: фильтруем findFirst по entityId — иначе при ≥2 сущностях
       // findFirst берёт произвольную, JS-чек ниже мимо → дубликат каждый прогон.
-      // off=байт-идентично (пустой spread).
       const existing = await prisma.pattern.findFirst({
         where: {
           userId,
           kind: 'frequency',
           invalidAt: null,
-          ...(isV2PatternDedupEnabled(userId)
-            ? { payload: { path: ['entityId'], equals: entity.id } }
-            : {}),
+          payload: { path: ['entityId'], equals: entity.id },
         },
       });
 
@@ -503,15 +499,13 @@ export async function extractTimeOfDayPatterns(userId: string): Promise<Pattern[
       const payload = { habitId: habit.id, hourMode: peakHour, windowPct: pct };
       const description = `${habit.name} обычно в ${peakHour}:00 (±2ч)`;
 
-      // T2: за флагом фильтруем по habitId (off=байт-идентично).
+      // T2: фильтруем по habitId.
       const existing = await prisma.pattern.findFirst({
         where: {
           userId,
           kind: 'time_of_day',
           invalidAt: null,
-          ...(isV2PatternDedupEnabled(userId)
-            ? { payload: { path: ['habitId'], equals: habit.id } }
-            : {}),
+          payload: { path: ['habitId'], equals: habit.id },
         },
       });
 
@@ -653,21 +647,17 @@ export async function extractRecurringTopicPatterns(userId: string): Promise<Pat
         };
         const description = `повторяющаяся тема вокруг ${entity.name} (${observations} событий)`;
 
-        // T2: за флагом фильтруем по entityId+clusterIndex (AND двух path-фильтров
-        // на одно поле payload). off=байт-идентично.
+        // T2: фильтруем по entityId+clusterIndex (AND двух path-фильтров
+        // на одно поле payload).
         const existing = await prisma.pattern.findFirst({
           where: {
             userId,
             kind: 'recurring_topic',
             invalidAt: null,
-            ...(isV2PatternDedupEnabled(userId)
-              ? {
-                  AND: [
-                    { payload: { path: ['entityId'], equals: entity.id } },
-                    { payload: { path: ['clusterIndex'], equals: ci } },
-                  ],
-                }
-              : {}),
+            AND: [
+              { payload: { path: ['entityId'], equals: entity.id } },
+              { payload: { path: ['clusterIndex'], equals: ci } },
+            ],
           },
         });
 
@@ -771,15 +761,13 @@ export async function extractCommitmentPatterns(userId: string): Promise<Pattern
       const description = `обязательство: ${parsed.what}`;
 
       // Idempotent on sourceMsgId — same message shouldn't create duplicate.
-      // T2: за флагом фильтруем по sourceMsgId (off=байт-идентично).
+      // T2: фильтруем по sourceMsgId.
       const existing = await prisma.pattern.findFirst({
         where: {
           userId,
           kind: 'commitment',
           invalidAt: null,
-          ...(isV2PatternDedupEnabled(userId)
-            ? { payload: { path: ['sourceMsgId'], equals: msg.id } }
-            : {}),
+          payload: { path: ['sourceMsgId'], equals: msg.id },
         },
       });
       let row: Pattern;
@@ -880,21 +868,16 @@ export async function extractStreakBreakPatterns(userId: string): Promise<Patter
         };
         const description = `${habit.name}: бросает на ${wi}-й неделе streak'а`;
 
-        // T2: за флагом фильтруем по habitId+weekNumber (AND двух path-фильтров).
-        // off=байт-идентично.
+        // T2: фильтруем по habitId+weekNumber (AND двух path-фильтров).
         const existing = await prisma.pattern.findFirst({
           where: {
             userId,
             kind: 'streak_break',
             invalidAt: null,
-            ...(isV2PatternDedupEnabled(userId)
-              ? {
-                  AND: [
-                    { payload: { path: ['habitId'], equals: habit.id } },
-                    { payload: { path: ['weekNumber'], equals: wi } },
-                  ],
-                }
-              : {}),
+            AND: [
+              { payload: { path: ['habitId'], equals: habit.id } },
+              { payload: { path: ['weekNumber'], equals: wi } },
+            ],
           },
         });
         let row: Pattern;

@@ -7,10 +7,11 @@ describe('F2 — extractFromChat supersede detection', () => {
   it('ExtractedMemory имеет supersedesTopic?', () => {
     expect(dict).toMatch(/supersedesTopic\?\s*:\s*string/);
   });
-  it('extractFromChat принимает opts.detectSupersede', () => {
-    expect(dict).toMatch(/detectSupersede\?\s*:\s*boolean/);
+  it('extractFromChat всегда добавляет supersede-блок (опции/флага больше нет)', () => {
+    expect(dict).not.toMatch(/detectSupersede/);
+    expect(dict).toMatch(/system: systemPrompt \+ supersedeBlock/);
   });
-  it('промпт supersede за флагом + правило «сомнение → НЕ добавляй»', () => {
+  it('промпт supersede + правило «сомнение → НЕ добавляй»', () => {
     expect(dict).toContain('supersedesTopic');
     expect(dict).toMatch(/Сомнение.*НЕ добавляй|ЯВНОМ сигнале/);
   });
@@ -26,9 +27,8 @@ describe('F2 — supersedeByTopic', () => {
 
 describe('F2 — captureInBackground wiring', () => {
   const orch = readFileSync(join(process.cwd(), 'src/services/jarvis-orchestrator.ts'), 'utf8');
-  it('передаёт detectSupersede в extractFromChat', () => { expect(orch).toMatch(/extractFromChat\([^)]*detectSupersede/s); });
-  it('supersede-шаг за флагом + supersedesTopic', () => {
-    expect(orch).toMatch(/isV2SupersedeEnabled\(userId\)/);
+  it('supersede-шаг без флага + supersedesTopic', () => {
+    expect(orch).not.toMatch(/isV2SupersedeEnabled/);
     expect(orch).toMatch(/supersedeByTopic\(/);
     expect(orch).toMatch(/m\.supersedesTopic/);
   });

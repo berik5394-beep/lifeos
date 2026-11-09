@@ -151,12 +151,11 @@ export async function extractFromTranscript(
 }
 
 /** T4: консервативный чат-экстрактор. Чат ≠ диктофон — «не уверен → молчим».
- *  opts.detectSupersede: при ЯВНОЙ коррекции факта добавляет supersedesTopic в memory.
- *  Без флага — промпт байт-идентичен прежнему (off-identical). */
+ *  При ЯВНОЙ коррекции факта добавляет supersedesTopic в memory (F2). */
 export async function extractFromChat(
   text: string,
   userName: string,
-  opts?: { detectSupersede?: boolean; tz?: string },
+  opts?: { tz?: string },
 ): Promise<Pick<DictationExtraction, 'tasks' | 'memories'>> {
   const tz = opts?.tz ?? 'UTC';
   // intent-TZ фикс: даты в календаре юзера, не UTC сервера.
@@ -194,9 +193,7 @@ tasks: только ЯВНОЕ дело, прямо озвученное («ку
 
 Запоминать нечего → верни {"tasks": [], "memories": []}.`;
 
-  const supersedeBlock = opts?.detectSupersede
-    ? `\n\nЯВНАЯ КОРРЕКЦИЯ (supersedesTopic): если пользователь ПРЯМО отменяет/меняет прежний факт о себе или о близком человеке — глаголами «бросил / больше не / уже не / перестал / развёлся / переехал / раньше… теперь» — у соответствующей memory добавь поле "supersedesTopic": короткий ТОПИК (1-2 слова: «кофе», «город проживания», «работа в X») для поиска старой записи, НЕ полную фразу. Только при ЯВНОМ сигнале отмены. Сомнение / обычное утверждение → НЕ добавляй supersedesTopic.`
-    : '';
+  const supersedeBlock = `\n\nЯВНАЯ КОРРЕКЦИЯ (supersedesTopic): если пользователь ПРЯМО отменяет/меняет прежний факт о себе или о близком человеке — глаголами «бросил / больше не / уже не / перестал / развёлся / переехал / раньше… теперь» — у соответствующей memory добавь поле "supersedesTopic": короткий ТОПИК (1-2 слова: «кофе», «город проживания», «работа в X») для поиска старой записи, НЕ полную фразу. Только при ЯВНОМ сигнале отмены. Сомнение / обычное утверждение → НЕ добавляй supersedesTopic.`;
 
   const response = await anthropic.messages.create({
     model: MODELS.sonnet,
