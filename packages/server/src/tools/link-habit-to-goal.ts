@@ -80,7 +80,7 @@ export const linkHabitToGoalTool = defineTool({
       content: `Привязал привычку «${habit.name}» к цели «${goal.name}»`,
     });
     return {
-      message: `Привязал «${habit.name}» к цели «${goal.name}»${moved} — отметки теперь идут в цель, и скажу, если забросишь.`,
+      message: `Привязал «${habit.name}» к цели «${goal.name}»${moved} — на экране цели видно, сколько дней из 30 ты её делаешь, и скажу, если забросишь.`,
       habitId: habit.id,
       goalId: goal.id,
     };

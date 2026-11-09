@@ -46,7 +46,7 @@ describe('link_habit_to_goal', () => {
     expect(before.goals.find((g) => g.id === goal.id)?.steps).toBe(0);
 
     const r = await link(userId, { habit: 'бег', goal: 'марафон' });
-    expect(r.message).toBe('Привязал «Бег» к цели «Пробежать марафон» — отметки теперь идут в цель, и скажу, если забросишь.');
+    expect(r.message).toBe('Привязал «Бег» к цели «Пробежать марафон» — на экране цели видно, сколько дней из 30 ты её делаешь, и скажу, если забросишь.');
     expect((await prisma.habit.findUnique({ where: { id: habit.id } }))?.goalId).toBe(goal.id);
 
     const after = await gatherStrategicFacts(userId, 'UTC');

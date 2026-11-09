@@ -10,6 +10,7 @@ import { pickCoachableGoal } from './savings-pace.js';
 import { isMoneyGoal } from './goal-pace.js';
 import type { InsightCandidate } from './insight-core.js';
 import { numbersHonest } from '../lib/number-honesty.js';
+import { moneyGoalSaved } from './goal-live-progress.js';
 
 /**
  * Phase 5 P3.b.3 — рефлектор-сервис (glue). Решения Берика:
@@ -93,28 +94,13 @@ export async function gatherReflectorFacts(
   const finCandidates = await Promise.all(
     goals
       .filter((g) => FIN_RE.test(g.area) && g.target != null)
-      .map(async (g) => {
-        const c = g.createdAt;
-        const since = new Date(
-          Date.UTC(c.getUTCFullYear(), c.getUTCMonth(), c.getUTCDate()),
-        );
-        const [incG, expG] = await Promise.all([
-          prisma.income.aggregate({
-            where: { userId, date: { gte: since } },
-            _sum: { amount: true },
-          }),
-          prisma.expense.aggregate({
-            where: { userId, date: { gte: since } },
-            _sum: { amount: true },
-          }),
-        ]);
-        return {
-          goal: g,
-          target: g.target as number,
-          targetDate: g.targetDate ?? new Date(year, 11, 31),
-          saved: (incG._sum.amount ?? 0) - (expG._sum.amount ?? 0),
-        };
-      }),
+      .map(async (g) => ({
+        goal: g,
+        target: g.target as number,
+        targetDate: g.targetDate ?? new Date(year, 11, 31),
+        // Тот же расчёт, что видит экран «Цели» (goal-live-progress — SSOT).
+        saved: await moneyGoalSaved(userId, g.createdAt),
+      })),
   );
   const chosen = pickCoachableGoal(finCandidates);
   const finGoal = chosen?.goal ?? null;

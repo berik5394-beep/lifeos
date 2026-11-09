@@ -8,7 +8,9 @@ import { estimateWeeklyGoalMinutesInBackground } from '../services/estimate-goal
 import { maybeGoalIntake, maybeShortGoalIntake } from '../services/goal-intake-gather.js';
 import { clearPendingAction } from '../services/pending-actions.js';
 import { getUserTimezone } from '../lib/user-context.js';
-import { localWeekStartUTC } from '../lib/tz.js';
+import { localWeekStartUTC, localMonthOnlyUTC, localDateStr } from '../lib/tz.js';
+import { isMoneyGoal } from '../services/goal-pace.js';
+import { moneyGoalSaved, moneyGoalPercent, habitRegularity } from '../services/goal-live-progress.js';
 
 // B.3: enum/диапазоны (аудит 3.12). area из CLAUDE.md (goalAreas),
 // year ограничен, weekStart — строгий ISO (раньше z.string() →
@@ -25,6 +27,23 @@ const updateWeeklyGoalSchema = z.object({
   completed: z.boolean().optional(),
   order: z.number().optional(),
 });
+
+// Цели на месяц (аудит 2026-11-09: робот их ставил, а в приложении их не было).
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+const createMonthlyGoalSchema = z.object({
+  month: z.string().regex(MONTH_RE, 'Месяц в формате YYYY-MM').optional(),
+  goalText: z.string().trim().min(1, 'Текст цели обязателен').max(300),
+});
+const updateMonthlyGoalSchema = z.object({
+  goalText: z.string().trim().min(1).max(300).optional(),
+  completed: z.boolean().optional(),
+});
+
+/** 'YYYY-MM' → @db.Date 1-го числа (UTC-полночь), без месяца — текущий месяц юзера. */
+async function monthStartOf(userId: string, month?: string): Promise<Date> {
+  if (month) return new Date(`${month}-01T00:00:00Z`);
+  return localMonthOnlyUTC(await getUserTimezone(userId));
+}
 
 const createYearlyGoalSchema = z.object({
   year: z.number().int().min(2000).max(2100),
@@ -141,6 +160,65 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ success: true });
   });
 
+  // --- Monthly Goals ---
+
+  app.get('/goals/monthly', async (request, reply) => {
+    const { month } = request.query as { month?: string };
+    if (month !== undefined && !MONTH_RE.test(month)) return invalidDateReply(reply, 'month', 'YYYY-MM');
+    const monthStart = await monthStartOf(request.userId, month);
+    return prisma.monthlyGoal.findMany({
+      where: { userId: request.userId, monthStart },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
+  });
+
+  app.post('/goals/monthly', {
+    preHandler: validate(createMonthlyGoalSchema),
+  }, async (request, reply) => {
+    const data = request.body as z.infer<typeof createMonthlyGoalSchema>;
+    const monthStart = await monthStartOf(request.userId, data.month);
+    const maxOrder = await prisma.monthlyGoal.aggregate({
+      where: { userId: request.userId, monthStart },
+      _max: { order: true },
+    });
+    const goal = await prisma.monthlyGoal.create({
+      data: { userId: request.userId, monthStart, goalText: data.goalText, order: (maxOrder._max.order ?? -1) + 1 },
+    });
+    captureActivity(request.userId, {
+      type: 'monthly_goal_created',
+      content: `Цель месяца «${goal.goalText}» (${monthStart.toISOString().slice(0, 7)})`,
+    });
+    return reply.status(201).send(goal);
+  });
+
+  app.put('/goals/monthly/:id', {
+    preHandler: validate(updateMonthlyGoalSchema),
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const data = request.body as z.infer<typeof updateMonthlyGoalSchema>;
+    const goal = await prisma.monthlyGoal.findFirst({ where: { id, userId: request.userId } });
+    if (!goal) return reply.status(404).send({ message: 'Цель не найдена' });
+    const updated = await prisma.monthlyGoal.update({ where: { id }, data });
+    if (data.completed !== undefined && data.completed !== goal.completed) {
+      captureActivity(request.userId, {
+        type: data.completed ? 'monthly_goal_completed' : 'monthly_goal_reopened',
+        content: data.completed ? `Закрыл цель месяца «${updated.goalText}»` : `Вернул в работу цель месяца «${updated.goalText}»`,
+      });
+    } else if (data.goalText !== undefined) {
+      captureActivity(request.userId, { type: 'monthly_goal_updated', content: `Изменил цель месяца «${updated.goalText}»` });
+    }
+    return reply.send(updated);
+  });
+
+  app.delete('/goals/monthly/:id', async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const goal = await prisma.monthlyGoal.findFirst({ where: { id, userId: request.userId } });
+    if (!goal) return reply.status(404).send({ message: 'Цель не найдена' });
+    await prisma.monthlyGoal.delete({ where: { id } });
+    captureActivity(request.userId, { type: 'monthly_goal_deleted', content: `Убрал цель месяца «${goal.goalText}»` });
+    return reply.send({ success: true });
+  });
+
   // --- Yearly Goals ---
 
   app.get('/goals/yearly', async (request, reply) => {
@@ -152,7 +230,7 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
       targetYear = parsed;
     }
 
-    return prisma.yearlyGoal.findMany({
+    const goals = await prisma.yearlyGoal.findMany({
       where: {
         userId: request.userId,
         year: targetYear,
@@ -161,10 +239,26 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
         habits: {
           // userId: чужие привычки, привязанные к цели до IDOR-фикса /habits, не показываем.
           where: { active: true, userId: request.userId },
-          select: { id: true, name: true, category: true },
+          select: { id: true, name: true, category: true, createdAt: true },
         },
       },
     });
+    // Живой прогресс (тот же расчёт, что у робота): деньги — накоплено с даты цели;
+    // привычки — регулярность за 30 дней (отдельно от кольца).
+    const today = localDateStr(await getUserTimezone(request.userId), new Date());
+    return Promise.all(
+      goals.map(async (g) => {
+        const money = isMoneyGoal(g.area, g.target) && g.target != null;
+        const saved = money ? await moneyGoalSaved(request.userId, g.createdAt) : null;
+        const habitDays = await habitRegularity(request.userId, g.habits, today);
+        return {
+          ...g,
+          habits: g.habits.map(({ createdAt: _c, ...h }) => h),
+          ...(money && saved != null ? { saved, liveProgress: moneyGoalPercent(saved, g.target as number) } : {}),
+          ...(habitDays ? { habitDays } : {}),
+        };
+      }),
+    );
   });
 
   app.post('/goals/yearly', {
