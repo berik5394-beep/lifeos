@@ -117,23 +117,23 @@ describe('episodic-memory.ts structural — recordEvent wiring', () => {
     expect(SRC).toMatch(/export async function recordEvent\s*\(/);
   });
 
-  it('recordEvent calls validateEventInput before prisma write', () => {
+  it('recordEvent calls validateEventInput before writeMemory', () => {
     // Find recordEvent body
     const start = SRC.indexOf('export async function recordEvent');
     expect(start).toBeGreaterThan(-1);
     const body = SRC.slice(start, start + 1500);
-    // Order: validateEventInput appears before prisma.memory.create
+    // Order: validateEventInput appears before writeMemory (единый писатель)
     const validateIdx = body.indexOf('validateEventInput(');
-    const createIdx = body.indexOf('prisma.memory.create');
+    const writeIdx = body.indexOf('writeMemory(');
     expect(validateIdx).toBeGreaterThan(-1);
-    expect(createIdx).toBeGreaterThan(-1);
-    expect(validateIdx).toBeLessThan(createIdx);
+    expect(writeIdx).toBeGreaterThan(-1);
+    expect(validateIdx).toBeLessThan(writeIdx);
   });
 
-  it('recordEvent applies clampMood', () => {
-    const start = SRC.indexOf('export async function recordEvent');
-    const body = SRC.slice(start, start + 1500);
-    expect(body).toContain('clampMood(');
+  it('mood клампится в writeMemory (через него идёт recordEvent)', () => {
+    const start = SRC.indexOf('export async function writeMemory');
+    const body = SRC.slice(start, start + 6000);
+    expect(body).toContain('clampMood(input.mood)');
   });
 
   it('recordEvent sets source = "v2-episodic"', () => {
@@ -294,33 +294,29 @@ describe('rankBySignificance (E2)', () => {
   });
 });
 
-describe('episodic-memory.ts structural — recordEvent M2 флаг-делегация', () => {
-  it('recordEvent проверяет isV2WriteEnabled', () => {
+describe('episodic-memory.ts structural — recordEvent M2 делегация', () => {
+  const recordEventBody = (): string => {
     const start = SRC.indexOf('export async function recordEvent');
-    const body = SRC.slice(start, start + 1800);
-    expect(body).toContain('isV2WriteEnabled(');
+    const end = SRC.indexOf('\n}\n', start);
+    return SRC.slice(start, end);
+  };
+
+  it('recordEvent без флага (isV2WriteEnabled удалён)', () => {
+    expect(SRC).not.toContain('isV2WriteEnabled');
   });
 
-  it('ON-ветка делегирует в writeMemory с маппингом входа', () => {
-    const start = SRC.indexOf('export async function recordEvent');
-    const body = SRC.slice(start, start + 1800);
+  it('делегирует в writeMemory с маппингом входа, source v2-episodic', () => {
+    const body = recordEventBody();
     expect(body).toMatch(/writeMemory\(\s*userId/);
-  });
-
-  it('OFF-ветка сохраняет plain prisma.memory.create (байт-в-байт)', () => {
-    const start = SRC.indexOf('export async function recordEvent');
-    const body = SRC.slice(start, start + 1800);
-    expect(body).toContain('prisma.memory.create');
     expect(body).toMatch(/source:\s*['"]v2-episodic['"]/);
+    expect(body).not.toContain('prisma.memory.create');
   });
 
-  it('recordEvent всё ещё валидирует и клампит до записи', () => {
-    const start = SRC.indexOf('export async function recordEvent');
-    const body = SRC.slice(start, start + 1800);
+  it('recordEvent валидирует до записи', () => {
+    const body = recordEventBody();
     const validateIdx = body.indexOf('validateEventInput(');
-    const branchIdx = body.indexOf('isV2WriteEnabled(');
+    const writeIdx = body.indexOf('writeMemory(');
     expect(validateIdx).toBeGreaterThan(-1);
-    expect(validateIdx).toBeLessThan(branchIdx);
-    expect(body).toContain('clampMood(');
+    expect(validateIdx).toBeLessThan(writeIdx);
   });
 });

@@ -61,16 +61,6 @@ export function isV2InlineNudgeEnabled(userId: string): boolean {
 }
 
 /**
- * ОДНА ПАМЯТЬ M2 — Per-user gate единого писателя в recordEvent.
- * on  → writeMemory (дедуп + условный embed). FEATURE_V2_WRITE=all в проде.
- * off → plain memory.create (без дедупа/embed), байт-в-байт до-M2 fallback.
- * Env FEATURE_V2_WRITE в форме "all" / "none"/"false"/unset / "user-X,user-Y".
- */
-export function isV2WriteEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_WRITE, userId);
-}
-
-/**
  * Real-Time Foundation — per-user gate настоящего времени. on → tz-capture хук
  * пишет User.timezone из X-Timezone, getTimeOfDay в поясе юзера, блок «СЕЙЧАС»
  * в промпте. off → байт-идентично (хук no-op, getTimeOfDay по серверному
@@ -124,24 +114,6 @@ export function isV2MonthLoadEnabled(userId: string): boolean {
 /** Движок пересечения, горизонт ГОД (пейсинг измеримых целей). Off → байт-в-байт. */
 export function isV2YearLoadEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_YEAR_LOAD, userId);
-}
-
-/**
- * Tier-2 «качество факт-памяти» (T4+T3+T5+E2): консервативный чат-экстрактор,
- * диктовка через writeMemory, sparse-guard на details, ранжирование чтения по
- * значимости. OFF → всё байт-идентично прежнему поведению.
- */
-export function isV2MemQualityEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_MEM_QUALITY, userId);
-}
-
-/**
- * Целостность графа (T5-остаток): guard на Entity.attributes (preserve при
- * фоновой / incoming-wins при намеренной) + порог ранга в FTS-дедупе.
- * OFF → байт-идентично прежнему incoming-wins / без-порога.
- */
-export function isV2MemGraphEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_MEM_GRAPH, userId);
 }
 
 /**

@@ -133,7 +133,7 @@ export function mergeDetails(
 }
 
 // M3 Unit A (2026-06-06): legacy writer captureMemory удалён — единый писатель
-// writeMemory (episodic-memory.ts) заменил его (FEATURE_V2_WRITE=all в проде).
+// writeMemory (episodic-memory.ts) заменил его (флага записи больше нет).
 // getRelevantMemories (legacy reader) ещё жив — Unit B.
 
 export async function getRelevantMemories(

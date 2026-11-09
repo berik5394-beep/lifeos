@@ -4,13 +4,8 @@ import { writeMemory, significantMemories } from './episodic-memory.js';
 
 // Pattern from forget-triad.it.test.ts: own PrismaClient, disconnect in afterAll.
 const prisma = new PrismaClient();
-// T5-тест ставит FEATURE_V2_MEM_QUALITY='all'; сохраняем прежнее значение и
-// восстанавливаем в afterAll, чтобы флаг не протекал в другие it-файлы
-// (singleFork + алфавитный порядок прогона).
-const PREV_MEMQ = process.env.FEATURE_V2_MEM_QUALITY;
+
 afterAll(async () => {
-  if (PREV_MEMQ === undefined) delete process.env.FEATURE_V2_MEM_QUALITY;
-  else process.env.FEATURE_V2_MEM_QUALITY = PREV_MEMQ;
   await prisma.$disconnect();
 });
 
@@ -30,15 +25,16 @@ async function mkUser(tag: string): Promise<string> {
 
 describe('T5 — details не затирается бедным повтором', () => {
   it('богатый details сохраняется при sparse-повторе (mergeDetails в writeMemory)', async () => {
-    process.env.FEATURE_V2_MEM_QUALITY = 'all';
 
     const uid = await mkUser(`t5-${Date.now()}`);
     const rich = 'Серик Жумабаев — брат, познакомились в школе в 2005';
 
+    // content из двух слов: одно слово («Серик») — слабый FTS-матч ниже порога
+    // MEM_DEDUP_MIN_RANK (0.08), дедупа не было бы вовсе (две строки).
     // Первый вызов: богатый details
-    await writeMemory(uid, { type: 'person', content: 'Серик', details: rich, importance: 7 });
+    await writeMemory(uid, { type: 'person', content: 'Серик Жумабаев', details: rich, importance: 7 });
     // Второй вызов: sparse details (короче rich → не должен затереть)
-    await writeMemory(uid, { type: 'person', content: 'Серик', details: 'Серик', importance: 5 });
+    await writeMemory(uid, { type: 'person', content: 'Серик Жумабаев', details: 'Серик', importance: 5 });
 
     const rows = await prisma.memory.findMany({ where: { userId: uid, type: 'person' } });
     expect(rows).toHaveLength(1); // дедуп STABLE_TYPES: одна строка

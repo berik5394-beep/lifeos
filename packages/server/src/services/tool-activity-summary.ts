@@ -309,11 +309,10 @@ export function summarizeToolAction(
  * Общий fire-and-forget мост в v2 episodic. Используется хуком [A]
  * (runRegistryTool) и хуками [B] (mobile-роуты).
  *   - summary === null → no-op (read/unknown/нечего захватывать);
- *   - флаг off → no-op (поведение байт-в-байт текущее);
  *   - иначе void recordEvent(...).catch(...) — НЕ await, НЕ блокирует.
  * Сбой захвата НИКОГДА не ломает действие/ответ юзеру.
  *
- * ОДНА ПАМЯТЬ M2: под флагом isV2WriteEnabled recordEvent делегирует в
+ * ОДНА ПАМЯТЬ M2: recordEvent делегирует в
  * writeMemory БЕЗ knob `embed` → shouldEmbed по типу даёт false для
  * высокочастотных action-событий (task_created/expense_added/…). Так
  * action-факты НЕ эмбедятся (FTS достаточно, embedding-бюджет цел), а

@@ -3,7 +3,6 @@ import { Prisma } from '@prisma/client';
 import type { Memory } from '@prisma/client';
 import { shouldOverwriteContent, computeExpiresAt, mergeDetails } from './memory-service.js';
 import { embedDocument, embeddingsEnabled, toVectorLiteral } from './embeddings.js';
-import { isV2WriteEnabled, isV2MemQualityEnabled, isV2MemGraphEnabled } from '../lib/feature-flags.js';
 
 /**
  * v2.0 Tier 2 — Episodic Memory.
@@ -113,9 +112,9 @@ export type WriteMemoryInput = {
  */
 const STABLE_TYPES = new Set(['fact', 'preference', 'person', 'decision']);
 
-/** Минимальный ts_rank для засчёта FTS-дедупа (за флагом isV2MemGraphEnabled).
+/** Минимальный ts_rank для засчёта FTS-дедупа.
  *  Слабый матч (один общий токен, rank ≤ порог) — не обновляет чужую строку,
- *  проваливается в create. OFF → rankOk всегда true (байт-идентично).
+ *  проваливается в create.
  *  Калибровка (измерено на russian-tsvector): one-token-weak≈0.06, two-token≈0.10,
  *  genuine-reworded≈0.26, exact≈0.46. Порог 0.08 режет одно-токенный коинциденс,
  *  хранит реальные пере-формулировки. */
@@ -208,12 +207,10 @@ export async function writeMemory(
 
       if (dup.length > 0) {
         const existing = dup[0];
-        const rankOk = !isV2MemGraphEnabled(userId) || (existing.rank ?? 1) > MEM_DEDUP_MIN_RANK;
+        const rankOk = (existing.rank ?? 1) > MEM_DEDUP_MIN_RANK;
         if (rankOk) {
           const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags])).slice(0, 10);
-          const merged = isV2MemQualityEnabled(userId)
-            ? mergeDetails(existing.details, details)
-            : (details ?? existing.details);
+          const merged = mergeDetails(existing.details, details);
           const ex = await prisma.memory.findUnique({
             where: { id: existing.id },
             select: { content: true },
@@ -312,49 +309,24 @@ export async function recordEvent(
   input: RecordEventInput,
 ): Promise<{ id: string }> {
   validateEventInput(input);
-  const validAt = input.validAt ?? new Date();
-  const mood = clampMood(input.mood);
 
-  // ОДНА ПАМЯТЬ M2: под флагом — ЕДИНЫЙ писатель (дедуп + условный embed).
+  // ОДНА ПАМЯТЬ M2: ЕДИНЫЙ писатель (дедуп + условный embed).
   // `embed` НЕ передаём → writeMemory.shouldEmbed решает по типу: 'message'
   // (сырой чат-факт) эмбедится, высокочастотные action-типы (task_created,
-  // expense_added, …) — нет. Тем самым captureV2 и captureActivity авто-
-  // апгрейдятся под флагом без правки их файлов.
-  if (isV2WriteEnabled(userId)) {
-    const res = await writeMemory(userId, {
-      type: input.type,
-      content: input.content,
-      details: input.details ?? null,
-      source: 'v2-episodic',
-      importance: input.importance,
-      entityRefs: input.entityRefs,
-      mood: input.mood,
-      validAt: input.validAt,
-      invalidAt: input.invalidAt,
-    });
-    return { id: res.id };
-  }
-
-  // OFF — байт-в-байт сегодняшнее поведение (plain create, без дедупа/embed).
-  const created = await prisma.memory.create({
-    data: {
-      userId,
-      type: input.type,
-      content: input.content.slice(0, 500),
-      details: input.details?.slice(0, 2000) ?? null,
-      source: 'v2-episodic',
-      sourceId: null,
-      tags: [],
-      importance: input.importance ?? 5,
-      validAt,
-      invalidAt: input.invalidAt ?? null,
-      entityRefs: input.entityRefs ?? [],
-      mood: mood ?? null,
-    },
-    select: { id: true },
+  // expense_added, …) — нет. Тем самым captureV2 и captureActivity идут
+  // через него без правки их файлов.
+  const res = await writeMemory(userId, {
+    type: input.type,
+    content: input.content,
+    details: input.details ?? null,
+    source: 'v2-episodic',
+    importance: input.importance,
+    entityRefs: input.entityRefs,
+    mood: input.mood,
+    validAt: input.validAt,
+    invalidAt: input.invalidAt,
   });
-
-  return { id: created.id };
+  return { id: res.id };
 }
 
 /**

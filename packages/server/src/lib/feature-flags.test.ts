@@ -1,6 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  isV2WriteEnabled,
   isV2RealtimeEnabled,
   isV2DayLoadEnabled,
   isV2AntiFabEnabled,
@@ -9,8 +8,6 @@ import {
   isV2YearLoadEnabled,
   isV2EntityResolveEnabled,
   isV2PatternDedupEnabled,
-  isV2MemQualityEnabled,
-  isV2MemGraphEnabled,
   isV2SupersedeEnabled,
   isV2UnlinkEnabled,
 } from './feature-flags.js';
@@ -134,85 +131,6 @@ describe('isV2RealtimeEnabled', () => {
     expect(isV2RealtimeEnabled('berikId')).toBe(true);
     expect(isV2RealtimeEnabled('otherId')).toBe(false);
   });
-});
-
-describe('isV2WriteEnabled', () => {
-  const ORIG = process.env.FEATURE_V2_WRITE;
-  afterEach(() => {
-    if (ORIG === undefined) delete process.env.FEATURE_V2_WRITE;
-    else process.env.FEATURE_V2_WRITE = ORIG;
-  });
-
-  it('returns false when env unset', () => {
-    delete process.env.FEATURE_V2_WRITE;
-    expect(isV2WriteEnabled('user1')).toBe(false);
-  });
-
-  it.each(['', 'none', 'false'])('returns false when env = %s', (v) => {
-    process.env.FEATURE_V2_WRITE = v;
-    expect(isV2WriteEnabled('user1')).toBe(false);
-  });
-
-  it('returns true for all users when env = "all"', () => {
-    process.env.FEATURE_V2_WRITE = 'all';
-    expect(isV2WriteEnabled('user1')).toBe(true);
-    expect(isV2WriteEnabled('user-zzz')).toBe(true);
-  });
-
-  it('returns true only for listed userIds (comma-separated)', () => {
-    process.env.FEATURE_V2_WRITE = 'user-berikId,user-aydanaId';
-    expect(isV2WriteEnabled('berikId')).toBe(true);
-    expect(isV2WriteEnabled('aydanaId')).toBe(true);
-    expect(isV2WriteEnabled('otherId')).toBe(false);
-  });
-
-  it('handles whitespace around entries', () => {
-    process.env.FEATURE_V2_WRITE = ' user-a , user-b ';
-    expect(isV2WriteEnabled('a')).toBe(true);
-    expect(isV2WriteEnabled('b')).toBe(true);
-  });
-
-  it('ignores trailing/leading whitespace in flag itself', () => {
-    process.env.FEATURE_V2_WRITE = '  all  ';
-    expect(isV2WriteEnabled('x')).toBe(true);
-  });
-});
-
-describe('isV2MemQualityEnabled', () => {
-  const KEY = 'FEATURE_V2_MEM_QUALITY';
-  const prev = process.env[KEY];
-  afterEach(() => { if (prev === undefined) delete process.env[KEY]; else process.env[KEY] = prev; });
-
-  it('all → true для любого юзера', () => {
-    process.env[KEY] = 'all';
-    expect(isV2MemQualityEnabled('user-x')).toBe(true);
-  });
-  it('unset/none/empty → false', () => {
-    delete process.env[KEY];
-    expect(isV2MemQualityEnabled('user-x')).toBe(false);
-    process.env[KEY] = 'none';
-    expect(isV2MemQualityEnabled('user-x')).toBe(false);
-    process.env[KEY] = '';
-    expect(isV2MemQualityEnabled('user-x')).toBe(false);
-  });
-  it('csv user-<id> → true только для совпадения', () => {
-    process.env[KEY] = 'user-abc,user-def';
-    expect(isV2MemQualityEnabled('abc')).toBe(true);
-    expect(isV2MemQualityEnabled('zzz')).toBe(false);
-  });
-});
-
-describe('isV2MemGraphEnabled', () => {
-  const KEY = 'FEATURE_V2_MEM_GRAPH';
-  const prev = process.env[KEY];
-  afterEach(() => { if (prev === undefined) delete process.env[KEY]; else process.env[KEY] = prev; });
-  it('all → true', () => { process.env[KEY] = 'all'; expect(isV2MemGraphEnabled('u')).toBe(true); });
-  it('unset/none/empty → false', () => {
-    delete process.env[KEY]; expect(isV2MemGraphEnabled('u')).toBe(false);
-    process.env[KEY] = 'none'; expect(isV2MemGraphEnabled('u')).toBe(false);
-    process.env[KEY] = ''; expect(isV2MemGraphEnabled('u')).toBe(false);
-  });
-  it('csv user-<id>', () => { process.env[KEY] = 'user-abc'; expect(isV2MemGraphEnabled('abc')).toBe(true); expect(isV2MemGraphEnabled('z')).toBe(false); });
 });
 
 describe('isV2SupersedeEnabled', () => {

@@ -6,12 +6,7 @@ import { writeMemory } from './episodic-memory.js';
 // Pattern from memory-tier2.it.test.ts: own PrismaClient, disconnect in afterAll.
 const prisma = new PrismaClient();
 
-// Restore FEATURE_V2_MEM_GRAPH to original value after all tests to prevent
-// flag leaking into other it-files (singleFork + alphabetical run order).
-const PREV = process.env.FEATURE_V2_MEM_GRAPH;
 afterAll(async () => {
-  if (PREV === undefined) delete process.env.FEATURE_V2_MEM_GRAPH;
-  else process.env.FEATURE_V2_MEM_GRAPH = PREV;
   await prisma.$disconnect();
 });
 
@@ -36,7 +31,6 @@ async function mkUser(tag: string): Promise<string> {
 
 describe('T5 attributes — фоновое preserve, намеренное overwrite', () => {
   it('фоновый upsert НЕ затирает «брат» «знакомым»; deliberate затирает', async () => {
-    process.env.FEATURE_V2_MEM_GRAPH = 'all';
     const uid = await mkUser(`attr-${Date.now()}`);
     const g = getEntityGraph();
 
@@ -78,26 +72,14 @@ describe('T5 attributes — фоновое preserve, намеренное overwr
 //
 // Измерено на russian-tsvector: ts_rank(rich-doc, plainto('Серик')) ≈ 0.06,
 // что НИЖЕ порога 0.08. Сильный/пере-формулированный матч ≈ 0.26+.
-// A/B доказывает, что порог реально МЕНЯЕТ поведение (а не «нет матча»):
-//   OFF (без порога) — слабый матч обновляет существующую строку → 1 строка;
-//   ON (порог 0.08) — слабый матч отклонён, создаётся новая строка → 2 строки.
-// Само-валидируется: если бы @@ не матчил, OFF тоже дал бы 2 → ассерт OFF=1 упал.
+// Порог 0.08 (флага больше нет — всегда включён): слабый матч отклонён,
+// создаётся новая строка → 2 строки. Сильный матч дедупится (memory-tier2).
 // ---------------------------------------------------------------------------
 
-describe('T5 FTS-порог — слабый одно-токенный матч (A/B)', () => {
+describe('T5 FTS-порог — слабый одно-токенный матч', () => {
   const RICH = 'Серик Жумабаев брат познакомились в школе в 2005 году';
 
-  it('OFF: слабый матч дедупит → 1 строка', async () => {
-    process.env.FEATURE_V2_MEM_GRAPH = 'none';
-    const uid = await mkUser(`fts-off-${Date.now()}`);
-    await writeMemory(uid, { type: 'fact', content: RICH, importance: 6 });
-    await writeMemory(uid, { type: 'fact', content: 'Серик', importance: 6 });
-    const rows = await prisma.memory.findMany({ where: { userId: uid, type: 'fact' } });
-    expect(rows.length).toBe(1); // без порога слабый матч обновляет существующую
-  });
-
-  it('ON: порог отклоняет слабый матч → 2 строки', async () => {
-    process.env.FEATURE_V2_MEM_GRAPH = 'all';
+  it('порог отклоняет слабый матч → 2 строки', async () => {
     const uid = await mkUser(`fts-on-${Date.now()}`);
     await writeMemory(uid, { type: 'fact', content: RICH, importance: 6 });
     await writeMemory(uid, { type: 'fact', content: 'Серик', importance: 6 });

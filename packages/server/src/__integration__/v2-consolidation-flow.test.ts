@@ -37,7 +37,7 @@ describe('v2 consolidation flow — orchestrator → captureV2 chain', () => {
   });
 
   it('orchestrator пишет Memory через единый writeMemory (M3 Unit A)', () => {
-    expect(ORCH).toMatch(/extractFromTranscript\(/);
+    expect(ORCH).toMatch(/extractFromChat\(/);
     expect(ORCH).toMatch(/writeMemory\(/);
     expect(ORCH).not.toMatch(/(await|void)\s+captureMemory\(/);
   });

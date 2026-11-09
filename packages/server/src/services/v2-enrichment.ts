@@ -18,12 +18,9 @@ import { getProceduralMemory } from './procedural-memory.singleton.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
-import {
-  isV2MemQualityEnabled,
-} from '../lib/feature-flags.js';
 import { gatherDealsSection } from './deals/service.js';
 import { entityDecayScore } from './memory-decay.js';
-import { recentEvents, significantMemories } from './episodic-memory.js';
+import { significantMemories } from './episodic-memory.js';
 import { buildScheduleConflict } from './schedule-conflict/index.js';
 import { gatherOpenLoops, formatOpenLoopsSection } from './open-loops.js';
 import { openObligationsForContext } from './obligations/index.js';
@@ -498,10 +495,7 @@ export async function fetchV2EnrichmentData(
         null,
       ).catch(() => null),
       withTimeout(
-        (isV2MemQualityEnabled(userId)
-          ? significantMemories(userId, 6)
-          : recentEvents(userId, 6)
-        ).then((rows) => formatRecentActivitySection(rows) || null),
+        significantMemories(userId, 6).then((rows) => formatRecentActivitySection(rows) || null),
         CROSS_DOMAIN_BUDGET_MS,
         null,
       ).catch(() => null),

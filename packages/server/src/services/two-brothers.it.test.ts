@@ -5,14 +5,12 @@ import { PostgresEntityGraph } from './entity-graph/postgres-impl.js';
 /** Два брата без имён — два человека; имя прозвучало — это тот же брат. */
 const prisma = new PrismaClient();
 const graph = new PostgresEntityGraph();
-const saved = { r: process.env.FEATURE_V2_ENTITY_RESOLVE, g: process.env.FEATURE_V2_MEM_GRAPH };
+const saved = { r: process.env.FEATURE_V2_ENTITY_RESOLVE };
 beforeAll(() => {
   process.env.FEATURE_V2_ENTITY_RESOLVE = 'all'; // как в проде
-  process.env.FEATURE_V2_MEM_GRAPH = 'all';
 });
 afterAll(async () => {
   process.env.FEATURE_V2_ENTITY_RESOLVE = saved.r;
-  process.env.FEATURE_V2_MEM_GRAPH = saved.g;
   await prisma.$disconnect();
 });
 const user = async () =>

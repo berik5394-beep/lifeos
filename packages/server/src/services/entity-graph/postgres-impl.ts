@@ -20,7 +20,7 @@ import {
 } from '../embeddings.js';
 import { Prisma, type Entity, type EntityRelationship } from '@prisma/client';
 import { capAliases, isKinOnlyName, kinConflict, mergeAttributes, shouldMergeByEmbedding } from './merge-helpers.js';
-import { isV2EntityResolveEnabled, isV2MemGraphEnabled } from '../../lib/feature-flags.js';
+import { isV2EntityResolveEnabled } from '../../lib/feature-flags.js';
 import type { EntityGraphStore } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -113,9 +113,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
       const mergedAliases = resolveOn
         ? capAliases([...(existing.aliases as string[]), ...incomingAliases])
         : (existing.aliases as string[]);
-      const mergedAttributes = isV2MemGraphEnabled(userId)
-        ? mergeAttributes(existing.attributes as Record<string, unknown>, attributes, deliberate, changedKeys)
-        : { ...(existing.attributes as Record<string, unknown>), ...attributes };
+      const mergedAttributes = mergeAttributes(existing.attributes as Record<string, unknown>, attributes, deliberate, changedKeys);
       const updated = await prisma.entity.update({
         where: { id: existing.id },
         data: {
@@ -138,9 +136,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
           name, // новая форма имени → в алиасы
           ...incomingAliases,
         ]);
-        const mergedAttributes = isV2MemGraphEnabled(userId)
-          ? mergeAttributes(resolved.attributes as Record<string, unknown>, attributes, deliberate, changedKeys)
-          : { ...(resolved.attributes as Record<string, unknown>), ...attributes };
+        const mergedAttributes = mergeAttributes(resolved.attributes as Record<string, unknown>, attributes, deliberate, changedKeys);
         const updated = await prisma.entity.update({
           where: { id: resolved.id },
           data: {
@@ -165,9 +161,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
           where: { userId_type_name: { userId, type, name: alias.trim().slice(0, 255) } },
         });
         if (!kin) continue;
-        const mergedAttributes = isV2MemGraphEnabled(userId)
-          ? mergeAttributes(kin.attributes as Record<string, unknown>, attributes, deliberate, changedKeys)
-          : { ...(kin.attributes as Record<string, unknown>), ...attributes };
+        const mergedAttributes = mergeAttributes(kin.attributes as Record<string, unknown>, attributes, deliberate, changedKeys);
         const renamed = await prisma.entity.update({
           where: { id: kin.id },
           data: {

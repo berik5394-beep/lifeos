@@ -8,7 +8,6 @@ import { createGroq } from '../lib/groq.js';
 import { prisma } from '../lib/prisma.js';
 import { AiModelError } from '../lib/errors.js';
 import { writeMemory } from './episodic-memory.js';
-import { isV2MemQualityEnabled } from '../lib/feature-flags.js';
 import { civilDayRefs } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { captureActivity } from './tool-activity-summary.js';
@@ -264,80 +263,7 @@ export async function processDictation(
   const todayCivil = civilDayRefs(tz).today; // фоллбэк-дата задач = тот же «сегодня», что в промпте
   const extracted = await extractFromTranscript(transcript, user?.name || 'друг', tz);
 
-  if (isV2MemQualityEnabled(userId)) {
-    // T3: сессия+задачи в tx (атомарно); память — ВНЕ tx через writeMemory (дедуп+embed+TTL).
-    const result = await prisma.$transaction(async (tx) => {
-      const session = await tx.dictationSession.create({
-        data: {
-          userId,
-          transcript,
-          summary: extracted.summary,
-          spokenResponse: extracted.spokenResponse,
-          tasksCreated: extracted.tasks.length,
-          memoriesCreated: extracted.memories.length,
-          durationSeconds: durationSeconds ?? null,
-        },
-      });
-      const createdTasks = await Promise.all(
-        extracted.tasks.map((t) =>
-          tx.task.create({
-            data: {
-              userId,
-              title: t.title.slice(0, 500),
-              category: (t.category || 'personal').slice(0, 32),
-              priority: (t.priority || 'medium').slice(0, 32),
-              date: new Date(
-                (t.date || todayCivil) + 'T00:00:00Z',
-              ),
-              time: t.time?.slice(0, 8) ?? null,
-              notes: t.notes?.slice(0, 2000) ?? null,
-            },
-            select: { id: true, title: true, date: true, time: true, category: true },
-          }),
-        ),
-      );
-      return { session, createdTasks };
-    });
-
-    const createdMemories: Array<{
-      id: string;
-      type: string;
-      content: string;
-      importance: number;
-      tags: string[];
-    }> = [];
-    for (const m of extracted.memories) {
-      const r = await writeMemory(userId, {
-        type: m.type,
-        content: m.content,
-        details: m.details ?? null,
-        source: 'dictation',
-        sourceId: result.session.id,
-        tags: m.tags,
-        importance: m.importance ?? 5,
-      });
-      if (r.action !== 'skipped') {
-        createdMemories.push({
-          id: r.id,
-          type: m.type,
-          content: m.content.slice(0, 500),
-          importance: m.importance ?? 5,
-          tags: (m.tags || []).slice(0, 10).map((t) => t.slice(0, 32)),
-        });
-      }
-    }
-
-    await noteDictatedTasks(userId, result.createdTasks);
-    return {
-      sessionId: result.session.id,
-      transcript,
-      summary: extracted.summary,
-      spokenResponse: extracted.spokenResponse,
-      tasksCreated: result.createdTasks,
-      memoriesCreated: createdMemories,
-    };
-  }
-
+  // T3: сессия+задачи в tx (атомарно); память — ВНЕ tx через writeMemory (дедуп+embed+TTL).
   const result = await prisma.$transaction(async (tx) => {
     const session = await tx.dictationSession.create({
       data: {
@@ -350,7 +276,6 @@ export async function processDictation(
         durationSeconds: durationSeconds ?? null,
       },
     });
-
     const createdTasks = await Promise.all(
       extracted.tasks.map((t) =>
         tx.task.create({
@@ -369,27 +294,36 @@ export async function processDictation(
         }),
       ),
     );
-
-    const createdMemories = await Promise.all(
-      extracted.memories.map((m) =>
-        tx.memory.create({
-          data: {
-            userId,
-            type: m.type,
-            content: m.content.slice(0, 500),
-            details: m.details?.slice(0, 2000) ?? null,
-            source: 'dictation',
-            sourceId: session.id,
-            tags: (m.tags || []).slice(0, 10).map((t) => t.slice(0, 32)),
-            importance: m.importance ?? 5,
-          },
-          select: { id: true, type: true, content: true, importance: true, tags: true },
-        }),
-      ),
-    );
-
-    return { session, createdTasks, createdMemories };
+    return { session, createdTasks };
   });
+
+  const createdMemories: Array<{
+    id: string;
+    type: string;
+    content: string;
+    importance: number;
+    tags: string[];
+  }> = [];
+  for (const m of extracted.memories) {
+    const r = await writeMemory(userId, {
+      type: m.type,
+      content: m.content,
+      details: m.details ?? null,
+      source: 'dictation',
+      sourceId: result.session.id,
+      tags: m.tags,
+      importance: m.importance ?? 5,
+    });
+    if (r.action !== 'skipped') {
+      createdMemories.push({
+        id: r.id,
+        type: m.type,
+        content: m.content.slice(0, 500),
+        importance: m.importance ?? 5,
+        tags: (m.tags || []).slice(0, 10).map((t) => t.slice(0, 32)),
+      });
+    }
+  }
 
   await noteDictatedTasks(userId, result.createdTasks);
   return {
@@ -398,7 +332,7 @@ export async function processDictation(
     summary: extracted.summary,
     spokenResponse: extracted.spokenResponse,
     tasksCreated: result.createdTasks,
-    memoriesCreated: result.createdMemories,
+    memoriesCreated: createdMemories,
   };
 }
 

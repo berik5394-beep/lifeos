@@ -20,51 +20,46 @@ describe('T4 extractFromChat — консервативный промпт', () 
   });
 });
 
-describe('T4 врезка — captureInBackground выбирает экстрактор по флагу', () => {
+describe('T4 врезка — captureInBackground через консервативный чат-экстрактор', () => {
   const orchSrc = readFileSync(join(process.cwd(), 'src/services/jarvis-orchestrator.ts'), 'utf8');
-  it('флаг-тернар extractFromChat / extractFromTranscript', () => {
-    expect(orchSrc).toMatch(/isV2MemQualityEnabled\(userId\)/);
-    expect(orchSrc).toMatch(/\?\s*await extractFromChat\(/);
-    expect(orchSrc).toMatch(/:\s*await extractFromTranscript\(/);
-  });
-  it('импортирует extractFromChat и isV2MemQualityEnabled', () => {
-    expect(orchSrc).toMatch(/extractFromChat/);
-    expect(orchSrc).toMatch(/isV2MemQualityEnabled/);
+  it('всегда extractFromChat (флаг isV2MemQualityEnabled удалён)', () => {
+    expect(orchSrc).not.toMatch(/isV2MemQualityEnabled/);
+    expect(orchSrc).toMatch(/await extractFromChat\(/);
+    expect(orchSrc).not.toMatch(/await extractFromTranscript\(/);
   });
 });
 
-describe('T5 врезка — details merge по флагу', () => {
+describe('T5 врезка — details merge', () => {
   const epiSrc = readFileSync(join(process.cwd(), 'src/services/episodic-memory.ts'), 'utf8');
-  it('ON-ветка через mergeDetails, OFF-ветка details ?? existing.details', () => {
-    expect(epiSrc).toMatch(/isV2MemQualityEnabled\(userId\)/);
-    expect(epiSrc).toMatch(/\?\s*mergeDetails\(existing\.details, details\)/);
-    expect(epiSrc).toMatch(/:\s*\(details \?\? existing\.details\)/);
+  it('всегда через mergeDetails (флаг удалён)', () => {
+    expect(epiSrc).not.toMatch(/isV2MemQualityEnabled/);
+    expect(epiSrc).toMatch(/const merged = mergeDetails\(existing\.details, details\)/);
   });
   it('импортирует mergeDetails', () => {
     expect(epiSrc).toMatch(/mergeDetails/);
   });
 });
 
-describe('T3 врезка — диктовка память через writeMemory по флагу', () => {
+describe('T3 врезка — диктовка память через writeMemory', () => {
   const dictSrc = readFileSync(join(process.cwd(), 'src/services/dictation-service.ts'), 'utf8');
-  it('ON-ветка зовёт writeMemory с source dictation', () => {
-    expect(dictSrc).toMatch(/isV2MemQualityEnabled\(userId\)/);
+  it('зовёт writeMemory с source dictation (флаг удалён)', () => {
+    expect(dictSrc).not.toMatch(/isV2MemQualityEnabled/);
     expect(dictSrc).toMatch(/writeMemory\(userId, \{[\s\S]*?source: 'dictation'/);
   });
-  it('OFF-ветка сохраняет tx.memory.create', () => {
-    expect(dictSrc).toMatch(/tx\.memory\.create\(/);
+  it('память не пишется внутри транзакции (tx.memory.create нет)', () => {
+    expect(dictSrc).not.toMatch(/tx\.memory\.create\(/);
   });
 });
 
-describe('E2 врезка — значимость при чтении по флагу', () => {
+describe('E2 врезка — значимость при чтении', () => {
   const epiSrc = readFileSync(join(process.cwd(), 'src/services/episodic-memory.ts'), 'utf8');
   const enrSrc = readFileSync(join(process.cwd(), 'src/services/v2-enrichment.ts'), 'utf8');
   it('episodic-memory экспортирует significantMemories', () => {
     expect(epiSrc).toMatch(/export async function significantMemories\(/);
   });
-  it('v2-enrichment выбирает significantMemories / recentEvents по флагу', () => {
-    expect(enrSrc).toMatch(/isV2MemQualityEnabled\(userId\)/);
+  it('v2-enrichment читает significantMemories (флаг удалён)', () => {
+    expect(enrSrc).not.toMatch(/isV2MemQualityEnabled/);
     expect(enrSrc).toMatch(/significantMemories\(userId, 6\)/);
-    expect(enrSrc).toMatch(/recentEvents\(userId, 6\)/);
+    expect(enrSrc).not.toMatch(/recentEvents\(userId, 6\)/);
   });
 });

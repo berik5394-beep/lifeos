@@ -22,7 +22,7 @@ describe('jarvis-orchestrator — v2 wiring (D3)', () => {
     expect(head).toMatch(/\.catch\(/);
   });
   it('пишет через единый writeMemory; legacy captureMemory удалён (M3 Unit A)', () => {
-    expect(SRC).toMatch(/extractFromTranscript\(/);
+    expect(SRC).toMatch(/extractFromChat\(/);
     expect(SRC).toMatch(/writeMemory\(/);
     expect(SRC).not.toMatch(/(await|void)\s+captureMemory\(/);
   });

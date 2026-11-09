@@ -7,7 +7,7 @@ import {
   ritualOptsFor,
 } from './assistant-service.js';
 import { buildJarvisPrompt } from '../ai/jarvis-prompt.js';
-import { extractFromTranscript, extractFromChat } from './dictation-service.js';
+import { extractFromChat } from './dictation-service.js';
 import {
   parseBookingIntent,
   buildBookingUrl,
@@ -67,7 +67,6 @@ import {
   isV2InlineNudgeEnabled,
   isV2SavingsCoachEnabled,
   isV2AntiFabEnabled,
-  isV2MemQualityEnabled,
   isV2SupersedeEnabled,
 } from '../lib/feature-flags.js';
 import {
@@ -244,9 +243,7 @@ async function captureInBackground(
     // intent-TZ фикс: «сегодня/завтра» в извлечённых задачах = календарь юзера.
     const tz = await getUserTimezone(userId);
     const todayCivil = civilDayRefs(tz).today;
-    const extracted = isV2MemQualityEnabled(userId)
-      ? await extractFromChat(text, user?.name || 'друг', { detectSupersede: isV2SupersedeEnabled(userId), tz })
-      : await extractFromTranscript(text, user?.name || 'друг', tz);
+    const extracted = await extractFromChat(text, user?.name || 'друг', { detectSupersede: isV2SupersedeEnabled(userId), tz });
     let tasks = 0;
     let memories = 0;
     if (!opts.memoriesOnly && extracted.tasks.length > 0) {
@@ -274,7 +271,7 @@ async function captureInBackground(
     // задачами не атомарна по смыслу.
     for (const m of extracted.memories) {
       // ОДНА ПАМЯТЬ (M3 Unit A): ЕДИНЫЙ писатель writeMemory (дедуп+embedding+
-      // episodic-поля). Legacy captureMemory удалён (FEATURE_V2_WRITE=all в проде).
+      // episodic-поля). Legacy captureMemory удалён (флага записи больше нет).
       const r = await writeMemory(userId, {
         type: m.type,
         content: m.content,
