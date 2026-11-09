@@ -61,7 +61,6 @@ const CROSS_DOMAIN_BUDGET_MS = 1500;
 const BASE_MEMBER_BUDGET_MS = 1200;
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { formatToneSection } from './bot-traits/tone-section.js';
-import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 import { gatherReflection } from './reflection-context.js';
 import { attrHistoryFacts } from './entity-graph/merge-helpers.js';
 
@@ -681,9 +680,6 @@ export async function fetchV2EnrichmentAxesSection(userId: string): Promise<stri
  * Separate helper called by orchestrator after axes section.
  */
 export async function fetchV2EnrichmentToneSection(userId: string): Promise<string> {
-  if (!isV2IdentityEnabled(userId)) {
-    return '';
-  }
   try {
     const traits = await getBotTraitsStore().getTraits(userId);
     const msgCount = await prisma.chatMessage.count({ where: { userId } });

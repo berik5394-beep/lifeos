@@ -11,7 +11,6 @@ import { axisLabel, type AxisName } from './user-axes/index.js';
 import { getFeedbackStore } from './feedback/index.js';
 import { getBotTraitsStore, traitLabel } from './bot-traits/index.js';
 import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
-import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 import { isV2ObligationsEnabled } from '../lib/feature-flags.js';
 import { listObligations } from './obligations/index.js';
 import { getHermesStore } from './hermes/index.js';
@@ -386,10 +385,6 @@ export function createTelegramBot(): Telegraf {
         from.first_name || '',
         from.username,
       );
-      if (!isV2IdentityEnabled(userId)) {
-        await ctx.reply('Identity evolution выключена для тебя.');
-        return;
-      }
       const text = await formatIdentityForTelegram(userId);
       await ctx.reply(text);
     } catch (err) {

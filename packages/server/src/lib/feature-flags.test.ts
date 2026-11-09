@@ -7,7 +7,6 @@ import {
   isV2DecisionsEnabled,
   isV2EnergyEnabled,
   isV2RelationshipsEnabled,
-  isV2IdentityEnabled,
   isV2WriteEnabled,
   isV2RealtimeEnabled,
   isV2DayLoadEnabled,
@@ -174,39 +173,6 @@ describe('isV2AntiFabEnabled (Слой честности B)', () => {
   it('all → включено', () => { process.env[KEY] = 'all'; expect(isV2AntiFabEnabled('u1')).toBe(true); });
   it('none/false → off', () => { for (const v of ['none','false','']) { process.env[KEY]=v; expect(isV2AntiFabEnabled('u1')).toBe(false); } });
   it('csv адресно', () => { process.env[KEY]='user-u1'; expect(isV2AntiFabEnabled('u1')).toBe(true); expect(isV2AntiFabEnabled('u2')).toBe(false); });
-});
-
-describe('isV2IdentityEnabled', () => {
-  const orig = process.env.FEATURE_V2_IDENTITY;
-  afterEach(() => {
-    if (orig === undefined) delete process.env.FEATURE_V2_IDENTITY;
-    else process.env.FEATURE_V2_IDENTITY = orig;
-  });
-  it('unset → false', () => {
-    delete process.env.FEATURE_V2_IDENTITY;
-    expect(isV2IdentityEnabled('user-abc')).toBe(false);
-  });
-  it('none/false → false', () => {
-    process.env.FEATURE_V2_IDENTITY = 'none';
-    expect(isV2IdentityEnabled('abc')).toBe(false);
-    process.env.FEATURE_V2_IDENTITY = 'false';
-    expect(isV2IdentityEnabled('abc')).toBe(false);
-  });
-  it('all/true → true', () => {
-    process.env.FEATURE_V2_IDENTITY = 'all';
-    expect(isV2IdentityEnabled('anybody')).toBe(true);
-    process.env.FEATURE_V2_IDENTITY = 'true';
-    expect(isV2IdentityEnabled('anybody')).toBe(true);
-  });
-  it('per-user comma list', () => {
-    process.env.FEATURE_V2_IDENTITY = 'user-abc,user-def';
-    expect(isV2IdentityEnabled('abc')).toBe(true);
-    expect(isV2IdentityEnabled('xyz')).toBe(false);
-  });
-  it('tolerates whitespace', () => {
-    process.env.FEATURE_V2_IDENTITY = '  user-abc , user-def ';
-    expect(isV2IdentityEnabled('abc')).toBe(true);
-  });
 });
 
 describe('isV2RealtimeEnabled', () => {

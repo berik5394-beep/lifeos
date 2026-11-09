@@ -227,20 +227,6 @@ export function isV2PersonTypesEnabled(userId: string): boolean {
 }
 
 /**
- * v2 Phase B2 — Per-user gate for bot Identity Evolution feature.
- * Same shape as isV2AxesEnabled: "all"/"true", "none"/"false"/unset,
- * or comma list "user-X,user-Y".
- */
-export function isV2IdentityEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_IDENTITY;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
  * D (spec 2026-06-01): inline-проактивность из длинного текста.
  * Off → байт-в-байт сегодняшнее поведение. Env FEATURE_V2_INLINE_NUDGE
  * в форме "all"/"true" / "none"/unset / "user-X,user-Y".

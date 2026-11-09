@@ -61,7 +61,6 @@ import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
-import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 import { isV2RealtimeEnabled } from '../lib/feature-flags.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
@@ -1862,12 +1861,10 @@ async function handleMessageCore(
     // v2 Phase B2 — lazy refresh bot traits (stale > 6h) → затем тон бота
     // (тон читает свежие traits, поэтому — цепочкой, но параллельно остальному).
     (async () => {
-      if (isV2IdentityEnabled(userId)) {
-        try {
-          await getBotTraitsStore().refreshTraitsIfStale(userId);
-        } catch (err) {
-          console.warn('[orchestrator:identity-refresh] failed:', err);
-        }
+      try {
+        await getBotTraitsStore().refreshTraitsIfStale(userId);
+      } catch (err) {
+        console.warn('[orchestrator:identity-refresh] failed:', err);
       }
       if (!memoryOn) return '';
       return withTimeout(fetchV2EnrichmentToneSection(userId), 1500, '').catch(() => '');

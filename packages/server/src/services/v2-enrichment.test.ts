@@ -185,15 +185,15 @@ describe('fetchV2EnrichmentAxesSection — axes integration (D1)', () => {
 });
 
 describe('v2-enrichment — tone section wiring (D1)', () => {
-  it('imports getBotTraitsStore + formatToneSection + isV2IdentityEnabled', () => {
+  it('imports getBotTraitsStore + formatToneSection', () => {
     const s = readFileSync(join(process.cwd(), 'src/services/v2-enrichment.ts'), 'utf-8');
     expect(s).toContain('getBotTraitsStore');
     expect(s).toContain('formatToneSection');
-    expect(s).toContain('isV2IdentityEnabled');
+    expect(s).not.toContain('isV2IdentityEnabled');
   });
   it('tone section appended under flag', () => {
     const s = readFileSync(join(process.cwd(), 'src/services/v2-enrichment.ts'), 'utf-8');
-    expect(s).toMatch(/isV2IdentityEnabled\(\s*userId\s*\)/);
+    expect(s).not.toMatch(/isV2IdentityEnabled/);
     expect(s).toMatch(/formatToneSection\(/);
   });
 });

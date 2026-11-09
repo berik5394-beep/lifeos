@@ -10,8 +10,7 @@ const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
 
 describe('оси и тон в системном промпте', () => {
-  it('флаги включены → оба блока в system', async () => {
-    process.env.FEATURE_V2_IDENTITY = 'all';
+  it('оба блока (оси и тон) в system', async () => {
     const userId = (
       await prisma.user.create({ data: { email: `pat-${Date.now()}-${Math.random()}@a.test`, name: 'P', passwordHash: 'x', timezone: 'UTC' } })
     ).id;
