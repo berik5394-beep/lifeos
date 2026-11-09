@@ -76,9 +76,9 @@ describe('structural — runPatternExtraction', () => {
 });
 
 describe('F4b — maybeRetireStale wiring (гард)', () => {
-  it('runPatternExtraction зовёт maybeRetireStale за флагом', () => {
+  it('runPatternExtraction зовёт maybeRetireStale (без флага)', () => {
     expect(SRC).toContain('maybeRetireStale(procedural');
-    expect(SRC).toContain('isV2ForgetEnabled');
+    expect(SRC).not.toContain('isV2ForgetEnabled');
     expect(SRC).toMatch(/invalidateStale\(userId, STALE_PATTERN_DAYS\)/);
   });
 });

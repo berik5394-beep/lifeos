@@ -4,10 +4,7 @@ import { writeMemory, supersedeByTopic } from './episodic-memory.js';
 import { getRelevantMemories } from './memory-service.js';
 
 const prisma = new PrismaClient();
-const PREV = process.env.FEATURE_V2_FORGET;
 afterAll(async () => {
-  if (PREV === undefined) delete process.env.FEATURE_V2_FORGET;
-  else process.env.FEATURE_V2_FORGET = PREV;
   await prisma.$disconnect();
 });
 async function mkUser(tag: string): Promise<string> {
@@ -19,7 +16,6 @@ async function mkUser(tag: string): Promise<string> {
 
 describe('F2 — supersedeByTopic invalidates single match', () => {
   it('коррекция инвалидирует старый факт; recall (FORGET) его не отдаёт', async () => {
-    process.env.FEATURE_V2_FORGET = 'all';
     const uid = await mkUser(`one-${Date.now()}`);
     const old = await writeMemory(uid, { type: 'preference', content: 'люблю кофе', importance: 6 });
     const neu = await writeMemory(uid, { type: 'preference', content: 'бросил кофе', importance: 6 });

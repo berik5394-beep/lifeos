@@ -5,10 +5,7 @@ import { entityDecayScore } from './memory-decay.js';
 
 const prisma = new PrismaClient();
 
-const PREV_DECAY = process.env.FEATURE_V2_DECAY;
 afterAll(async () => {
-  if (PREV_DECAY === undefined) delete process.env.FEATURE_V2_DECAY;
-  else process.env.FEATURE_V2_DECAY = PREV_DECAY;
   await prisma.$disconnect();
 });
 
@@ -61,13 +58,11 @@ describe('read-side decay — Part 1 entity ранг', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Part 2 — recall порядок: свежий fact не ниже старого при флаге on
+// Part 2 — recall порядок: свежий fact не ниже старого
 // ---------------------------------------------------------------------------
 
 describe('read-side decay — Part 2 recall порядок', () => {
-  it('свежий fact не ниже старого при флаге on', async () => {
-    process.env.FEATURE_V2_DECAY = 'all';
-
+  it('свежий fact не ниже старого', async () => {
     const { getRelevantMemories } = await import('./memory-service.js');
     const { writeMemory } = await import('./episodic-memory.js');
 
@@ -106,7 +101,5 @@ describe('read-side decay — Part 2 recall порядок', () => {
     // Детерминированный ассерт (не молчаливый skip): decay сработал, если старая
     // либо вытеснена из выдачи (idxOld < 0), либо строго ниже свежей.
     expect(idxOld < 0 || idxNew < idxOld).toBe(true);
-
-    delete process.env.FEATURE_V2_DECAY;
   });
 });

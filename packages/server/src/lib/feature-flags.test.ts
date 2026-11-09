@@ -8,13 +8,11 @@ import {
   isV2MonthLoadEnabled,
   isV2YearLoadEnabled,
   isV2EntityResolveEnabled,
-  isV2ForgetEnabled,
   isV2PatternDedupEnabled,
   isV2MemQualityEnabled,
   isV2MemGraphEnabled,
   isV2SupersedeEnabled,
   isV2UnlinkEnabled,
-  isV2DecayEnabled,
 } from './feature-flags.js';
 
 
@@ -32,15 +30,6 @@ describe('isV2EntityResolveEnabled', () => {
     expect(isV2EntityResolveEnabled('u1')).toBe(true);
     expect(isV2EntityResolveEnabled('u3')).toBe(false);
   });
-});
-
-describe('isV2ForgetEnabled', () => {
-  const KEY = 'FEATURE_V2_FORGET'; const orig = process.env[KEY];
-  afterEach(() => { if (orig === undefined) delete process.env[KEY]; else process.env[KEY] = orig; });
-  it('unset → false', () => { delete process.env[KEY]; expect(isV2ForgetEnabled('u1')).toBe(false); });
-  it('all → true', () => { process.env[KEY] = 'all'; expect(isV2ForgetEnabled('u1')).toBe(true); });
-  it('none/false/empty → false', () => { for (const v of ['none','false','']) { process.env[KEY]=v; expect(isV2ForgetEnabled('u1')).toBe(false); } });
-  it('csv', () => { process.env[KEY]='user-u1'; expect(isV2ForgetEnabled('u1')).toBe(true); expect(isV2ForgetEnabled('u2')).toBe(false); });
 });
 
 describe('isV2PatternDedupEnabled', () => {
@@ -240,14 +229,6 @@ describe('isV2UnlinkEnabled', () => {
   it('all→true', () => { process.env[KEY]='all'; expect(isV2UnlinkEnabled('u')).toBe(true); });
   it('unset/none/empty→false', () => { delete process.env[KEY]; expect(isV2UnlinkEnabled('u')).toBe(false); process.env[KEY]='none'; expect(isV2UnlinkEnabled('u')).toBe(false); process.env[KEY]=''; expect(isV2UnlinkEnabled('u')).toBe(false); });
   it('csv', () => { process.env[KEY]='user-abc'; expect(isV2UnlinkEnabled('abc')).toBe(true); expect(isV2UnlinkEnabled('z')).toBe(false); });
-});
-
-describe('isV2DecayEnabled', () => {
-  const KEY = 'FEATURE_V2_DECAY'; const prev = process.env[KEY];
-  afterEach(() => { if (prev === undefined) delete process.env[KEY]; else process.env[KEY] = prev; });
-  it('all→true', () => { process.env[KEY]='all'; expect(isV2DecayEnabled('u')).toBe(true); });
-  it('unset/none/empty→false', () => { delete process.env[KEY]; expect(isV2DecayEnabled('u')).toBe(false); process.env[KEY]='none'; expect(isV2DecayEnabled('u')).toBe(false); process.env[KEY]=''; expect(isV2DecayEnabled('u')).toBe(false); });
-  it('csv', () => { process.env[KEY]='user-abc'; expect(isV2DecayEnabled('abc')).toBe(true); expect(isV2DecayEnabled('z')).toBe(false); });
 });
 
 import { isV2GoalIntakeEnabled } from './feature-flags.js';

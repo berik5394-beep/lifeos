@@ -20,7 +20,6 @@ import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
 import {
   isV2MemQualityEnabled,
-  isV2DecayEnabled,
 } from '../lib/feature-flags.js';
 import { gatherDealsSection } from './deals/service.js';
 import { entityDecayScore } from './memory-decay.js';
@@ -439,38 +438,25 @@ export async function fetchV2EnrichmentData(
         BASE_MEMBER_BUDGET_MS,
         null,
       ),
-      isV2DecayEnabled(userId)
-        ? withTimeout(
-            prisma.entity
-              .findMany({
-                where: { userId },
-                orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
-                take: 25,
-                select: { id: true, name: true, importance: true, lastSeenAt: true, attributes: true },
-              })
-              .then((wide) =>
-                wide
-                  .map((e) => ({ e, s: entityDecayScore(e.importance, e.lastSeenAt, nowDate) }))
-                  .sort((a, b) => b.s - a.s)
-                  .slice(0, 5)
-                  .map((x) => x.e),
-              )
-              .catch(() => []),
-            BASE_MEMBER_BUDGET_MS,
-            [],
+      withTimeout(
+        prisma.entity
+          .findMany({
+            where: { userId },
+            orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
+            take: 25,
+            select: { id: true, name: true, importance: true, lastSeenAt: true, attributes: true },
+          })
+          .then((wide) =>
+            wide
+              .map((e) => ({ e, s: entityDecayScore(e.importance, e.lastSeenAt, nowDate) }))
+              .sort((a, b) => b.s - a.s)
+              .slice(0, 5)
+              .map((x) => x.e),
           )
-        : withTimeout(
-            prisma.entity
-              .findMany({
-                where: { userId },
-                orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
-                take: 5,
-                select: { id: true, name: true, importance: true, lastSeenAt: true, attributes: true },
-              })
-              .catch(() => []),
-            BASE_MEMBER_BUDGET_MS,
-            [],
-          ),
+          .catch(() => []),
+        BASE_MEMBER_BUDGET_MS,
+        [],
+      ),
       withTimeout(
         openObligationsForContext(userId, 5).catch(() => []),
         BASE_MEMBER_BUDGET_MS,

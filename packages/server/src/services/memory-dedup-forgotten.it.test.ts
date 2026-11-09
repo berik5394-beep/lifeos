@@ -51,20 +51,13 @@ describe('writeMemory — дедуп не сливает в забытую за�
     });
 
     it('приложение спешит на час — забытое не всплывает в поиске воспоминаний', async () => {
-      const prev = process.env.FEATURE_V2_FORGET;
-      process.env.FEATURE_V2_FORGET = 'all';
-      try {
-        const u = await mkUser(`dd-skew-recall-${Date.now()}@a.test`);
-        vi.useFakeTimers({ toFake: ['Date'] });
-        vi.setSystemTime(new Date(Date.now() + 3_600_000));
-        const r1 = await writeMemory(u, { type: 'fact', content: 'дядя держит пасеку', importance: 6, source: 'chat' });
-        await forgetMemory(u, r1.id);
-        const rows = await getRelevantMemories(u, 'пасека', 20);
-        expect(rows.map((r) => r.content)).not.toContain('дядя держит пасеку');
-      } finally {
-        if (prev === undefined) delete process.env.FEATURE_V2_FORGET;
-        else process.env.FEATURE_V2_FORGET = prev;
-      }
+      const u = await mkUser(`dd-skew-recall-${Date.now()}@a.test`);
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(Date.now() + 3_600_000));
+      const r1 = await writeMemory(u, { type: 'fact', content: 'дядя держит пасеку', importance: 6, source: 'chat' });
+      await forgetMemory(u, r1.id);
+      const rows = await getRelevantMemories(u, 'пасека', 20);
+      expect(rows.map((r) => r.content)).not.toContain('дядя держит пасеку');
     });
   });
 

@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import type { Memory } from '@prisma/client';
 import { shouldOverwriteContent, computeExpiresAt, mergeDetails } from './memory-service.js';
 import { embedDocument, embeddingsEnabled, toVectorLiteral } from './embeddings.js';
-import { isV2WriteEnabled, isV2ForgetEnabled, isV2MemQualityEnabled, isV2MemGraphEnabled } from '../lib/feature-flags.js';
+import { isV2WriteEnabled, isV2MemQualityEnabled, isV2MemGraphEnabled } from '../lib/feature-flags.js';
 
 /**
  * v2.0 Tier 2 — Episodic Memory.
@@ -227,7 +227,6 @@ export async function writeMemory(
               `contentReplaced=${allowContentReplace} (user=${userId})`,
           );
           const updateData: Prisma.MemoryUpdateInput = { content: newContent, details: merged, tags: mergedTags, importance: Math.max(existing.importance, importance) };
-          if (!isV2ForgetEnabled(userId)) updateData.createdAt = new Date();
           await prisma.memory.update({ where: { id: existing.id }, data: updateData });
           await storeMemoryEmbedding(existing.id, newContent, merged, input);
           return { id: existing.id, action: 'updated' };

@@ -22,22 +22,12 @@ function isEnabledForUser(envValue: string | undefined, userId: string): boolean
     .some((s) => s === `user-${userId}`);
 }
 
-/** Забывание-троица (F1/F3/F5): message вне recall, ридер чтит invalidAt, дедуп не сбрасывает createdAt. */
-export function isV2ForgetEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_FORGET;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
 /**
  * T2 дедуп паттернов: экстракторы находят СВОЙ паттерн по identity-ключу в
  * payload (entityId / habitId / sourceMsgId / clusterIndex / weekNumber), а не
  * первый попавшийся по kind. Без этого недельный крон плодит дубликат на
  * каждом прогоне. off=байт-идентично (findFirst остаётся прежним).
- * Same shape as isV2ForgetEnabled: "all"/"true", "none"/"false"/unset, "user-X".
+ * Same shape: "all"/"true", "none"/"false"/unset, "user-X".
  */
 export function isV2PatternDedupEnabled(userId: string): boolean {
   const raw = process.env.FEATURE_V2_PATTERN_DEDUP;
@@ -168,14 +158,6 @@ export function isV2SupersedeEnabled(userId: string): boolean {
  */
 export function isV2UnlinkEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_UNLINK, userId);
-}
-
-/**
- * Read-side decay (Камила): старое низко-ценное тонет в ранжировании enrichment+recall.
- * READ-ONLY — ничего не пишется/удаляется. OFF → ранжирование прежнее (байт-идентично).
- */
-export function isV2DecayEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_DECAY, userId);
 }
 
 /**
