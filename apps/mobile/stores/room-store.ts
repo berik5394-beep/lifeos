@@ -90,15 +90,20 @@ export const useRoomStore = create<RoomState>((set, get) => {
     const token = useAuthStore.getState().token;
     if (!token) return;
     pending += 1;
+    // Вышли из аккаунта, пока PUT летел (reset обнулил счётчик) — ответ прошлой
+    // сессии счётчик не трогает (иначе уходил в минус и правки нового юзера не применялись).
+    const mySession = session;
     void enqueue(async () => {
       try {
         const res = await api.put<{ items: OwnedItem[] }>('/room', { placements }, token, { queueOffline: false });
+        if (mySession !== session) return;
         pending -= 1;
         // Новее этой правки уже есть (или вышли из аккаунта) — не перетираем.
         if (pending === 0 && rev === myRev && Array.isArray(res?.items)) {
           set(withOwned(sanitize(res.items)));
         }
       } catch {
+        if (mySession !== session) return;
         pending -= 1;
         if (pending === 0) await get().fetchRoom();
       }

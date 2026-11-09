@@ -261,10 +261,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     try {
       const currentOffset = offset ?? get().messages.length;
-      const raw = await api.get<ChatMessage[] | ChatHistoryResponse>(
-        `/chat/history?limit=20&offset=${currentOffset}`,
-        token,
-      );
+      // «Ещё» — курсором «старше самого старого на экране», а не смещением по числу
+      // строк на экране (там и локальные облачка: нуджи, ошибки — сообщения пропускались).
+      const oldest = get().messages.reduce<string | null>((m, x) => (!m || x.createdAt < m ? x.createdAt : m), null);
+      const query = offset === 0 || !oldest ? 'offset=0' : `before=${encodeURIComponent(oldest)}`;
+      const raw = await api.get<ChatMessage[] | ChatHistoryResponse>(`/chat/history?limit=20&${query}`, token);
 
       // Handle both shapes: raw array or { messages, hasMore } wrapper
       const messages: ChatMessage[] = Array.isArray(raw)
@@ -291,7 +292,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
             const i = pool.findIndex((l) => l.role === m.role && l.content === m.content);
             return i >= 0 ? pool.splice(i, 1)[0] : m;
           });
-          return { messages: merged, hasMore: serverHasMore };
+          // Локальные облачка (нуджи, ошибки, «открыл вкладку»), которых нет на
+          // сервере, — не стираем, если они не старше загруженного окна.
+          const oldestServer = reversed.length ? reversed[reversed.length - 1].createdAt : '';
+          const localOnly = pool.filter((l) => l.createdAt >= oldestServer);
+          const all = [...merged, ...localOnly].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          return { messages: all, hasMore: serverHasMore };
         }
         const existingIds = new Set(state.messages.map(m => m.id));
         const newMessages = reversed.filter(m => !existingIds.has(m.id));

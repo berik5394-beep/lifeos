@@ -393,6 +393,16 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
         } as Audio.RecordingOptions,
       );
 
+      // Пересадка с Siri посреди нажатия, а палец уже отпустили (stopRecording
+      // перевёл в 'processing', ни одна ветка не сработала) — запись не оставляем
+      // висеть без пальца (аудит 2026-11-09): глушим и просим сказать ещё раз.
+      if (silent && stateRef.current !== 'recording') {
+        await recording.stopAndUnloadAsync().catch(() => {});
+        setError('Не расслышал — нажми и скажи ещё раз.');
+        stateRef.current = 'error';
+        setState('error');
+        return;
+      }
       recordingRef.current = recording;
       modeRef.current = 'audio-fallback';
       startRealMeter();

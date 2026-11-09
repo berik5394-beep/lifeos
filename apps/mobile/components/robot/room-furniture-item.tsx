@@ -114,7 +114,17 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
       : withSpring(1, SPRING);
   }, [highlight, lift]);
 
+  // Стена за спиной (при повороте) схлопнута в линию у края и погашена, но жесты
+  // её предметов ловили тапы у правого края — комната внезапно разворачивалась к
+  // невидимой картине (аудит 2026-11-09). Погашенный предмет жесты не берёт.
+  const hiddenNow = () => {
+    'worklet';
+    return faceWeight(surfaceFace(SURF[si.value]), cam.value.turn ?? 0) < 0.3;
+  };
   let pan = Gesture.Pan()
+    .onTouchesDown((_e, manager) => {
+      if (hiddenNow()) manager.fail();
+    })
     .enabled(editable)
     .minDistance(4)
     .onStart(() => {
@@ -155,6 +165,9 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   if (blockGestures && blockGestures.length > 0) pan = pan.blocksExternalGesture(...blockGestures);
 
   const longPress = Gesture.LongPress()
+    .onTouchesDown((_e, manager) => {
+      if (hiddenNow()) manager.fail();
+    })
     .enabled(editable)
     .minDuration(600)
     .onStart(() => {
@@ -164,6 +177,9 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
 
   const tap = Gesture.Tap()
     .maxDistance(8)
+    .onTouchesDown((_e, manager) => {
+      if (hiddenNow()) manager.fail();
+    })
     .onEnd((_e, ok) => {
       if (ok && onTap) runOnJS(onTap)(item.id);
     });

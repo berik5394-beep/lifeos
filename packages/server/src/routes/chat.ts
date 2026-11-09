@@ -22,6 +22,9 @@ const chatSchema = z.object({
 const historyQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+  // «Ещё» по курсору: сообщения старше этого момента (аудит 2026-11-09: смещение
+  // считалось по экрану вместе с локальными облачками — сообщения пропускались).
+  before: z.string().datetime({ offset: true }).optional(),
 });
 
 type JarvisResult = Awaited<ReturnType<typeof handleMessage>>;
@@ -193,13 +196,13 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const { limit, offset } = result.data;
+    const { limit, offset, before } = result.data;
 
     const messages = await prisma.chatMessage.findMany({
-      where: { userId: request.userId },
+      where: { userId: request.userId, ...(before ? { createdAt: { lt: new Date(before) } } : {}) },
       orderBy: { createdAt: 'desc' },
       take: limit,
-      skip: offset,
+      skip: before ? 0 : offset,
     });
 
     return reply.send(messages);

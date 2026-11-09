@@ -653,6 +653,13 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         } as Audio.RecordingOptions,
       );
 
+      // Пока запись запускалась, разговор закрыли/завершили — cleanup уже прошёл с
+      // пустой ссылкой, запись никто бы не остановил (оранжевая точка, следующий голос
+      // не стартует). Глушим её сразу (аудит 2026-11-09).
+      if (!isMountedRef.current || stateRef.current !== 'listening') {
+        await recording.stopAndUnloadAsync().catch(() => {});
+        return;
+      }
       recordingRef.current = recording;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 

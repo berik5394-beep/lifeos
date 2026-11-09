@@ -435,6 +435,9 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
         return;
       }
       const h = headingFor(it.surface) ?? heading;
+      // Без инструмента внутри — робот скажет, что это (раньше тап был тишиной).
+      const inside = toolsInItem(it.itemKey).filter((t) => tools.some((tool) => tool.key === t));
+      const note = inside.length === 0 ? furnitureTapNote(it.itemKey, roomItemLabel(it.itemKey), visibleToolKeys, TOOL_TITLE) : null;
       turnTo(h, () => {
         // Где предмет окажется, когда стена будет напротив, — туда и приближаем.
         const sp = surfaceToScene(size.w * R, size.h * R, { x: 0, y: 0, turn: h }, it.surface, it.u, it.v);
@@ -442,14 +445,15 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
         const p = { x: sp.x / R, y: sp.y / R };
         zoomWithOffset(zoomOffset(p, size.w, size.h, LOOK_ZOOM), LOOK_ZOOM);
         robotToSide(p.x > size.w / 2 ? 'left' : 'right');
+        // Облачку нужен план раскладки (раньше его не было — пояснение не
+        // показывалось никогда, аудит 2026-11-09). Камеру он не двигает.
+        if (note) {
+          const layout = planPurchaseView(p.x / size.w, p.y / size.h, size.w, size.h, note);
+          setPlan({ ...layout, robotSide: p.x > size.w / 2 ? 'left' : 'right' });
+          setThanks(note);
+        }
       });
       setViewing(id);
-      // Без инструмента внутри — робот скажет, что это (раньше тап был тишиной).
-      const inside = toolsInItem(it.itemKey).filter((t) => tools.some((p) => p.key === t));
-      if (inside.length === 0) {
-        const note = furnitureTapNote(it.itemKey, roomItemLabel(it.itemKey), visibleToolKeys, TOOL_TITLE);
-        if (note) setThanks(note);
-      }
     },
     [size, viewing, heading, turnTo, openItemTools, zoomWithOffset, robotToSide, tools, visibleToolKeys],
   );
