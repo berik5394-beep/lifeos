@@ -221,8 +221,9 @@ export default function FocusModeScreen() {
   const [isBreak, setIsBreak] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const currentTask = tasks[currentIndex] ?? null;
-  const nextTask = tasks[currentIndex + 1] ?? null;
+  // Список сжался (задачу закрыли) — индекс в пределах.
+  const currentTask = tasks[tasks.length ? currentIndex % tasks.length : 0] ?? null;
+  const nextTask = tasks.length > 1 ? tasks[(currentIndex + 1) % tasks.length] ?? null : null;
   const totalSeconds = isBreak ? BREAK_DURATION : POMODORO_DURATION;
 
   useEffect(() => {
@@ -276,8 +277,10 @@ export default function FocusModeScreen() {
     setIsRunning(false);
     setIsBreak(false);
     setRemainingSeconds(POMODORO_DURATION);
-    setCurrentIndex((prev) => prev + 1);
-  }, []);
+    // По кругу: пропущенная в конце — снова первая, а не «Все задачи выполнены!»
+    // при открытых задачах (аудит 2026-11-09).
+    setCurrentIndex((prev) => (tasks.length > 0 ? (prev + 1) % tasks.length : 0));
+  }, [tasks.length]);
 
   const categoryInfo = currentTask
     ? CATEGORY_LABELS[currentTask.category] || { label: currentTask.category, icon: 'circle' }

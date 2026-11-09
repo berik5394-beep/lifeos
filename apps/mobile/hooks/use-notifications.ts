@@ -15,7 +15,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { storage } from '@/services/storage';
 import { api } from '@/services/api';
 import { useRoomToolStore } from '@/stores/room-tool-store';
-import { syncTaskReminders } from '@/services/task-reminders';
+import { syncTaskReminders, reconcileOrphanReminders, type ReminderTask } from '@/services/task-reminders';
 import { syncDailyDigests } from '@/services/daily-digests';
 import { formatDate } from '@/utils/dates';
 
@@ -207,7 +207,17 @@ export function useNotifications(): UseNotificationsResult {
     const todayStr = formatDate(new Date());
     // Пересобираем напоминания только задач из списка; задачи вне выборки
     // (другой месяц) не трогаем. Закрытые и прошедшие — снимаются.
-    syncTaskReminders(tasks, Date.now(), { soft: !serverPush }).catch(() => {});
+    syncTaskReminders(tasks, Date.now(), { soft: !serverPush })
+      // Будильники задач вне выборки (перенесли/удалили роботом) — сверить с сервером.
+      .then(() =>
+        reconcileOrphanReminders(
+          new Set(tasks.map((t) => t.id)),
+          () => api.get<ReminderTask[]>('/tasks', useAuthStore.getState().token),
+          Date.now(),
+          { soft: !serverPush },
+        ),
+      )
+      .catch(() => {});
 
     // Update badge count with uncompleted task count for today
     const todayUncompleted = tasks.filter(

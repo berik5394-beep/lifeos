@@ -260,10 +260,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     try {
       // Сервер отдаёт { task, parsed, confidence, proposal? } — раньше в список
       // попадала вся обёртка вместо задачи.
+      // Разбор фразы — ИИ: 15 с мало (аудит 2026-11-09: таймаут → «не получилось»,
+      // а сервер задачу уже создал → повтор давал дубль).
       const res = await api.post<{ task: Task; proposal?: RescheduleProposal; conflictWarning?: string }>(
         '/tasks/quick-add',
         { text },
         token,
+        { timeoutMs: 35_000 },
       );
       set((state) => ({ tasks: [...state.tasks, res.task] }));
       // «позвонить завтра в 10:30» поверх встречи + перегруз дня — одним облачком.
@@ -276,6 +279,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (status >= 500 || status === 400 || status === 422 || status === 0) {
         await get().createTask({ title: text.trim(), category: 'personal', priority: 'medium', date: formatDate(new Date()) });
         return;
+      }
+      if (status === 408) {
+        // Сервер мог успеть создать — перечитываем, а не зовём «попробуй ещё раз».
+        await get().fetchTasks().catch(() => {});
+        throw new Error('Сервер долго думал — проверь список: задача могла уже добавиться.');
       }
       throw new Error(status === 429 && err instanceof Error ? err.message : 'Не получилось добавить задачу. Попробуй ещё раз.');
     }

@@ -1540,7 +1540,8 @@ export default function HabitsScreen() {
                 name={habit.name}
                 category={habit.category}
                 completedThisWeek={weeklyCompletionMap[habit.id] ?? 0}
-                target={3}
+                // Еженедельная = раз в неделю (было жёстко 3 — «раз в неделю» всегда 1/3).
+                target={1}
                 c={c}
                 doneToday={todayLogs.some((l) => l.habitId === habit.id && l.completed)}
                 onToggle={() => void handleToggleHabit(habit.id, !todayLogs.some((l) => l.habitId === habit.id && l.completed))}

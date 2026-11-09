@@ -47,3 +47,23 @@ it('тумблер «Напоминания о задачах» выкл — в�
   expect(cancelled.sort()).toEqual([`${TASK_REMINDER_PREFIX}t9`, 'task-alarm-t9'].sort());
   storage.remove('task_reminders');
 });
+
+import { reconcileOrphanReminders } from '@/services/task-reminders';
+it('сирота: задача перенесена за выборку — старый будильник снят, новый по правде сервера (аудит 2026-11-09)', async () => {
+  N.getAllScheduledNotificationsAsync
+    .mockResolvedValueOnce([{ identifier: 'task-alarm-moved', content: {} }, { identifier: 'task-alarm-gone', content: {} }] as never)
+    .mockResolvedValueOnce([{ identifier: 'task-alarm-moved', content: {} }] as never);
+  const server = [{ id: 'moved', title: 'Созвон', date: '2026-11-13', time: '12:00', completed: false }];
+  await reconcileOrphanReminders(new Set(['t1']), async () => server, now);
+  const cancelled = N.cancelScheduledNotificationAsync.mock.calls.map((c) => c[0]);
+  expect(cancelled).toContain('task-alarm-gone');
+  expect(cancelled).toContain('task-alarm-moved'); // пересобран
+  expect(N.scheduleNotificationAsync.mock.calls.length + (jest.requireMock('@/services/alarm-notifications') as { scheduleAlarmNotification: jest.Mock }).scheduleAlarmNotification.mock.calls.length).toBeGreaterThan(0);
+});
+
+it('без сирот — к серверу не ходим', async () => {
+  N.getAllScheduledNotificationsAsync.mockResolvedValueOnce([{ identifier: 'task-alarm-t1', content: {} }] as never);
+  const fetch = jest.fn(async () => []);
+  await reconcileOrphanReminders(new Set(['t1']), fetch, now);
+  expect(fetch).not.toHaveBeenCalled();
+});

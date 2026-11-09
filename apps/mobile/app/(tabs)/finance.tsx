@@ -91,7 +91,14 @@ function getDaysRemainingInMonth(date: Date): number {
   ) {
     return Math.max(0, total - today.getDate());
   }
-  return total;
+  // Прошедший месяц — все дни прошли (раньше «средний расход 0», «дней до конца 31»).
+  const past = date.getFullYear() < today.getFullYear() || (date.getFullYear() === today.getFullYear() && date.getMonth() < today.getMonth());
+  return past ? 0 : total;
+}
+
+/** Сумма из поля: «5 000», «1500,50» (parseFloat давал 5 и 1500). */
+function parseMoneyField(raw: string): number {
+  return Number(raw.replace(/[\s\u00a0₸]/g, '').replace(',', '.'));
 }
 
 function getBudgetStatusColor(
@@ -772,7 +779,7 @@ export default function FinanceScreen() {
   }, [resetForm]);
 
   const handleCreateExpense = useCallback(async () => {
-    const amount = parseFloat(formAmount);
+    const amount = parseMoneyField(formAmount);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert('Ошибка', 'Введите корректную сумму');
       return;
@@ -803,7 +810,7 @@ export default function FinanceScreen() {
   ]);
 
   const handleCreateIncome = useCallback(async () => {
-    const amount = parseFloat(formAmount);
+    const amount = parseMoneyField(formAmount);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert('Ошибка', 'Введите корректную сумму');
       return;
@@ -826,7 +833,7 @@ export default function FinanceScreen() {
   }, [formAmount, formSource, journalDate, createIncome, loadData]);
 
   const handleCreateDebt = useCallback(async () => {
-    const amount = parseFloat(formAmount);
+    const amount = parseMoneyField(formAmount);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert('Ошибка', 'Введите корректную сумму');
       return;
@@ -863,7 +870,7 @@ export default function FinanceScreen() {
   );
 
   const handleSetBudget = useCallback(async () => {
-    const limit = parseFloat(budgetLimit);
+    const limit = parseMoneyField(budgetLimit);
     if (isNaN(limit) || limit <= 0) {
       Alert.alert('Ошибка', 'Введите корректный лимит');
       return;

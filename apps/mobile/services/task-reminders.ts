@@ -135,3 +135,46 @@ export async function cancelTaskReminders(taskId: string): Promise<void> {
     ),
   );
 }
+
+const ORPHAN_RECHECK_MS = 10 * 60_000;
+let lastOrphanCheck: { key: string; at: number } = { key: '', at: 0 };
+
+/** id задачи из идентификатора напоминания (или null — не наше). */
+export function reminderTaskId(identifier: string): string | null {
+  if (identifier.startsWith(TASK_REMINDER_PREFIX)) return identifier.slice(TASK_REMINDER_PREFIX.length);
+  if (identifier.startsWith(TASK_ALARM_PREFIX)) return identifier.slice(TASK_ALARM_PREFIX.length);
+  return null;
+}
+
+/**
+ * Напоминания задач, которых нет в загруженной выборке (аудит 2026-11-09): робот
+ * перенёс «созвон» на следующую неделю — задача ушла из стора, а будильник звенел
+ * в старое время. Сверяем «сирот» с сервером: нет задачи / закрыта / время другое —
+ * пересобираем по правде сервера. Без сирот — без запроса.
+ */
+export async function reconcileOrphanReminders(
+  loadedIds: Set<string>,
+  fetchServerTasks: () => Promise<ReminderTask[]>,
+  now: number = Date.now(),
+  opts: { soft?: boolean } = {},
+): Promise<void> {
+  const scheduled = (await Notifications.getAllScheduledNotificationsAsync()) as unknown as Scheduled[];
+  const orphanIds = new Set(
+    scheduled.map((n) => reminderTaskId(n.identifier)).filter((id): id is string => !!id && !loadedIds.has(id)),
+  );
+  if (orphanIds.size === 0) return;
+  // Те же «сироты» (задачи следующего месяца) — не дёргаем сервер на каждое изменение.
+  const key = [...orphanIds].sort().join(',');
+  if (key === lastOrphanCheck.key && now - lastOrphanCheck.at < ORPHAN_RECHECK_MS) return;
+  lastOrphanCheck = { key, at: now };
+  const server = await fetchServerTasks();
+  const truth = server.filter((t) => orphanIds.has(t.id));
+  const alive = new Set(truth.map((t) => t.id));
+  // Пропавшие (удалены/отменены) — снять; живые — пересобрать по новой дате/времени.
+  const gone = scheduled.filter((n) => {
+    const id = reminderTaskId(n.identifier);
+    return !!id && orphanIds.has(id) && !alive.has(id);
+  });
+  await Promise.all(gone.map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+  if (truth.length > 0) await syncTaskReminders(truth, now, opts);
+}
