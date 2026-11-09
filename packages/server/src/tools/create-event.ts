@@ -88,7 +88,7 @@ export const createEventTool = defineTool({
           description: input.description ?? existingEv.description,
         },
       });
-      // Перегруз дня (флаг): встреча съела время дня → предложить сдвинуть задачи.
+      // Перегруз дня: встреча съела время дня → предложить сдвинуть задачи.
       // Только если время/день встречи реально поменялись (как PUT /events).
       const timeChanged =
         existingEv.date.getTime() !== date.getTime() ||
@@ -133,7 +133,7 @@ export const createEventTool = defineTool({
     } catch {
       /* best-effort: конфликт не должен ронять создание */
     }
-    // Перегруз дня (флаг): встреча съела время дня → предложить сдвинуть задачи.
+    // Перегруз дня: встреча съела время дня → предложить сдвинуть задачи.
     // Только для встречи с началом и концом (без них времени она не занимает).
     const rs = startTime && endTime ? await proposeReschedule(userId, input.date, null) : null;
     const base = `Встреча "${title}" создана на ${input.date}${startTime ? ' в ' + startTime : ''}`;

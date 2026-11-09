@@ -61,7 +61,7 @@ export const createWeeklyGoalTool = defineTool({
       },
     });
 
-    // Разбор при постановке (флаг FEATURE_V2_GOAL_INTAKE): время/привычка/окно.
+    // Разбор при постановке: время/привычка/окно.
     const intake = await maybeShortGoalIntake(userId, { goalText: goal.goalText, horizon: 'week' });
     const head = `Цель недели записана: «${goal.goalText}». Всего целей на эту неделю: ${week.length + 1}.`;
     return {

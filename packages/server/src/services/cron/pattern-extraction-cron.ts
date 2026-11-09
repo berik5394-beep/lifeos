@@ -131,8 +131,7 @@ export async function runPatternExtraction(): Promise<void> {
           err instanceof Error ? err.message : err,
         );
       }
-      // F4b: ретайр устаревших паттернов — независимо от исхода extractPatterns,
-      // за флагом (off=байт-идентично: maybeRetireStale возвращает 0, ничего не пишет).
+      // F4b: ретайр устаревших паттернов — независимо от исхода extractPatterns.
       await maybeRetireStale(procedural, u.id);
     }
     console.log(

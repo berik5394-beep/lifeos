@@ -113,7 +113,7 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
       type: 'weekly_goal_created',
       content: `Цель недели «${goal.goalText}» (${data.weekStart})`,
     });
-    // #engine: оценка усилия/нед фоном (под флагом month-load).
+    // #engine: оценка усилия/нед фоном.
     void estimateWeeklyGoalMinutesInBackground(goal.id, goal.goalText, request.userId);
     return reply.status(201).send(goal);
   });
@@ -282,7 +282,7 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
     return reply.status(201).send(goal);
   });
 
-  // Разбор цели при постановке с ЭКРАНА (флаг FEATURE_V2_GOAL_INTAKE). Отдельным
+  // Разбор цели при постановке с ЭКРАНА. Отдельным
   // запросом ПОСЛЕ создания: само сохранение не ждёт 2–3 с расчёта. Текст кладём
   // в чат сообщением робота — чтобы «да» (голосом/текстом) пришло мозгу с
   // контекстом предложения. Только свежая цель (≤10 мин) и без повтора в чате.

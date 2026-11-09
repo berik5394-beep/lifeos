@@ -211,7 +211,7 @@ export async function generateInsights(userId: string): Promise<Insight[]> {
     now,
   );
 
-  // Срез goal-slot (Part 1, за флагом): первому goal_behind-нуджу в финальном
+  // Срез goal-slot (Part 1): первому goal_behind-нуджу в финальном
   // фиде дописываем якорь-слот из календаря («в чт 18:00 свободно ~60 мин —
   // поставить занятие?»). Врезка ЗДЕСЬ, а не в петле buildInsights: ядро
   // правил — чистое/без БД (см. коммент к buildInsights), а findUpcomingSlot

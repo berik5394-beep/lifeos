@@ -154,7 +154,7 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
         type: 'event_created',
         content: `Встреча «${event.title}» ${data.date}${data.startTime ? ' в ' + data.startTime : ''}`,
       });
-      // Перегруз дня (флаг): встреча съела время дня → робот предлагает сдвинуть задачи.
+      // Перегруз дня: встреча съела время дня → робот предлагает сдвинуть задачи.
       // Импорт календаря телефона шлёт пачку встреч (source 'imported') — не
       // спамим чат предложениями на каждую; только ручное добавление.
       const proposal =
@@ -234,7 +234,7 @@ export async function eventRoutes(app: FastifyInstance): Promise<void> {
         type: 'event_updated',
         content: `Изменил встречу «${updated.title}»`,
       });
-      // Перегруз дня (флаг): встречу перенесли/удлинили → проверяем её день.
+      // Перегруз дня: встречу перенесли/удлинили → проверяем её день.
       const timeChanged =
         updated.date.getTime() !== existing.date.getTime() ||
         updated.startTime !== existing.startTime ||

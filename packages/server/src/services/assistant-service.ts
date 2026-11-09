@@ -171,7 +171,7 @@ export async function gatherAssistantContext(
         take: 10,
       });
     })(),
-    // Шаги по сделкам сегодня — только при флаге сделок (off → undefined → строки нет).
+    // Шаги по сделкам сегодня.
     // Best-effort: сбой сделок не роняет ответ робота (строки просто нет).
     dealStepsTodayLabels(userId, todayDateOnly).catch((err: unknown) => {
       console.warn('[assistant] deal steps skipped:', err instanceof Error ? err.message : err);

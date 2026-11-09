@@ -453,7 +453,7 @@ export async function buildMorning(
     prisma.habit.count({ where: { userId, active: true } }),
     prisma.habitLog.count({ where: { userId, date: today, completed: true } }),
     countOverduePending(userId, today),
-    // Шаги по сделкам на сегодня (флаг выкл. → [] → части нет).
+    // Шаги по сделкам на сегодня (нет шагов → части нет).
     listDealStepsForDay(userId, today),
   ]);
 

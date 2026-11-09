@@ -12,7 +12,6 @@
 import { prisma } from '../lib/prisma.js';
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
-import { isV2TaskGoalLinkEnabled } from '../lib/feature-flags.js';
 import { captureActivity } from './tool-activity-summary.js';
 
 const MAX_GOALS = 12;
@@ -62,7 +61,6 @@ export async function linkTaskToGoal(
   now: Date = new Date(),
   pick: (title: string, goals: Array<{ goalText: string }>) => Promise<number | null> = pickGoal,
 ): Promise<string | null> {
-  if (!isV2TaskGoalLinkEnabled(userId)) return null;
   try {
     const goals = await prisma.yearlyGoal.findMany({
       where: { userId, year: now.getUTCFullYear(), progress: { lt: 100 } }, // UTC — как strategic-view

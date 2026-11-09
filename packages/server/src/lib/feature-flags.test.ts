@@ -1,22 +1,24 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 
+/** Все не-тестовые .ts в src (рекурсивно). */
+function srcFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) return srcFiles(p);
+    return p.endsWith('.ts') && !p.endsWith('.test.ts') ? [p] : [];
+  });
+}
 
-import { isV2GoalIntakeEnabled } from './feature-flags.js';
-describe('isV2GoalIntakeEnabled', () => {
-  const KEY = 'FEATURE_V2_GOAL_INTAKE'; const prev = process.env[KEY];
-  afterEach(() => { if (prev === undefined) delete process.env[KEY]; else process.env[KEY] = prev; });
-  it('all→true', () => { process.env[KEY]='all'; expect(isV2GoalIntakeEnabled('u')).toBe(true); });
-  it('unset/none/empty→false', () => { delete process.env[KEY]; expect(isV2GoalIntakeEnabled('u')).toBe(false); process.env[KEY]='none'; expect(isV2GoalIntakeEnabled('u')).toBe(false); process.env[KEY]=''; expect(isV2GoalIntakeEnabled('u')).toBe(false); });
-  it('csv', () => { process.env[KEY]='user-abc'; expect(isV2GoalIntakeEnabled('abc')).toBe(true); expect(isV2GoalIntakeEnabled('z')).toBe(false); });
-});
-
-import { isV2TaskGoalLinkEnabled } from './feature-flags.js';
-describe('isV2TaskGoalLinkEnabled', () => {
-  const KEY = 'FEATURE_V2_TASK_GOAL_LINK'; const prev = process.env[KEY];
-  afterEach(() => { if (prev === undefined) delete process.env[KEY]; else process.env[KEY] = prev; });
-  it('all→true', () => { process.env[KEY]='all'; expect(isV2TaskGoalLinkEnabled('u')).toBe(true); });
-  it('unset/none/empty→false', () => { delete process.env[KEY]; expect(isV2TaskGoalLinkEnabled('u')).toBe(false); process.env[KEY]='none'; expect(isV2TaskGoalLinkEnabled('u')).toBe(false); process.env[KEY]=''; expect(isV2TaskGoalLinkEnabled('u')).toBe(false); });
-  it('csv', () => { process.env[KEY]='user-abc'; expect(isV2TaskGoalLinkEnabled('abc')).toBe(true); expect(isV2TaskGoalLinkEnabled('z')).toBe(false); });
+describe('флаги FEATURE_V2_* удалены (2026-11-09, на проде были all)', () => {
+  it('в коде нет ни хелперов isV2…Enabled, ни чтения process.env.FEATURE_V2_*', () => {
+    const offenders = srcFiles(join(process.cwd(), 'src')).filter((p) => {
+      const s = readFileSync(p, 'utf8');
+      return /\bisV2[A-Za-z]+Enabled\b/.test(s) || /process\.env(?:\.|\[['"])FEATURE_V2_/.test(s);
+    });
+    expect(offenders).toEqual([]);
+  });
 });
 
 describe('featureFlagSnapshot — лог флагов без id', () => {

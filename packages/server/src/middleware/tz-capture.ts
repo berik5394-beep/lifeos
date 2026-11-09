@@ -16,7 +16,7 @@ const lastTz = new Map<string, string>();
 /**
  * Записать пояс из заголовка X-Timezone в User.timezone. Best-effort,
  * НИКОГДА не бросает (зовётся из auth-middleware fire-and-forget, не должен
- * влиять на auth). No-op если: флаг off / нет заголовка / невалидный пояс /
+ * влиять на auth). No-op если: нет заголовка / невалидный пояс /
  * тот же пояс что в кэше. При перелёте устройство шлёт новый пояс → обновляем.
  */
 export async function captureTimezone(

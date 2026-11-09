@@ -176,7 +176,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
       `настроение: ${dir} сдвиг ${Number(m.magnitude).toFixed(1)} (${m.sinceDays ?? 0}д)`,
     );
   }
-  // mood-tone Part 1: off → null → не пушится (off=байт-идентично).
+  // mood-tone Part 1: нет спада → null → не пушится.
   if (data.moodToneDirective) lines.push(data.moodToneDirective);
   if (data.entities.length > 0) {
     const top = data.entities

@@ -788,7 +788,7 @@ async function detectBirthday(userId: string): Promise<NudgeCandidate[]> {
 
 /**
  * День памяти (мост #2): человек с death_date сегодня/завтра → бережный нудж.
- * READ-ONLY. Флаг-гейт ранний (off=identical). Тон ВСЕГДА supportive —
+ * READ-ONLY. Тон ВСЕГДА supportive —
  * generateNudge берёт фиксированный шаблон (без стиль-rewrite), токсичный
  * стиль недостижим.
  */

@@ -116,7 +116,7 @@ export async function gatherPanelFacts(
     }
   };
 
-  // Шаги по сделкам на ближайшие дни (флаг выкл. → [] → факта нет).
+  // Шаги по сделкам на ближайшие дни (нет шагов → факта нет).
   const dealStepFacts = async (days: number) => {
     const { listDealSteps, describeDealStepsFact } = await import('./deals/index.js');
     const steps = await listDealSteps(userId, today, dateOnlyUTC(addCivilDays(todayStr, days)));

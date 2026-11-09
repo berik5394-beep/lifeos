@@ -7,7 +7,6 @@ import { prisma } from '../lib/prisma.js';
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { withTimeout } from '../lib/with-timeout.js';
-import { isV2GoalIntakeEnabled } from '../lib/feature-flags.js';
 import { buildGoalIntake, buildShortGoalIntake, MONEY_WINDOW_MONTHS, type GoalIntakeFacts } from './goal-intake.js';
 import { isMoneyGoal } from './goal-pace.js';
 import { gatherWeekLoad } from './week-load.js';
@@ -194,10 +193,9 @@ async function gather(userId: string, goalId: string, now: Date): Promise<GoalIn
 
 /**
  * Разбор только что поставленной годовой цели (строки + вопрос) или null:
- * флаг выкл. / цели нет / не уложились в бюджет / сбой.
+ * цели нет / не уложились в бюджет / сбой.
  */
 export async function maybeGoalIntake(userId: string, goalId: string, now: Date = new Date()): Promise<string | null> {
-  if (!isV2GoalIntakeEnabled(userId)) return null;
   const facts = await withTimeout(
     gather(userId, goalId, now).catch((err) => {
       console.warn('[goal-intake] gather failed:', err);
@@ -217,7 +215,7 @@ export async function maybeGoalIntake(userId: string, goalId: string, now: Date 
 }
 
 /**
- * Разбор цели месяца/недели (тот же флаг FEATURE_V2_GOAL_INTAKE): время в
+ * Разбор цели месяца/недели: время в
  * неделю vs свободное до конца недели, привычка по корню, ближайшее окно.
  * READ-ONLY, тот же бюджет, сбой → null (цель уже записана).
  */
@@ -226,7 +224,6 @@ export async function maybeShortGoalIntake(
   goal: { goalText: string; horizon: 'month' | 'week' },
   now: Date = new Date(),
 ): Promise<string | null> {
-  if (!isV2GoalIntakeEnabled(userId)) return null;
   const run = async (): Promise<string | null> => {
     const moodP = getEmotionalMemory()
       .detectMoodShift(userId)

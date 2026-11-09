@@ -182,9 +182,9 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       type: 'task_created',
       content: `Создал задачу «${task.title}» на ${data.date}`,
     });
-    // Задача — явный шаг к годовой цели? Фоном (флаг): цель «видит» работу по ней.
+    // Задача — явный шаг к годовой цели? Фоном: цель «видит» работу по ней.
     if (!data.parentId) linkTaskToGoalInBackground(request.userId, task.id, task.title);
-    // Перегруз дня (флаг): робот предлагает сдвинуть график одним касанием.
+    // Перегруз дня: робот предлагает сдвинуть график одним касанием.
     // Предложение уже в PendingAction; мобилка показывает его облачком.
     const proposal = await proposeReschedule(request.userId, data.date, task.id, new Date(), { fromCard: true });
     // Наложение на встречу/задачу того же времени — облачком робота (раньше с
@@ -253,7 +253,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       timeTouched && !updated.completed && !updated.cancelled
         ? await screenConflictText(request.userId, updated.date, { kind: 'task', title: updated.title, start: updated.time }, { taskId: updated.id })
         : null;
-    // Перегруз дня (флаг): задачу перенесли на другой день → проверяем новый день.
+    // Перегруз дня: задачу перенесли на другой день → проверяем новый день.
     const moved = !!data.date && previousDate !== null && (previousDate as Date).toISOString().slice(0, 10) !== data.date;
     if (moved && !updated.completed && !updated.cancelled) {
       const proposal = await proposeReschedule(request.userId, data.date as string, updated.id, new Date(), { fromCard: true });
