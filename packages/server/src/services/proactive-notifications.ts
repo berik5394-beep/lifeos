@@ -8,6 +8,7 @@ import { delegationHints, delegationLine, durationMin, getHourRate, listTeam, LO
 import { calculateStreak } from './streak-service.js';
 import { listDealStepsForDay } from './deals/service.js';
 import { dealStepLabel, plural } from './deals/format.js';
+import { carryBudgetLimits } from './budget-carry.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -217,6 +218,7 @@ async function generateBudgetAlerts(
   const currentYear = now.getFullYear();
   const daysLeft = daysRemainingInMonth();
 
+  await carryBudgetLimits(userId, currentMonth, currentYear);
   const budgetLimits = await prisma.budgetLimit.findMany({
     where: { userId, month: currentMonth, year: currentYear },
     select: { category: true, monthlyLimit: true },

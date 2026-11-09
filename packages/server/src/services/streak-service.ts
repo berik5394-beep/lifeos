@@ -14,12 +14,15 @@ import { getUserTimezone } from '../lib/user-context.js';
  * (user may not have checked in).
  */
 export async function calculateStreak(userId: string, tz?: string): Promise<number> {
-  const activeHabits = await prisma.habit.count({
-    where: { userId, active: true },
-  });
+  // Аудит 2026-11-09: порог — от ЕЖЕДНЕВНЫХ привычек (недельная не обязана
+  // быть каждый день); архивные шаги старого плана не считаем.
+  const [activeHabits, dailyHabits] = await Promise.all([
+    prisma.habit.count({ where: { userId, active: true, archivedAt: null } }),
+    prisma.habit.count({ where: { userId, active: true, archivedAt: null, frequency: 'daily' } }),
+  ]);
   if (activeHabits === 0) return 0;
 
-  const threshold = activeHabits * 0.5;
+  const threshold = (dailyHabits > 0 ? dailyHabits : activeHabits) * 0.5;
 
   // habit-day (2026-11-05): «сегодня» = календарная дата ЮЗЕРА (как пишутся
   // HabitLog), а не полночь сервера — иначе вечером по Алматы сегодняшние
@@ -56,8 +59,9 @@ export async function calculateStreak(userId: string, tz?: string): Promise<numb
       streak++;
       continue;
     }
-    // Grace for today
-    if (i === 0 && count === 0) continue;
+    // Сегодня ещё не кончилось: недобор сегодня серию не рвёт (раньше одна
+    // утренняя отметка из четырёх обнуляла серию — поблажка была только для 0).
+    if (i === 0) continue;
     break;
   }
   return streak;

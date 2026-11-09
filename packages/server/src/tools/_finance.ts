@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { dateOnlyUTC, localDateStr } from '../lib/tz.js';
 import { EXPENSE_LABELS } from '../lib/expense-category.js';
+import { carryBudgetLimits } from '../services/budget-carry.js';
 
 /**
  * SSOT Step 6 — чистый бюджет-анализ после расхода. Вынесен из
@@ -42,6 +43,7 @@ export async function analyzeBudgetAfterExpense(
   const lastDayStr = String(lastDayOfMonth).padStart(2, '0');
   const monthEnd = dateOnlyUTC(`${yearStr}-${monthStr}-${lastDayStr}`);
 
+  await carryBudgetLimits(userId, monthNum, year);
   const [expenses, limit] = await Promise.all([
     prisma.expense.aggregate({
       where: { userId, category, date: { gte: monthStart, lte: monthEnd } },

@@ -8,6 +8,7 @@ import { withIdempotency } from '../lib/idempotency.js';
 import { EXPENSE_LABELS } from '../lib/expense-category.js';
 import { localDateStr } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
+import { carryBudgetLimits } from '../services/budget-carry.js';
 
 // B.3: enum-валидация категории (аудит 3.12 — раньше любая строка).
 // Список из CLAUDE.md (expenseCategories).
@@ -121,6 +122,8 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
     const expYear = expenseDate.getFullYear();
     const monthStart = new Date(expYear, expMonth - 1, 1);
     const monthEnd = new Date(expYear, expMonth, 1);
+
+    await carryBudgetLimits(request.userId, expMonth, expYear);
 
     // ATOMIC: insert the expense and recompute the monthly total for its
     // category inside a single transaction. Without this, two parallel
@@ -282,6 +285,7 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
     const year = range.start.getFullYear();
     const m = range.start.getMonth() + 1;
 
+    await carryBudgetLimits(request.userId, m, year);
     return prisma.budgetLimit.findMany({
       where: { userId: request.userId, year, month: m },
     });
@@ -333,6 +337,7 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
     const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const daysRemaining = daysInMonth - currentDay;
 
+    await carryBudgetLimits(request.userId, month, year);
     const [expensesByCategory, budgetLimits, totalExpenses] = await Promise.all([
       prisma.expense.groupBy({
         by: ['category'],

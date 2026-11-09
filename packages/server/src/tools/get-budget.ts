@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { dateOnlyUTC, localDateStr } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
+import { carryBudgetLimits } from '../services/budget-carry.js';
 
 /**
  * SSOT Step 3b — read-only. Сводка бюджета за текущий месяц.
@@ -45,6 +46,7 @@ export const getBudgetTool = defineTool({
     const lastDayStr = String(lastDayOfMonth).padStart(2, '0');
     const monthEnd = dateOnlyUTC(`${yearStr}-${monthStr}-${lastDayStr}`);
 
+    await carryBudgetLimits(userId, monthNum, year);
     const [expenses, incomes, limits] = await Promise.all([
       prisma.expense.findMany({
         where: { userId, date: { gte: monthStart, lte: monthEnd } },

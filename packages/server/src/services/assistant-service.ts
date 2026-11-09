@@ -25,6 +25,7 @@ import {
   localWeekStartUTC,
   localMonthOnlyUTC,
 } from '../lib/tz.js';
+import { carryBudgetLimits } from './budget-carry.js';
 
 /**
  * Сбор полного контекста пользователя + intent. ОДИН сборщик —
@@ -84,6 +85,7 @@ export async function gatherAssistantContext(
   const todayDateOnly = localDateOnlyUTC(tz);
   const tomorrowDateOnly = new Date(todayDateOnly.getTime() + 24 * 60 * 60 * 1000);
   const [ly, lm] = localDateStr(tz).split('-').map(Number);
+  await carryBudgetLimits(userId, lm, ly);
   const monthStart = new Date(Date.UTC(ly, lm - 1, 1));
   const monthEnd = new Date(Date.UTC(ly, lm, 1));
 
