@@ -927,6 +927,25 @@ export default function TasksScreen() {
           <TapToAdd hint="Новая задача" onSubmit={handleQuickAdd} />
         </Card>
 
+        {/* Другие виды — отдельные экраны (↗). Раньше отдельным рядом над
+            «Дашборд/Неделя/Итоги»: три ряда навигации до первой задачи (UX-аудит №4). */}
+        <View style={styles.viewLinksRow}>
+          {visibleViewModes.filter((mode) => mode.route).map((mode) => (
+            <TouchableOpacity
+              key={mode.key}
+              style={styles.viewModePill}
+              onPress={() => handleViewModePress(mode)}
+              activeOpacity={0.7}
+              accessibilityRole="link"
+              accessibilityLabel={`Открыть ${mode.label}`}
+            >
+              <Feather name={mode.icon} size={13} color={c.textSecondary} />
+              <Text style={styles.viewModePillText}>{mode.label}</Text>
+              <Feather name="arrow-up-right" size={12} color={c.textSecondary} />
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <View style={[styles.statBox, { borderLeftColor: c.primary }]}>
@@ -978,7 +997,7 @@ export default function TasksScreen() {
   }, [
     currentMonth, monthTasks, monthStats, priorityDistribution, statusDistribution,
     refreshing, handleRefresh, handlePrevMonth, handleNextMonth, handleToggleComplete,
-    handleDeleteTask, handleEditTask, handleQuickAdd, styles, c,
+    handleDeleteTask, handleEditTask, handleQuickAdd, visibleViewModes, handleViewModePress, styles, c,
   ]);
 
   // ─── Render: Slide 2 — Week Planner ─────────────────────────────────────
@@ -1350,30 +1369,6 @@ export default function TasksScreen() {
         </View>
       )}
 
-      {/* View Mode Toolbar */}
-      <GHScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.viewModeBar}
-        contentContainerStyle={styles.viewModeBarContent}
-      >
-        {/* Не переключатель вида, а ссылки на ОТДЕЛЬНЫЕ экраны (стрелка ↗): раньше
-            «Список» горел как выбранный, а остальные «переключали», уводя со страницы. */}
-        {visibleViewModes.filter((mode) => mode.route).map((mode) => (
-          <TouchableOpacity
-            key={mode.key}
-            style={styles.viewModePill}
-            onPress={() => handleViewModePress(mode)}
-            activeOpacity={0.7}
-            accessibilityRole="link"
-            accessibilityLabel={`Открыть ${mode.label}`}
-          >
-            <Feather name={mode.icon} size={13} color={c.textSecondary} />
-            <Text style={styles.viewModePillText}>{mode.label}</Text>
-            <Feather name="arrow-up-right" size={12} color={c.textSecondary} />
-          </TouchableOpacity>
-        ))}
-      </GHScrollView>
 
       {isLoading && tasks.length === 0 ? (
         <View style={styles.loadingContainer}>
@@ -2080,6 +2075,12 @@ function createStyles(c: C) {
     },
 
     // ─── View Mode Toolbar ───────────────────────────────────────────────
+    viewLinksRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
     viewModeBar: {
       maxHeight: 44,
       borderBottomWidth: StyleSheet.hairlineWidth,
