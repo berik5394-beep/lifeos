@@ -221,3 +221,20 @@ describe('аудит 2026-11-09: источник дохода', () => {
     expect(detectMoneyIntent('выплатил зарплату 200000 Айгерим')).toBeNull();
   });
 });
+
+import { deterministicIntent } from './intent-parser.js';
+describe('аудит 2026-11-09: «вчера» и две суммы', () => {
+  const now = new Date('2026-11-09T06:00:00Z');
+  it('«вчера потратил 12000 на продукты» → трата за вчера', () => {
+    expect(deterministicIntent('вчера потратил 12000 на продукты', 'Asia/Almaty', now)).toMatchObject({ action: 'add_expense', amount: 12000, category: 'продукты', date: '2026-11-08' });
+  });
+  it('«купил на 5000 продуктов вчера» — «вчера» не в категории', () => {
+    expect(deterministicIntent('купил на 5000 продуктов вчера', 'Asia/Almaty', now)).toMatchObject({ category: 'продуктов', date: '2026-11-08' });
+  });
+  it('две суммы → мозгу (две записи), а не одна', () => {
+    expect(deterministicIntent('потратил 5000 на такси и 3000 на кофе', 'Asia/Almaty', now)).toBeNull();
+  });
+  it('без «вчера» — без даты, как раньше', () => {
+    expect(deterministicIntent('потратил 3000 на обед', 'Asia/Almaty', now)).not.toHaveProperty('date');
+  });
+});

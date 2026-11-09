@@ -434,25 +434,41 @@ export function replyNeedsTools(reply: string): boolean {
  * требованием вызвать инструмент; снова пусто → честное «не сделал».
  */
 const ACTION_REQUEST =
-  /(созда|создай|добав|постав|запиш|запис|впиш|впис|занес|занеси|отмет|напомн|запланир|заведи|внес|перенес|удали|сохрани|запомни|закинь|привяж|привычк|цел[ьиея]|задач|встреч|трат|расход|доход)/i;
+  /(созда|создай|добав|постав|запиш|запис|впиш|впис|занес|занеси|отмет|напомн|запланир|заведи|внес|перенес|удали|сохрани|запомни|закинь|привяж|закрой|закры|отмени|убер|вычеркн|сдвинь|сделал|выполнил|привычк|цел[ьиея]|задач|встреч|трат|расход|доход)/i;
+/**
+ * Вопрос о своих данных («что у меня запланировано?», «какие привычки я отметил?»)
+ * — не просьба о действии (аудит 2026-11-09: сторож ловил честный ответ
+ * «на завтра запланированы 3 задачи» как выдумку). Внутри вопроса действие —
+ * только повелительное («можешь поставь…?», «отметь зарядку?»).
+ */
+const QUESTION_START = /^\s*(?:а\s+)?(?:какие|какой|какая|какое|каких|что|чего|сколько|когда|где|как|кто|есть\s+ли|покажи|расскажи|напомни,?\s+(?:что|какие|когда))(?![а-яё])/i;
+const IMPERATIVE =
+  /(?:^|[^а-яё])(созда[йт]|добавь|поставь|запиши|впиши|занеси|отметь|запланируй|заведи|внеси|перенеси|удали|сохрани|запомни|закинь|привяжи|закрой|отмени|убери|вычеркни|сдвинь)(?![а-яё])/i;
 /** «записал/создала/добавил…» от лица робота — не «ты отметил». */
 const DONE_ACTIVE =
-  /(?:^|[^а-яё])(записал|добавил|сохранил|отметил|создал|запомнил|поставил|внёс|внес|перенёс|перенес|удалил|завёл|завел|закинул|запланировал|привязал|отмечаю|записываю|добавляю|создаю|ставлю|сохраняю|вношу|переношу|закидываю|запоминаю|удаляю)(а|и)?(?![а-яё])/gi;
+  /(?:^|[^а-яё])(записал|добавил|сохранил|отметил|создал|запомнил|поставил|внёс|внес|перенёс|перенес|удалил|завёл|завел|закинул|запланировал|привязал|закрыл|выполнил|отменил|убрал|вычеркнул|сдвинул|отмечаю|записываю|добавляю|создаю|ставлю|сохраняю|вношу|переношу|закидываю|запоминаю|удаляю|закрываю|отменяю|убираю|напомню)(а|и)?(?![а-яё])/gi;
 /** «задача создана», «привычка добавлена» — пассив тоже обещание. */
 const DONE_PASSIVE =
-  /(?:^|[^а-яё])(создан|добавлен|записан|сохран[её]н|поставлен|запланирован|заведен|заведён|отмечен|привязан)(?:а|о|ы)?(?![а-яё])/i;
+  /(?:^|[^а-яё])(создан|добавлен|записан|сохран[её]н|поставлен|запланирован|заведен|заведён|отмечен|привязан|выполнен|закрыт|перенесен|перенесён|удален|удалён|отменен|отменён|убран)(?:а|о|ы)?(?![а-яё])/gi;
 const OTHER_SUBJECT = /(?:^|[^а-яё])(?:ты|вы|он|она|они|кто-то)\s+(?:уже\s+|сам[аи]?\s+|ещё\s+|вчера\s+|сегодня\s+)?$/i;
+/** «Не записал: в 14:00 уже встреча» — честный отказ, не обещание. */
+const NEGATED = /(?:^|[^а-яё])(?:не|ещё\s+не|пока\s+не|нельзя)\s+$/i;
 
 export function asksForAction(text: string): boolean {
-  return ACTION_REQUEST.test(text);
+  const t = text.trim();
+  if (t.endsWith('?') || QUESTION_START.test(t)) return IMPERATIVE.test(t);
+  return ACTION_REQUEST.test(t);
 }
 
 export function claimsDoneAction(reply: string): boolean {
-  if (DONE_PASSIVE.test(reply)) return true;
-  for (const m of reply.matchAll(DONE_ACTIVE)) {
-    const start = (m.index ?? 0) + m[0].indexOf(m[1]);
-    const before = reply.slice(Math.max(0, start - 30), start);
-    if (!OTHER_SUBJECT.test(before)) return true;
+  for (const re of [DONE_PASSIVE, DONE_ACTIVE]) {
+    for (const m of reply.matchAll(re)) {
+      const start = (m.index ?? 0) + m[0].indexOf(m[1]);
+      const before = reply.slice(Math.max(0, start - 30), start);
+      if (NEGATED.test(before)) continue;
+      if (re === DONE_ACTIVE && OTHER_SUBJECT.test(before)) continue;
+      return true;
+    }
   }
   return false;
 }
@@ -460,7 +476,11 @@ export function claimsDoneAction(reply: string): boolean {
 /** Инструмент изменил данные юзера (не чтение) и не вернул «не нашёл/ошибку». */
 export function isRealWrite(tool: string, result: unknown): boolean {
   const t = registry.get(tool);
-  return !!t && t.sideEffects !== 'read' && !isFailedResult(result);
+  if (!t || isFailedResult(result)) return false;
+  // Внешние ЧТЕНИЯ (погода, билеты, разбор почты) — не запись: раньше любой
+  // такой вызов выключал сторож на весь ход (аудит 2026-11-09).
+  if (t.sideEffects === 'external') return tool === 'send_email' || tool === 'send_telegram';
+  return t.sideEffects !== 'read';
 }
 
 export const UNBACKED_CLAIM_NOTE =
@@ -1115,6 +1135,8 @@ async function handleMessageCore(
       const filled: Record<string, unknown> = {
         amount: pending.input.amount,
         [slot]: text.trim(),
+        // «вчера потратил 5000» → «на такси»: дата из первой фразы не теряется.
+        ...(typeof pending.input.date === 'string' ? { date: pending.input.date } : {}),
       };
       const ctext = confirmationText(pending.action, filled);
       await setPendingAction(userId, pending.action, filled, ctext);
@@ -1582,7 +1604,7 @@ async function handleMessageCore(
     if (intent.action === 'add_expense' && input.category == null) {
       const amount = Number(input.amount);
       const q = `На что потратил ${amount}₸? (или «отмена»)`;
-      await setPendingAction(userId, 'add_expense', { amount, __awaitingCategory: true }, q);
+      await setPendingAction(userId, 'add_expense', { amount, __awaitingCategory: true, ...(typeof input.date === 'string' ? { date: input.date } : {}) }, q);
       await saveTurn(userId, text, q);
       return {
         reply: q,

@@ -1,6 +1,6 @@
 import { MODELS } from '../lib/models.js';
 import { createAnthropic, QUICK_CALL } from '../lib/anthropic.js';
-import { civilDayRefs } from '../lib/tz.js';
+import { civilDayRefs, addCivilDays } from '../lib/tz.js';
 import { parseRuWhen } from '../lib/ru-when.js';
 import { MAX_MONEY_AMOUNT } from '../lib/money.js';
 import { cachedSystem } from '../lib/prompt-cache.js';
@@ -95,7 +95,7 @@ const MEMORY_TRIGGERS = [
 ];
 
 export type MoneyIntent =
-  | { action: 'add_expense'; amount: number; category?: string; description?: string }
+  | { action: 'add_expense'; amount: number; category?: string; description?: string; date?: string }
   | { action: 'add_income'; amount: number; source?: string };
 
 /**
@@ -357,8 +357,23 @@ export function deterministicIntent(
   // SSOT Step 6 + #189: деньги — через чистый detectMoneyIntent
   // (расширенный детект «я потратил…», без 'other'-дефолта). Чат-агент
   // денег не видит → не сочиняет запись.
-  const money = detectMoneyIntent(text);
-  if (money) return money;
+  // Аудит 2026-11-09: «вчера потратил 12000» писалось сегодня (1-го числа — уже
+  // другой месяц); «потратил 5000 на такси и 3000 на кофе» — одна трата 5000
+  // с категорией «такси и 3000 на кофе». Вторая сумма — мозгу (две записи),
+  // «вчера/позавчера» — датой траты.
+  const dayWord = text.match(/(?:^|\s)(позавчера|вчера)(?=$|[\s,.!])/i);
+  const money = detectMoneyIntent(dayWord ? text.replace(dayWord[0], ' ').replace(/\s{2,}/g, ' ').trim() : text);
+  if (money) {
+    const rest = money.action === 'add_expense' ? (money.category ?? '') : (money.source ?? '');
+    if (/\d/.test(rest) && /(?:^|\s)(?:и|ещё|еще|плюс|а)\s|,/.test(rest)) return null;
+    if (dayWord) {
+      // Доход задним числом инструмент не пишет — пусть решает мозг, а не «сегодня».
+      if (money.action !== 'add_expense') return null;
+      const { today } = civilDayRefs(tz, now);
+      return { ...money, date: addCivilDays(today, /позавчера/i.test(dayWord[1]) ? -2 : -1) };
+    }
+    return money;
+  }
 
   let m: RegExpMatchArray | null = null;
 
@@ -377,7 +392,11 @@ export function deterministicIntent(
 
   // complete_habit: "отметь привычку бег", "отметь бег", "выполнил чтение",
   // "сделал зарядку" (одна привычка)
-  m = text.match(/^(?:отметь|выполнил[аи]?|сделал[аи]?|закрой)\s+(?:привычку\s+)?(.+)$/i);
+  // «сделал зарядку вчера» — отметка за вчера (раньше — сегодня с «отмечена ✅»).
+  const habitDay = text.match(/(?:^|\s)(позавчера|вчера)(?=$|[\s,.!])/i);
+  const habitText = habitDay ? text.replace(habitDay[0], ' ').replace(/\s{2,}/g, ' ').trim() : text;
+  const habitDate = habitDay ? addCivilDays(civilDayRefs(tz, now).today, /позавчера/i.test(habitDay[1]) ? -2 : -1) : null;
+  m = habitText.match(/^(?:отметь|выполнил[аи]?|сделал[аи]?|закрой)\s+(?:привычку\s+)?(.+)$/i);
   // Только короткое «отметь бег / сделал зарядку и чтение». «сделал отчёт для
   // банка», «закрой счёт в банке», «отметь в календаре встречу» — не привычки:
   // пусть решает модель (2026-11-09).
@@ -391,10 +410,10 @@ export function deterministicIntent(
         .map((s) => s.trim())
         .filter(Boolean);
       if (habitNames.length > 1) {
-        return { action: 'complete_multiple_habits', habitNames };
+        return { action: 'complete_multiple_habits', habitNames, ...(habitDate ? { date: habitDate } : {}) } as VoiceIntent;
       }
     }
-    return { action: 'complete_habit', habitName: rest };
+    return { action: 'complete_habit', habitName: rest, ...(habitDate ? { date: habitDate } : {}) } as VoiceIntent;
   }
 
   // create_task: "создай задачу купить хлеб завтра", "добавь задачу X",

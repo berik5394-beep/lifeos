@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDateOnlyUTC } from '../lib/tz.js';
+import { resolveHabitDay } from './_habit-day.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { matchHabit, buildNotFoundMessage } from './_habit-match.js';
@@ -10,7 +10,7 @@ import { onHabitDone } from '../services/coins.js';
 export const completeHabitTool = defineTool({
   name: 'complete_habit',
   description:
-    'Отметить ОДНУ привычку выполненной сегодня. Если в одном сообщении ' +
+    'Отметить ОДНУ привычку выполненной (сегодня; «вчера»/прошедший день — date). Если в одном сообщении ' +
     'несколько привычек («бег И чтение», «все утренние») — используй ' +
     'complete_multiple_habits. Вызывай на «отметь X», «сделал X», ' +
     '«выполнил X», если X — привычка из списка привычек. Если X — разовое ' +
@@ -22,6 +22,7 @@ export const completeHabitTool = defineTool({
   schema: z.object({
     name: z.string().max(120).optional(),
     habitId: z.string().max(60).optional(),
+    date: z.string().max(10).optional().describe('YYYY-MM-DD, если отметка не за сегодня («вчера»)'),
   }),
   needsConfirm: false,
   sideEffects: 'write',
@@ -33,7 +34,7 @@ export const completeHabitTool = defineTool({
     // habit-day (2026-11-05): @db.Date = КАЛЕНДАРНАЯ дата юзера (как пишет
     // приложение POST /habits/:id/log и как задачи/события). Инстант локальной полуночи
     // давал реальный инстант полуночи → для UTC+ зон в @db.Date это ВЧЕРА.
-    const today = localDateOnlyUTC(tz);
+    const { day: today, label: dayLabel } = resolveHabitDay(tz, input.date);
     let habit = input.habitId
       ? await prisma.habit.findFirst({
           where: { id: input.habitId, userId },
@@ -100,6 +101,6 @@ export const completeHabitTool = defineTool({
     } catch {
       /* best-effort: связка не должна ломать отметку */
     }
-    return { message: `Привычка "${habit.name}" отмечена ✅${suffix}`, habitId: habit.id };
+    return { message: `Привычка "${habit.name}" отмечена${dayLabel} ✅${suffix}`, habitId: habit.id };
   },
 });

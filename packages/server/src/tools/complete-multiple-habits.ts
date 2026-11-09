@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { localDateOnlyUTC } from '../lib/tz.js';
+import { resolveHabitDay } from './_habit-day.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { matchHabit, buildNotFoundMessage } from './_habit-match.js';
@@ -14,7 +14,7 @@ import { onHabitDone } from '../services/coins.js';
 export const completeMultipleHabitsTool = defineTool({
   name: 'complete_multiple_habits',
   description:
-    'Отметить несколько привычек выполненными сегодня. Вызывай на ' +
+    'Отметить несколько привычек выполненными (сегодня; «вчера»/прошедший день — date). Вызывай на ' +
     '«отметь бег и чтение», «закрой все утренние привычки».',
   category: 'habit',
   // TOOLFIX: алиасы имён аргументов модели → канон (см. _normalize-args).
@@ -22,6 +22,7 @@ export const completeMultipleHabitsTool = defineTool({
   schema: z.object({
     habitNames: z.array(z.string().max(120)).max(30).optional(),
     habitIds: z.array(z.string().max(60)).max(30).optional(),
+    date: z.string().max(10).optional().describe('YYYY-MM-DD, если отметка не за сегодня («вчера»)'),
   }),
   needsConfirm: false,
   sideEffects: 'write',
@@ -33,7 +34,7 @@ export const completeMultipleHabitsTool = defineTool({
     // habit-day (2026-11-05): @db.Date = КАЛЕНДАРНАЯ дата юзера (как пишет
     // приложение POST /habits/:id/log и как задачи/события). Инстант локальной полуночи
     // давал реальный инстант полуночи → для UTC+ зон в @db.Date это ВЧЕРА.
-    const today = localDateOnlyUTC(tz);
+    const { day: today, label: dayLabel } = resolveHabitDay(tz, input.date);
 
     // R9 honesty #16 fix: name resolution параллельно (раньше N
     // sequential roundtrips к Prisma для каждого имени).
@@ -101,14 +102,40 @@ export const completeMultipleHabitsTool = defineTool({
       }
     });
 
-    if (succeededIds.length === 0 && (input.habitIds ?? []).length === 0) {
+    // «Сделал уборку и стирку» — не привычки, а задачи → закрываем задачи (как
+    // одиночный complete_habit). Раньше — общий «Не получилось» (аудит 2026-11-09).
+    const closedTasks: string[] = [];
+    if (notFound.length > 0 && !input.date) {
+      const { isV2RescheduleEnabled } = await import('../lib/feature-flags.js');
+      if (isV2RescheduleEnabled(userId)) {
+        const { matchTaskByWholeWords } = await import('../services/task-title.js');
+        const { runRegistryTool } = await import('./index.js');
+        const open = await prisma.task.findMany({
+          where: { userId, completed: false, cancelled: false },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        });
+        for (const name of [...notFound]) {
+          const task = matchTaskByWholeWords(name, open);
+          if (!task) continue;
+          await runRegistryTool('complete_task', { taskId: task.id, title: task.title }, ctx);
+          closedTasks.push(task.title);
+          notFound.splice(notFound.indexOf(name), 1);
+        }
+      }
+    }
+
+    if (succeededIds.length === 0 && closedTasks.length === 0 && (input.habitIds ?? []).length === 0) {
       // НИ одной привычки не отмечено → честный провал (модель не врёт «отметил»).
       throw new Error(buildNotFoundMessage((input.habitNames ?? []).join(', '), active));
     }
 
-    const parts: string[] = [`Отмечено привычек: ${succeededIds.length} ✅`];
+    const parts: string[] = succeededIds.length > 0 || closedTasks.length === 0 ? [`Отмечено привычек${dayLabel}: ${succeededIds.length} ✅`] : [];
     if (failedIds.length > 0) {
       parts.push(`Не удалось: ${failedIds.length}`);
+    }
+    if (closedTasks.length > 0) {
+      parts.push(`Закрыл задачи: ${closedTasks.map((t) => `«${t}»`).join(', ')}`);
     }
     if (notFound.length > 0) {
       parts.push(`Не найдено: ${notFound.join(', ')}`);
@@ -121,6 +148,7 @@ export const completeMultipleHabitsTool = defineTool({
       succeededIds,
       failedIds,
       notFoundNames: notFound,
+      closedTasks,
     };
   },
 });
