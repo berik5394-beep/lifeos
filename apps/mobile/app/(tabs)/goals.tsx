@@ -33,12 +33,14 @@ import { spacing, fontSize, borderRadius } from '@/constants';
 import { FadeInView } from '@/components/ui/fade-in-view';
 import { useColors } from '@/hooks/use-colors';
 import { hapticLight, hapticSelection } from '@/services/haptics';
-import { goalPercent, GOAL_STEP_PCT } from '@/utils/goal-progress';
+import { goalPercent, effectiveGoalPercent, GOAL_STEP_PCT } from '@/utils/goal-progress';
+import { fmtMoney } from '@/services/deals';
 import { useInTools } from '@/hooks/use-content-width';
 import { pluralN, HABITS } from '@/utils/plural';
 import { useScheduleStore } from '@/stores/schedule-store';
 import { InlineEntry } from '@/components/ui/inline-entry';
 import { useToday } from '@/hooks/use-today';
+import { MonthlyGoalsCard } from '@/components/goals/monthly-goals-card';
 
 // Enable LayoutAnimation on Android
 if (
@@ -206,13 +208,21 @@ const HabitItem = React.memo(function HabitItem({
 
 type ScreenStyles = ReturnType<typeof createStyles>;
 
+/** Живой прогресс с сервера (GET /goals/yearly). */
+type LiveGoalFields = {
+  liveProgress?: number;
+  saved?: number;
+  target?: number | null;
+  habitDays?: { done: number; of: number };
+};
+
 interface GoalItemProps {
   goal: {
     id: string;
     goalText: string;
     progress: number;
     area: string;
-  };
+  } & LiveGoalFields;
   areaColor: string;
   onEdit: (goal: { id: string; goalText: string; progress: number; area: string }) => void;
   onDelete: (id: string) => void;
@@ -237,8 +247,16 @@ const GoalItem = React.memo(function GoalItem({
   c,
   styles,
 }: GoalItemProps) {
-  const progressPercent = goalPercent(goal.progress);
+  const progressPercent = effectiveGoalPercent(goal);
   const isComplete = progressPercent >= 100;
+  // Денежная цель считается сама (доходы − расходы с даты цели) — «+/−» не нужны.
+  const live = goal.liveProgress != null;
+  const subline =
+    live && goal.saved != null && goal.target
+      ? `Накоплено ${fmtMoney(Math.max(0, goal.saved))} из ${fmtMoney(goal.target)}`
+      : goal.habitDays
+        ? `Привычки к цели: ${goal.habitDays.done} из ${goal.habitDays.of} дн.`
+        : null;
 
   const handleEdit = useCallback(() => {
     onEdit(goal);
@@ -285,9 +303,11 @@ const GoalItem = React.memo(function GoalItem({
                 {isComplete ? '🎉 ' : ''}
                 {goal.goalText}
               </Text>
+              {subline ? <Text style={styles.goalSubline}>{subline}</Text> : null}
             </Pressable>
           </InlineEntry>
 
+          {live ? null : (
           <View style={styles.goalStepper}>
             <TouchableOpacity
               onPress={handleSliderIncrease}
@@ -308,6 +328,7 @@ const GoalItem = React.memo(function GoalItem({
               <Text style={styles.goalStepText}>−</Text>
             </TouchableOpacity>
           </View>
+          )}
         </View>
       </SwipeableRow>
     </View>
@@ -318,13 +339,13 @@ const GoalItem = React.memo(function GoalItem({
 
 interface AreaCardProps {
   areaKey: GoalAreaKey;
-  goals: {
+  goals: ({
     id: string;
     goalText: string;
     progress: number;
     area: string;
     habits?: { id: string; name: string; category: string }[];
-  }[];
+  } & LiveGoalFields)[];
   habits: {
     id: string;
     name: string;
@@ -388,7 +409,7 @@ const AreaCard = React.memo(function AreaCard({
   // Compute area progress
   const areaProgress = useMemo(() => {
     if (goals.length === 0) return 0;
-    const sum = goals.reduce((acc, g) => acc + goalPercent(g.progress), 0);
+    const sum = goals.reduce((acc, g) => acc + effectiveGoalPercent(g), 0);
     return Math.round(sum / goals.length);
   }, [goals]);
 
@@ -1070,7 +1091,7 @@ export default function GoalsScreen() {
 
   const overallProgress = useMemo(() => {
     if (goalsForYear.length === 0) return 0;
-    const sum = goalsForYear.reduce((acc, g) => acc + goalPercent(g.progress), 0);
+    const sum = goalsForYear.reduce((acc, g) => acc + effectiveGoalPercent(g), 0);
     return Math.round(sum / goalsForYear.length);
   }, [goalsForYear]);
 
@@ -1341,7 +1362,7 @@ export default function GoalsScreen() {
   // ── Summary stats ──
   const totalGoals = goalsForYear.length;
   const completedGoals = useMemo(
-    () => goalsForYear.filter((g) => goalPercent(g.progress) >= 100).length,
+    () => goalsForYear.filter((g) => effectiveGoalPercent(g) >= 100).length,
     [goalsForYear],
   );
   const areasWithGoals = useMemo(
@@ -1422,6 +1443,9 @@ export default function GoalsScreen() {
             </View>
           </View>
         </View>
+
+        {/* ── Цели на месяц (только в текущем году — месяц сегодняшний) ── */}
+        {year === currentYear ? <MonthlyGoalsCard month={currentMonthStr} /> : null}
 
         {/* ── Area cards ── */}
         {AREA_KEYS.map((areaKey) => (
@@ -1836,6 +1860,11 @@ function createStyles(c: C) {
       fontWeight: '600',
       color: c.text,
       lineHeight: fontSize.md * 1.4,
+    },
+    goalSubline: {
+      fontSize: fontSize.xs,
+      color: c.textSecondary,
+      marginTop: 2,
     },
     goalStepper: {
       alignItems: 'center',

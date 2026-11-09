@@ -29,6 +29,15 @@ interface WeeklyGoal {
   order: number;
 }
 
+export interface MonthlyGoal {
+  id: string;
+  userId: string;
+  monthStart: string;
+  goalText: string;
+  completed: boolean;
+  order: number;
+}
+
 interface YearlyGoal {
   id: string;
   userId: string;
@@ -39,6 +48,11 @@ interface YearlyGoal {
   /** Числовая величина цели (1 000 000 ₸, 50 книг); null — без числа. */
   target?: number | null;
   habits?: { id: string; name: string; category: string }[];
+  /** Денежная цель: накоплено (доходы − расходы с даты цели) и % — тот же расчёт, что у робота. */
+  saved?: number;
+  liveProgress?: number;
+  /** Привязанные привычки: дней с отметкой из последних 30 (регулярность, не % цели). */
+  habitDays?: { done: number; of: number };
 }
 
 interface GoalState {
@@ -49,6 +63,12 @@ interface GoalState {
   createWeeklyGoal: (weekStart: string, goalText: string) => Promise<void>;
   updateWeeklyGoal: (id: string, data: Partial<WeeklyGoal>) => Promise<void>;
   deleteWeeklyGoal: (id: string) => Promise<void>;
+  /** Цели на месяц (их ставит и робот). month — 'YYYY-MM'. */
+  monthlyGoals: MonthlyGoal[];
+  fetchMonthlyGoals: (month?: string) => Promise<void>;
+  createMonthlyGoal: (month: string, goalText: string) => Promise<void>;
+  updateMonthlyGoal: (id: string, data: Partial<Pick<MonthlyGoal, 'goalText' | 'completed'>>) => Promise<void>;
+  deleteMonthlyGoal: (id: string) => Promise<void>;
   fetchYearlyGoals: (year?: number) => Promise<void>;
   createYearlyGoal: (data: { year: number; area: string; goalText: string; target?: number }) => Promise<void>;
   updateYearlyGoal: (id: string, data: Partial<YearlyGoal>) => Promise<void>;
@@ -109,6 +129,44 @@ export const useGoalStore = create<GoalState>((set) => ({
     set((state) => ({
       weeklyGoals: state.weeklyGoals.filter((g) => g.id !== id),
     }));
+  },
+
+  monthlyGoals: [],
+
+  fetchMonthlyGoals: async (month?: string) => {
+    const token = useAuthStore.getState().token;
+    if (!token) return;
+    const monthlyGoals = await api.get<MonthlyGoal[]>(`/goals/monthly${month ? `?month=${month}` : ''}`, token);
+    set({ monthlyGoals });
+  },
+
+  createMonthlyGoal: async (month: string, goalText: string) => {
+    const token = useAuthStore.getState().token;
+    if (!token) return;
+    const goal = await api.post<MonthlyGoal>('/goals/monthly', { month, goalText }, token);
+    set((state) => ({ monthlyGoals: [...state.monthlyGoals, goal] }));
+  },
+
+  updateMonthlyGoal: async (id, data) => {
+    const token = useAuthStore.getState().token;
+    if (!token) return;
+    // Галочка сразу; сбой — откат.
+    const prev = useGoalStore.getState().monthlyGoals;
+    set((state) => ({ monthlyGoals: state.monthlyGoals.map((g) => (g.id === id ? { ...g, ...data } : g)) }));
+    try {
+      const updated = await api.put<MonthlyGoal>(`/goals/monthly/${id}`, data, token);
+      set((state) => ({ monthlyGoals: state.monthlyGoals.map((g) => (g.id === id ? updated : g)) }));
+    } catch (err) {
+      set({ monthlyGoals: prev });
+      throw err;
+    }
+  },
+
+  deleteMonthlyGoal: async (id: string) => {
+    const token = useAuthStore.getState().token;
+    if (!token) return;
+    await api.delete(`/goals/monthly/${id}`, token);
+    set((state) => ({ monthlyGoals: state.monthlyGoals.filter((g) => g.id !== id) }));
   },
 
   fetchYearlyGoals: async (year?: number) => {

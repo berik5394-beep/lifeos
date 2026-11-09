@@ -15,3 +15,12 @@ export function goalPercent(progress: number | null | undefined): number {
 
 /** Шаг кнопок «−/+» на карточке цели, в процентах. */
 export const GOAL_STEP_PCT = 10;
+
+/**
+ * Процент, который показывает кольцо: у денежной цели — живой (накоплено с даты
+ * цели, тот же расчёт, что у робота), иначе сохранённый (аудит 2026-11-09:
+ * робот говорил «40%», экран — 0%).
+ */
+export function effectiveGoalPercent(g: { progress: number | null | undefined; liveProgress?: number | null }): number {
+  return g.liveProgress != null ? Math.max(0, Math.min(100, Math.round(g.liveProgress))) : goalPercent(g.progress);
+}

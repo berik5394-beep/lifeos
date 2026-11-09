@@ -15,3 +15,12 @@ describe('аудит 2026-11-09: 1% — это 1%', () => {
     expect(goalPercent(0.5)).toBe(50);
   });
 });
+
+import { effectiveGoalPercent } from '@/utils/goal-progress';
+describe('кольцо цели — живой прогресс денежной цели', () => {
+  it('liveProgress важнее сохранённого', () => {
+    expect(effectiveGoalPercent({ progress: 0, liveProgress: 40 })).toBe(40);
+    expect(effectiveGoalPercent({ progress: 30 })).toBe(30);
+    expect(effectiveGoalPercent({ progress: 0, liveProgress: 140 })).toBe(100);
+  });
+});
