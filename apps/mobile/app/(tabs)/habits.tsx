@@ -46,6 +46,7 @@ import { storage } from '@/services/storage';
 import { formatDate } from '@/utils/dates';
 // Горизонтальные полосы — жест-скролл RNGH: листаются сами, не уводя в комнату (свайп дома).
 import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
+import { useToday } from '@/hooks/use-today';
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -858,8 +859,9 @@ export default function HabitsScreen() {
 
 
   // ─── State ────────────────────────────────────────────────────────────────
-  const today = useMemo(() => getTodayDate(), []);
-  const todayDate = useMemo(() => new Date(), []);
+  const todayDate = useToday();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- день меняется вместе с todayDate
+  const today = useMemo(() => getTodayDate(), [todayDate]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);

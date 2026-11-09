@@ -40,6 +40,7 @@ import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
 import { useYearActivity } from '@/hooks/use-year-activity';
 import { useToolActive } from '@/hooks/use-content-width';
 import { useRoomToolStore } from '@/stores/room-tool-store';
+import { useToday } from '@/hooks/use-today';
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -229,7 +230,7 @@ export default function PlannerScreen() {
     handleChipPress: handleMorningChipPress,
   } = useMorningGreeting();
 
-  const today = useMemo(() => new Date(), []);
+  const today = useToday();
   const todayStr = useMemo(() => formatDate(today), [today]);
   const quote = useMemo(() => getRandomQuote(), []);
   const greeting = useMemo(() => getGreeting(), []);
@@ -295,7 +296,9 @@ export default function PlannerScreen() {
     () => habits.filter((h) => h.active),
     [habits],
   );
-  const habitsCompletedToday = todayLogs.filter((l) => l.completed).length;
+  // Отметки удалённых привычек не считаем (иначе «3/2» и ложное конфетти).
+  const activeHabitIds = useMemo(() => new Set(activeHabits.map((h) => h.id)), [activeHabits]);
+  const habitsCompletedToday = todayLogs.filter((l) => l.completed && activeHabitIds.has(l.habitId)).length;
   const habitsTotal = activeHabits.length;
   const habitProgress = habitsTotal > 0 ? habitsCompletedToday / habitsTotal : 0;
 
@@ -309,24 +312,34 @@ export default function PlannerScreen() {
     }
   }, [overallTotal, overallCompleted]);
 
+  // Стор задач общий для всех экранов (канбан/календарь грузят месяц и больше) —
+  // «Все задачи недели» и аналитика берут ТОЛЬКО эту неделю (аудит 2026-11-09).
+  const weekTasks = useMemo(() => {
+    const end = formatDate(new Date(currentMonday.getFullYear(), currentMonday.getMonth(), currentMonday.getDate() + 7));
+    return tasks.filter((t) => {
+      const d = t.date.slice(0, 10);
+      return d >= weekStartStr && d < end;
+    });
+  }, [tasks, currentMonday, weekStartStr]);
+
   const selectedDayTasks = useMemo(() => {
-    if (selectedDayIndex === null) return tasks;
+    if (selectedDayIndex === null) return weekTasks;
     const dayDate = formatDate(weekDays[selectedDayIndex].date);
-    return tasks.filter((t) => t.date.slice(0, 10) === dayDate);
-  }, [tasks, selectedDayIndex, weekDays]);
+    return weekTasks.filter((t) => t.date.slice(0, 10) === dayDate);
+  }, [weekTasks, selectedDayIndex, weekDays]);
 
   // «Активность за год» — с сервера за весь год (раньше — по задачам одной
   // недели). Ключ перечитывания — отметки задач на экране.
-  const activityKey = useMemo(() => tasks.map((t) => `${t.id}:${t.completed ? 1 : 0}`).join(','), [tasks]);
+  const activityKey = useMemo(() => weekTasks.map((t) => `${t.id}:${t.completed ? 1 : 0}`).join(','), [weekTasks]);
   const heatmapData = useYearActivity(activityKey);
 
   const analytics = useMemo(() => {
-    const total = tasks.length;
-    const completed = tasks.filter((t) => t.completed).length;
+    const total = weekTasks.length;
+    const completed = weekTasks.filter((t) => t.completed).length;
     const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
     const goalsCompleted = weeklyGoals.filter((g) => g.completed).length;
     return { total, completed, percentage, goalsCompleted, goalsTotal: weeklyGoals.length };
-  }, [tasks, weeklyGoals]);
+  }, [weekTasks, weeklyGoals]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);

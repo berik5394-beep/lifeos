@@ -72,6 +72,21 @@ interface TaskState {
   removeDependency: (taskId: string, depId: string) => Promise<void>;
 }
 
+/** Диапазон дат [from, to) запроса GET /tasks (как на сервере); без параметров — всё. */
+export function fetchRange(date?: string, week?: string, month?: string): { from: string; to: string } | null {
+  const plus = (ymd: string, days: number) => {
+    const [y, m, d] = ymd.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+  };
+  if (week) return { from: week.slice(0, 10), to: plus(week.slice(0, 10), 7) };
+  if (date) return { from: date.slice(0, 10), to: plus(date.slice(0, 10), 1) };
+  if (month) {
+    const [y, m] = month.split('-').map(Number);
+    return { from: `${month}-01`, to: new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10) };
+  }
+  return null;
+}
+
 export const useTaskStore = create<TaskState>((set, get) => ({
   tasks: [],
   isLoading: false,
@@ -88,7 +103,21 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (month) params.set('month', month);
       const query = params.toString();
       const endpoint = `/tasks${query ? `?${query}` : ''}`;
-      const tasks = await api.get<Task[]>(endpoint, token);
+      const fetched = await api.get<Task[]>(endpoint, token);
+      // Стор общий для экранов с разными выборками («Сегодня» — неделя,
+      // календарь — месяц, канбан — всё). Раньше ответ целиком ЗАМЕНЯЛ стор —
+      // побеждал последний, и «Все задачи недели» показывали месяц (аудит
+      // 2026-11-09). Теперь меняем только задачи внутри запрошенного диапазона.
+      const range = fetchRange(date, week, month);
+      const tasks = range
+        ? [
+            ...get().tasks.filter((t) => {
+              const d = t.date.slice(0, 10);
+              return d < range.from || d >= range.to;
+            }),
+            ...fetched,
+          ]
+        : fetched;
       set({ tasks, isLoading: false });
       persistStoreData('tasks', tasks).catch(() => {});
     } catch (err) {

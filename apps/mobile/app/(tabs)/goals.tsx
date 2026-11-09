@@ -38,6 +38,7 @@ import { useInTools } from '@/hooks/use-content-width';
 import { pluralN, HABITS } from '@/utils/plural';
 import { useScheduleStore } from '@/stores/schedule-store';
 import { InlineEntry } from '@/components/ui/inline-entry';
+import { useToday } from '@/hooks/use-today';
 
 // Enable LayoutAnimation on Android
 if (
@@ -58,7 +59,6 @@ const AREA_KEYS: GoalAreaKey[] = [
   'creativity',
 ];
 
-const CURRENT_YEAR = new Date().getFullYear();
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // ─────────────────── Frequency helpers ───────────────────
@@ -1001,7 +1001,18 @@ export default function GoalsScreen() {
   } = useHabitStore();
 
   // ── State ──
-  const [year, setYear] = useState(CURRENT_YEAR);
+  // «Сегодня» переходит само (вкладка живёт неделями) — и год вместе с ним.
+  const todayDate = useToday();
+  const currentYear = todayDate.getFullYear();
+  const [year, setYear] = useState(currentYear);
+  const prevCurrentYear = useRef(currentYear);
+  useEffect(() => {
+    // Наступил новый год, а юзер смотрел «текущий» — переключаем на новый.
+    if (prevCurrentYear.current !== currentYear) {
+      setYear((y) => (y === prevCurrentYear.current ? currentYear : y));
+      prevCurrentYear.current = currentYear;
+    }
+  }, [currentYear]);
   const [expandedAreas, setExpandedAreas] = useState<Set<GoalAreaKey>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
 
@@ -1025,14 +1036,14 @@ export default function GoalsScreen() {
 
   // ── Derived data ──
   const todayStr = useMemo(() => {
-    const d = new Date();
+    const d = todayDate;
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }, []);
+  }, [todayDate]);
 
   const currentMonthStr = useMemo(() => {
-    const d = new Date();
+    const d = todayDate;
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  }, []);
+  }, [todayDate]);
 
   const goalsForYear = useMemo(
     () => yearlyGoals.filter((g) => g.year === year),
@@ -1347,7 +1358,7 @@ export default function GoalsScreen() {
           <TouchableOpacity onPress={handlePrevYear} style={styles.yearArrow} activeOpacity={0.6}>
             <Text style={styles.yearArrowText}>◀</Text>
           </TouchableOpacity>
-          <Pressable onPress={() => setYear(CURRENT_YEAR)} accessibilityRole="button" accessibilityLabel="Вернуться к текущему году">
+          <Pressable onPress={() => setYear(currentYear)} accessibilityRole="button" accessibilityLabel="Вернуться к текущему году">
             <Text style={styles.yearText}>{year}</Text>
           </Pressable>
           <TouchableOpacity onPress={handleNextYear} style={styles.yearArrow} activeOpacity={0.6}>

@@ -573,6 +573,17 @@ export default function TasksScreen() {
     fetchTasks(undefined, undefined, `${y}-${m}`).catch(() => {});
   }, [currentMonth, fetchTasks, scheduleRevision]);
 
+  // Недельный планер: листаешь неделю — грузим её и прошлую (для «сравнения
+  // с прошлой неделей»). Раньше грузился только месяц — неделя на стыке
+  // месяцев или в прошлом месяце была пустой (аудит 2026-11-09).
+  useEffect(() => {
+    const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const monday = new Date(getMonday(currentWeek));
+    const prev = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7);
+    fetchTasks(undefined, ymd(monday)).catch(() => {});
+    fetchTasks(undefined, ymd(prev)).catch(() => {});
+  }, [currentWeek, fetchTasks, scheduleRevision]);
+
   // ─── Computed Values ─────────────────────────────────────────────────────
   const monthTasks = useMemo(() => {
     const year = currentMonth.getFullYear();
