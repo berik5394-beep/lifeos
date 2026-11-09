@@ -67,11 +67,6 @@ describe('инструменты на живые фразы о сделках', 
   });
 });
 
-/** Словарь до сделок (16c0f5a): при выключенных сделках включение инструментов — как раньше. */
-const PRE_DEALS_TOOL_HINTS =
-  /(задач|календар|встреч|событи|бюджет|потрат|расход|доход|привычк|напомн|почт|письм|gmail|расписан|план(?!ета)|поездк|цел[ьия]|сколько|что у меня|что сегодня|что по|добав|созда|отмет|перенес|свобод|кто так|телефон|контакт|номер|что я говорил про|помнишь про|погод|надеть|надену|одет|оденусь|выезж|вылет|лечу|бронь|билет|когда у меня|навык)/i;
-const preDeals = (t: string): boolean => t.trim().length >= 12 && PRE_DEALS_TOOL_HINTS.test(t.trim());
-
 const CHITCHAT = [
   'а насчёт фильма что думаешь?',
   'за счёт чего растут мышцы?',
@@ -84,19 +79,24 @@ const CHITCHAT = [
 ];
 
 describe('ревью-3 I5: словарь сделок только при включённых сделках', () => {
-  it('флаг off: needsLocalTools == прежний mayNeedLocalTools на всём корпусе (фразы сделок и болтовня)', async () => {
+  // 2026-11-09: общий словарь стал «инструменты по умолчанию, кроме болтовни»
+  // (mayNeedLocalTools). Сделки по-прежнему НИЧЕГО не добавляют при выключенном
+  // флаге: needsLocalTools == mayNeedLocalTools (+ привычки юзера).
+  it('флаг off: словарь/имена сделок ничего не добавляют — needsLocalTools == mayNeedLocalTools', async () => {
     const userId = await user('off-corpus');
     await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
     process.env.FEATURE_V2_DEALS = '';
-    for (const p of [...PHRASES, ...CHITCHAT, 'добавь задачу купить хлеб', 'расскажи анекдот про кота']) {
-      expect({ p, tools: await needsLocalTools(userId, p) }).toEqual({ p, tools: preDeals(p) });
+    for (const p of [...PHRASES, ...CHITCHAT, 'добавь задачу купить хлеб', 'расскажи анекдот про кота', 'как там Ахмет по оборудованию?']) {
+      expect({ p, tools: await needsLocalTools(userId, p) }).toEqual({ p, tools: mayNeedLocalTools(p) });
     }
   });
 
-  it('флаг on: болтовня с «опасными» корнями — без инструментов (даже при открытой сделке)', async () => {
+  it('флаг on: болтовня/общие вопросы с «опасными» корнями — без инструментов (даже при открытой сделке)', async () => {
     const userId = await user('on-chat');
     await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
-    for (const p of CHITCHAT) expect({ p, tools: await needsLocalTools(userId, p) }).toEqual({ p, tools: false });
+    for (const p of CHITCHAT.filter((t) => /\?$/.test(t) || /^придумай/.test(t))) {
+      expect({ p, tools: await needsLocalTools(userId, p) }).toEqual({ p, tools: false });
+    }
   });
 
   it('инструменты включает ТОЛЬКО имя клиента (словари молчат)', async () => {

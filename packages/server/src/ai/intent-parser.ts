@@ -29,7 +29,7 @@ const TRAVEL_VERBS = [
   'найди тур', 'найди путёвку', 'найди где',
   'вызови такси', 'закажи такси', 'позови такси',
   'поедем в', 'полетим в', 'полечу в', 'съезжу в', 'слетаю в', 'лечу в',
-  'еду в', 'едем в', 'планирую поездку', 'планируем перелёт',
+  'едем в', 'планирую поездку', 'планируем перелёт',
   'планируем поездку', 'спланируй поездку', 'organize trip',
   'нужен отель', 'нужна гостиница', 'нужен билет', 'нужны билеты',
   'где остановиться', 'где поселиться', 'куда поселиться',
@@ -49,7 +49,16 @@ const TASK_FRAME = /(задач|напомн|встреч|созвон|(?:^|[^а
 /** Голое движение без направления: «поехать узнать», «съездить забрать». */
 const BARE_MOTION = /(?:^|[^а-яё])(поехать|поедем|съездить|съезжу)(?![а-яё])/i;
 const MOTION_WITH_DIRECTION = /(?:поехать|поедем|съездить|съезжу)\s+(?:в|во|на|до|к|ко|за\s+границу)\s/i;
-const TRAVEL_NOUNS = /(рейс|билет(ы|а)?|самол[её]т|перел[её]т|пол[её]т|такси|машин[ауы]?|отел[ьья]|гостиниц[ауы]?|номер в|поездк[ауи]|путешестви|командировк|отпуск|тур[аы]?(?=\s|$|[,.!?])|путёвк[ауи]?|виз[ауы])/i;
+// Целыми словами (2026-11-09: «машинным маслом» ловилось как «машина»,
+// «номер в контактах» — как номер в отеле).
+const TRAVEL_NOUNS = /(?:^|[^а-яё])(рейс[аыов]*|билет(ы|а|ов)?|самол[её]т[аы]?|перел[её]т[аы]?|пол[её]т|такси|машин[ауы]?|отел[ьяюи]|гостиниц[ауы]?|поездк[ауи]|путешестви[еяю]|командировк[ауи]|отпуск[аеу]?|тур[аы]?|путёвк[ауи]?|виз[ауы])(?![а-яё])/i;
+/** Однозначные сущности брони — для пути «забронируй/найди/оформи + X»
+ *  («оформить отпуск на работе», «нужна машина» — не подбор поездки). */
+const BOOKING_NOUNS = /(?:^|[^а-яё])(рейс[аыов]*|билет(ы|а|ов)?|самол[её]т[аы]?|перел[её]т[аы]?|такси|отел[ьяюи]|гостиниц[ауы]?|авиабилет[аыов]*)(?![а-яё])/i;
+/** Фраза «v» целиком с начала слова («среду в» ≠ «еду в»). */
+function hasPhrase(lower: string, v: string): boolean {
+  return new RegExp(`(?:^|[^а-яё])${v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(lower);
+}
 
 /**
  * Чек с фото → открыть камеру в приложении (без ИИ). Разные формулировки:
@@ -67,7 +76,8 @@ const DICTATION_TRIGGERS = [
   /^лайфос[, ]+диктофон/i,
   /^включи запись/i,
   /^начни запись/i,
-  /^записывай/i,
+  // «записывай» — только сама команда, не «записывай расходы каждый день».
+  /^записывай(?:\s+(?:за\s+мной|разговор|всё|все))?[\s.!]*$/i,
   /^запиши разговор/i,
   /^запиши за мной/i,
 ];
@@ -145,6 +155,17 @@ function parseAmount(num: string, word: string | undefined, k: string | undefine
   return Math.round(base * mult);
 }
 
+/** После числа — не деньги: «потратил 2 часа», «получил 2 письма», «5 баллов». */
+const NON_MONEY_UNIT =
+  /^(?:час|минут|секунд|дн[яеи]|день|сут|недел|месяц|год|лет|км|кг|килограмм|раз|страниц|письм|балл|звонк|сообщени|шт|штук|попыт|очк|подписчик|лайк|комментари|задач|книг|слов|шаг)/i;
+const HAS_CURRENCY = /(?:\d\s*(?:тенге|тг|₸|руб|р\.|\$|usd|€|eur)|(?:тенге|тг|₸)(?![а-яё]))/i;
+/** Сумма похожа на деньги: не единица измерения после числа и не «5» без валюты. */
+function looksLikeMoney(amount: number, rest: string, hasMult: boolean, text: string): boolean {
+  if (NON_MONEY_UNIT.test(rest.trim())) return false;
+  if (amount < 50 && !hasMult && !HAS_CURRENCY.test(text)) return false;
+  return true;
+}
+
 export function detectMoneyIntent(text: string): MoneyIntent | null {
   let m = text.match(
     new RegExp(
@@ -157,6 +178,7 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
   if (m) {
     const amount = parseAmount(m[1], m[2], m[3] ?? m[4]);
     if (amount > MAX_MONEY_AMOUNT) return null;
+    if (!looksLikeMoney(amount, m[5] ?? '', !!(m[2] || m[3] || m[4]), text)) return null;
     if (Number.isFinite(amount) && amount > 0) {
       const source = cleanRest(m[5]);
       return source
@@ -175,6 +197,7 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
   if (m) {
     const amount = parseAmount(m[1], m[2], m[3] ?? m[4]);
     if (amount > MAX_MONEY_AMOUNT) return null;
+    if (!looksLikeMoney(amount, m[5] ?? '', !!(m[2] || m[3] || m[4]), text)) return null;
     if (Number.isFinite(amount) && amount > 0) {
       const rest = cleanRest(m[5]);
       return rest
@@ -221,7 +244,7 @@ const OPEN_PANEL_RE =
  */
 export interface IntentOptions {
   disabledPanels?: ReadonlySet<string>;
-  /** Модель для LLM-шага (замер Sonnet/Haiku); по умолчанию INTENT_MODEL. */
+/** Модель для LLM-шага (замер Sonnet/Haiku); по умолчанию INTENT_MODEL. */
   model?: string;
 }
 
@@ -233,6 +256,15 @@ export function detectOpenPanel(text: string, disabledPanels?: ReadonlySet<strin
     if (re.test(word)) return disabledPanels?.has(panel) ? null : panel;
   }
   return null;
+}
+
+const HABIT_PREPS = /(?:^|\s)(?:в|во|для|на|по|с|со|про|у|к|ко|из|от|за)(?=\s)/i;
+const NOT_HABIT_NOUN = /(задач|встреч|календар|сч[её]т|отч[её]т|банк|договор|письм|звон[ко]|проект|сделк)/i;
+/** «бег», «зарядку и чтение» — короткое имя привычки (≤3 слов на каждую). */
+export function isHabitShorthand(rest: string): boolean {
+  const r = rest.trim();
+  if (HABIT_PREPS.test(` ${r} `) || NOT_HABIT_NOUN.test(r)) return false;
+  return r.split(/\s+и\s+|,|\+/).every((part) => part.trim().split(/\s+/).filter(Boolean).length <= 3);
 }
 
 export function deterministicIntent(
@@ -252,7 +284,9 @@ export function deterministicIntent(
   for (const re of DICTATION_TRIGGERS) {
     if (re.test(text)) return { action: 'start_dictation' };
   }
-  for (const re of MEMORY_TRIGGERS) {
+  // «помнишь про отчёт? поставь задачу» — это действие, не поиск в памяти.
+  const memoryAction = /(?:^|[^а-яё])(?:поставь|создай|добавь|запиши|перенеси|отметь|удали|напомни|закинь|внеси)/i.test(text);
+  for (const re of memoryAction ? [] : MEMORY_TRIGGERS) {
     const m = text.match(re);
     if (m) {
       const query = text.slice(m[0].length).trim() || text;
@@ -266,7 +300,7 @@ export function deterministicIntent(
   // граница слова \b после кириллического слова не срабатывает. Вместо
   // \b — lookahead на пробел/конец/пунктуацию.
   const STRONG_TRAVEL =
-    /(слетать|слетаю|полететь|полечу|полетим|поехать|поедем|съездить|съезжу|еду в|едем в|лечу в|хочу слетать|хочу поехать|хочу съездить|надо слетать|надо съездить|собираюсь в|планирую слетать|планирую поехать|планирую съездить|планирую поездку|спланируй поездку)(?=\s|$|[,.!?])/i;
+    /(?:^|[^а-яё])(слетать|слетаю|полететь|полечу|полетим|поехать|поедем|съездить|съезжу|едем в|лечу в|хочу слетать|хочу поехать|хочу съездить|надо слетать|надо съездить|собираюсь в|планирую слетать|планирую поехать|планирую съездить|планирую поездку|спланируй поездку)(?=\s|$|[,.!?])/i;
   // Прод 2026-11-08: «Задача на завтра поехать узнать насчёт работы … и встреча
   // в 14:00» уходило в подбор билетов («Куда летим/едем?»). Дела/задачи/встречи
   // — не поездка; голое «поехать/съездить» — поездка, только если дальше
@@ -279,7 +313,7 @@ export function deterministicIntent(
   // Слабые глаголы: нужна travel-сущность чтобы не путать
   // ("закажи такси" ок, но "закажи пиццу" — нет).
   for (const v of TRAVEL_VERBS) {
-    if (!taskFrame && lower.includes(v) && TRAVEL_NOUNS.test(text)) {
+    if (!taskFrame && hasPhrase(lower, v) && TRAVEL_NOUNS.test(text)) {
       return { action: 'plan_travel', query: text };
     }
   }
@@ -288,7 +322,7 @@ export function deterministicIntent(
   // NOUN-гард тот же — «купи продукты»/«закажи пиццу» НЕ travel.
   const BOOK_VERB =
     /(?:^|\s)(?:забронир[а-яё]*|закаж[а-яё]*|заказать|купи[а-яё]*|купить|найд[а-яё]*|подбер[а-яё]*|нужн[а-яё]*|возьми|оформ[а-яё]*)(?=\s|$|[,.!?])/i;
-  if (!taskFrame && BOOK_VERB.test(lower) && TRAVEL_NOUNS.test(text)) {
+  if (!taskFrame && BOOK_VERB.test(lower) && BOOKING_NOUNS.test(text)) {
     return { action: 'plan_travel', query: text };
   }
 
@@ -340,6 +374,10 @@ export function deterministicIntent(
   // complete_habit: "отметь привычку бег", "отметь бег", "выполнил чтение",
   // "сделал зарядку" (одна привычка)
   m = text.match(/^(?:отметь|выполнил[аи]?|сделал[аи]?|закрой)\s+(?:привычку\s+)?(.+)$/i);
+  // Только короткое «отметь бег / сделал зарядку и чтение». «сделал отчёт для
+  // банка», «закрой счёт в банке», «отметь в календаре встречу» — не привычки:
+  // пусть решает модель (2026-11-09).
+  if (m && !isHabitShorthand(m[1])) m = null;
   if (m) {
     const rest = m[1].trim();
     // несколько через "и"/","/"+" → complete_multiple_habits
@@ -369,7 +407,10 @@ export function deterministicIntent(
     const title = m[1].trim();
     const isReflectiveMemoryQuery =
       title.endsWith('?') ||
-      /^(?:кого|что|какие|кто|какой|какая|какое|сколько)\s+(?:ты|вы)\s+(?:помнишь|помните|знаешь|знаете|можешь|можете)/i.test(title);
+      /^(?:кого|что|какие|кто|какой|какая|какое|сколько)\s+(?:ты|вы)\s+(?:помнишь|помните|знаешь|знаете|можешь|можете)/i.test(title) ||
+      // «напомни, что у меня завтра», «напомни какие задачи на неделю» — вопрос,
+      // а не новое дело (2026-11-09).
+      /^[,\s]*(?:что|какие|какой|какая|какое|когда|где|сколько|кто|как|о\s+ч[её]м|про\s+что)(?![а-яё])/i.test(title);
     if (isReflectiveMemoryQuery) {
       // Пропускаем create_task — это запрос к памяти, пусть идёт в LLM.
       m = null;

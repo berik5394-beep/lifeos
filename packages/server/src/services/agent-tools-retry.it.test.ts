@@ -21,7 +21,9 @@ const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
 const user = async () =>
   (await prisma.user.create({ data: { email: `atr-${Date.now()}-${Math.random()}@a.test`, name: 'A', passwordHash: 'x', timezone: 'UTC' } })).id;
-const PHRASE = 'кстати, впиши: в пятницу сауна с Серым';
+// Похоже на общий вопрос (без «я/мне», без глагола действия) — идёт без инструментов;
+// модель отвечает про действие → повтор с инструментами.
+const PHRASE = 'а сауна в пятницу с Серым — норм идея?';
 
 describe('ответ без инструментов, а нужно действие → повтор с инструментами', () => {
   it('«не могу записать» → второй заход с инструментами, его ответ уходит пользователю', async () => {
