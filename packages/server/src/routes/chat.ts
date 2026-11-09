@@ -200,7 +200,8 @@ export async function chatRoutes(app: FastifyInstance): Promise<void> {
 
     const messages = await prisma.chatMessage.findMany({
       where: { userId: request.userId, ...(before ? { createdAt: { lt: new Date(before) } } : {}) },
-      orderBy: { createdAt: 'desc' },
+      // При равном времени (старые пары) ответ — после вопроса.
+      orderBy: [{ createdAt: 'desc' }, { role: 'asc' }],
       take: limit,
       skip: before ? 0 : offset,
     });

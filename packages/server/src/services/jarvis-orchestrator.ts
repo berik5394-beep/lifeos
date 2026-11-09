@@ -1,6 +1,6 @@
 import { withDoneSummary, type DoneItem } from './done-summary.js';
 import { prisma } from '../lib/prisma.js';
-import { parseIntent } from '../ai/intent-parser.js';
+import { parseIntent, deterministicIntent } from '../ai/intent-parser.js';
 import {
   getAssistantReply,
   gatherAssistantContext,
@@ -291,7 +291,7 @@ async function captureInBackground(
 }
 
 /** Последние реплики диалога юзера (для continuity follow-up вопросов). */
-async function getRecentHistory(
+export async function getRecentHistory(
   userId: string,
   limit = 6,
 ): Promise<Array<{ role: 'user' | 'assistant'; content: string }>> {
@@ -302,7 +302,9 @@ async function getRecentHistory(
     // структурный путь, НЕ через сырую историю. UI /chat/history
     // НЕ фильтрует (это собственный диалог юзера — решение Берика).
     where: { userId, crisis: false },
-    orderBy: { createdAt: 'desc' },
+    // Старые пары записаны с одинаковым временем: при равенстве ответ считаем
+    // позже вопроса (в обратном порядке 'assistant' < 'user' идёт первым).
+    orderBy: [{ createdAt: 'desc' }, { role: 'asc' }],
     take: limit,
     select: { role: true, content: true },
   });
@@ -325,14 +327,19 @@ async function saveTurn(
   crisis = false,
 ): Promise<void> {
   try {
+    // Ответ — на 1 мс позже вопроса (2026-11-10): с одинаковым временем порядок
+    // внутри пары при чтении случайный; ответ вставал раньше вопроса, и модель
+    // видела прошлый вопрос последним — отвечала на него («робот отстаёт на ход»).
+    const askedAt = new Date();
     await prisma.chatMessage.createMany({
       data: [
-        { userId, role: 'user', content: userText.slice(0, MAX_USER_TEXT), crisis },
+        { userId, role: 'user', content: userText.slice(0, MAX_USER_TEXT), crisis, createdAt: askedAt },
         {
           userId,
           role: 'assistant',
           content: assistantText.slice(0, MAX_USER_TEXT),
           crisis,
+          createdAt: new Date(askedAt.getTime() + 1),
         },
       ],
     });
@@ -1244,9 +1251,11 @@ async function handleMessageCore(
   const startContext = (ip: typeof intentP) =>
     Promise.all([getRecentHistory(userId, 6), gatherAssistantContext(userId, text, ip), classifyEmotional(text)]);
   // Голос (jarvis-roadmap №5): собираем контекст ОДНОВРЕМЕННО с разбором
-  // намерения — первое слово раньше. На быстрых командах (задача, трата) это
-  // лишнее чтение (ничего не пишет); для текста — по-прежнему по очереди.
-  const early = channel === 'voice' ? startContext(intentP) : null;
+  // намерения — первое слово раньше. Текст (2026-11-10, скорость): тоже
+  // одновременно, если правила не узнали быструю команду — значит, почти
+  // наверняка ответит мозг, и ~0,6 с подготовки прячутся за разбором намерения.
+  // Быстрые команды (задача, трата — их правила узнают сразу) контекст не читают.
+  const early = channel === 'voice' || !deterministicIntent(text, userTz) ? startContext(intentP) : null;
   early?.catch(() => {});
   const intent = await intentP;
   timing.mark('intent');
