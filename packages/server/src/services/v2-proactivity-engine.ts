@@ -425,7 +425,7 @@ import {
 import { getUserTimezone } from '../lib/user-context.js';
 import { runAgent } from './claude-agent.js';
 import { getEngagement, adaptiveThreshold } from './engagement/index.js';
-import { isV2EngagementEnabled, isV2MoodToneEnabled, isV2OpenLoopsEnabled } from '../lib/feature-flags.js';
+import { isV2MoodToneEnabled, isV2OpenLoopsEnabled } from '../lib/feature-flags.js';
 import { gatherOpenLoops, shouldNudgeOpenLoops } from './open-loops.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { persistCandidates } from './insight-store.js';
@@ -1745,13 +1745,11 @@ export class V2ProactivityEngine implements ProactivityEngine {
       if (candidates.length === 0) return [];
     }
     let sigThreshold = 0.6;
-    if (isV2EngagementEnabled(userId)) {
-      try {
-        const eng = await getEngagement(userId, now);
-        sigThreshold = adaptiveThreshold(0.6, eng.receptiveness);
-      } catch (err) {
-        console.warn('[engagement:gate3] failed:', err);
-      }
+    try {
+      const eng = await getEngagement(userId, now);
+      sigThreshold = adaptiveThreshold(0.6, eng.receptiveness);
+    } catch (err) {
+      console.warn('[engagement:gate3] failed:', err);
     }
     const passed: NudgeCandidate[] = [];
     for (const c of candidates) {

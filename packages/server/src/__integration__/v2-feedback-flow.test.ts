@@ -10,8 +10,8 @@ const IMPL = readFileSync(
   join(process.cwd(), 'src/services/feedback/postgres-impl.ts'), 'utf-8');
 
 describe('v2 feedback flow — inbound capture', () => {
-  it('feedback branch gated + full pipeline wired', () => {
-    expect(CAP).toContain('isV2FeedbackEnabled');
+  it('feedback branch (без флага) + full pipeline wired', () => {
+    expect(CAP).not.toContain('isV2FeedbackEnabled');
     expect(CAP).toContain('classifyFeedback');
     expect(CAP).toContain('applyFeedback');
   });

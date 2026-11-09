@@ -8,9 +8,9 @@ const REF = readFileSync(join(process.cwd(), 'src/services/reflector-v2/index.ts
 const ENG = readFileSync(join(process.cwd(), 'src/services/engagement/engagement.ts'), 'utf-8');
 
 describe('v2 engagement flow — adaptive threshold', () => {
-  it('proactivity + reflector gate on adaptiveThreshold, flag-gated', () => {
+  it('proactivity + reflector gate on adaptiveThreshold (без флага)', () => {
     expect(ENGINE).toContain('adaptiveThreshold');
-    expect(ENGINE).toContain('isV2EngagementEnabled');
+    expect(ENGINE).not.toContain('isV2EngagementEnabled');
     expect(REF).toContain('adaptiveThreshold');
   });
 });
@@ -18,7 +18,7 @@ describe('v2 engagement flow — adaptive threshold', () => {
 describe('v2 engagement flow — receptive-hour delivery', () => {
   it('deliverTopInsight defers non-critical outside active hours', () => {
     expect(STORE).toContain('isReceptiveHour');
-    expect(STORE).toContain('isV2EngagementEnabled');
+    expect(STORE).not.toContain('isV2EngagementEnabled');
   });
 });
 

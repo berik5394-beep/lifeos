@@ -8,8 +8,8 @@ const IMPL = readFileSync(join(process.cwd(), 'src/services/hermes/postgres-impl
 const TOOL = readFileSync(join(process.cwd(), 'src/tools/create-skill.ts'), 'utf-8');
 
 describe('v2 hermes flow — run via existing agent loop', () => {
-  it('orchestrator seeds the skill instruction, gated by the flag', () => {
-    expect(ORCH).toContain('isV2HermesEnabled');
+  it('orchestrator seeds the skill instruction (без флага)', () => {
+    expect(ORCH).not.toContain('isV2HermesEnabled');
     expect(ORCH).toContain('routeToSkill');
     expect(ORCH).toContain('buildSkillInstruction');
   });

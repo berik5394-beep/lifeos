@@ -63,7 +63,6 @@ import { getUserAxesStore } from './user-axes/index.js';
 import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
-import { isV2HermesEnabled } from '../lib/feature-flags.js';
 import { isV2RealtimeEnabled } from '../lib/feature-flags.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
@@ -1889,7 +1888,6 @@ async function handleMessageCore(
     // детерминированный раннер (две фазы: пакет → подтверждение), без агента;
     // иначе — план навыка в промпт агенту. Best-effort: сбой → обычный агент.
     (async (): Promise<{ reply: string | null; instruction: string | null }> => {
-      if (!isV2HermesEnabled(userId)) return { reply: null, instruction: null };
       try {
         const skills = await getHermesStore().activeSkills(userId);
         const matched = await routeToSkill(userId, text, skills);

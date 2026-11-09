@@ -16,7 +16,7 @@ import { getEntityGraph } from './entity-graph/index.js';
 import { recordEvent } from './episodic-memory.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { analyzeMessage as userAxesAnalyzeMessage } from './user-axes/analyze-message.js';
-import { isV2AxesEnabled, isV2FeedbackEnabled } from '../lib/feature-flags.js';
+import { isV2AxesEnabled } from '../lib/feature-flags.js';
 import {
   classifyFeedback,
   detectMoodDrop,
@@ -129,7 +129,6 @@ export async function captureV2InBackground(
       // reaction to the bot's previous reply; corrections flow into B1
       // axes (source='feedback'), B2 traits follow deterministically.
       (async () => {
-        if (!isV2FeedbackEnabled(userId)) return;
         try {
           const botLast = await prisma.chatMessage.findFirst({
             where: { userId, role: 'assistant' },
