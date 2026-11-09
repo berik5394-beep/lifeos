@@ -477,6 +477,15 @@ export const HONEST_NOT_DONE =
  * ISSUE-1: честный отказ когда tool-путь упал, а запрос требовал
  * инструментов. Лучше «не смог», чем тихая выдумка «нашёл/записал».
  */
+/** Сбой модели после реальной записи за ход: что записано + «не повторяй». */
+export function partialDoneReply(done: string[]): string {
+  const list = done.slice(0, 5).map((m) => `• ${m}`).join('\n');
+  return (
+    (list ? `Успел сделать:\n${list}\n` : 'Часть уже сделал — загляни в списки. ') +
+    'Дальше у меня сбой, поэтому ответ короткий. Уже сделанное не повторяй, чтобы не было дублей; если что-то ещё не записано — скажи только это.'
+  );
+}
+
 export const DEGRADED_ACTIONABLE_REFUSAL =
   'Извини, сейчас не получается это выполнить — сбой на моей стороне, ' +
   'не у тебя. Действие НЕ выполнено. Попробуй, пожалуйста, ещё раз через минуту.';
@@ -1876,13 +1885,20 @@ async function handleMessageCore(
   } else {
     const wantTools = hermesForceTools || toolsHint;
     // Учёт хода: была ли реальная запись / поставлен ли вопрос «да?».
-    const acts = { wrote: false, staged: false };
+    const acts = { wrote: false, staged: false, done: [] as string[] };
     // Ответ без инструментов был про действие и ход повторили с ними — сторож
     // ниже проверит и без явной просьбы («присела 50 раз» → «отмечаю!»).
     let retriedForTools = false;
     const onToolResult = (tool: string, ok: boolean, result?: unknown) => {
-      if (ok && isRealWrite(tool, result)) acts.wrote = true;
+      if (ok && isRealWrite(tool, result)) {
+        acts.wrote = true;
+        const msg = (result as { message?: unknown } | undefined)?.message;
+        if (typeof msg === 'string' && msg.trim()) acts.done.push(msg.trim());
+      }
     };
+    // Модель упала ПОСЛЕ записи: честно — что уже записано, «не повторяй»
+    // (раньше «Действие НЕ выполнено, попробуй ещё раз» → повтор = дубль).
+    const failedReply = (fallback: string): string => (acts.wrote ? partialDoneReply(acts.done) : fallback);
     const stageConfirm = async (tool: string, args: Record<string, unknown>) => {
       acts.staged = true;
       const prompt = confirmPromptFor(tool, args);
@@ -1943,7 +1959,7 @@ async function handleMessageCore(
             `[jarvis] повтор с инструментами упал user=${userId}:`,
             retryErr instanceof Error ? retryErr.message : retryErr,
           );
-          reply = DEGRADED_ACTIONABLE_REFUSAL;
+          reply = failedReply(DEGRADED_ACTIONABLE_REFUSAL);
         }
       }
       // Сторож «сказал — сделал»: просили действие, ответ «создал/записал»,
@@ -1967,7 +1983,7 @@ async function handleMessageCore(
           reply = acts.wrote || acts.staged || !claimsDoneAction(again) ? again : HONEST_NOT_DONE;
         } catch (guardErr) {
           if (guardErr instanceof AgentDeadlineError) throw guardErr;
-          reply = HONEST_NOT_DONE;
+          reply = failedReply(HONEST_NOT_DONE);
         }
         if (reply === HONEST_NOT_DONE) {
           console.warn(`[jarvis] user=${userId} «сделал» без записи и после повтора → честный отказ`);
@@ -2003,7 +2019,7 @@ async function handleMessageCore(
           console.warn(
             `[jarvis] degraded+actionable user=${userId} → честный отказ (ISSUE-1), не фабрикуем`,
           );
-          reply = DEGRADED_ACTIONABLE_REFUSAL;
+          reply = failedReply(DEGRADED_ACTIONABLE_REFUSAL);
         } else {
           try {
             reply = await runAgent({

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { asksForAction, claimsDoneAction, isRealWrite } from './jarvis-orchestrator.js';
+import { asksForAction, claimsDoneAction, isRealWrite, partialDoneReply } from './jarvis-orchestrator.js';
 
 /** Баг 2026-11-09: робот «создал», а в экранах пусто. Распознавание обещаний. */
 describe('claimsDoneAction — робот утверждает, что сделал', () => {
@@ -69,4 +69,16 @@ describe('isMultiItemRequest — несколько дел в одном соо�
   it.each(['добавь задачу позвонить маме завтра', 'поставь задачу в 22:00 накормить мужа', 'отметь зарядку'])('«%s» → нет', (t) =>
     expect(isMultiItemRequest(t)).toBe(false),
   );
+});
+
+describe('partialDoneReply — сбой модели после реальной записи', () => {
+  it('перечисляет записанное и просит не повторять', () => {
+    const r = partialDoneReply(['Задача «отчёт» создана на 2026-11-10']);
+    expect(r).toContain('• Задача «отчёт» создана на 2026-11-10');
+    expect(r).toContain('не повторяй');
+    expect(r).not.toContain('НЕ выполнено');
+  });
+  it('без текстов — всё равно «загляни в списки», не «попробуй ещё раз»', () => {
+    expect(partialDoneReply([])).toContain('загляни в списки');
+  });
 });

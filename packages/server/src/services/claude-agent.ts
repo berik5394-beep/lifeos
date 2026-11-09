@@ -398,8 +398,11 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
       max_tokens: 400,
       system: cachedSystem(system),
       messages,
-      // NO tools — заставляем выдать чистый текст (никаких новых
-      // tool_use; модель суммирует РЕАЛЬНЫЕ результаты выше).
+      // Чистый текст (никаких новых tool_use; модель суммирует РЕАЛЬНЫЕ
+      // результаты выше). Аудит 2026-11-09: без `tools` API отклоняет запрос,
+      // где в messages есть tool_use/tool_result, — поэтому tools те же,
+      // а вызывать их запрещено через tool_choice: none.
+      ...(tools ? { tools, tool_choice: { type: 'none' as const } } : {}),
     });
   }
 
