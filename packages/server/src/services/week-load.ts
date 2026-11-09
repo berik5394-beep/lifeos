@@ -3,7 +3,7 @@ import { localDayStartUTC, localDateOnlyUTC, localDayOfWeek, localTimeStr } from
 import { getUserTimezone } from '../lib/user-context.js';
 import { isV2WeekLoadEnabled } from '../lib/feature-flags.js';
 import { sumWeekCapacity } from '../tools/_slots.js';
-import { computeCapacityFit, type CapacityFit, type CapacityItem } from './capacity-fit.js';
+import { computeCapacityFit, MIN_HORIZON_CAPACITY, MIN_OVERLOAD_DEMAND, type CapacityFit, type CapacityItem } from './capacity-fit.js';
 import { mapPriority, DEFAULT_TASK_MINUTES } from './day-load.js';
 import { dealStepLoadItems } from './deals/service.js';
 
@@ -86,6 +86,8 @@ export async function maybeWeekLoadLine(userId: string, now: Date = new Date()):
     const { capacity, items } = await gatherWeekLoad(userId, now);
     const fit = computeCapacityFit({ capacity, items });
     if (fit.status !== 'overloaded') return null;
+    // Как horizonWarning: мало дел или неделя на исходе — не пугаем.
+    if (fit.totalDemand <= MIN_OVERLOAD_DEMAND || fit.capacity < MIN_HORIZON_CAPACITY) return null;
 
     const tz = await getUserTimezone(userId);
     const dayStart = localDayStartUTC(tz, now);

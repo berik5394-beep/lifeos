@@ -361,3 +361,19 @@ describe('шаги по сделкам × перегруз дня', () => {
     process.env.FEATURE_V2_DEALS = 'all';
   });
 });
+
+describe('вечер сегодня, одна короткая задача — без «день перегружен» (прод 2026-11-08 21:01)', () => {
+  it('задача 30 мин на 22:00 → proposeReschedule ничего не предлагает', async () => {
+    const { proposeReschedule } = await import('./reschedule.js');
+    const u = await prisma.user.create({
+      data: { email: `ev-${Date.now()}-${Math.random()}@a.test`, name: 'E', passwordHash: 'x', timezone: 'UTC' },
+    });
+    const now = new Date();
+    now.setUTCHours(21, 1, 0, 0);
+    const today = now.toISOString().slice(0, 10);
+    const t = await prisma.task.create({
+      data: { userId: u.id, title: 'накормить мужа', category: 'personal', priority: 'medium', date: new Date(`${today}T00:00:00Z`), time: '22:00', estimatedMinutes: 30 },
+    });
+    expect(await proposeReschedule(u.id, today, t.id, now)).toBeNull();
+  });
+});

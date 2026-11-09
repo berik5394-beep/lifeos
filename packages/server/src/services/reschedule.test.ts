@@ -151,7 +151,10 @@ describe('horizonWarning', () => {
     );
   });
   it('перегружен без целей → только числа', () => {
-    expect(horizonWarning('week', { demand: 90, capacity: 40, goals: [] })).toBe('⚠️ Неделя перегружена: дел на ~1,5 ч, свободно ~40 мин.');
+    expect(horizonWarning('week', { demand: 300, capacity: 120, goals: [] })).toBe('⚠️ Неделя перегружена: дел на ~5 ч, свободно ~2 ч.');
+    // Прод 2026-11-08 (вечер воскресенья): «дел на ~30 мин, свободно ~0» — шум.
+    expect(horizonWarning('week', { demand: 30, capacity: 0, goals: [] })).toBeNull();
+    expect(horizonWarning('week', { demand: 300, capacity: 40, goals: [] })).toBeNull();
   });
 });
 

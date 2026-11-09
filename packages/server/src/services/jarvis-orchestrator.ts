@@ -420,7 +420,7 @@ const DEAL_PROPOSAL_SENT = /(отправ|выслал|скинул)/i;
 const NEEDS_TOOLS_REFUSAL =
   /не\s+(?:могу|получается|получилось|смогу|умею)\s+(?:это\s+|тебе\s+|сейчас\s+)?(?:записать|сохранить|добавить|отметить|создать|запомнить|поставить|удалить|изменить|перенести|внести)/i;
 const NEEDS_TOOLS_CLAIM =
-  /(?:^|[^а-яё])(?:записал|добавил|сохранил|отметил|создал|запомнил|поставил|внёс|внес|перенёс|перенес|удалил)[аи]?(?![а-яё])/i;
+  /(?:^|[^а-яё])(?:(?:записал|добавил|сохранил|отметил|создал|запомнил|поставил|внёс|внес|перенёс|перенес|удалил)[аи]?|отмечаю|записываю|добавляю|создаю|ставлю|сохраняю|вношу|переношу|закидываю|запоминаю|удаляю)(?![а-яё])/i;
 export function replyNeedsTools(reply: string): boolean {
   return NEEDS_TOOLS_REFUSAL.test(reply) || NEEDS_TOOLS_CLAIM.test(reply);
 }
@@ -436,7 +436,7 @@ const ACTION_REQUEST =
   /(созда|создай|добав|постав|запиш|запис|впиш|впис|занес|занеси|отмет|напомн|запланир|заведи|внес|перенес|удали|сохрани|запомни|закинь|привяж|привычк|цел[ьиея]|задач|встреч|трат|расход|доход)/i;
 /** «записал/создала/добавил…» от лица робота — не «ты отметил». */
 const DONE_ACTIVE =
-  /(?:^|[^а-яё])(записал|добавил|сохранил|отметил|создал|запомнил|поставил|внёс|внес|перенёс|перенес|удалил|завёл|завел|закинул|запланировал|привязал)(?:а|и)?(?![а-яё])/gi;
+  /(?:^|[^а-яё])(записал|добавил|сохранил|отметил|создал|запомнил|поставил|внёс|внес|перенёс|перенес|удалил|завёл|завел|закинул|запланировал|привязал|отмечаю|записываю|добавляю|создаю|ставлю|сохраняю|вношу|переношу|закидываю|запоминаю|удаляю)(а|и)?(?![а-яё])/gi;
 /** «задача создана», «привычка добавлена» — пассив тоже обещание. */
 const DONE_PASSIVE =
   /(?:^|[^а-яё])(создан|добавлен|записан|сохран[её]н|поставлен|запланирован|заведен|заведён|отмечен|привязан)(?:а|о|ы)?(?![а-яё])/i;
@@ -520,8 +520,48 @@ export function mayNeedDealTools(text: string): boolean {
  * включают инструменты. Один запрос (открытые сделки, тот же, что для дохода);
  * сбой — только словари. Флаг off — ровно прежний mayNeedLocalTools.
  */
+/** Быстрые действия «одна запись» — для списка дел не годятся. */
+const SINGLE_WRITE_INTENTS = new Set(['create_task', 'create_event', 'complete_task', 'complete_habit']);
+const ITEM_MARK = /(задач|встреч|созвон|напомн|позвон|узнат|купит|сделат|заехат|забрат|поехат|отправит)/gi;
+/**
+ * Несколько дел сразу: ≥2 непустые строки, или ≥2 «дела» (задача/встреча/
+ * глагол-дело) через «и», запятую или «;» (прод 2026-11-08: «задача на завтра
+ * поехать узнать… / узнать про ипотеку / и встреча в 14:00»).
+ */
+export function isMultiItemRequest(text: string): boolean {
+  const lines = text.split(/\n+/).map((l) => l.trim()).filter((l) => l.length >= 3);
+  if (lines.length >= 2) return true;
+  const marks = new Set((text.match(ITEM_MARK) ?? []).map((m) => m.toLowerCase().slice(0, 5)));
+  return marks.size >= 2 && /(?:\sи\s|,|;)/.test(text) && text.length >= 30;
+}
+
+/** Служебные слова в названиях привычек — по ним не узнаём привычку. */
+const HABIT_STOP = new Set(['каждый', 'каждое', 'каждую', 'минут', 'минуты', 'утром', 'вечером', 'перед', 'после', 'неделю', 'стакан', 'стакана', 'страниц']);
+/**
+ * Фраза упоминает привычку юзера («присела 50 раз» ↔ «Приседать каждый день»)
+ * — нужны инструменты. Иначе модель без них отвечала «Отлично, отмечаю!»,
+ * ничего не отметив (прод 2026-11-08 22:11). Корень — 5 букв слова ≥5 букв.
+ */
+export function textMentionsHabit(names: string[], text: string): boolean {
+  const t = text.toLowerCase().replace(/ё/g, 'е');
+  return names.some((n) =>
+    n
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .split(/[^а-яa-z]+/i)
+      .filter((w) => w.length >= 5 && !HABIT_STOP.has(w))
+      .some((w) => t.includes(w.slice(0, 5))),
+  );
+}
+
 export async function needsLocalTools(userId: string, text: string): Promise<boolean> {
   if (mayNeedLocalTools(text)) return true;
+  try {
+    const habits = await prisma.habit.findMany({ where: { userId, active: true }, select: { name: true }, take: 50 });
+    if (textMentionsHabit(habits.map((h) => h.name), text)) return true;
+  } catch {
+    /* подсказка — best-effort */
+  }
   if (text.trim().length < 12 || !isV2DealsEnabled(userId)) return false;
   if (mayNeedDealTools(text)) return true;
   try {
@@ -1116,7 +1156,11 @@ async function handleMessageCore(
   // intent-TZ фикс (аудит brain-hands 2026-06-11): «сегодня/завтра» в
   // интентах/брони = календарь ЮЗЕРА, не UTC сервера (Алматы 00–05 → вчера).
   const userTz = await getUserTimezone(userId);
-  const intentP = parseIntent(text, userTz, undefined, { disabledPanels: isV2DealsEnabled(userId) ? undefined : DEALS_PANEL_OFF });
+  const intentP = parseIntent(text, userTz, undefined, { disabledPanels: isV2DealsEnabled(userId) ? undefined : DEALS_PANEL_OFF }).then(
+    // Несколько дел в одном сообщении — быстрый путь создал бы ОДНУ запись со
+    // всем текстом. Отдаём агенту: он создаст по задаче/встрече на каждое дело.
+    (ip) => (isMultiItemRequest(text) && SINGLE_WRITE_INTENTS.has(ip.action) ? { action: 'unknown' as const, text } : ip),
+  );
   // Контекст для агента: история, память/цели/финансы, эмоция. Не зависит от
   // намерения (кроме ритуала — подставляется из того же intentP).
   const startContext = (ip: typeof intentP) =>
@@ -1777,6 +1821,12 @@ async function handleMessageCore(
       timeLines.join('\n') +
       '\nДлинная встреча или дело не по уровню пользователя — можешь честно сказать, сколько это стоит его времени, и посоветовать отдать человеку из команды. Сам поручить ему ты НЕ можешь — не спрашивай «передать?» (письмо — только send_email, если его почта известна).';
   }
+  if (isMultiItemRequest(text)) {
+    system +=
+      '\n\nВ сообщении НЕСКОЛЬКО дел. Создай ОТДЕЛЬНУЮ запись на каждое: дело — create_task, ' +
+      'встреча/созвон со временем — create_event. Дата «на завтра» в начале относится ко всем делам ниже, ' +
+      'если у дела не сказано иное. В ответе коротко перечисли, что записал.';
+  }
   const skillReply: string | null = skill.reply;
   // Согласие на предложение робота без pending — с инструментами (иначе «да»
   // на «Скажи «да» — закину в план» давало выдуманное «закинул»).
@@ -1790,6 +1840,9 @@ async function handleMessageCore(
     const wantTools = hermesForceTools || toolsHint;
     // Учёт хода: была ли реальная запись / поставлен ли вопрос «да?».
     const acts = { wrote: false, staged: false };
+    // Ответ без инструментов был про действие и ход повторили с ними — сторож
+    // ниже проверит и без явной просьбы («присела 50 раз» → «отмечаю!»).
+    let retriedForTools = false;
     const onToolResult = (tool: string, ok: boolean, result?: unknown) => {
       if (ok && isRealWrite(tool, result)) acts.wrote = true;
     };
@@ -1831,6 +1884,7 @@ async function handleMessageCore(
       // выдуманное «записал») → тот же запрос с инструментами. Сбой повтора —
       // честный отказ, а не выдумка.
       if (!wantTools && replyNeedsTools(reply)) {
+        retriedForTools = true;
         console.log(`[jarvis] user=${userId} ответ без инструментов про действие → повтор с инструментами`);
         try {
           reply = await runAgent({
@@ -1858,7 +1912,7 @@ async function handleMessageCore(
       // Сторож «сказал — сделал»: просили действие, ответ «создал/записал»,
       // а записи за ход не было (и вопроса «да?» тоже) → ещё раз с прямым
       // требованием вызвать инструмент; снова пусто → честное «не сделал».
-      if (asksForAction(text) && claimsDoneAction(reply) && !acts.wrote && !acts.staged) {
+      if ((asksForAction(text) || retriedForTools) && claimsDoneAction(reply) && !acts.wrote && !acts.staged) {
         console.log(`[jarvis] user=${userId} «сделал» без записи → повтор с требованием инструмента`);
         try {
           const again = await runAgent({

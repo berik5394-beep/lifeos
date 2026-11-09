@@ -6,6 +6,8 @@ import { availableMinutesToday } from '../tools/_slots.js';
 import { computeCapacityFit } from './capacity-fit.js';
 import { DEFAULT_TASK_MINUTES, mapPriority } from './day-load.js';
 import { gatherWeekLoad } from './week-load.js';
+import { MIN_HORIZON_CAPACITY, MIN_OVERLOAD_DEMAND } from './capacity-fit.js';
+export { MIN_HORIZON_CAPACITY, MIN_OVERLOAD_DEMAND };
 import { gatherMonthLoad } from './month-load.js';
 import { planVsFact } from './plan-vs-fact.js';
 import { peekPendingAction, setPendingAction } from './pending-actions.js';
@@ -197,6 +199,9 @@ export interface HorizonLoad {
 /** «Неделя/месяц перегружены → цели под угрозой». null если влезает. Чистая. */
 export function horizonWarning(kind: 'week' | 'month', h: HorizonLoad | null): string | null {
   if (!h || h.demand <= h.capacity) return null;
+  // Мало дел или период почти кончился (вечер воскресенья: «свободно ~0» на
+  // всю неделю) — предупреждать не о чем, дела переедут сами.
+  if (h.demand <= MIN_OVERLOAD_DEMAND || h.capacity < MIN_HORIZON_CAPACITY) return null;
   const name = kind === 'week' ? 'Неделя перегружена' : 'Месяц перегружен';
   const nums = `дел на ~${fmtMinutes(h.demand)}, свободно ~${fmtMinutes(h.capacity)}`;
   if (h.goals.length === 0) return `⚠️ ${name}: ${nums}.`;
@@ -420,6 +425,9 @@ export async function proposeReschedule(
     const { days, tasks } = await gatherWindow(userId, day, today, localTimeStr(tz, now));
     const plan = planShift(days[0], days.slice(1), keepId);
     if (!plan.overloaded) return null;
+    // Сегодня, день на исходе, дел меньше часа — не «перегруз» (прод 2026-11-08:
+    // в 21:01 «день перегружен: дел на ~30 мин, свободно ~0» на одну задачу в 22:00).
+    if (day === today && plan.demand <= MIN_OVERLOAD_DEMAND) return null;
 
     const moved = new Set(plan.moves.map((m) => m.taskId));
     const parents: MoveParent[] = tasks

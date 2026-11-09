@@ -41,3 +41,32 @@ describe('isRealWrite', () => {
     expect(isRealWrite('no_such_tool', {})).toBe(false);
   });
 });
+
+import { isMultiItemRequest, textMentionsHabit } from './jarvis-orchestrator.js';
+
+describe('настоящее время «отмечаю!» — тоже обещание (прод 2026-11-08 22:11)', () => {
+  it.each(['Отлично, отмечаю!', 'Записываю на завтра.', 'Добавляю в задачи 👍'])('«%s» → да', (t) =>
+    expect(claimsDoneAction(t)).toBe(true),
+  );
+  it('«ты отмечаешь» / вопрос — нет', () => {
+    expect(claimsDoneAction('Ты отмечаешь привычки каждый день?')).toBe(false);
+  });
+});
+
+describe('textMentionsHabit — фраза про привычку юзера включает инструменты', () => {
+  const H = ['Приседать каждый день 50 раз', 'Чтение 20 минут'];
+  it.each(['присела 50 раз', 'сделала приседания', 'чтение сегодня готово'])('«%s» → да', (t) =>
+    expect(textMentionsHabit(H, t)).toBe(true),
+  );
+  it.each(['как дела?', 'каждый день одно и то же'])('«%s» → нет', (t) => expect(textMentionsHabit(H, t)).toBe(false));
+});
+
+describe('isMultiItemRequest — несколько дел в одном сообщении', () => {
+  it.each([
+    'Задача на завтра поехать узнать на счет работы\nУзнать как продвигается ипотека\nи встреча с девочками в 14:00',
+    'завтра позвонить маме, забрать посылку и встреча с Сериком в 15:00',
+  ])('«%s» → да', (t) => expect(isMultiItemRequest(t)).toBe(true));
+  it.each(['добавь задачу позвонить маме завтра', 'поставь задачу в 22:00 накормить мужа', 'отметь зарядку'])('«%s» → нет', (t) =>
+    expect(isMultiItemRequest(t)).toBe(false),
+  );
+});
