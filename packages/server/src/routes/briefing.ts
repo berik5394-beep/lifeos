@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { rateLimiter } from '../middleware/security.js';
-import { localDateOnlyUTC } from '../lib/tz.js';
+import { localDateOnlyUTC, localMonthRange } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { calculateStreak } from '../services/streak-service.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
@@ -37,12 +37,6 @@ function getRandomQuote(): string {
 }
 
 
-function getMonthRange(): { start: Date; end: Date } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return { start, end };
-}
 
 export async function briefingRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -69,7 +63,7 @@ export async function briefingRoutes(app: FastifyInstance): Promise<void> {
     const today = localDateOnlyUTC(tz);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const { start: monthStart, end: monthEnd } = getMonthRange();
+    const { start: monthStart, end: monthEnd } = localMonthRange(tz);
 
     // Шаги по сделкам на сегодня — только при включённом флаге (иначе ключа нет).
     const dealsOn = isV2DealsEnabled(userId);

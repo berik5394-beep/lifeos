@@ -334,3 +334,16 @@ export function localDayStartUTCOffset(
   // повторная нормализация на случай DST-перехода в окне
   return localDayStartUTC(tz, new Date(shifted.getTime() + 12 * 3600_000));
 }
+
+/**
+ * Календарный месяц ЮЗЕРА: start = 1-е число, end = последний день (обе — @db.Date,
+ * UTC-полночь), daysLeft — с сегодня включительно. Аудит 2026-11-09: месяц брался
+ * по UTC сервера — 1-го числа с 00:00 до 05:00 по Алматы бриф, пуши лимита и
+ * коуч считали ПРОШЛЫЙ месяц.
+ */
+export function localMonthRange(tz: string, at: Date = new Date()): { start: Date; end: Date; month: number; year: number; daysLeft: number } {
+  const [y, m, d] = localDateStr(safeTz(tz), at).split('-').map(Number);
+  const start = new Date(Date.UTC(y, m - 1, 1));
+  const end = new Date(Date.UTC(y, m, 0));
+  return { start, end, month: m, year: y, daysLeft: end.getUTCDate() - d + 1 };
+}

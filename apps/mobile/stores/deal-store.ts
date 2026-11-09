@@ -58,7 +58,11 @@ interface DealState {
   fetchOne: (id: string) => Promise<DealWithEvents | null>;
   create: (input: NewDealInput) => Promise<Deal>;
   update: (id: string, patch: DealPatch) => Promise<{ deal: Deal; incomeOffer: boolean }>;
-  moveStage: (id: string, stage: DealStage, lostReason?: string) => Promise<{ deal: Deal; incomeOffer: boolean }>;
+  moveStage: (
+    id: string,
+    stage: DealStage,
+    lostReason?: string,
+  ) => Promise<{ deal: Deal; incomeOffer: boolean; leftIncome?: { id: string; amount: number } | null }>;
   recordIncome: (id: string, force?: boolean) => Promise<IncomeResult>;
   setPlan: (amount: number) => Promise<void>;
   /** Выход / удаление аккаунта: следующий пользователь не увидит чужих сделок. */
@@ -78,7 +82,7 @@ function rememberAvailable(v: boolean): void {
   storage.set(AVAILABLE_KEY, String(v));
 }
 
-type MutationReply = { deal: Deal; incomeOffer: boolean; incomeDue?: number | null };
+type MutationReply = { deal: Deal; incomeOffer: boolean; incomeDue?: number | null; leftIncome?: { id: string; amount: number } | null };
 /** Остаток к записи (сумма − авансы) — в сделку для текста «Записать доход N ₸?». */
 const withDue = (r: MutationReply): Deal => (r.incomeDue != null ? { ...r.deal, incomeDue: r.incomeDue } : r.deal);
 
@@ -236,7 +240,7 @@ export const useDealStore = create<DealState>((set, get) => {
       mutated();
       applyDeal(r.deal);
       await refreshPlan();
-      return { deal: withDue(r), incomeOffer: r.incomeOffer };
+      return { deal: withDue(r), incomeOffer: r.incomeOffer, leftIncome: r.leftIncome ?? null };
     },
 
     recordIncome: async (id, force = false) => {

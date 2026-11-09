@@ -25,7 +25,9 @@ export const createObligationTool = defineTool({
   schema: z.object({
     personName: z.string().max(120),
     direction: z.string().max(40),
-    kind: z.enum(['action', 'money']).default('action'),
+    // Без kind, но с суммой — это деньги (аудит 2026-11-09: «Ахмет должен мне 500к»
+    // без kind сохранялось действием, сумма терялась, в «Долгах» его не было).
+    kind: z.enum(['action', 'money']).optional(),
     description: z.string().max(500),
     amount: z.coerce.number().positive().nullable().optional(),
     dueDate: z
@@ -49,7 +51,7 @@ export const createObligationTool = defineTool({
       userId: ctx.userId,
       personName: String(input.personName).trim(),
       direction,
-      kind: input.kind === 'money' ? 'money' : 'action',
+      kind: input.kind === 'money' || (input.kind === undefined && input.amount != null && input.amount > 0) ? 'money' : 'action',
       description: String(input.description).trim(),
       amount: input.amount ?? null,
       dueDate: input.dueDate ? new Date(String(input.dueDate)) : null,

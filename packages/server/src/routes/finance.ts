@@ -269,6 +269,8 @@ export async function financeRoutes(app: FastifyInstance): Promise<void> {
       return reply.status(404).send({ message: 'Доход не найден' });
     }
     await prisma.income.delete({ where: { id } });
+    // Доход сделки убран — сделка снова может предложить «записать доход».
+    await prisma.deal.updateMany({ where: { userId: request.userId, wonIncomeId: id }, data: { wonIncomeId: null } });
     captureActivity(request.userId, {
       type: 'income_deleted',
       content: `Убрал доход ${income.amount} ₸ · ${income.source}`,

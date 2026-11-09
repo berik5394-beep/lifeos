@@ -3,10 +3,11 @@ import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
 import { borderRadius, fontSize, spacing } from '@/constants';
-import { OPEN_STAGES, STAGE_LABEL, fmtMoney, isOpenStage, neighborStages, type Deal, type DealEvent, type DealStage } from '@/services/deals';
+import { OPEN_STAGES, STAGE_LABEL, fmtMoney, fmtMoneyExact, isOpenStage, neighborStages, type Deal, type DealEvent, type DealStage } from '@/services/deals';
 import { LOST_REASONS, canRecordIncome, dealHead, eventLine, reopenStage, stepLine } from '@/services/deals-view';
 import { dealErrorText, useDealIncome } from '@/hooks/use-deal-income';
 import { useDealStore } from '@/stores/deal-store';
+import { useFinanceStore } from '@/stores/finance-store';
 import { StageButton } from '@/components/deals/stage-button';
 import { AmountSheet } from '@/components/deals/amount-sheet';
 import { StepSheet } from '@/components/deals/step-sheet';
@@ -20,6 +21,7 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(c), [c]);
   const moveStage = useDealStore((s) => s.moveStage);
+  const removeIncome = useFinanceStore((s) => s.deleteIncome);
   const fetchOne = useDealStore((s) => s.fetchOne);
   const { offer, record } = useDealIncome();
   const [history, setHistory] = useState<History | null>(null);
@@ -88,6 +90,28 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
       if (!deal || !lock()) return;
       try {
         const r = await moveStage(deal.id, stage, lostReason);
+        // «Выиграна» → «Проиграна»: доход по сделке остался в финансах — спросить.
+        if (r.leftIncome) {
+          const left = r.leftIncome;
+          Alert.alert(
+            'Доход по сделке остался',
+            `По этой сделке записан доход ${fmtMoneyExact(left.amount)}. Убрать его из финансов?`,
+            [
+              { text: 'Оставить', style: 'cancel', onPress: finishAndClose },
+              {
+                text: 'Убрать',
+                style: 'destructive',
+                onPress: () => {
+                  removeIncome(left.id)
+                    .catch(() => Alert.alert('Не получилось', 'Доход не убран — попробуй в «Финансах».'))
+                    .finally(finishAndClose);
+                },
+              },
+            ],
+            { cancelable: true, onDismiss: finishAndClose },
+          );
+          return;
+        }
         if (r.incomeOffer && r.deal.amount != null) {
           // Карточка открыта, пока идёт вопрос про доход: Alert поверх закрывающейся модалки на iOS теряется.
           offer(r.deal, finishAndClose);
@@ -99,7 +123,7 @@ export const DealSheet = memo(function DealSheet({ deal, onClose }: { deal: Deal
         Alert.alert('Не получилось', dealErrorText(err));
       }
     },
-    [deal, lock, unlock, moveStage, offer, finishAndClose],
+    [deal, lock, unlock, moveStage, offer, finishAndClose, removeIncome],
   );
 
   // Стабильные обработчики кнопок (value — из StageButton): inline-лямбды ломали memo.

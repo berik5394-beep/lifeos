@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { generateProactiveNotifications } from '../services/proactive-notifications.js';
-import { localDateOnlyUTC } from '../lib/tz.js';
+import { localDateOnlyUTC, localMonthRange } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { calculateStreak } from '../services/streak-service.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
@@ -22,12 +22,6 @@ const registerTokenSchema = z.object({
 // Helper: today's date (midnight, no time component)
 // ---------------------------------------------------------------------------
 
-function getMonthRange(): { start: Date; end: Date } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return { start, end };
-}
 
 // ---------------------------------------------------------------------------
 // Motivational quotes (server-side fallback pool)
@@ -75,7 +69,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     const today = localDateOnlyUTC(tz);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const { start: monthStart, end: monthEnd } = getMonthRange();
+    const { start: monthStart, end: monthEnd } = localMonthRange(tz);
 
     // Шаги по сделкам на сегодня — только при включённом флаге (иначе ключа нет).
     const dealsOn = isV2DealsEnabled(userId);

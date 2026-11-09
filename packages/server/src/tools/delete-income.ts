@@ -60,6 +60,8 @@ export const deleteIncomeTool = defineTool({
     }
 
     await prisma.income.delete({ where: { id: target.id } });
+    // Доход сделки убран — сделка снова может предложить «записать доход».
+    await prisma.deal.updateMany({ where: { userId: ctx.userId, wonIncomeId: target.id }, data: { wonIncomeId: null } });
 
     return {
       message: `Убрал доход ${target.amount} ₸${

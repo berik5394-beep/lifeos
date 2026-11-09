@@ -4,6 +4,7 @@ import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import {
   findOpenDeals, findRecentClosedDeals, isOpenStage, updateDeal, describeUpdated, describeWhichDeal, parseStage, DEAL_INCOME_ACTION,
 } from '../services/deals/index.js';
+import { fmtMoneyExact } from '../services/deals/index.js';
 import { setPendingAction } from '../services/pending-actions.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { localDateStr } from '../lib/tz.js';
@@ -61,7 +62,9 @@ export const updateDealTool = defineTool({
       lostReason: input.lostReason ?? null,
     }, now);
     const today = localDateStr(await getUserTimezone(ctx.userId), now);
-    const message = describeUpdated(r.deal, r, today);
+    const message =
+      describeUpdated(r.deal, r, today) +
+      (r.leftIncome ? ` Доход ${fmtMoneyExact(r.leftIncome.amount)} по этой сделке остался в финансах — скажи «убери этот доход», если он не пришёл.` : '');
     if (r.incomeOffer) await setPendingAction(ctx.userId, DEAL_INCOME_ACTION, { dealId: r.deal.id }, message);
     return { message, dealId: r.deal.id };
   },

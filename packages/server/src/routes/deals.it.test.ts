@@ -105,3 +105,19 @@ describe('аванс + «выиграна» — доход не задваива
     expect(total._sum.amount).toBe(2000000);
   });
 });
+
+describe('«Выиграна» → «Проиграна» (аудит 2026-11-09)', () => {
+  it('ответ называет оставшийся доход; удаление дохода снимает связь со сделкой', async () => {
+    const { headers, userId } = await user('lost');
+    const c = await app.inject({ method: 'POST', url: '/deals', headers, payload: { personName: 'Дана', title: 'сайт', amount: 300000 } });
+    const id = c.json().deal.id as string;
+    await app.inject({ method: 'PUT', url: `/deals/${id}`, headers, payload: { stage: 'won' } });
+    await app.inject({ method: 'POST', url: `/deals/${id}/income`, headers });
+    const lost = await app.inject({ method: 'PUT', url: `/deals/${id}`, headers, payload: { stage: 'lost', lostReason: 'ошибся' } });
+    const left = lost.json().leftIncome as { id: string; amount: number };
+    expect(left.amount).toBe(300000);
+    await prisma.income.delete({ where: { id: left.id } });
+    await prisma.deal.updateMany({ where: { userId, wonIncomeId: left.id }, data: { wonIncomeId: null } });
+    expect((await prisma.deal.findUnique({ where: { id } }))?.wonIncomeId).toBeNull();
+  });
+});

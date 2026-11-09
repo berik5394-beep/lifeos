@@ -171,7 +171,7 @@ export async function updateDeal(
   dealId: string,
   patch: UpdateDealPatch,
   now: Date = new Date(),
-): Promise<{ deal: Deal; step: Step; stageChanged: boolean; incomeOffer: boolean }> {
+): Promise<{ deal: Deal; step: Step; stageChanged: boolean; incomeOffer: boolean; leftIncome: { id: string; amount: number } | null }> {
   const { today: t } = await today(userId, now);
   const cur = await prisma.deal.findFirst({ where: { id: dealId, userId } });
   if (!cur) throw new Error('not_found');
@@ -223,7 +223,14 @@ export async function updateDeal(
   }
   // Ревью I3: «выиграна» без суммы → назвали сумму позже → тоже предлагаем доход.
   const incomeOffer = deal.stage === 'won' && deal.amount != null && !deal.wonIncomeId && (stageChanged || amountChanged);
-  return { deal, step, stageChanged, incomeOffer };
+  // Аудит 2026-11-09: «Выиграна» по ошибке → «Проиграна»: записанный по сделке доход
+  // оставался в финансах молча. Сами не удаляем (это деньги) — отдаём, чтобы спросить.
+  let leftIncome: { id: string; amount: number } | null = null;
+  if (stageChanged && cur.stage === 'won' && deal.stage !== 'won' && deal.wonIncomeId) {
+    const inc = await prisma.income.findFirst({ where: { id: deal.wonIncomeId, userId }, select: { id: true, amount: true } });
+    leftIncome = inc;
+  }
+  return { deal, step, stageChanged, incomeOffer, leftIncome };
 }
 
 /** Была ли у сделки смена стадии из открытой в «выиграна» (а не «создана выигранной»/«проигранная → выиграна»). */

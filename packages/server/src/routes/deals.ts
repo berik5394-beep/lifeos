@@ -97,7 +97,7 @@ export async function dealRoutes(app: FastifyInstance): Promise<void> {
       );
       // Сколько записать доходом при «выиграна»: сумма − авансы (аудит 2026-11-09).
       const incomeDue = r.incomeOffer ? await dealIncomeDue(r.deal) : null;
-      return { deal: r.deal, step: r.step, incomeOffer: r.incomeOffer && incomeDue !== 0, incomeDue };
+      return { deal: r.deal, step: r.step, incomeOffer: r.incomeOffer && incomeDue !== 0, incomeDue, leftIncome: r.leftIncome };
     } catch (err) {
       if (err instanceof Error && err.message === 'not_found') return reply.status(404).send({ message: 'Сделка не найдена' });
       throw err;

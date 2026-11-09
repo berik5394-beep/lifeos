@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC, localDateOnlyUTC, localDaySlot, localHour, localDayOfWeek } from '../lib/tz.js';
+import { localDayStartUTC, localDateOnlyUTC, localDaySlot, localHour, localDayOfWeek, localMonthRange } from '../lib/tz.js';
 import { countOverduePending } from './task-overdue.js';
 import { isV2PersonTypesEnabled, isV2TaskReminderEnabled } from '../lib/feature-flags.js';
 import { buildPersonMeetingBriefs } from './person-types/meeting-impl.js';
@@ -62,13 +62,6 @@ export function daySlot(hour: number, tz: string, at: Date = new Date()): Date {
   return localDaySlot(hour, tz, at);
 }
 
-function getMonthRange(): { start: Date; end: Date } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return { start, end };
-}
-
 /**
  * Parse "HH:MM" → UTC-Date представляющий это время В ЛОКАЛЬНОЙ TZ
  * юзера сегодня. Фикс W11-класса (раньше брали серверный UTC как
@@ -87,12 +80,6 @@ export function timeToDate(time: string, tz: string, at: Date = new Date()): Dat
 }
 
 /** Days remaining in current month (including today) */
-function daysRemainingInMonth(): number {
-  const now = new Date();
-  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  return lastDay - now.getDate() + 1;
-}
-
 /** Phase 7 P4 (E) — Sunday в локальной tz юзера (раньше server day). */
 function isSundayLocal(tz: string): boolean {
   return localDayOfWeek(tz) === 0;
@@ -213,10 +200,8 @@ async function generateBudgetAlerts(
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
   const now = new Date();
-  const { start: monthStart, end: monthEnd } = getMonthRange();
-  const currentMonth = now.getMonth() + 1;
-  const currentYear = now.getFullYear();
-  const daysLeft = daysRemainingInMonth();
+  // Месяц юзера, а не UTC сервера (1-го до 05:00 по Алматы был прошлый месяц).
+  const { start: monthStart, end: monthEnd, month: currentMonth, year: currentYear, daysLeft } = localMonthRange(tz, now);
 
   await carryBudgetLimits(userId, currentMonth, currentYear);
   const budgetLimits = await prisma.budgetLimit.findMany({

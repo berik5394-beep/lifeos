@@ -1,6 +1,6 @@
 import type { PortfolioStatus } from './savings-pace.js';
 import { prisma } from '../lib/prisma.js';
-import { localDayStartUTC } from '../lib/tz.js';
+import { localDayStartUTC, localMonthRange } from '../lib/tz.js';
 import { isV2SavingsCoachEnabled } from '../lib/feature-flags.js';
 import { gatherReflectorFacts } from './reflector-service.js';
 import { computePortfolioPace, describePortfolioPace } from './savings-pace.js';
@@ -76,7 +76,7 @@ export async function maybeSavingsCoachLine(
       select: { timezone: true },
     });
     const dayStart = localDayStartUTC(user?.timezone ?? 'UTC', now);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const { start: monthStart } = localMonthRange(user?.timezone ?? 'UTC', now);
 
     const [coachedToday, mtdExp] = await Promise.all([
       prisma.insight.count({

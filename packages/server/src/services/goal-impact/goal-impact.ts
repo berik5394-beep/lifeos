@@ -1,4 +1,6 @@
 import { prisma } from '../../lib/prisma.js';
+import { localMonthRange } from '../../lib/tz.js';
+import { getUserTimezone } from '../../lib/user-context.js';
 import { gatherReflectorFacts } from '../reflector-service.js';
 import { computePortfolioPace } from '../savings-pace.js';
 import {
@@ -49,11 +51,12 @@ export async function buildGoalImpact(
     const requiredMonthly = pf.requiredAnchor;
     if (requiredMonthly <= 0) return null;
 
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    // Месяц юзера (по UTC сервера 1-го до 05:00 по Алматы был прошлый), с верхней границей.
+    const { start: monthStart, end: monthEnd } = localMonthRange(await getUserTimezone(userId), now);
     const [byCatRaw, owedAgg] = await Promise.all([
       prisma.expense.groupBy({
         by: ['category'],
-        where: { userId, date: { gte: monthStart } },
+        where: { userId, date: { gte: monthStart, lte: monthEnd } },
         _sum: { amount: true },
       }),
       prisma.obligation.aggregate({
