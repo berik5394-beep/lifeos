@@ -53,8 +53,10 @@ export const createHabitTool = defineTool({
     // Дубль — только то же название (без регистра/ё). Раньше нечёткое совпадение по
     // одному слову: «вечерняя пробежка» при «Утренней пробежке», «Чтение Корана» при
     // «Чтении» → «уже есть», новая не заводилась (аудит 2026-11-09).
-    const norm = (x: string) => x.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
-    const existing = active.find((h) => norm(h.name) === norm(input.name)) ?? null;
+    // Те же слова с точностью до окончания («Зарядка» = «зарядку»), все до одного.
+    const stems = (x: string) =>
+      x.toLowerCase().replace(/ё/g, 'е').split(/[^a-zа-я0-9]+/).filter(Boolean).map((w) => (w.length > 4 ? w.slice(0, w.length - 2) : w)).join(' ');
+    const existing = active.find((h) => stems(h.name) === stems(input.name)) ?? null;
     if (existing) {
       return { message: `Привычка «${existing.name}» уже есть — отмечать её можно сразу.`, habitId: existing.id, existed: true };
     }

@@ -30,6 +30,16 @@ describe('create_habit реально пишет + кросс-домен при�
     expect(await prisma.habit.count({ where: { userId, active: true } })).toBe(1);
   });
 
+  it('похожая, но другая — новая привычка (аудит 2026-11-09)', async () => {
+    const userId = await seedUser(`ch-d-${Date.now()}@a.test`);
+    await createHabitTool.handler({ name: 'Утренняя пробежка' } as never, { userId } as never);
+    await createHabitTool.handler({ name: 'Чтение' } as never, { userId } as never);
+    const a = (await createHabitTool.handler({ name: 'Вечерняя пробежка' } as never, { userId } as never)) as { existed?: boolean };
+    const b = (await createHabitTool.handler({ name: 'Чтение Корана' } as never, { userId } as never)) as { existed?: boolean };
+    expect([a.existed, b.existed]).toEqual([undefined, undefined]);
+    expect(await prisma.habit.count({ where: { userId, active: true } })).toBe(4);
+  });
+
   it('кросс-домен: привязка к цели по имени выставляет goalId', async () => {
     const userId = await seedUser(`ch-c-${Date.now()}@a.test`);
     const goal = await prisma.yearlyGoal.create({ data: { userId, year: YEAR, area: 'health', goalText: 'Быть в форме' } });
