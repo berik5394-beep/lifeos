@@ -425,7 +425,6 @@ import {
 import { getUserTimezone } from '../lib/user-context.js';
 import { runAgent } from './claude-agent.js';
 import { getEngagement, adaptiveThreshold } from './engagement/index.js';
-import { isV2MoodToneEnabled, isV2OpenLoopsEnabled } from '../lib/feature-flags.js';
 import { gatherOpenLoops, shouldNudgeOpenLoops } from './open-loops.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { persistCandidates } from './insight-store.js';
@@ -854,13 +853,12 @@ async function detectGoalHabitStall(userId: string): Promise<NudgeCandidate[]> {
 /**
  * Завал открытых петель (interconnection): много просрочек + неотмеченных
  * привычек одновременно → нудж «N просрочек, разгрести?». READ-ONLY.
- * Флаг-гейт ранний (off=identical: detector → []). Дедуп — как у соседей
+ * Дедуп — как у соседей
  * без entityId: scope `open_loop_pileup:global` (gate4 пропускает, частоту
  * держит rate-limit gate).
  */
 async function detectOpenLoopPileup(userId: string): Promise<NudgeCandidate[]> {
   try {
-    if (!isV2OpenLoopsEnabled(userId)) return [];
     const l = await gatherOpenLoops(userId).catch(() => null);
     if (!l || !shouldNudgeOpenLoops(l)) return [];
     const cand: NudgeCandidate = {
@@ -1710,14 +1708,12 @@ export class V2ProactivityEngine implements ProactivityEngine {
     if (!(await gate2_RateLimit(userId, now))) return [];
     // mood-tone Part 2: в эмоциональном спаде не наваливаем — «давящие»
     // нуджи глушатся (поддержка/время-критичное/деньги-защита остаются).
-    // Best-effort: сбой mood-чтения → не глушим. off → ветка не выполняется.
-    if (isV2MoodToneEnabled(userId)) {
-      const shift = await getEmotionalMemory()
-        .detectMoodShift(userId)
-        .catch(() => null);
-      candidates = suppressPressureNudges(candidates, shift);
-      if (candidates.length === 0) return [];
-    }
+    // Best-effort: сбой mood-чтения → не глушим.
+    const shift = await getEmotionalMemory()
+      .detectMoodShift(userId)
+      .catch(() => null);
+    candidates = suppressPressureNudges(candidates, shift);
+    if (candidates.length === 0) return [];
     let sigThreshold = 0.6;
     try {
       const eng = await getEngagement(userId, now);

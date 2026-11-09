@@ -21,8 +21,6 @@ import { axisLabel, type UserAxesValues } from './user-axes/index.js';
 import {
   isV2MemQualityEnabled,
   isV2DecayEnabled,
-  isV2OpenLoopsEnabled,
-  isV2MoodToneEnabled,
   isV2DealsEnabled,
 } from '../lib/feature-flags.js';
 import { gatherDealsSection } from './deals/service.js';
@@ -533,19 +531,17 @@ export async function fetchV2EnrichmentData(
           bs.length ? bs.slice(0, 2).map((b) => b.insightText).filter(Boolean).join(' · ') : null,
         )
         .catch(() => null),
-      isV2OpenLoopsEnabled(userId)
-        ? withTimeout(
-            gatherOpenLoops(userId, nowDate).then((l) => formatOpenLoopsSection(l)),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          ).catch(() => null)
-        : Promise.resolve(null),
+      withTimeout(
+        gatherOpenLoops(userId, nowDate).then((l) => formatOpenLoopsSection(l)),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      ).catch(() => null),
     ]);
     const deals = await dealsP;
     // mood-tone Part 1: спад → инструкция «мягче» (расширяет «эмпатия>стиль»
-    // с одного сообщения на траекторию). off → null → строки нет.
+    // с одного сообщения на траекторию). Нет спада → null → строки нет.
     const moodToneDirective =
-      isV2MoodToneEnabled(userId) && moodShift?.shifted && moodShift.direction === 'down'
+      moodShift?.shifted && moodShift.direction === 'down'
         ? 'юзер в эмоциональном спаде последние дни — будь мягче: больше поддержки, ' +
           'меньше требований и критики, не наваливай задачи и цели. ' +
           'Это перекрывает выбранный стиль (даже strict/toxic).'

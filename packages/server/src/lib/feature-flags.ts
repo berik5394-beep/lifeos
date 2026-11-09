@@ -179,33 +179,6 @@ export function isV2DecayEnabled(userId: string): boolean {
 }
 
 /**
- * Open-loops: снимок незакрытого СЕЙЧАС (просрочки/привычки/pending) в промпт +
- * проактивный нудж при завале. READ-ONLY. OFF → блок не добавляется + детектор []
- * → байт-идентично.
- */
-export function isV2OpenLoopsEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_OPEN_LOOPS, userId);
-}
-
-/**
- * Цель↔слот: goal_behind-нудж получает слот-якорь («в чт 18:00 свободно — поставить?»)
- * + доставленный нудж пишется в ChatMessage (ответ «да» работает). OFF → сообщение
- * прежнее + ничего не пишется → байт-идентично.
- */
-export function isV2GoalSlotEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_GOAL_SLOT, userId);
-}
-
-/**
- * Тон-по-настроению: mood-сдвиг вниз → (1) инструкция «мягче» в промпт (перекрывает
- * стиль), (2) «давящие» нуджи глушатся (PRESSURE_SOURCES). OFF → только факт-строка
- * настроения + все нуджи как раньше → байт-идентично.
- */
-export function isV2MoodToneEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_MOOD_TONE, userId);
-}
-
-/**
  * Перегруз дня → робот предлагает сдвинуть график одним касанием + предупреждение
  * о целях недели/месяца/года (спека 2026-11-05-day-overload-reschedule). Off →
  * create_task / POST /tasks / PUT /tasks байт-идентичны прежним.

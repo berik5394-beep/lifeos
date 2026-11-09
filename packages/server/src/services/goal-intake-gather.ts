@@ -7,7 +7,7 @@ import { prisma } from '../lib/prisma.js';
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { withTimeout } from '../lib/with-timeout.js';
-import { isV2GoalIntakeEnabled, isV2MoodToneEnabled } from '../lib/feature-flags.js';
+import { isV2GoalIntakeEnabled } from '../lib/feature-flags.js';
 import { buildGoalIntake, buildShortGoalIntake, MONEY_WINDOW_MONTHS, type GoalIntakeFacts } from './goal-intake.js';
 import { isMoneyGoal } from './goal-pace.js';
 import { gatherWeekLoad } from './week-load.js';
@@ -144,12 +144,10 @@ async function gather(userId: string, goalId: string, now: Date): Promise<GoalIn
   if (goal.year < now.getFullYear()) return null;
   const isMoney = isMoneyGoal(goal.area, goal.target);
 
-  const moodP = isV2MoodToneEnabled(userId)
-    ? getEmotionalMemory()
-        .detectMoodShift(userId)
-        .then((m) => !!m?.shifted && m.direction === 'down')
-        .catch(() => false)
-    : Promise.resolve(false);
+  const moodP = getEmotionalMemory()
+    .detectMoodShift(userId)
+    .then((m) => !!m?.shifted && m.direction === 'down')
+    .catch(() => false);
 
   if (isMoney) {
     const [money, moodDown] = await Promise.all([moneyFacts(userId, goalId, goal.year, now), moodP]);
@@ -230,12 +228,10 @@ export async function maybeShortGoalIntake(
 ): Promise<string | null> {
   if (!isV2GoalIntakeEnabled(userId)) return null;
   const run = async (): Promise<string | null> => {
-    const moodP = isV2MoodToneEnabled(userId)
-      ? getEmotionalMemory()
-          .detectMoodShift(userId)
-          .then((m) => !!m?.shifted && m.direction === 'down')
-          .catch(() => false)
-      : Promise.resolve(false);
+    const moodP = getEmotionalMemory()
+      .detectMoodShift(userId)
+      .then((m) => !!m?.shifted && m.direction === 'down')
+      .catch(() => false);
     const [minutes, week, slot, habits, moodDown] = await Promise.all([
       estimateYearlyGoalWeeklyMinutes(goal.goalText, goal.horizon),
       gatherWeekLoad(userId, now).catch(() => null),
