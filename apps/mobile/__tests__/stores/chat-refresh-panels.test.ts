@@ -1,6 +1,13 @@
 import { api } from '@/services/api';
 import { useChatStore } from '@/stores/chat-store';
 import { useScheduleStore } from '@/stores/schedule-store';
+// Поток недоступен (404) → стор идёт обычным запросом: здесь проверяем этот путь
+// (поток — в jarvis-voice.test.ts).
+jest.mock('@/services/chat-stream', () => {
+  const actual = jest.requireActual('@/services/chat-stream');
+  return { ...actual, streamChat: jest.fn(async () => { throw new actual.StreamUnavailableError(404); }) };
+});
+
 
 /**
  * Микрофон теперь один — у поля ввода. Сказал «отметь тренировку» при открытой

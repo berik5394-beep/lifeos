@@ -51,7 +51,23 @@ describe('Джарвис-голос: сказал голосом — ответ 
     expect(Speech.speak).toHaveBeenCalledWith('Записал задачу на завтра', expect.objectContaining({ language: 'ru-RU' }));
   });
 
-  it('напечатанное — без voice и без озвучки (как раньше)', async () => {
+  it('напечатанное — тоже потоком (облачко растёт), но без voice и без озвучки', async () => {
+    mockStream.mockImplementationOnce(async (_t: string, _tok: string, onDelta: (x: string) => void) => {
+      onDelta('Гото');
+      expect(useChatStore.getState().messages[0].content).toBe('Гото');
+      onDelta('во');
+      return { message: 'Готово', streamed: 'Готово' };
+    });
+    await useChatStore.getState().sendMessage('создай задачу', true);
+    await flush();
+    expect(mockStream).toHaveBeenCalledWith('создай задачу', 'test-token-123', expect.any(Function), { voice: false, webSearch: true });
+    expect(mockApi.post).not.toHaveBeenCalled();
+    expect(useChatStore.getState().messages[0].content).toBe('Готово');
+    expect(Speech.speak).not.toHaveBeenCalled();
+  });
+
+  it('напечатанное, сервер без потока (404) — обычным запросом, как раньше', async () => {
+    mockStream.mockRejectedValueOnce(new StreamUnavailableError(404));
     mockApi.post.mockResolvedValueOnce({ message: 'Готово' });
     await useChatStore.getState().sendMessage('создай задачу', true);
     await flush();

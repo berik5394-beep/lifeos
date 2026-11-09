@@ -162,7 +162,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isLoading: true,
     }));
 
-    // Сказали голосом — потоковый ответ: текст в облачке растёт по мере ответа,
+    // Потоковый ответ (текст и голос): облачко растёт по мере ответа; сказали голосом —
     // готовые фразы сразу звучат (Джарвис, jarvis-roadmap №5).
     const liveId = uniqueId('assistant');
     let live = '';
@@ -196,17 +196,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       let data: Reply;
       let streamed: string | null = null;
-      if (spoken) {
-        try {
-          const done = await streamChat(text, token, onDelta, { voice: true, webSearch: webSearch ?? false });
-          data = done;
-          streamed = done.streamed ?? '';
-        } catch (err) {
-          // Сервер без потока (404) / вход протух (401) — сообщение не обработано: обычным путём.
-          if (!(err instanceof StreamUnavailableError)) throw err;
-          data = await viaPost();
-        }
-      } else {
+      // Поток и для текста (2026-11-10, скорость): первые слова в облачке через
+      // ~1,5 с вместо целого ответа через ~6 с. Итог в конце заменяет собранный
+      // текст (сервер мог дописать «Готово: …» или сменить ответ запасным путём).
+      try {
+        const done = await streamChat(text, token, onDelta, { voice: spoken, webSearch: webSearch ?? false });
+        data = done;
+        streamed = done.streamed ?? '';
+      } catch (err) {
+        // Сервер без потока (404) / вход протух (401) — сообщение не обработано: обычным путём.
+        if (!(err instanceof StreamUnavailableError)) throw err;
         data = await viaPost();
       }
 
