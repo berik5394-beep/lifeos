@@ -506,6 +506,9 @@ export function partialDoneReply(done: string[]): string {
   );
 }
 
+/** Модель недоступна, а ход ничего не записывал — коротко и честно. */
+export const MODEL_DOWN_REPLY = 'Ой, у меня сейчас сбой связи с «мозгом» — ответить толком не могу. Ничего не записал. Напиши ещё раз через минуту.';
+
 export const DEGRADED_ACTIONABLE_REFUSAL =
   'Извини, сейчас не получается это выполнить — сбой на моей стороне, ' +
   'не у тебя. Действие НЕ выполнено. Попробуй, пожалуйста, ещё раз через минуту.';
@@ -2072,8 +2075,16 @@ async function handleMessageCore(
             if (webErr instanceof AgentDeadlineError) {
               reply = await deadlineReply();
             } else {
-              const r = await getAssistantReply(userId, text, finalTherapeutic);
-              reply = r.text;
+              // Последний запасной путь тоже может упасть (модель недоступна) —
+              // честная строка вместо 500 «Ошибка обработки чата» (аудит 2026-11-09:
+              // «спокойной ночи», «доброе утро», «да» без вопроса падали целиком).
+              try {
+                const r = await getAssistantReply(userId, text, finalTherapeutic);
+                reply = r.text;
+              } catch (lastErr) {
+                console.warn(`[jarvis] getAssistantReply тоже упал user=${userId}:`, lastErr instanceof Error ? lastErr.message : lastErr);
+                reply = MODEL_DOWN_REPLY;
+              }
             }
           }
         }

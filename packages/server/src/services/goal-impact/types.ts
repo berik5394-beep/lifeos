@@ -1,3 +1,4 @@
+import { EXPENSE_LABELS } from '../../lib/expense-category.js';
 export interface CategorySpend {
   category: string;
   amount: number;
@@ -50,7 +51,7 @@ export function describeGoalImpact(
   const cat = topCat ? computeCategoryImpact(topCat.amount, requiredMonthly) : null;
   if (topCat && cat && cat.share >= 0.1) {
     parts.push(
-      `«${topCat.category}» съела ${r(topCat.amount)}₸ = ${r(cat.share * 100)}% ` +
+      `«${EXPENSE_LABELS[topCat.category] ?? topCat.category}» съела ${r(topCat.amount)}₸ = ${r(cat.share * 100)}% ` +
         `от нужного на цель`,
     );
   }

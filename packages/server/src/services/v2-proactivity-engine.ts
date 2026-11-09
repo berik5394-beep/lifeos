@@ -264,11 +264,13 @@ export const TEMPLATES: Record<NudgeSource, Partial<Record<NudgeTone, string>>> 
       'Ты обещал «{{commitment}}» — прошло {{daysOverdue}} дней. Получилось?',
     curious: 'Как там «{{commitment}}»? Уже {{daysOverdue}} дней прошло.',
   },
+  // {{line}} — уже с направлением: «Ты обещал Серику: «договор»» / «Ахмет должен
+  // тебе 500 000 ₸» (аудит 2026-11-09: раньше всегда «Ты обещал …», даже когда
+  // должны тебе, — «Ты обещал Ахмет: «должен мне»»).
   obligation_due: {
-    gentle: 'Ты обещал {{person}}: «{{description}}» — срок {{dueLabel}}. Закрыл?',
-    curious: 'Как там с {{person}} — «{{description}}»? {{dueLabel}}.',
-    supportive:
-      '{{person}} ждёт «{{description}}». Срок {{dueLabel}} — сделал? Скажи — закрою.',
+    gentle: '{{line}} — {{dueLabel}}. {{ask}}',
+    curious: 'Как там: {{line}}? {{dueLabel}}.',
+    supportive: '{{line}}. {{dueLabel}} — {{ask}} Скажи — закрою.',
   },
   decision_review: {
     gentle: '{{weeks}} нед назад ты решил «{{title}}»{{expectedSuffix}} — как вышло?',
@@ -542,6 +544,12 @@ async function detectCommitmentDue(userId: string): Promise<NudgeCandidate[]> {
 }
 
 // Obligations: открытые обязательства, просроченные ИЛИ висящие без срока >5 дней.
+const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+/** @db.Date → «8 ноября» (а не ISO в тексте пуша). */
+function humanDay(d: Date): string {
+  return `${d.getUTCDate()} ${MONTHS_GEN[d.getUTCMonth()]}`;
+}
+
 async function detectObligationDue(userId: string): Promise<NudgeCandidate[]> {
   try {
     const { isV2ObligationsEnabled } = await import('../lib/feature-flags.js');
@@ -560,8 +568,19 @@ async function detectObligationDue(userId: string): Promise<NudgeCandidate[]> {
       const ageDays = Math.floor((now - o.createdAt.getTime()) / DAY_MS);
       if (!isDue && !(Number.isNaN(due) && ageDays > 5)) continue;
       const dueLabel = Number.isFinite(due)
-        ? `был ${o.dueDate!.toISOString().slice(0, 10)}`
-        : `висит ${ageDays} дней`;
+        ? `срок был ${humanDay(o.dueDate!)}`
+        : `висит ${ageDays} дн.`;
+      const owedToMe = o.direction === 'owed_to_me';
+      const sum = o.kind === 'money' && o.amount ? `${Math.round(o.amount).toLocaleString('ru-RU').replace(/\u00a0/g, ' ')} ₸` : '';
+      const desc = o.description && !/^(?:должен|должна)\s+мне$|^я\s+должен$/i.test(o.description.trim()) ? o.description : '';
+      const line = owedToMe
+        ? o.kind === 'money'
+          ? `${o.personName} должен тебе${sum ? ` ${sum}` : ''}${desc ? ` (${desc})` : ''}`
+          : `${o.personName} обещал тебе: «${o.description}»`
+        : o.kind === 'money'
+          ? `Ты должен ${o.personName}${sum ? ` ${sum}` : ''}${desc ? ` (${desc})` : ''}`
+          : `Ты обещал (${o.personName}): «${o.description}»`;
+      const ask = owedToMe ? (o.kind === 'money' ? 'Вернул?' : 'Сделал?') : o.kind === 'money' ? 'Отдал?' : 'Закрыл?';
       const cand: NudgeCandidate = {
         source: 'obligation_due',
         significance: 0,
@@ -571,6 +590,8 @@ async function detectObligationDue(userId: string): Promise<NudgeCandidate[]> {
           description: o.description,
           dueLabel,
           direction: o.direction,
+          line,
+          ask,
         },
         toneHint: 'gentle',
       };
@@ -630,14 +651,17 @@ async function detectGoalImpact(userId: string): Promise<NudgeCandidate[]> {
     const gi = await buildGoalImpact(userId);
     if (!gi) return [];
     const share = gi.categoryShare ?? 0;
-    const delay = gi.monthsDelay ?? 0;
-    if (share < 0.25 && delay < 1) return [];
+    // Шаблоны — про категорию трат («Еда» съела N%). Только долги без заметной
+    // категории давали ««» съела 0% нормы» (аудит 2026-11-09) — такое не шлём.
+    const catKey = gi.topCategory?.category;
+    if (!catKey || share < 0.25) return [];
+    const { EXPENSE_LABELS } = await import('../lib/expense-category.js');
     const cand: NudgeCandidate = {
       source: 'goal_impact',
       significance: 0,
       payload: {
         goal: gi.goalText,
-        category: gi.topCategory?.category ?? '',
+        category: EXPENSE_LABELS[catKey] ?? catKey,
         share: String(Math.round(share * 100)),
       },
       toneHint: 'gentle',
