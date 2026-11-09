@@ -19,8 +19,10 @@ afterAll(async () => {
   await app.close();
   await prisma.$disconnect();
 });
-async function user(tag: string) {
+async function user(tag: string, opts: { newcomer?: boolean } = {}) {
   const u = await prisma.user.create({ data: { email: `brief-${tag}-${Date.now()}@a.test`, name: 'Берик', passwordHash: 'x', timezone: 'UTC' } });
+  // Не новичок: хоть одно слово роботу уже было (иначе вместо брифа — знакомство).
+  if (!opts.newcomer) await prisma.chatMessage.create({ data: { userId: u.id, role: 'user', content: 'привет' } });
   return { userId: u.id, headers: { authorization: `Bearer ${app.jwt.sign({ sub: u.id })}` } };
 }
 const TODAY = localDateStr('UTC', new Date());
@@ -56,5 +58,19 @@ describe('GET /briefing/today', () => {
     const hello = greetingForHour(localHour('UTC'));
     expect(b.title).toBe(`${hello}, Берик.`);
     expect(b.text).toBe(`${hello}! 2 задачи на сегодня.`);
+  });
+
+  it('новичок (ничего нет) — знакомство вместо пустого брифа; рассказал — и бриф настоящий', async () => {
+    const { userId, headers } = await user('d', { newcomer: true });
+    const b = (await app.inject({ method: 'GET', url: '/briefing/today', headers })).json();
+    expect(b.firstDay).toBe(true);
+    expect(b.title).toBe(`${greetingForHour(localHour('UTC'))}, Берик!`);
+    expect(b.text).toContain('Расскажи одной фразой');
+    expect(b.text).not.toContain('нет срочных');
+
+    await prisma.task.create({ data: { userId, title: 'Отчёт', category: 'work', priority: 'high', date: new Date(`${TODAY}T00:00:00Z`) } });
+    const after = (await app.inject({ method: 'GET', url: '/briefing/today', headers })).json();
+    expect(after.firstDay).toBeUndefined();
+    expect(after.text).toContain('1 задача на сегодня');
   });
 });

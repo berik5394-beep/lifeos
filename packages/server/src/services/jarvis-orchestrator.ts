@@ -1,3 +1,4 @@
+import { withDoneSummary, type DoneItem } from './done-summary.js';
 import { prisma } from '../lib/prisma.js';
 import { parseIntent } from '../ai/intent-parser.js';
 import {
@@ -1951,7 +1952,7 @@ async function handleMessageCore(
   } else {
     const wantTools = hermesForceTools || toolsHint;
     // Учёт хода: была ли реальная запись / поставлен ли вопрос «да?».
-    const acts = { wrote: false, staged: false, done: [] as string[] };
+    const acts = { wrote: false, staged: false, done: [] as string[], items: [] as DoneItem[] };
     // Ответ без инструментов был про действие и ход повторили с ними — сторож
     // ниже проверит и без явной просьбы («присела 50 раз» → «отмечаю!»).
     let retriedForTools = false;
@@ -1961,7 +1962,10 @@ async function handleMessageCore(
       if (ok && isRealWrite(tool, result)) {
         acts.wrote = true;
         const msg = (result as { message?: unknown } | undefined)?.message;
-        if (typeof msg === 'string' && msg.trim()) acts.done.push(msg.trim());
+        if (typeof msg === 'string' && msg.trim()) {
+          acts.done.push(msg.trim());
+          acts.items.push({ tool, message: msg.trim() });
+        }
       }
     };
     // Модель упала ПОСЛЕ записи: честно — что уже записано, «не повторяй»
@@ -2057,6 +2061,8 @@ async function handleMessageCore(
           console.warn(`[jarvis] user=${userId} «сделал» без записи и после повтора → честный отказ`);
         }
       }
+      // Создал, а в ответе молчит («Теперь по цели — какая сумма?») → коротко что уже готово.
+      if (acts.wrote) reply = withDoneSummary(reply, acts.items);
     } catch (agentErr) {
       if (agentErr instanceof AgentDeadlineError) {
         // Время хода вышло — запасные пути (ещё вызовы Claude) не запускаем.
