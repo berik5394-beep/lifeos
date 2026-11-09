@@ -179,20 +179,11 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
     <GestureDetector gesture={Gesture.Race(pan, longPress, tap)}>
       <Animated.View style={[styles.item, style]} accessibilityLabel={badge ? `${roomItemLabel(item.itemKey)}: открыть ${badge}` : roomItemLabel(item.itemKey)}
         accessibilityRole="button">
-        {/* Объём: предмет на полу отбрасывает мягкую тень, «класс» — подиум под ним. */}
+        {/* Объём: предмет на полу отбрасывает мягкую тень. Подиумов «класса» нет — Berik 2026-11-09: серые подставки выглядели как баг. */}
         {!onWall && (
           <View style={styles.contact} pointerEvents="none">
             <SoftSpot id={`contact-${item.id}`} cx={0.5} cy={0.5} rx={0.5} ry={0.5} color="#120A02" opacity={0.6} />
           </View>
-        )}
-        {tierColor && !onWall && (
-          <>
-            <View style={[styles.podiumSide, { backgroundColor: tierColor.frame }]} pointerEvents="none" />
-            <View
-              style={[styles.podium, { backgroundColor: tierColor.stand, borderColor: tierColor.frame }, tier === 'luxury' && styles.sheen]}
-              pointerEvents="none"
-            />
-          </>
         )}
         {tierColor && onWall && (
           <View
@@ -227,17 +218,6 @@ const styles = StyleSheet.create({
   // Висит на стене: тень ниже и мягче — между предметом и стеной есть зазор.
   hung: { textShadowColor: 'rgba(20,10,0,0.42)', textShadowOffset: { width: -2 * R, height: 4 * R }, textShadowRadius: 4 * R },
   contact: { position: 'absolute', left: SIZE * 0.06, width: SIZE * 0.88, top: SIZE * 0.72, height: SIZE * 0.3 },
-  // Подиум «класса»: эллипс на полу с боковой гранью (толщина) — читается как объём.
-  podium: {
-    position: 'absolute',
-    left: SIZE * 0.04,
-    width: SIZE * 0.92,
-    top: SIZE * 0.66,
-    height: SIZE * 0.3,
-    borderRadius: SIZE,
-    borderWidth: 1.5 * R,
-  },
-  podiumSide: { position: 'absolute', left: SIZE * 0.04, width: SIZE * 0.92, top: SIZE * 0.66 + 4 * R, height: SIZE * 0.3, borderRadius: SIZE, opacity: 0.8 },
   // Часть 6: «класс» предмета на стене — рамка цвета класса.
   stand: {
     position: 'absolute',
