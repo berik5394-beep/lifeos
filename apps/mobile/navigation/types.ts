@@ -31,6 +31,7 @@ export type RootStackParamList = {
   Legal: undefined;
   RobotMemory: undefined;
   RobotDiary: undefined;
+  RobotHelp: undefined;
 };
 
 export type AuthStackParamList = {

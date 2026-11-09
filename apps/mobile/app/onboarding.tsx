@@ -18,6 +18,8 @@ import { Button } from '@/components/ui';
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 import { chooseUiLevel } from '@/services/ui-level-sync';
+import { PITCH_QUESTIONS } from '@/services/onboarding-pitch';
+import { PitchQuestionSlide } from '@/components/onboarding/pitch-question-slide';
 
 const { width } = Dimensions.get('window');
 
@@ -25,7 +27,9 @@ const { width } = Dimensions.get('window');
 
 interface Slide {
   id: string;
-  type: 'welcome' | 'complexity' | 'assistant' | 'ready';
+  type: 'welcome' | 'pitch' | 'complexity' | 'assistant' | 'ready';
+  /** Для pitch — id вопроса из PITCH_QUESTIONS. */
+  qid?: string;
 }
 
 type AssistantStyle = 'friendly' | 'strict' | 'calm' | 'toxic';
@@ -46,11 +50,13 @@ interface ComplexityOption {
 
 /* ─── Data ─── */
 
+// Знакомство вопросами «да / нет» — сразу после приветствия (Berik 2026-11-09).
 const SLIDES: Slide[] = [
-  { id: '1', type: 'welcome' },
-  { id: '2', type: 'complexity' },
-  { id: '3', type: 'assistant' },
-  { id: '4', type: 'ready' },
+  { id: 'welcome', type: 'welcome' },
+  ...PITCH_QUESTIONS.map((q) => ({ id: `pitch-${q.id}`, type: 'pitch' as const, qid: q.id })),
+  { id: 'complexity', type: 'complexity' },
+  { id: 'assistant', type: 'assistant' },
+  { id: 'ready', type: 'ready' },
 ];
 
 const COMPLEXITY_OPTIONS: ComplexityOption[] = [
@@ -125,6 +131,11 @@ export default function OnboardingScreen() {
 
   const [selectedComplexity, setSelectedComplexity] = useState<UIComplexity>('standard');
   const [selectedAssistant, setSelectedAssistant] = useState<AssistantStyle>('friendly');
+  // Ответы знакомства — помнить (потом робот может опираться на них).
+  const pitchAnswers = useRef<Record<string, 'yes' | 'no'>>({});
+  const handlePitchAnswer = useCallback((id: string, answer: 'yes' | 'no') => {
+    pitchAnswers.current[id] = answer;
+  }, []);
 
   const onViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -173,6 +184,7 @@ export default function OnboardingScreen() {
     // Save all selections
     storage.setBoolean('onboarding_complete', true);
     storage.set('assistantStyle', selectedAssistant);
+    storage.set('onboarding_pitch', JSON.stringify(pitchAnswers.current));
 
     // Уровень интерфейса — на экран и в аккаунт (до входа дошлётся после него).
     void chooseUiLevel(selectedComplexity);
@@ -188,12 +200,12 @@ export default function OnboardingScreen() {
   const renderWelcome = useCallback(
     () => (
       <View style={styles.slide}>
-        <Text style={styles.welcomeIcon}>{'\uD83C\uDF1F'}</Text>
+        <Text style={styles.welcomeIcon}>{'🤖'}</Text>
         <Text style={styles.welcomeTitle}>
           {'\u0414\u043E\u0431\u0440\u043E \u043F\u043E\u0436\u0430\u043B\u043E\u0432\u0430\u0442\u044C \u0432 LifeOS'}
         </Text>
         <Text style={styles.welcomeSubtitle}>
-          {'\u0423\u043F\u0440\u0430\u0432\u043B\u044F\u0439 \u0436\u0438\u0437\u043D\u044C\u044E. \u0412\u0441\u0451 \u0432 \u043E\u0434\u043D\u043E\u043C \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u0438.'}
+          {'Я — ваш робот-помощник. Ответьте на пару вопросов «да» или «нет» — и я покажу, чем помогу именно вам.'}
         </Text>
       </View>
     ),
@@ -316,6 +328,10 @@ export default function OnboardingScreen() {
       switch (item.type) {
         case 'welcome':
           return renderWelcome();
+        case 'pitch': {
+          const q = PITCH_QUESTIONS.find((x) => x.id === item.qid);
+          return q ? <PitchQuestionSlide q={q} onAnswer={handlePitchAnswer} /> : null;
+        }
         case 'complexity':
           return renderComplexity();
         case 'assistant':
@@ -326,7 +342,7 @@ export default function OnboardingScreen() {
           return null;
       }
     },
-    [renderWelcome, renderComplexity, renderAssistant, renderReady],
+    [renderWelcome, renderComplexity, renderAssistant, renderReady, handlePitchAnswer],
   );
 
   const keyExtractor = useCallback((item: Slide) => item.id, []);

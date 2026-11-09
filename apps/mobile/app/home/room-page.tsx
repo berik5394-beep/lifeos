@@ -3,6 +3,7 @@ import { Alert, Keyboard, type LayoutChangeEvent, Platform, Pressable, ScrollVie
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { openConversation } from '@/services/open-conversation';
+import { useRoomIntroStore } from '@/stores/room-intro-store';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -98,6 +99,11 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   const [mirror, setMirror] = useState(false);
   // Знакомство после установки: робот показывает, что где. null — тур не идёт.
   const [introStep, setIntroStep] = useState<number | null>(() => (isIntroDone() ? null : 0));
+  // «Показать подсказки ещё раз» из «Как пользоваться» (кнопка «?»).
+  const introRequest = useRoomIntroStore((s) => s.request);
+  useEffect(() => {
+    if (introRequest > 0) setIntroStep(0);
+  }, [introRequest]);
 
   const userName = useAuthStore((s) => s.user?.name ?? null);
   const token = useAuthStore((s) => s.token);
@@ -723,9 +729,9 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
             </Pressable>
             <Pressable
               style={styles.iconBtn}
-              onPress={() => setIntroStep(0)}
+              onPress={() => navigation.navigate('RobotHelp')}
               accessibilityRole="button"
-              accessibilityLabel="Показать подсказки ещё раз"
+              accessibilityLabel="Как пользоваться роботом"
             >
               <Feather name="help-circle" size={22} color={ROOM_INK} style={ROOM_INK_HALO} />
             </Pressable>

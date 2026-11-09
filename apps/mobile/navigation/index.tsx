@@ -35,6 +35,7 @@ const JournalScreen = React.lazy(() => import('@/screens/journal'));
 const SettingsScreen = React.lazy(() => import('@/screens/settings'));
 const RobotMemoryScreen = React.lazy(() => import('@/screens/robot-memory'));
 const RobotDiaryScreen = React.lazy(() => import('@/screens/robot-diary'));
+const RobotHelpScreen = React.lazy(() => import('@/screens/robot-help'));
 const IntegrationsScreen = React.lazy(() => import('@/screens/integrations'));
 const ImportScreen = React.lazy(() => import('@/screens/import'));
 const ScheduleImportScreen = React.lazy(() => import('@/screens/schedule-import'));
@@ -264,6 +265,18 @@ export default function Navigation() {
               options={{
                 headerShown: true,
                 title: 'Что я о тебе помню',
+                headerStyle: { backgroundColor: theme.background },
+                headerTintColor: theme.text,
+                headerTitleStyle: { fontWeight: '600' },
+              }}
+            />
+            {/* «?» в комнате: как пользоваться роботом (Berik 2026-11-09). */}
+            <RootStack.Screen
+              name="RobotHelp"
+              component={RobotHelpScreen}
+              options={{
+                headerShown: true,
+                title: 'Как пользоваться',
                 headerStyle: { backgroundColor: theme.background },
                 headerTintColor: theme.text,
                 headerTitleStyle: { fontWeight: '600' },

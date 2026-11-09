@@ -50,6 +50,9 @@ interface ChatState {
   /** Какая строка ввода отправила последней — ей и вернуть текст. */
   draftOwner: string | null;
   takeFailedDraft: (owner: string) => string | null;
+  /** Фраза-пример из «Как пользоваться»: строка ввода на экране `for` вставит её (не отправит). */
+  prefill: { text: string; for: string } | null;
+  setPrefill: (p: { text: string; for: string } | null) => void;
   fetchHistory: (offset?: number) => Promise<void>;
   clearHistory: () => Promise<void>;
   executeAction: (action: ChatAction) => Promise<void>;
@@ -103,6 +106,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isLoading: false,
   failedDraft: null,
   draftOwner: null,
+  prefill: null,
+  setPrefill: (p) => set({ prefill: p }),
   takeFailedDraft: (owner: string) => {
     const { failedDraft: d, draftOwner } = get();
     if (d === null || (draftOwner !== null && draftOwner !== owner)) return null;

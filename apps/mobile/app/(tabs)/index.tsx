@@ -505,7 +505,7 @@ export default function PlannerScreen() {
       >
         {/* Greeting + Quote */}
         <Text style={styles.greetingText}>
-          {greeting}, {userName}!
+          {userName?.trim() ? `${greeting}, ${userName.trim()}!` : `${greeting}!`}
         </Text>
         <View style={styles.quoteCard}>
           <View style={styles.quoteHeader}>

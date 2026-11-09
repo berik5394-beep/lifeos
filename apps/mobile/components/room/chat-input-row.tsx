@@ -5,6 +5,7 @@ import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize } from '@/constants';
 import { useSharedVoice } from '@/hooks/shared-voice';
 import { useChatStore } from '@/stores/chat-store';
+import { useCurrentRoute } from '@/hooks/use-reply-bubble';
 
 let rowSeq = 0;
 
@@ -27,6 +28,17 @@ export const ChatInputRow = memo(function ChatInputRow() {
     const d = useChatStore.getState().takeFailedDraft(rowId);
     if (d) setText((cur) => (cur ? cur : d));
   }, [failedDraft, rowId]);
+
+  // Пример из «Как пользоваться» — вставить в строку на нужном экране: поправил и ➤.
+  // Не отправляем сами: «Встреча с Сериком завтра» создала бы настоящую встречу.
+  const route = useCurrentRoute();
+  const prefill = useChatStore((s) => s.prefill);
+  useEffect(() => {
+    if (!prefill || route !== prefill.for) return;
+    setText(prefill.text);
+    v.setTyping(true);
+    useChatStore.getState().setPrefill(null);
+  }, [prefill, route, v]);
 
   const send = useCallback(() => {
     const t = text.trim();
