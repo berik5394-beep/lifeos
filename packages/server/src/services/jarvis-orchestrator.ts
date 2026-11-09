@@ -894,6 +894,27 @@ export function isValidMoneyAmount(v: unknown): boolean {
   return Number.isFinite(n) && n > 0;
 }
 
+/** Часы сервера и БД расходятся (флейк дедупа 2026-11-08) — запас, чтобы не задвоить. */
+const CLOCK_SKEW_MS = 5000;
+/** Записан ли ход (вопрос юзера) с начала хода; нет — записать вопрос+ответ. */
+export async function ensureTurnSaved(
+  userId: string,
+  text: string,
+  reply: string,
+  since: Date,
+  crisis = false,
+): Promise<void> {
+  if (!text.trim()) return;
+  try {
+    const saved = await prisma.chatMessage.count({
+      where: { userId, role: 'user', content: text.slice(0, MAX_USER_TEXT), createdAt: { gte: new Date(since.getTime() - CLOCK_SKEW_MS) } },
+    });
+    if (saved === 0) await saveTurn(userId, text, reply || '…', crisis);
+  } catch {
+    /* история — не критично, не валим ответ */
+  }
+}
+
 export async function handleMessage(
   userId: string,
   text: string,
@@ -903,7 +924,12 @@ export async function handleMessage(
   /** Потоковый ответ: куски текста основного ответа агента (голос говорит с первой фразы). */
   stream?: { onText?: (delta: string) => void },
 ): Promise<JarvisResponse> {
+  const turnStart = new Date();
   const res = await handleMessageCore(userId, text, channel, stream);
+  // Berik 2026-11-09: «все просьбы роботу должны записываться». Ветки мозга
+  // сохраняют ход сами (saveTurn в ~30 местах) — какая-то могла забыть. Здесь
+  // одна гарантия на выходе: не записано за этот ход — записываем.
+  await ensureTurnSaved(userId, text, res.reply, turnStart, res.intent === 'safety_crisis');
   // Робот-эпик, Часть 2: эмоция робота — одной чистой функцией по фактам хода,
   // чтобы ни один путь (кризис, деньги, инструмент, чат) не остался без неё.
   const { turnFacts, ...out } = res;

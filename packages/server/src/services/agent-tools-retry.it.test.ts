@@ -117,3 +117,20 @@ describe('быстрый путь: задача без дня (прод 2026-11-
     expect(r.reply).toContain('создана');
   });
 });
+
+describe('каждая просьба роботу записана (Berik 2026-11-09)', () => {
+  it.each([
+    'поставь задачу купить подарок маме',
+    'кстати, впиши в задачи: в пятницу сауна с Серым',
+    'расскажи анекдот про кота',
+    'отметь зарядку',
+  ])('«%s» → ровно одна запись вопроса и ответ в истории', async (t) => {
+    runAgent.mockReset();
+    runAgent.mockResolvedValue('Ок.');
+    const id = await user();
+    await handleMessage(id, t);
+    const rows = await prisma.chatMessage.findMany({ where: { userId: id }, orderBy: { createdAt: 'asc' } });
+    expect(rows.filter((r) => r.role === 'user').map((r) => r.content)).toEqual([t]);
+    expect(rows.some((r) => r.role === 'assistant')).toBe(true);
+  });
+});
