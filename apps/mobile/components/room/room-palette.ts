@@ -25,7 +25,6 @@ export const ROOM_PALETTE = {
   plinth: '#5A3820',
   lampCord: '#3A2E26',
   lampShade: '#D88A3D',
-  lampGlow: 'rgba(255,200,120,0.18)',
 } as const;
 
 /** Цвет неба в окне по времени суток. */
