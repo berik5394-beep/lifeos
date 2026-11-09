@@ -19,7 +19,6 @@
 
 import { prisma } from '../../lib/prisma.js';
 import { getProceduralMemory } from '../procedural-memory.singleton.js';
-import { isV2ForgetEnabled } from '../../lib/feature-flags.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -31,16 +30,15 @@ const STALE_PATTERN_DAYS = 60;
 
 /**
  * F4b — ретайр устаревших паттернов (lastObservedAt старше STALE_PATTERN_DAYS)
- * за флагом FEATURE_V2_FORGET. Включает уже построенный, но мёртвый
+ * через уже построенный
  * invalidateStale. Обратимо: ре-наблюдение в extractPatterns бампает
  * lastObservedAt → паттерн снова active (getActivePatterns чтит invalidAt).
- * Best-effort: сбой логируется, sweep продолжается. off → return 0 (байт-идентично).
+ * Best-effort: сбой логируется, sweep продолжается.
  */
 export async function maybeRetireStale(
   procedural: { invalidateStale(userId: string, staleDays?: number): Promise<number> },
   userId: string,
 ): Promise<number> {
-  if (!isV2ForgetEnabled(userId)) return 0;
   try {
     const retired = await procedural.invalidateStale(userId, STALE_PATTERN_DAYS);
     if (retired > 0) {
@@ -133,8 +131,7 @@ export async function runPatternExtraction(): Promise<void> {
           err instanceof Error ? err.message : err,
         );
       }
-      // F4b: ретайр устаревших паттернов — независимо от исхода extractPatterns,
-      // за флагом (off=байт-идентично: maybeRetireStale возвращает 0, ничего не пишет).
+      // F4b: ретайр устаревших паттернов — независимо от исхода extractPatterns.
       await maybeRetireStale(procedural, u.id);
     }
     console.log(

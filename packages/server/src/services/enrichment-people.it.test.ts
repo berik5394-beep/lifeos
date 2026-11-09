@@ -17,7 +17,6 @@ describe('entityFacts', () => {
 
 describe('люди в блоке памяти', () => {
   it('атрибут и связь «Серик — брат — Дана» доходят до текста промпта', async () => {
-    process.env.FEATURE_V2_MEMORY = 'all';
     const userId = (
       await prisma.user.create({ data: { email: `ep-${Date.now()}-${Math.random()}@a.test`, name: 'E', passwordHash: 'x', timezone: 'UTC' } })
     ).id;

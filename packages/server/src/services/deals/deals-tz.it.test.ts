@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { V2ProactivityEngine } from '../v2-proactivity-engine.js';
 import { createDeal, updateDeal, gatherDealsSection, setSalesPlan, salesPlanStatus } from './service.js';
@@ -6,7 +6,6 @@ import { createDeal, updateDeal, gatherDealsSection, setSalesPlan, salesPlanStat
 // Ревью Nit 12: юзер в Алматы (+5). «Сегодня» — по его календарю, не по UTC сервера.
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
-beforeEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
 afterEach(() => { vi.useRealTimers(); });
 
 async function almatyUser(tag: string) {

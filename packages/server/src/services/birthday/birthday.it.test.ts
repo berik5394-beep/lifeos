@@ -1,14 +1,10 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { getEntityGraph } from '../entity-graph/index.js';
 import { listPersonBirthdays, buildUpcomingBirthdays, buildUpcomingMemorials } from './index.js';
 
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
-beforeEach(() => {
-  process.env.FEATURE_V2_BIRTHDAY = 'all';
-});
-
 async function seedUser(email: string): Promise<string> {
   const u = await prisma.user.create({ data: { email, name: 'B', passwordHash: 'x' } });
   return u.id;

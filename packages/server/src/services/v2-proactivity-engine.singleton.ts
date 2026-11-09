@@ -1,7 +1,7 @@
 /**
  * v2.0 Week 5 — singleton accessor for ProactivityEngine.
  * Mirrors procedural-memory.singleton.ts. Wired from proactive-scheduler
- * (E1) behind isV2ProactivityEnabled flag.
+ * (E1) on every tick.
  */
 import { V2ProactivityEngine } from './v2-proactivity-engine.js';
 import type { ProactivityEngine } from './v2-proactivity-engine.js';

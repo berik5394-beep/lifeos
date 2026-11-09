@@ -22,7 +22,7 @@ describe('F2-links — graph primitives', () => {
 describe('F2-links — end_relationship tool', () => {
   const tool = readFileSync(join(process.cwd(), 'src/tools/end-relationship.ts'), 'utf8');
   const idx = readFileSync(join(process.cwd(), 'src/tools/index.ts'), 'utf8');
-  it('handler флаг-гейт isV2UnlinkEnabled', () => { expect(tool).toMatch(/isV2UnlinkEnabled\(ctx\.userId\)/); });
+  it('handler без флага (isV2UnlinkEnabled удалён)', () => { expect(tool).not.toMatch(/isV2UnlinkEnabled/); });
   it('single-match-или-скип (>1 и ===0 → не invalidate)', () => {
     expect(tool).toMatch(/links\.length > 1/);
     expect(tool).toMatch(/links\.length === 0/);

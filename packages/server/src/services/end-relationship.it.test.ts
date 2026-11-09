@@ -4,8 +4,7 @@ import { getEntityGraph } from './entity-graph/index.js';
 import { endRelationshipTool } from '../tools/end-relationship.js';
 
 const prisma = new PrismaClient();
-const PREV = process.env.FEATURE_V2_UNLINK;
-afterAll(async () => { if (PREV === undefined) delete process.env.FEATURE_V2_UNLINK; else process.env.FEATURE_V2_UNLINK = PREV; await prisma.$disconnect(); });
+afterAll(async () => { await prisma.$disconnect(); });
 async function mkUser(tag: string): Promise<string> {
   const u = await prisma.user.create({ data: { email: `it-unlink-${tag}@it.local`, name: 'IT', passwordHash: 'x', timezone: 'Asia/Almaty' } });
   return u.id;
@@ -39,20 +38,7 @@ describe('F2-links — graph primitives', () => {
 });
 
 describe('F2-links — end_relationship tool', () => {
-  it('off → {error}, связь не трогается', async () => {
-    process.env.FEATURE_V2_UNLINK = 'none';
-    const uid = await mkUser(`off-${Date.now()}`);
-    const g = getEntityGraph();
-    const me = await g.upsertEntity(uid, { type: 'person', name: 'Я' });
-    const x = await g.upsertEntity(uid, { type: 'person', name: 'Серик' });
-    const link = await g.linkEntities(uid, me.id, x.id, 'colleague');
-    const res = await endRelationshipTool.handler({ name: 'Серик' }, { userId: uid } as never);
-    expect((res as { error?: string }).error).toBeDefined();
-    const row = await prisma.entityRelationship.findUnique({ where: { id: link.id } });
-    expect(row!.invalidAt).toBeNull();
-  });
-  it('on + единственная связь → инвалидирует', async () => {
-    process.env.FEATURE_V2_UNLINK = 'all';
+  it('единственная связь → инвалидирует', async () => {
     const uid = await mkUser(`on-${Date.now()}`);
     const g = getEntityGraph();
     const me = await g.upsertEntity(uid, { type: 'person', name: 'Я' });
@@ -63,8 +49,7 @@ describe('F2-links — end_relationship tool', () => {
     const row = await prisma.entityRelationship.findUnique({ where: { id: link.id } });
     expect(row!.invalidAt).not.toBeNull();
   });
-  it('on + >1 связь → скип (обе живы)', async () => {
-    process.env.FEATURE_V2_UNLINK = 'all';
+  it('>1 связь → скип (обе живы)', async () => {
     const uid = await mkUser(`amb-${Date.now()}`);
     const g = getEntityGraph();
     const me = await g.upsertEntity(uid, { type: 'person', name: 'Я' });

@@ -18,11 +18,11 @@ describe('telegram-bot.ts — /axes command (E1)', () => {
   it('shows recentSignals per axis', () => {
     expect(SRC).toMatch(/recentSignals\(/);
   });
-  it('handler gated by isV2AxesEnabled', () => {
+  it('без флага', () => {
     const idx = SRC.indexOf("bot.command('axes'");
     expect(idx).toBeGreaterThan(0);
     const region = SRC.slice(idx, idx + 1500);
-    expect(region).toContain('isV2AxesEnabled');
+    expect(region).not.toContain('isV2AxesEnabled');
   });
   it('replies with all 4 axis names', () => {
     expect(SRC).toContain('self-discipline');

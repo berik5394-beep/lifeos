@@ -970,6 +970,8 @@ mobile platform).
   - `FEATURE_V2_PROACTIVITY` (то же)
   - `FEATURE_V2_CRON` (глобальный bool)
   Default OFF — поведение бота byte-identical pre-Week-5 для всех.
+  **2026-11-09: все 46 флагов FEATURE_V2_* удалены из кода** (на проде стояли
+  `all`) — фичи включены всегда, переменные в Railway больше ни на что не влияют.
 
 - **Rollout — Berik+Aydana активированы 2026-05-30** (override spec §13
   timeline которая предполагала Berik 4д solo сначала). Берик подтвердил
@@ -1027,6 +1029,7 @@ mobile platform).
 - Old chat pipeline продолжает работать без изменений (flags off).
 - Rollback path: `FEATURE_V2_MEMORY=none, FEATURE_V2_PROACTIVITY=none,
   FEATURE_V2_CRON=false` → behavior byte-identical pre-v2.
+  (Не работает с 2026-11-09: флаги удалены, откат — только `git checkout` тега.)
 
 **Verified в проде** (2026-05-30, Telegram SMOKE Berik):
 - `/setname Соя` → BotIdentity persisted, бот именует себя «Соя» ✅

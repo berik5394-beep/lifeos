@@ -13,12 +13,12 @@ describe('reflector — проактивная ветка goal-pace (structural)
     // глушить реактивную строку в тот же день.
     expect(CORE).not.toMatch(/goal pace[\s\S]*?source: 'goal_pace'/);
   });
-  it('reflect: гейт yearPacingEnabled + гард свежести monthsElapsed', () => {
-    expect(CORE).toContain('yearPacingEnabled');
+  it('reflect: без флага (yearPacingEnabled удалён) + гард свежести monthsElapsed', () => {
+    expect(CORE).not.toContain('yearPacingEnabled');
     expect(CORE).toContain('monthsElapsed');
   });
-  it('gather: populate measurableGoals + yearPacingEnabled через isV2YearLoadEnabled', () => {
+  it('gather: populate measurableGoals (isV2YearLoadEnabled удалён)', () => {
     expect(SVC).toContain('measurableGoals');
-    expect(SVC).toContain('isV2YearLoadEnabled');
+    expect(SVC).not.toContain('isV2YearLoadEnabled');
   });
 });

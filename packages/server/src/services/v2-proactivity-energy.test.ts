@@ -6,12 +6,12 @@ import { scoreSignificance, TEMPLATES } from './v2-proactivity-engine.js';
 const src = readFileSync(join(process.cwd(), 'src/services/v2-proactivity-engine.ts'), 'utf-8');
 
 describe('energy_link detector wiring', () => {
-  it('источник + шаблон + детектор + ранний флаг-гейт + регистрация', () => {
+  it('источник + шаблон + детектор + регистрация', () => {
     expect(src).toContain("'energy_link'");
     expect(src).toContain('energy_link:');
     expect(src).toContain('async function detectEnergyLink');
     expect(src).toMatch(
-      /async function detectEnergyLink[\s\S]*?isV2EnergyEnabled\(userId\)\)\s*return \[\]/,
+      /async function detectEnergyLink[\s\S]*?buildEnergyLink\(userId\)/,
     );
     expect(src).toMatch(/detectCandidates[\s\S]*?detectEnergyLink\(userId\)/);
   });

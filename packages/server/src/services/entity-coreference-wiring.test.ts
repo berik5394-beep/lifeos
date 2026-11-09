@@ -12,9 +12,9 @@ describe('entity-coreference wiring (гард)', () => {
   it('v2-capture пробрасывает aliases в upsertEntity', () => {
     expect(CAPTURE).toContain('input.aliases');
   });
-  it('upsertEntity зовёт resolveForMerge за флагом + off-гейт', () => {
+  it('upsertEntity всегда зовёт resolveForMerge (флаг удалён)', () => {
     expect(UPSERT).toContain('this.resolveForMerge(');
-    expect(UPSERT).toContain('isV2EntityResolveEnabled');
-    expect(UPSERT).toContain('resolveOn');
+    expect(UPSERT).not.toContain('isV2EntityResolveEnabled');
+    expect(UPSERT).not.toContain('resolveOn');
   });
 });

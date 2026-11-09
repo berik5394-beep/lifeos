@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { defineTool } from './_types.js';
-import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { listDeals, describeList, salesPlanStatus, describePlan } from '../services/deals/index.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { localDateStr } from '../lib/tz.js';
@@ -14,7 +13,6 @@ export const listDealsTool = defineTool({
   sideEffects: 'read',
   examples: ['что у меня по сделкам?', 'как воронка?', 'успеваю план продаж?'],
   handler: async (_input, ctx) => {
-    if (!isV2DealsEnabled(ctx.userId)) return { error: 'deals_disabled', hint: 'сделки выключены — скажи, что раздел сделок пока недоступен; ничего не выдумывай' };
     const now = new Date();
     const today = localDateStr(await getUserTimezone(ctx.userId), now);
     const deals = await listDeals(ctx.userId, 'open', now);

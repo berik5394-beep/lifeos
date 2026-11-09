@@ -30,15 +30,14 @@ describe('v2 consolidation flow — orchestrator → captureV2 chain', () => {
     expect(ORCH).toMatch(/captureV2InBackground/);
   });
 
-  it('orchestrator gates captureV2 behind isV2MemoryEnabled', () => {
+  it('orchestrator вызывает captureV2 в captureInBackground (без флага)', () => {
     const capFn = ORCH.slice(ORCH.indexOf('async function captureInBackground'));
     const head = capFn.slice(0, 3000);
-    expect(head).toMatch(/isV2MemoryEnabled\(\s*userId\s*\)/);
     expect(head).toMatch(/captureV2InBackground\(/);
   });
 
   it('orchestrator пишет Memory через единый writeMemory (M3 Unit A)', () => {
-    expect(ORCH).toMatch(/extractFromTranscript\(/);
+    expect(ORCH).toMatch(/extractFromChat\(/);
     expect(ORCH).toMatch(/writeMemory\(/);
     expect(ORCH).not.toMatch(/(await|void)\s+captureMemory\(/);
   });
@@ -84,9 +83,8 @@ describe('v2 consolidation flow — orchestrator → captureV2 chain', () => {
     expect(CAPTURE).toMatch(/emotional\.analyzeMessage\(/);
   });
 
-  it('handleMessage appends v2 enrichment block under flag (D3 prompt-side wiring)', () => {
+  it('handleMessage appends v2 enrichment block (D3 prompt-side wiring)', () => {
     const handle = ORCH.slice(ORCH.indexOf('export async function handleMessage'));
-    expect(handle).toMatch(/isV2MemoryEnabled\(\s*userId\s*\)/);
     expect(handle).toMatch(/fetchV2EnrichmentData\(/);
     expect(handle).toMatch(/buildV2EnrichmentBlock\(/);
   });

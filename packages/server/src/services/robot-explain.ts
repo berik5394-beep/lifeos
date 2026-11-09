@@ -116,7 +116,7 @@ export async function gatherPanelFacts(
     }
   };
 
-  // Шаги по сделкам на ближайшие дни (флаг выкл. → [] → факта нет).
+  // Шаги по сделкам на ближайшие дни (нет шагов → факта нет).
   const dealStepFacts = async (days: number) => {
     const { listDealSteps, describeDealStepsFact } = await import('./deals/index.js');
     const steps = await listDealSteps(userId, today, dateOnlyUTC(addCivilDays(todayStr, days)));
@@ -207,9 +207,6 @@ export async function gatherPanelFacts(
       break;
     }
     case 'deals': {
-      // Флаг выкл. → как до сделок: фактов нет, честное «пусто».
-      const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
-      if (!isV2DealsEnabled(userId)) break;
       const { gatherDealsSection } = await import('./deals/service.js');
       const s = await gatherDealsSection(userId, now);
       if (s) facts.push(s);

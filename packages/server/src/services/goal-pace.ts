@@ -2,7 +2,6 @@ import { computeSavingsPace, type SavingsStatus } from './savings-pace.js';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
-import { isV2YearLoadEnabled } from '../lib/feature-flags.js';
 
 const MS_PER_MONTH = 30.44 * 86_400_000;
 const MIN_ELAPSED_MONTHS = 0.5; // раньше — темп не считаем (мало данных)
@@ -76,7 +75,7 @@ export function describeGoalPace(goalText: string, p: GoalPace, target: number):
 }
 
 /**
- * Реактивная строка пейсинга для ОДНОЙ цели. Best-effort (→null), гейт флагом,
+ * Реактивная строка пейсинга для ОДНОЙ цели. Best-effort (→null),
  * дедуп ≤1/день против СВОИХ (source 'goal_pace'). Зеркало maybeSavingsCoachLine.
  */
 export async function maybeGoalPaceLine(
@@ -84,7 +83,6 @@ export async function maybeGoalPaceLine(
   goalId: string,
   now: Date = new Date(),
 ): Promise<string | null> {
-  if (!isV2YearLoadEnabled(userId)) return null;
   try {
     const g = await prisma.yearlyGoal.findFirst({
       where: { id: goalId, userId },

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeAll } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { PostgresEntityGraph } from './entity-graph/postgres-impl.js';
 import { entityFacts } from './v2-enrichment.js';
@@ -6,12 +6,7 @@ import { entityFacts } from './v2-enrichment.js';
 /** Робот обновляет то, что знает о человеке, когда вы прямо говорите «изменилось». */
 const prisma = new PrismaClient();
 const graph = new PostgresEntityGraph();
-const prev = process.env.FEATURE_V2_MEM_GRAPH;
-beforeAll(() => {
-  process.env.FEATURE_V2_MEM_GRAPH = 'all'; // как в проде
-});
 afterAll(async () => {
-  process.env.FEATURE_V2_MEM_GRAPH = prev;
   await prisma.$disconnect();
 });
 const user = async () =>

@@ -76,14 +76,14 @@ describe('v2-capture — user-axes parallel branch (D2)', () => {
   it('imports analyzeMessage from user-axes', () => {
     expect(SRC).toMatch(/from '\.\/user-axes\/analyze-message\.js'/);
   });
-  it('imports isV2AxesEnabled', () => {
-    expect(SRC).toContain('isV2AxesEnabled');
+  it('без isV2AxesEnabled (флаг удалён)', () => {
+    expect(SRC).not.toContain('isV2AxesEnabled');
   });
   it('parallel branch fires under flag', () => {
     const captureIdx = SRC.indexOf('Promise.allSettled');
     expect(captureIdx).toBeGreaterThan(0);
     const settledRegion = SRC.slice(captureIdx, captureIdx + 2000);
-    expect(settledRegion).toMatch(/isV2AxesEnabled\(\s*userId\s*\)/);
+    expect(settledRegion).not.toMatch(/isV2AxesEnabled/);
     expect(settledRegion).toMatch(/userAxesAnalyzeMessage\(\s*userId\s*,\s*msgId\s*,\s*text/);
   });
   it('wrapped in best-effort catch', () => {

@@ -24,12 +24,13 @@ describe('goal-capture промпт-блок (читай между строк �
     expect(PROMPT).toContain('if (opts.goalCapture) parts.push(GOAL_CAPTURE_BLOCK)');
     expect(PROMPT).toMatch(/goalCapture\?:\s*boolean/);
   });
-  it('оба call-site гейтят goalCapture флагом isV2SavingsCoachEnabled', () => {
-    expect(ORCH).toContain('goalCapture: isV2SavingsCoachEnabled(userId)');
-    expect(ASST).toContain('goalCapture: isV2SavingsCoachEnabled(userId)');
+  it('оба call-site всегда включают goalCapture (флаг удалён)', () => {
+    expect(ORCH).not.toContain('isV2SavingsCoachEnabled');
+    expect(ASST).not.toContain('isV2SavingsCoachEnabled');
+    expect(ORCH).toMatch(/goalCapture:\s*true/);
+    expect(ASST).toMatch(/goalCapture:\s*true/);
   });
-  it('контекст целей за флагом несёт goalId (для надёжной правки)', () => {
-    expect(ASST).toContain('goalCaptureCtx');
+  it('контекст целей несёт goalId (для надёжной правки)', () => {
     expect(ASST).toContain('[id:');
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { listObligationsTool } from './list-obligations.js';
 import { setHourRateTool } from './set-hour-rate.js';
@@ -6,9 +6,6 @@ import { setHourRateTool } from './set-hour-rate.js';
 /** Аудит 2026-11-08: на list_obligations и set_hour_rate не было ни одного теста. */
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
-beforeEach(() => {
-  process.env.FEATURE_V2_OBLIGATIONS = 'all';
-});
 
 async function user(tag: string, settings: object = {}) {
   const u = await prisma.user.create({
@@ -42,8 +39,7 @@ describe('list_obligations', () => {
     expect(aigul.obligations).toEqual([expect.objectContaining({ person: 'Айгуль', due: '2026-12-01' })]);
   });
 
-  it('флаг выключен — пустой список, а не ошибка', async () => {
-    process.env.FEATURE_V2_OBLIGATIONS = 'none';
+  it('обязательств нет — пустой список, а не ошибка', async () => {
     const userId = await user('c');
     const out = (await listObligationsTool.handler({} as never, { userId } as never)) as Listed;
     expect(out.obligations).toEqual([]);

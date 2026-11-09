@@ -10,7 +10,6 @@ import {
   itemWindow,
   type SchedItem,
 } from './types.js';
-import { isV2ScheduleConflictEnabled } from '../../lib/feature-flags.js';
 
 /**
  * Read-only reader конфликтов задача↔календарь на сегодня (кросс-домен слой B).
@@ -97,7 +96,7 @@ export async function findCreationOverlaps(
 /**
  * Текст для облачка робота после создания С ЭКРАНА (задача/встреча со временем).
  * Раньше с экрана наложение не проверялось вовсе (задачи) или ответ сервера
- * мобилка выбрасывала (встречи). Флаг выкл. / нет времени / сбой → null.
+ * мобилка выбрасывала (встречи). Нет времени / сбой → null.
  */
 export async function screenConflictText(
   userId: string,
@@ -105,7 +104,7 @@ export async function screenConflictText(
   item: { kind: 'task' | 'event'; title: string; start: string | null | undefined; end?: string | null },
   exclude: { taskId?: string; eventId?: string },
 ): Promise<string | null> {
-  if (!item.start || !isV2ScheduleConflictEnabled(userId)) return null;
+  if (!item.start) return null;
   try {
     const w = itemWindow(item.kind, item.start, item.end ?? null);
     if (!w) return null;

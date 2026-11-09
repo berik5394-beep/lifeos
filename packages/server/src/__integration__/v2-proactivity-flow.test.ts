@@ -51,12 +51,14 @@ describe('v2 proactivity flow — scheduler → engine chain', () => {
     expect(runIdx).toBeLessThan(delivIdx);
   });
 
-  it('engine.runForUser is gated by isV2ProactivityEnabled', () => {
-    expect(SCHED).toMatch(/isV2ProactivityEnabled\(\s*userId\s*\)/);
+  it('engine.runForUser вызывается для каждого юзера (без флага)', () => {
+    expect(SCHED).toMatch(/getProactivityEngine\(\)\.runForUser\(\s*userId\s*\)/);
+    expect(SCHED).not.toMatch(/isV2ProactivityEnabled/);
   });
 
-  it('cron hooks are gated by isV2CronEnabled (global)', () => {
-    expect(SCHED).toMatch(/isV2CronEnabled\(\s*\)/);
+  it('cron hooks run unconditionally (флага крона больше нет)', () => {
+    expect(SCHED).not.toMatch(/isV2CronEnabled/);
+    expect(SCHED).toMatch(/withCronLock\(/);
   });
 
   it('engine wires all 5 detectors via Promise.allSettled', () => {

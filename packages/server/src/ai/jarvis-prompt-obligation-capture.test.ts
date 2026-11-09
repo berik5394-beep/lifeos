@@ -34,11 +34,12 @@ describe('obligation auto-capture prompt block', () => {
     expect(OBLIGATION_CAPTURE_BLOCK).toContain('settle_obligation');
   });
 
-  it('orchestrator гейтит блок флагом isV2ObligationsEnabled', () => {
+  it('orchestrator всегда включает блок (флаг удалён)', () => {
     const src = readFileSync(
       join(process.cwd(), 'src/services/jarvis-orchestrator.ts'),
       'utf-8',
     );
-    expect(src).toMatch(/obligationCapture:\s*isV2ObligationsEnabled\(userId\)/);
+    expect(src).not.toMatch(/isV2ObligationsEnabled/);
+    expect(src).toMatch(/obligationCapture:\s*true/);
   });
 });

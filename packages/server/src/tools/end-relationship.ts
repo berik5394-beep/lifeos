@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { defineTool } from './_types.js';
 import { getEntityGraph } from '../services/entity-graph/index.js';
-import { isV2UnlinkEnabled } from '../lib/feature-flags.js';
 
 export const endRelationshipTool = defineTool({
   name: 'end_relationship',
@@ -14,7 +13,6 @@ export const endRelationshipTool = defineTool({
   sideEffects: 'write',
   examples: ['уже не работаю с Сериком', 'мы расстались с Айгерим', 'уволился из Kaspi'],
   handler: async (input, ctx) => {
-    if (!isV2UnlinkEnabled(ctx.userId)) return { error: 'функция отключена' };
     const graph = getEntityGraph();
     const ent = await graph.resolveEntity(ctx.userId, String(input.name));
     if (!ent) return { error: `Не нашёл «${input.name}» в связях` };

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { createDeal, updateDeal } from './service.js';
 import { gatherDayLoad } from '../day-load.js';
@@ -10,14 +10,9 @@ import { gatherMonthLoad } from '../month-load.js';
  * важность 3 — не вылетает из fit). Флаг выкл. → нагрузка байт-в-байт прежняя.
  */
 const prisma = new PrismaClient();
-const ORIG = process.env.FEATURE_V2_DEALS;
 afterAll(async () => {
-  if (ORIG === undefined) delete process.env.FEATURE_V2_DEALS;
-  else process.env.FEATURE_V2_DEALS = ORIG;
   await prisma.$disconnect();
 });
-afterEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
-process.env.FEATURE_V2_DEALS = 'all';
 
 const NOW = new Date('2026-11-05T09:00:00Z'); // чт; неделя 02.11–08.11
 const d = (s: string) => new Date(s + 'T00:00:00Z');
@@ -59,18 +54,4 @@ describe('шаги по сделкам × нагрузка дня/недели/�
     ]);
   });
 
-  it('флаг выкл. → нагрузка как раньше (только задачи)', async () => {
-    const userId = await seed('off');
-    process.env.FEATURE_V2_DEALS = '';
-    const day = await gatherDayLoad(userId, NOW);
-    const week = await gatherWeekLoad(userId, NOW);
-    const month = await gatherMonthLoad(userId, NOW);
-    expect(day.items).toEqual([TASK]);
-    expect(week.items).toEqual([TASK]);
-    expect(month.items).toEqual([TASK]);
-    process.env.FEATURE_V2_DEALS = 'all';
-    // ёмкость от сделок не зависит
-    expect((await gatherDayLoad(userId, NOW)).capacity).toBe(day.capacity);
-    expect((await gatherWeekLoad(userId, NOW)).capacity).toBe(week.capacity);
-  });
 });

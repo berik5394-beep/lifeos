@@ -6,7 +6,6 @@ import {
   computeAnchoredCash,
   type RunwayStatus,
 } from './types.js';
-import { isV2RunwayBalanceEnabled } from '../../lib/feature-flags.js';
 
 export interface Runway {
   cashOnHand: number;
@@ -39,29 +38,27 @@ export async function buildRunway(
     let cashOnHand = (incAgg._sum.amount ?? 0) - (expAgg._sum.amount ?? 0);
     let hasAnchor = false;
     // Якорь: если юзер назвал баланс (CashSnapshot) — считаем вперёд от него.
-    if (isV2RunwayBalanceEnabled(userId)) {
-      const snap = await prisma.cashSnapshot.findFirst({
-        where: { userId },
-        orderBy: [{ asOf: 'desc' }, { createdAt: 'desc' }],
+    const snap = await prisma.cashSnapshot.findFirst({
+      where: { userId },
+      orderBy: [{ asOf: 'desc' }, { createdAt: 'desc' }],
+    });
+    if (snap) {
+      const [expSince, incSince] = await Promise.all([
+        prisma.expense.aggregate({
+          _sum: { amount: true },
+          where: { userId, date: { gt: snap.asOf } },
+        }),
+        prisma.income.aggregate({
+          _sum: { amount: true },
+          where: { userId, date: { gt: snap.asOf } },
+        }),
+      ]);
+      cashOnHand = computeAnchoredCash({
+        balance: snap.balance,
+        expensesSince: expSince._sum.amount ?? 0,
+        incomesSince: incSince._sum.amount ?? 0,
       });
-      if (snap) {
-        const [expSince, incSince] = await Promise.all([
-          prisma.expense.aggregate({
-            _sum: { amount: true },
-            where: { userId, date: { gt: snap.asOf } },
-          }),
-          prisma.income.aggregate({
-            _sum: { amount: true },
-            where: { userId, date: { gt: snap.asOf } },
-          }),
-        ]);
-        cashOnHand = computeAnchoredCash({
-          balance: snap.balance,
-          expensesSince: expSince._sum.amount ?? 0,
-          incomesSince: incSince._sum.amount ?? 0,
-        });
-        hasAnchor = true;
-      }
+      hasAnchor = true;
     }
     const r = computeRunway({
       cashOnHand,

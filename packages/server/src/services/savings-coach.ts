@@ -1,7 +1,6 @@
 import type { PortfolioStatus } from './savings-pace.js';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localMonthRange } from '../lib/tz.js';
-import { isV2SavingsCoachEnabled } from '../lib/feature-flags.js';
 import { gatherReflectorFacts } from './reflector-service.js';
 import { computePortfolioPace, describePortfolioPace } from './savings-pace.js';
 
@@ -39,14 +38,13 @@ const GOAL_PACE_SCOPE = 'finance:goal_pace';
  * Реактивный коуч после расхода. Точка схождения (текст/голос/фото).
  * Best-effort: любая ошибка → null, расход НИКОГДА не ломается и ответ
  * не задерживается. Возвращает короткую строку для дописывания к ответу
- * бота, либо null (нет цели / гейт не прошёл / флаг off / дедуп).
+ * бота, либо null (нет цели / гейт не прошёл / дедуп).
  */
 export async function maybeSavingsCoachLine(
   userId: string,
   expenseInput: Record<string, unknown>,
   now: Date = new Date(),
 ): Promise<string | null> {
-  if (!isV2SavingsCoachEnabled(userId)) return null;
   try {
     // Сумма расхода через те же синонимы, что у add_expense
     // (sum/cost/price→amount). Оркестратор передаёт СЫРОЙ вход —

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../test/integration/build-test-app.js';
@@ -18,20 +18,12 @@ import { localWeekStartUTC } from '../lib/tz.js';
  */
 const prisma = new PrismaClient();
 let app: FastifyInstance;
-const FLAGS = ['FEATURE_V2_SCHEDULE_CONFLICT', 'FEATURE_V2_GOAL_INTAKE', 'FEATURE_V2_TASK_GOAL_LINK'] as const;
-const saved = Object.fromEntries(FLAGS.map((k) => [k, process.env[k]]));
 beforeAll(async () => {
   app = await buildTestApp([taskRoutes, eventRoutes, goalRoutes]);
 });
 afterAll(async () => {
   await app.close();
   await prisma.$disconnect();
-});
-afterEach(() => {
-  for (const k of FLAGS) {
-    if (saved[k] === undefined) delete process.env[k];
-    else process.env[k] = saved[k];
-  }
 });
 
 async function user(tag: string) {
@@ -44,7 +36,6 @@ const DAY = '2026-12-01';
 
 describe('наложение с экрана', () => {
   it('задача в 10:30 внутри встречи 10:00–11:00 → conflictWarning; без наложения — нет', async () => {
-    process.env.FEATURE_V2_SCHEDULE_CONFLICT = 'all';
     const { userId, headers } = await user('task');
     await prisma.calendarEvent.create({ data: { userId, title: 'Планёрка', date: new Date(`${DAY}T00:00:00Z`), startTime: '10:00', endTime: '11:00' } });
     const hit = await app.inject({
@@ -61,7 +52,6 @@ describe('наложение с экрана', () => {
   });
 
   it('встреча поверх задачи со временем → conflictWarning (раньше задачи не учитывались вовсе)', async () => {
-    process.env.FEATURE_V2_SCHEDULE_CONFLICT = 'all';
     const { userId, headers } = await user('event');
     await prisma.task.create({ data: { userId, title: 'Отчёт', category: 'work', priority: 'high', date: new Date(`${DAY}T00:00:00Z`), time: '14:15' } });
     const r = await app.inject({
@@ -73,7 +63,6 @@ describe('наложение с экрана', () => {
   });
 
   it('уже выполненная задача (сразу в «Готово») — не предупреждаем', async () => {
-    process.env.FEATURE_V2_SCHEDULE_CONFLICT = 'all';
     const { userId, headers } = await user('done');
     await prisma.calendarEvent.create({ data: { userId, title: 'Планёрка', date: new Date(`${DAY}T00:00:00Z`), startTime: '10:00', endTime: '11:00' } });
     const r = await app.inject({
@@ -83,21 +72,10 @@ describe('наложение с экрана', () => {
     expect(r.json().conflictWarning).toBeUndefined();
   });
 
-  it('флаг выкл. → ответ как раньше', async () => {
-    delete process.env.FEATURE_V2_SCHEDULE_CONFLICT;
-    const { userId, headers } = await user('off');
-    await prisma.calendarEvent.create({ data: { userId, title: 'Планёрка', date: new Date(`${DAY}T00:00:00Z`), startTime: '10:00', endTime: '11:00' } });
-    const r = await app.inject({
-      method: 'POST', url: '/tasks', headers,
-      payload: { title: 'Позвонить', category: 'work', priority: 'medium', date: DAY, time: '10:30' },
-    });
-    expect(r.json().conflictWarning).toBeUndefined();
-  });
 });
 
 describe('разбор цели недели', () => {
   it('экран: POST /goals/weekly → /intake: привычка по теме + первое занятие, в чат один раз', async () => {
-    process.env.FEATURE_V2_GOAL_INTAKE = 'all';
     const { userId, headers } = await user('week');
     await prisma.habit.create({ data: { userId, name: 'Бег', category: 'health', frequency: 'daily' } });
     const monday = localWeekStartUTC('UTC', new Date()).toISOString().slice(0, 10);
@@ -114,7 +92,6 @@ describe('разбор цели недели', () => {
   });
 
   it('цель на ДРУГУЮ неделю → без разбора («до конца этой недели» было бы не о ней)', async () => {
-    process.env.FEATURE_V2_GOAL_INTAKE = 'all';
     const { userId, headers } = await user('nextweek');
     const next = new Date(localWeekStartUTC('UTC', new Date()).getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
     const created = await app.inject({ method: 'POST', url: '/goals/weekly', headers, payload: { weekStart: next, goalText: 'Бегать' } });
@@ -123,15 +100,10 @@ describe('разбор цели недели', () => {
     expect(await prisma.chatMessage.count({ where: { userId } })).toBe(0);
   });
 
-  it('чат: create_weekly_goal дописывает разбор; флаг выкл. — как раньше', async () => {
-    process.env.FEATURE_V2_GOAL_INTAKE = 'all';
+  it('чат: create_weekly_goal дописывает разбор', async () => {
     const a = await user('wtool');
     const on = (await createWeeklyGoalTool.handler({ goalText: 'Медитировать' } as never, { userId: a.userId } as never)) as { message: string };
     expect(on.message).toMatch(/^Цель недели записана: «Медитировать»\. Всего целей на эту неделю: 1\.\n\nПоставить первое занятие/);
-    delete process.env.FEATURE_V2_GOAL_INTAKE;
-    const b = await user('wtooloff');
-    const off = (await createWeeklyGoalTool.handler({ goalText: 'Медитировать' } as never, { userId: b.userId } as never)) as { message: string };
-    expect(off.message).toBe('Цель недели записана: «Медитировать». Всего целей на эту неделю: 1.');
   });
 });
 
@@ -140,7 +112,6 @@ describe('задача ↔ годовая цель', () => {
   const pickNone = async () => null;
 
   it('явный шаг → привязана, и детектор «цель стоит» видит шаг', async () => {
-    process.env.FEATURE_V2_TASK_GOAL_LINK = 'all';
     const { userId } = await user('link');
     const now = new Date();
     const goal = await prisma.yearlyGoal.create({
@@ -159,7 +130,6 @@ describe('задача ↔ годовая цель', () => {
   });
 
   it('модель не уверена → не привязываем; уже привязанную (план) не перетираем', async () => {
-    process.env.FEATURE_V2_TASK_GOAL_LINK = 'all';
     const { userId } = await user('nolink');
     const now = new Date();
     await prisma.yearlyGoal.create({ data: { userId, year: now.getFullYear(), area: 'finance', goalText: 'Купить квартиру' } });
@@ -174,16 +144,12 @@ describe('задача ↔ годовая цель', () => {
     expect((await prisma.task.findUnique({ where: { id: t2.id } }))?.planParentId).toBe('weekly-x');
   });
 
-  it('чужая цель не видна; флаг выкл. → ничего', async () => {
-    process.env.FEATURE_V2_TASK_GOAL_LINK = 'all';
+  it('чужая цель не видна', async () => {
     const a = await user('own');
     const b = await user('other');
     const now = new Date();
     await prisma.yearlyGoal.create({ data: { userId: b.userId, year: now.getFullYear(), area: 'health', goalText: 'Марафон' } });
     const t = await prisma.task.create({ data: { userId: a.userId, title: 'Пробежка', category: 'health', priority: 'low', date: new Date() } });
     expect(await linkTaskToGoal(a.userId, t.id, t.title, now, pickFirst)).toBeNull(); // у A целей нет
-    delete process.env.FEATURE_V2_TASK_GOAL_LINK;
-    await prisma.yearlyGoal.create({ data: { userId: a.userId, year: now.getFullYear(), area: 'health', goalText: 'Марафон' } });
-    expect(await linkTaskToGoal(a.userId, t.id, t.title, now, pickFirst)).toBeNull();
   });
 });

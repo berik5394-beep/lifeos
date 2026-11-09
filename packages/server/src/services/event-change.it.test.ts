@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../test/integration/build-test-app.js';
@@ -18,18 +18,12 @@ import { runRegistryTool } from '../tools/index.js';
  */
 const prisma = new PrismaClient();
 let app: FastifyInstance;
-const KEY = 'FEATURE_V2_SCHEDULE_CONFLICT';
-const prev = process.env[KEY];
 beforeAll(async () => {
   app = await buildTestApp([eventRoutes, taskRoutes]);
 });
 afterAll(async () => {
   await app.close();
   await prisma.$disconnect();
-});
-afterEach(() => {
-  if (prev === undefined) delete process.env[KEY];
-  else process.env[KEY] = prev;
 });
 
 const TODAY = localDateStr('UTC', new Date());
@@ -66,7 +60,6 @@ describe('move_event', () => {
   });
 
   it('после переноса — наложение на задачу нового времени', async () => {
-    process.env[KEY] = 'all';
     const { userId } = await user('mvconf');
     await prisma.calendarEvent.create({ data: { userId, title: 'Обед', date: day(D(1)), startTime: '12:00', endTime: '13:00' } });
     await prisma.task.create({ data: { userId, title: 'Созвон', category: 'work', priority: 'medium', date: day(D(1)), time: '15:15' } });
@@ -142,7 +135,6 @@ describe('move_event — находки ревью', () => {
 
 describe('move_task', () => {
   it('одна задача на другой день и время; наложение на встречу', async () => {
-    process.env[KEY] = 'all';
     const { userId } = await user('mt');
     await prisma.calendarEvent.create({ data: { userId, title: 'Планёрка', date: day(D(1)), startTime: '10:00', endTime: '11:00' } });
     const t = await prisma.task.create({ data: { userId, title: 'Отчёт', category: 'work', priority: 'high', date: day(TODAY) } });
@@ -172,7 +164,6 @@ describe('move_task', () => {
 
 describe('экран: PUT/DELETE /events, PUT /tasks', () => {
   it('PUT /events только начало → длительность сохраняется + наложение', async () => {
-    process.env[KEY] = 'all';
     const { userId, headers } = await user('put');
     const ev = await prisma.calendarEvent.create({ data: { userId, title: 'Встреча', date: day(D(1)), startTime: '14:00', endTime: '15:00' } });
     await prisma.task.create({ data: { userId, title: 'Почта', category: 'work', priority: 'low', date: day(D(1)), time: '16:30' } });
@@ -189,7 +180,6 @@ describe('экран: PUT/DELETE /events, PUT /tasks', () => {
     expect(await prisma.calendarEvent.count({ where: { id: ev.id } })).toBe(0);
   });
   it('PUT /tasks новое время поверх встречи → conflictWarning', async () => {
-    process.env[KEY] = 'all';
     const { userId, headers } = await user('ptask');
     await prisma.calendarEvent.create({ data: { userId, title: 'Планёрка', date: day(D(1)), startTime: '10:00', endTime: '11:00' } });
     const t = await prisma.task.create({ data: { userId, title: 'Позвонить', category: 'work', priority: 'low', date: day(D(1)) } });

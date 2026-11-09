@@ -5,7 +5,6 @@ import { reflect, type ReflectorFacts } from './reflector-core.js';
 import { persistCandidates } from './insight-store.js';
 import { planVsFact } from './plan-vs-fact.js';
 import { localDayStartUTC } from '../lib/tz.js';
-import { isV2SavingsCoachEnabled, isV2YearLoadEnabled } from '../lib/feature-flags.js';
 import { pickCoachableGoal } from './savings-pace.js';
 import { isMoneyGoal } from './goal-pace.js';
 import type { InsightCandidate } from './insight-core.js';
@@ -146,7 +145,6 @@ export async function gatherReflectorFacts(
     savedSoFar,
     // Срок: из фин-цели или дефолт 31 дек текущего года.
     targetDate: finGoal?.targetDate ?? new Date(year, 11, 31),
-    pacingEnabled: isV2SavingsCoachEnabled(userId),
     now,
     // ГОД-пейсинг: измеримые НЕ-денежные цели (книги/вес/навыки).
     measurableGoals: goals
@@ -159,7 +157,6 @@ export async function gatherReflectorFacts(
         progress: g.progress,
         createdAt: g.createdAt,
       })),
-    yearPacingEnabled: isV2YearLoadEnabled(userId),
   };
 }
 

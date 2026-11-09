@@ -28,8 +28,11 @@ describe('факты брифа', () => {
     await prisma.obligation.create({
       data: { userId, personName: 'Ахмет', direction: 'i_owe', kind: 'money', description: 'долг', amount: 50000, dueDate: new Date('2026-11-07T00:00:00Z'), source: 'manual' },
     });
+    // Запас денег считается всегда (флаг runway удалён): расходы без доходов →
+    // тревожная строка «накоплен минус» между бюджетом и сроками.
     expect(await gatherBriefExtras(userId, 'Asia/Almaty', NOW)).toEqual([
       'бюджет месяца: потрачено 85 000 из 100 000 ₸ (85%)',
+      '💸 По записям расходы давно обгоняют доходы (накоплен минус). Стоит сократить траты.',
       'срок сегодня: отдать Ахмет 50 000 ₸',
     ]);
   });

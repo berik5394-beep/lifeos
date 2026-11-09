@@ -1,7 +1,6 @@
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
-import { isV2MonthLoadEnabled } from '../lib/feature-flags.js';
 
 export const DEFAULT_GOAL_MINUTES = 120; // 2 ч/нед
 const MIN_GOAL_MINUTES = 15;
@@ -47,15 +46,14 @@ export async function estimateWeeklyGoalMinutes(goalText: string): Promise<numbe
 }
 
 /**
- * Фоновая оценка недельной цели (только если ещё не задана). Гейт флагом
- * FEATURE_V2_MONTH_LOAD. Fire-and-forget — не блокирует создание цели.
+ * Фоновая оценка недельной цели (только если ещё не задана).
+ * Fire-and-forget — не блокирует создание цели.
  */
 export async function estimateWeeklyGoalMinutesInBackground(
   goalId: string,
   goalText: string,
   userId: string,
 ): Promise<void> {
-  if (!isV2MonthLoadEnabled(userId)) return;
   try {
     const minutes = await estimateWeeklyGoalMinutes(goalText);
     await prisma.weeklyGoal.updateMany({

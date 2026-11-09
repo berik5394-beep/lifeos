@@ -12,11 +12,11 @@ describe('person-meeting wiring (гард)', () => {
     expect(ENGINE).toContain('person_meeting: {');
     expect(ENGINE).toContain('detectPersonMeeting(userId),');
   });
-  it('детектор ставит entityId (per-meeting cooldown) + флаг-гейт', () => {
+  it('детектор ставит entityId (per-meeting cooldown) + без флага', () => {
     expect(ENGINE).toContain('entityId: soon.entityId');
-    expect(ENGINE).toContain('if (!isV2PersonTypesEnabled(userId)) return [];');
+    expect(ENGINE).not.toContain('isV2PersonTypesEnabled');
   });
-  it('врезка personMeetings за флагом', () => {
+  it('врезка personMeetings без флага', () => {
     expect(ENRICH).toContain('buildPersonMeetingBriefs');
     expect(ENRICH).toContain('formatPersonMeetingsSection');
   });

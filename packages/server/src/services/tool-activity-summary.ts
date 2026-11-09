@@ -1,6 +1,5 @@
 import type { ToolSideEffects } from '../tools/_types.js';
 import { recordEvent } from './episodic-memory.js';
-import { isV2MemoryEnabled } from '../lib/feature-flags.js';
 import { STAGE_LABEL } from './deals/stages.js';
 
 /**
@@ -41,7 +40,7 @@ function num(obj: unknown, key: string): number | undefined {
 }
 
 /**
- * Инструмент НЕ сделал дело: ошибка, «не найдено», ok:false, выключен флагом,
+ * Инструмент НЕ сделал дело: ошибка, «не найдено», ok:false,
  * встречный вопрос (needsInput) или ждёт подтверждения (pending).
  * Такое в память не пишем — раньше «закрой задачу X» без задачи X записывало
  * «Выполнил задачу «X»», и мозг «помнил» несделанное.
@@ -310,11 +309,10 @@ export function summarizeToolAction(
  * Общий fire-and-forget мост в v2 episodic. Используется хуком [A]
  * (runRegistryTool) и хуками [B] (mobile-роуты).
  *   - summary === null → no-op (read/unknown/нечего захватывать);
- *   - флаг off → no-op (поведение байт-в-байт текущее);
  *   - иначе void recordEvent(...).catch(...) — НЕ await, НЕ блокирует.
  * Сбой захвата НИКОГДА не ломает действие/ответ юзеру.
  *
- * ОДНА ПАМЯТЬ M2: под флагом isV2WriteEnabled recordEvent делегирует в
+ * ОДНА ПАМЯТЬ M2: recordEvent делегирует в
  * writeMemory БЕЗ knob `embed` → shouldEmbed по типу даёт false для
  * высокочастотных action-событий (task_created/expense_added/…). Так
  * action-факты НЕ эмбедятся (FTS достаточно, embedding-бюджет цел), а
@@ -326,7 +324,6 @@ export function captureActivity(
 ): void {
   if (!summary) return;
   try {
-    if (!isV2MemoryEnabled(userId)) return;
     void recordEvent(userId, {
       type: summary.type,
       content: summary.content,
@@ -335,7 +332,7 @@ export function captureActivity(
   } catch (e) {
     // Хот-путь (хук [A] в runRegistryTool + хуки [B] в роутах): захват
     // НИКОГДА не должен ронять успешное действие/ответ юзеру. Любой
-    // синхронный сбой (флаг-чек и т.п.) гасим здесь.
+    // синхронный сбой гасим здесь.
     console.warn('[capture] captureActivity failed', e);
   }
 }

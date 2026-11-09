@@ -5,9 +5,9 @@ import { join } from 'node:path';
 const SRC = readFileSync(join(process.cwd(), 'src/services/savings-coach.ts'), 'utf-8');
 
 describe('maybeSavingsCoachLine — проводка хука', () => {
-  it('гейтнут флагом и не роняет расход (try/catch→null)', () => {
+  it('без флага и не роняет расход (try/catch→null)', () => {
     expect(SRC).toContain('export async function maybeSavingsCoachLine');
-    expect(SRC).toContain('isV2SavingsCoachEnabled');
+    expect(SRC).not.toContain('isV2SavingsCoachEnabled');
     expect(SRC).toMatch(/catch[\s\S]{0,400}return null/);
   });
   it('переиспользует gatherReflectorFacts + computePortfolioPace + shouldNudgeOnExpense', () => {

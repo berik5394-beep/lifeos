@@ -21,9 +21,6 @@ const NOW = new Date('2026-11-06T09:00:00Z'); // 09:00 UTC — не тихие �
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
-  process.env.FEATURE_V2_MOOD_TONE = '';
-  process.env.FEATURE_V2_ENGAGEMENT = '';
-  process.env.FEATURE_V2_GOAL_SLOT = '';
   deliverNotification.mockClear();
 });
 afterEach(() => vi.useRealTimers());

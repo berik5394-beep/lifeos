@@ -8,17 +8,17 @@ const SRC = readFileSync(
 );
 
 describe('jarvis-orchestrator — identity refresh hook (D1)', () => {
-  it('imports getBotTraitsStore + isV2IdentityEnabled', () => {
+  it('imports getBotTraitsStore', () => {
     expect(SRC).toContain('getBotTraitsStore');
-    expect(SRC).toMatch(/isV2IdentityEnabled/);
+    expect(SRC).not.toMatch(/isV2IdentityEnabled/);
   });
   it('calls refreshTraitsIfStale under flag', () => {
     expect(SRC).toMatch(/refreshTraitsIfStale\(/);
   });
-  it('hook gated by isV2IdentityEnabled', () => {
+  it('hook без флага', () => {
     const idx = SRC.indexOf('refreshTraitsIfStale');
     expect(idx).toBeGreaterThan(0);
     const window = SRC.slice(Math.max(0, idx - 400), idx);
-    expect(window).toMatch(/isV2IdentityEnabled\(\s*userId\s*\)/);
+    expect(window).not.toMatch(/isV2IdentityEnabled/);
   });
 });

@@ -50,14 +50,11 @@ describe('buildPersonMeetingBriefs — real prisma', () => {
   });
 });
 
-describe('бриф встречи + сделки (флаг deals on)', () => {
-  const prevFlag = process.env.FEATURE_V2_DEALS;
+describe('бриф встречи + сделки', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    process.env.FEATURE_V2_DEALS = prevFlag;
   });
   async function clientWithDeal(email: string) {
-    process.env.FEATURE_V2_DEALS = 'all';
     const u = await mkUser(email);
     const e = await prisma.entity.create({ data: { userId: u, type: 'person', name: 'Ахмет', attributes: { personType: 'client' }, lastSeenAt: new Date(NOW.getTime() - 3 * DAY) } });
     await prisma.deal.create({ data: { userId: u, personEntityId: e.id, personName: 'Ахмет', title: 'оборудование', amount: 2_000_000, stage: 'talks', stageChangedAt: new Date(NOW.getTime() - 4 * DAY) } });

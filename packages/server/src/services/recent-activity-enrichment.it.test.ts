@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { writeMemory } from './episodic-memory.js';
 import { fetchV2EnrichmentData, buildV2EnrichmentBlock, formatRecentActivitySection } from './v2-enrichment.js';
@@ -14,11 +14,6 @@ async function seedUser(email: string): Promise<string> {
 const MARKER = 'медитировал всю неделю по цели духовный рост';
 
 describe('M3 v2-натив: недавняя активность доходит до мозга (end-to-end, тест-БД)', () => {
-  beforeEach(() => {
-    // отключаем чужие тяжёлые врезки, оставляем только нашу — детерминизм
-    process.env.FEATURE_V2_RECENT_ACTIVITY = 'all';
-  });
-
   it('ДОКАЗАТЕЛЬСТВО: writeMemory → fetch → buildBlock содержит контент события', async () => {
     const userId = await seedUser(`ra-a-${Date.now()}@a.test`);
     await writeMemory(userId, { type: 'goal_progress_logged', content: MARKER });
@@ -27,15 +22,6 @@ describe('M3 v2-натив: недавняя активность доходит
     const block = buildV2EnrichmentBlock(data!);
     expect(block).toContain('📌 Недавно');
     expect(block).toContain(MARKER);
-  });
-
-  it('флаг OFF: тот же контент НЕ попадает в блок (off=чисто)', async () => {
-    const userId = await seedUser(`ra-b-${Date.now()}@a.test`);
-    await writeMemory(userId, { type: 'goal_progress_logged', content: MARKER });
-    process.env.FEATURE_V2_RECENT_ACTIVITY = 'none';
-    const data = await fetchV2EnrichmentData(userId);
-    const block = buildV2EnrichmentBlock(data!);
-    expect(block).not.toContain(MARKER);
   });
 
   it('cross-user: B не видит активность A', async () => {

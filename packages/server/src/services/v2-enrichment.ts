@@ -3,7 +3,7 @@
  *
  * Pure builder (buildV2EnrichmentBlock) + async fetcher
  * (fetchV2EnrichmentData). Orchestrator appends the rendered block to
- * the system prompt only when isV2MemoryEnabled — additive, never
+ * the system prompt (always, when context was gathered) — additive, never
  * touches the legacy buildJarvisPrompt output.
  *
  * Block is whitespace-stable: missing data drops the *whole* line so
@@ -18,28 +18,9 @@ import { getProceduralMemory } from './procedural-memory.singleton.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
-import {
-  isV2AxesEnabled,
-  isV2ObligationsEnabled,
-  isV2GoalImpactEnabled,
-  isV2RunwayEnabled,
-  isV2EnergyEnabled,
-  isV2RelationshipsEnabled,
-  isV2DecisionsEnabled,
-  isV2BirthdayEnabled,
-  isV2GoalHabitsEnabled,
-  isV2RecentActivityEnabled,
-  isV2ScheduleConflictEnabled,
-  isV2PersonTypesEnabled,
-  isV2MemQualityEnabled,
-  isV2DecayEnabled,
-  isV2OpenLoopsEnabled,
-  isV2MoodToneEnabled,
-  isV2DealsEnabled,
-} from '../lib/feature-flags.js';
 import { gatherDealsSection } from './deals/service.js';
 import { entityDecayScore } from './memory-decay.js';
-import { recentEvents, significantMemories } from './episodic-memory.js';
+import { significantMemories } from './episodic-memory.js';
 import { buildScheduleConflict } from './schedule-conflict/index.js';
 import { gatherOpenLoops, formatOpenLoopsSection } from './open-loops.js';
 import { openObligationsForContext } from './obligations/index.js';
@@ -62,7 +43,6 @@ const CROSS_DOMAIN_BUDGET_MS = 1500;
 const BASE_MEMBER_BUDGET_MS = 1200;
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { formatToneSection } from './bot-traits/tone-section.js';
-import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 import { gatherReflection } from './reflection-context.js';
 import { attrHistoryFacts } from './entity-graph/merge-helpers.js';
 
@@ -196,7 +176,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
       `настроение: ${dir} сдвиг ${Number(m.magnitude).toFixed(1)} (${m.sinceDays ?? 0}д)`,
     );
   }
-  // mood-tone Part 1: off → null → не пушится (off=байт-идентично).
+  // mood-tone Part 1: нет спада → null → не пушится.
   if (data.moodToneDirective) lines.push(data.moodToneDirective);
   if (data.entities.length > 0) {
     const top = data.entities
@@ -404,10 +384,7 @@ export async function fetchV2EnrichmentData(
   try {
     // Дедуп: goal-impact и runway оба считают reflector-факты (тяжело: ~10
     // агрегатов). Считаем ОДИН раз и делим между ними. Один промис, оба await'ят.
-    const needFacts = isV2GoalImpactEnabled(userId) || isV2RunwayEnabled(userId);
-    const factsPromise = needFacts
-      ? gatherReflectorFacts(userId, new Date()).catch(() => null)
-      : Promise.resolve(null);
+    const factsPromise = gatherReflectorFacts(userId, new Date()).catch(() => null);
 
     const nowDate = new Date();
     // Комната робота (Часть 4): READ-ONLY, чтобы на «как тебе комната?» робот
@@ -435,9 +412,7 @@ export async function fetchV2EnrichmentData(
       CROSS_DOMAIN_BUDGET_MS,
       null,
     );
-    const dealsP: Promise<string | null> = isV2DealsEnabled(userId)
-      ? withTimeout(gatherDealsSection(userId, nowDate), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
-      : Promise.resolve(null);
+    const dealsP: Promise<string | null> = withTimeout(gatherDealsSection(userId, nowDate), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null);
     const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity, scheduleConflict, personTypes, personMeetings, openLoops] = await Promise.all([
       withTimeout(
         getBotIdentityService()
@@ -460,134 +435,90 @@ export async function fetchV2EnrichmentData(
         BASE_MEMBER_BUDGET_MS,
         null,
       ),
-      isV2DecayEnabled(userId)
-        ? withTimeout(
-            prisma.entity
-              .findMany({
-                where: { userId },
-                orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
-                take: 25,
-                select: { id: true, name: true, importance: true, lastSeenAt: true, attributes: true },
-              })
-              .then((wide) =>
-                wide
-                  .map((e) => ({ e, s: entityDecayScore(e.importance, e.lastSeenAt, nowDate) }))
-                  .sort((a, b) => b.s - a.s)
-                  .slice(0, 5)
-                  .map((x) => x.e),
-              )
-              .catch(() => []),
-            BASE_MEMBER_BUDGET_MS,
-            [],
+      withTimeout(
+        prisma.entity
+          .findMany({
+            where: { userId },
+            orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
+            take: 25,
+            select: { id: true, name: true, importance: true, lastSeenAt: true, attributes: true },
+          })
+          .then((wide) =>
+            wide
+              .map((e) => ({ e, s: entityDecayScore(e.importance, e.lastSeenAt, nowDate) }))
+              .sort((a, b) => b.s - a.s)
+              .slice(0, 5)
+              .map((x) => x.e),
           )
-        : withTimeout(
-            prisma.entity
-              .findMany({
-                where: { userId },
-                orderBy: [{ importance: 'desc' }, { lastSeenAt: 'desc' }],
-                take: 5,
-                select: { id: true, name: true, importance: true, lastSeenAt: true, attributes: true },
-              })
-              .catch(() => []),
-            BASE_MEMBER_BUDGET_MS,
-            [],
-          ),
-      isV2ObligationsEnabled(userId)
-        ? withTimeout(
-            openObligationsForContext(userId, 5).catch(() => []),
-            BASE_MEMBER_BUDGET_MS,
-            [],
-          )
-        : Promise.resolve([]),
-      isV2GoalImpactEnabled(userId)
-        ? withTimeout(
-            factsPromise.then((f) => buildGoalImpact(userId, undefined, f)),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          )
-            .then((gi) => gi?.insightText ?? null)
-            .catch(() => null)
-        : Promise.resolve(null),
-      isV2RunwayEnabled(userId)
-        ? withTimeout(
-            factsPromise.then((f) => buildRunway(userId, undefined, f)),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          )
-            .then((rw) => rw?.insightText ?? null)
-            .catch(() => null)
-        : Promise.resolve(null),
-      isV2EnergyEnabled(userId)
-        ? withTimeout(buildEnergyLink(userId), CROSS_DOMAIN_BUDGET_MS, null)
-            .then((el) => el?.insightText ?? null)
-            .catch(() => null)
-        : Promise.resolve(null),
-      isV2RelationshipsEnabled(userId)
-        ? withTimeout(buildRelationshipNudge(userId), CROSS_DOMAIN_BUDGET_MS, null)
-            .then((r) => r?.insightText ?? null)
-            .catch(() => null)
-        : Promise.resolve(null),
-      isV2DecisionsEnabled(userId)
-        ? withTimeout(
-            buildDecisionsContext(userId).then((c) => renderDecisionsInsight(c)),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          ).catch(() => null)
-        : Promise.resolve(null),
-      isV2BirthdayEnabled(userId)
-        ? withTimeout(buildBirthdaySection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
-        : Promise.resolve(null),
-      isV2BirthdayEnabled(userId)
-        ? withTimeout(buildMemorialSection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
-        : Promise.resolve(null),
-      isV2GoalHabitsEnabled(userId)
-        ? withTimeout(
-            buildGoalHabitHealth(userId).then((h) => {
-              const w = pickWorstStall(computeStall(h, 3));
-              return w ? formatStallText(w) : null;
-            }),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          ).catch(() => null)
-        : Promise.resolve(null),
-      isV2RecentActivityEnabled(userId)
-        ? withTimeout(
-            (isV2MemQualityEnabled(userId)
-              ? significantMemories(userId, 6)
-              : recentEvents(userId, 6)
-            ).then((rows) => formatRecentActivitySection(rows) || null),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          ).catch(() => null)
-        : Promise.resolve(null),
-      isV2ScheduleConflictEnabled(userId)
-        ? withTimeout(buildScheduleConflict(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
-        : Promise.resolve(null),
-      isV2PersonTypesEnabled(userId)
-        ? withTimeout(buildNeglectedKeyPerson(userId), CROSS_DOMAIN_BUDGET_MS, null)
-            .then((n) => n?.insightText ?? null)
-            .catch(() => null)
-        : Promise.resolve(null),
-      isV2PersonTypesEnabled(userId)
-        ? withTimeout(buildPersonMeetingBriefs(userId), CROSS_DOMAIN_BUDGET_MS, [])
-            .then((bs) =>
-              bs.length ? bs.slice(0, 2).map((b) => b.insightText).filter(Boolean).join(' · ') : null,
-            )
-            .catch(() => null)
-        : Promise.resolve(null),
-      isV2OpenLoopsEnabled(userId)
-        ? withTimeout(
-            gatherOpenLoops(userId, nowDate).then((l) => formatOpenLoopsSection(l)),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          ).catch(() => null)
-        : Promise.resolve(null),
+          .catch(() => []),
+        BASE_MEMBER_BUDGET_MS,
+        [],
+      ),
+      withTimeout(
+        openObligationsForContext(userId, 5).catch(() => []),
+        BASE_MEMBER_BUDGET_MS,
+        [],
+      ),
+      withTimeout(
+        factsPromise.then((f) => buildGoalImpact(userId, undefined, f)),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      )
+        .then((gi) => gi?.insightText ?? null)
+        .catch(() => null),
+      withTimeout(
+        factsPromise.then((f) => buildRunway(userId, undefined, f)),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      )
+        .then((rw) => rw?.insightText ?? null)
+        .catch(() => null),
+      withTimeout(buildEnergyLink(userId), CROSS_DOMAIN_BUDGET_MS, null)
+        .then((el) => el?.insightText ?? null)
+        .catch(() => null),
+      withTimeout(buildRelationshipNudge(userId), CROSS_DOMAIN_BUDGET_MS, null)
+        .then((r) => r?.insightText ?? null)
+        .catch(() => null),
+      withTimeout(
+        buildDecisionsContext(userId).then((c) => renderDecisionsInsight(c)),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      ).catch(() => null),
+      withTimeout(buildBirthdaySection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null),
+      withTimeout(buildMemorialSection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null),
+      withTimeout(
+        buildGoalHabitHealth(userId).then((h) => {
+          const w = pickWorstStall(computeStall(h, 3));
+          return w ? formatStallText(w) : null;
+        }),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      ).catch(() => null),
+      withTimeout(
+        significantMemories(userId, 6).then((rows) => formatRecentActivitySection(rows) || null),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      ).catch(() => null),
+      withTimeout(buildScheduleConflict(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null),
+      withTimeout(buildNeglectedKeyPerson(userId), CROSS_DOMAIN_BUDGET_MS, null)
+        .then((n) => n?.insightText ?? null)
+        .catch(() => null),
+      withTimeout(buildPersonMeetingBriefs(userId), CROSS_DOMAIN_BUDGET_MS, [])
+        .then((bs) =>
+          bs.length ? bs.slice(0, 2).map((b) => b.insightText).filter(Boolean).join(' · ') : null,
+        )
+        .catch(() => null),
+      withTimeout(
+        gatherOpenLoops(userId, nowDate).then((l) => formatOpenLoopsSection(l)),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      ).catch(() => null),
     ]);
     const deals = await dealsP;
     // mood-tone Part 1: спад → инструкция «мягче» (расширяет «эмпатия>стиль»
-    // с одного сообщения на траекторию). off → null → строки нет.
+    // с одного сообщения на траекторию). Нет спада → null → строки нет.
     const moodToneDirective =
-      isV2MoodToneEnabled(userId) && moodShift?.shifted && moodShift.direction === 'down'
+      moodShift?.shifted && moodShift.direction === 'down'
         ? 'юзер в эмоциональном спаде последние дни — будь мягче: больше поддержки, ' +
           'меньше требований и критики, не наваливай задачи и цели. ' +
           'Это перекрывает выбранный стиль (даже strict/toxic).'
@@ -668,9 +599,6 @@ export async function fetchV2EnrichmentData(
  * Separate helper called by orchestrator after main enrichment data.
  */
 export async function fetchV2EnrichmentAxesSection(userId: string): Promise<string> {
-  if (!isV2AxesEnabled(userId)) {
-    return '';
-  }
   try {
     const axes = await getUserAxesStore().getAxes(userId);
     return formatAxesSection(axes);
@@ -685,9 +613,6 @@ export async function fetchV2EnrichmentAxesSection(userId: string): Promise<stri
  * Separate helper called by orchestrator after axes section.
  */
 export async function fetchV2EnrichmentToneSection(userId: string): Promise<string> {
-  if (!isV2IdentityEnabled(userId)) {
-    return '';
-  }
   try {
     const traits = await getBotTraitsStore().getTraits(userId);
     const msgCount = await prisma.chatMessage.count({ where: { userId } });

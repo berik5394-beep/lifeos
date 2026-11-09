@@ -12,9 +12,9 @@ describe('v2 identity flow — inbound tone', () => {
     expect(ORCH).toMatch(/refreshTraitsIfStale\(/);
     expect(ENRICH).toContain('formatToneSection');
   });
-  it('both gated by isV2IdentityEnabled', () => {
-    expect(ORCH).toContain('isV2IdentityEnabled');
-    expect(ENRICH).toContain('isV2IdentityEnabled');
+  it('both без флага', () => {
+    expect(ORCH).not.toContain('isV2IdentityEnabled');
+    expect(ENRICH).not.toContain('isV2IdentityEnabled');
   });
 });
 

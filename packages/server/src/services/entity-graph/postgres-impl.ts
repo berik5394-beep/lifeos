@@ -20,7 +20,6 @@ import {
 } from '../embeddings.js';
 import { Prisma, type Entity, type EntityRelationship } from '@prisma/client';
 import { capAliases, isKinOnlyName, kinConflict, mergeAttributes, shouldMergeByEmbedding } from './merge-helpers.js';
-import { isV2EntityResolveEnabled, isV2MemGraphEnabled } from '../../lib/feature-flags.js';
 import type { EntityGraphStore } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -88,16 +87,11 @@ export class PostgresEntityGraph implements EntityGraphStore {
     entity: Partial<Entity> & { name: string; type: string },
     opts?: { deliberate?: boolean; changedKeys?: string[] },
   ): Promise<Entity> {
-    // Стратегия записи: точный матч → update; иначе (флаг) resolve→merge update;
+    // Стратегия записи: точный матч → update; иначе resolve→merge update;
     // иначе prisma.entity.create. Никогда не prisma.entity.upsert (разветвление выше).
     const name = entity.name.trim().slice(0, 255);
     const type = entity.type.trim().slice(0, 64);
-    const resolveOn = isV2EntityResolveEnabled(userId);
-    // off=байт-идентично: при выключенном флаге игнорим входящие алиасы
-    // (исторически их не было) → alias-мёрж no-op, эмбеддинги те же.
-    const incomingAliases: string[] = resolveOn
-      ? ((entity.aliases as string[] | undefined) ?? [])
-      : [];
+    const incomingAliases: string[] = (entity.aliases as string[] | undefined) ?? [];
     const attributes = (entity.attributes as Record<string, unknown> | undefined) ?? {};
     const importance = entity.importance ?? 5;
     const deliberate = opts?.deliberate ?? false;
@@ -108,14 +102,9 @@ export class PostgresEntityGraph implements EntityGraphStore {
       where: { userId_type_name: { userId, type, name } },
     });
     if (existing) {
-      // off: алиасы НЕ трогаем (структурно байт-идентично — без capAliases-нормализации
-      // даже если у строки уже есть алиасы); on: union существующих + входящих.
-      const mergedAliases = resolveOn
-        ? capAliases([...(existing.aliases as string[]), ...incomingAliases])
-        : (existing.aliases as string[]);
-      const mergedAttributes = isV2MemGraphEnabled(userId)
-        ? mergeAttributes(existing.attributes as Record<string, unknown>, attributes, deliberate, changedKeys)
-        : { ...(existing.attributes as Record<string, unknown>), ...attributes };
+      // Алиасы: union существующих + входящих.
+      const mergedAliases = capAliases([...(existing.aliases as string[]), ...incomingAliases]);
+      const mergedAttributes = mergeAttributes(existing.attributes as Record<string, unknown>, attributes, deliberate, changedKeys);
       const updated = await prisma.entity.update({
         where: { id: existing.id },
         data: {
@@ -129,45 +118,39 @@ export class PostgresEntityGraph implements EntityGraphStore {
       return updated;
     }
 
-    // Нет точного матча. Resolve-then-merge ТОЛЬКО при флаге.
-    if (resolveOn) {
-      const resolved = await this.resolveForMerge(userId, name, type);
-      if (resolved) {
-        const mergedAliases = capAliases([
-          ...(resolved.aliases as string[]),
-          name, // новая форма имени → в алиасы
-          ...incomingAliases,
-        ]);
-        const mergedAttributes = isV2MemGraphEnabled(userId)
-          ? mergeAttributes(resolved.attributes as Record<string, unknown>, attributes, deliberate, changedKeys)
-          : { ...(resolved.attributes as Record<string, unknown>), ...attributes };
-        const updated = await prisma.entity.update({
-          where: { id: resolved.id },
-          data: {
-            aliases: mergedAliases,
-            attributes: mergedAttributes as Prisma.InputJsonValue,
-            importance: Math.max(resolved.importance, importance),
-            lastSeenAt: new Date(),
-          },
-        });
-        await storeEntityEmbedding(updated.id, updated.name, updated.aliases as string[]);
-        return updated;
-      }
+    // Нет точного матча. Resolve-then-merge.
+    const resolved = await this.resolveForMerge(userId, name, type);
+    if (resolved) {
+      const mergedAliases = capAliases([
+        ...(resolved.aliases as string[]),
+        name, // новая форма имени → в алиасы
+        ...incomingAliases,
+      ]);
+      const mergedAttributes = mergeAttributes(resolved.attributes as Record<string, unknown>, attributes, deliberate, changedKeys);
+      const updated = await prisma.entity.update({
+        where: { id: resolved.id },
+        data: {
+          aliases: mergedAliases,
+          attributes: mergedAttributes as Prisma.InputJsonValue,
+          importance: Math.max(resolved.importance, importance),
+          lastSeenAt: new Date(),
+        },
+      });
+      await storeEntityEmbedding(updated.id, updated.name, updated.aliases as string[]);
+      return updated;
     }
 
     // Имя родственника стало известно: «брата зовут Ерлан» → name «Ерлан»,
     // aliases ["Брат"]. Если есть запись «Брат» (только родство) — это он:
     // переименовываем её, а не заводим второго человека.
-    if (resolveOn && type === 'person') {
+    if (type === 'person') {
       for (const alias of incomingAliases) {
         if (!isKinOnlyName(alias)) continue;
         const kin = await prisma.entity.findUnique({
           where: { userId_type_name: { userId, type, name: alias.trim().slice(0, 255) } },
         });
         if (!kin) continue;
-        const mergedAttributes = isV2MemGraphEnabled(userId)
-          ? mergeAttributes(kin.attributes as Record<string, unknown>, attributes, deliberate, changedKeys)
-          : { ...(kin.attributes as Record<string, unknown>), ...attributes };
+        const mergedAttributes = mergeAttributes(kin.attributes as Record<string, unknown>, attributes, deliberate, changedKeys);
         const renamed = await prisma.entity.update({
           where: { id: kin.id },
           data: {
@@ -183,7 +166,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
       }
     }
 
-    // Создать новую (OFF: incomingAliases=[] → как сейчас).
+    // Создать новую.
     const created = await prisma.entity.create({
       data: {
         userId,

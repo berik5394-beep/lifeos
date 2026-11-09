@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../../test/integration/build-test-app.js';
@@ -16,7 +16,6 @@ const prisma = new PrismaClient();
 let app: FastifyInstance;
 beforeAll(async () => { app = await buildTestApp([chatRoutes]); });
 afterAll(async () => { await app.close(); await prisma.$disconnect(); });
-beforeEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
 
 async function user(tag: string) {
   const u = await prisma.user.create({

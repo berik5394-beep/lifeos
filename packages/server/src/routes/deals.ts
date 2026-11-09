@@ -1,9 +1,8 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import {
   createDeal, updateDeal, listDeals, recordDealIncome, dealIncomeDue, setSalesPlan, salesPlanStatus, isDealStage, type DealStage,
   describePossibleDuplicate, STAGE_LABEL, fmtMoneyExact,
@@ -39,15 +38,10 @@ const updateSchema = z.object({
 });
 const planSchema = z.object({ amount: money, month: monthStr.optional() });
 
-/** Флаг выключен → 404: мобилка прячет инструмент «Сделки». */
-async function dealsGate(request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply | void> {
-  // async-хук: после send ОБЯЗАТЕЛЬНО вернуть reply, иначе Fastify пойдёт в хендлер.
-  if (!isV2DealsEnabled(request.userId)) return reply.status(404).send({ message: 'Не найдено' });
-}
 
 export async function dealRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
-  app.addHook('preHandler', dealsGate);
+
 
   app.get('/deals', async (request) => {
     const q = request.query as { status?: string };

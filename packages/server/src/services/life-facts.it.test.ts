@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { goalLivePercent, userCalendar, withLiveProgress } from './life-facts.js';
 import { getGoalProgressTool } from '../tools/get-goal-progress.js';
@@ -10,10 +10,6 @@ import { gatherPortraitFacts } from './portrait.js';
  */
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
-beforeEach(() => {
-  process.env.FEATURE_V2_ANTIFAB = 'all';
-});
-
 async function setup(tag: string) {
   const u = await prisma.user.create({
     data: { email: `lf-${tag}-${Date.now()}@a.test`, name: 'T', passwordHash: 'x', timezone: 'Asia/Almaty' },

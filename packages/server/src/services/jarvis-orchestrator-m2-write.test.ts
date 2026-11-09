@@ -9,7 +9,7 @@ const SRC = readFileSync(
 
 /**
  * M3 Unit A (2026-06-06): legacy captureMemory удалён. Оркестратор пишет
- * безусловно через ЕДИНЫЙ writeMemory (FEATURE_V2_WRITE=all в проде).
+ * безусловно через ЕДИНЫЙ writeMemory (флага записи больше нет).
  */
 describe('jarvis-orchestrator — M3 Unit A: единый писатель writeMemory (chat-факты)', () => {
   it('импортирует writeMemory', () => {

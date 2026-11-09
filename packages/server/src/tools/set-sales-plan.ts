@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { defineTool } from './_types.js';
-import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { setSalesPlan, fmtMoney } from '../services/deals/index.js';
 import { MAX_MONEY_AMOUNT } from '../lib/money.js';
 
@@ -21,7 +20,6 @@ export const setSalesPlanTool = defineTool({
   sideEffects: 'write',
   examples: ['план продаж на месяц 10 млн', 'хочу продать на 5 миллионов в этом месяце'],
   handler: async (input, ctx) => {
-    if (!isV2DealsEnabled(ctx.userId)) return { error: 'deals_disabled', hint: 'сделки выключены — денежную цель месяца ставь через create_monthly_goal' };
     const month = input.month ?? undefined;
     await setSalesPlan(ctx.userId, input.amount, new Date(), month);
     const label = month ? `${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}` : 'месяц';

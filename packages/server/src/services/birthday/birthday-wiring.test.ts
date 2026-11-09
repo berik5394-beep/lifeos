@@ -10,9 +10,9 @@ const TOOL = readFileSync(join(__dirname, '..', '..', 'tools', 'set-birthday.ts'
 const GATHER = readFileSync(join(__dirname, 'birthday.ts'), 'utf8');
 
 describe('birthday wiring (structural)', () => {
-  it('флаг isV2BirthdayEnabled существует', () => {
-    expect(FLAGS).toMatch(/export function isV2BirthdayEnabled/);
-    expect(FLAGS).toMatch(/FEATURE_V2_BIRTHDAY/);
+  it('флага FEATURE_V2_BIRTHDAY больше нет (всегда включено)', () => {
+    expect(FLAGS).not.toMatch(/isV2BirthdayEnabled/);
+    expect(FLAGS).not.toMatch(/FEATURE_V2_BIRTHDAY/);
   });
   it('NudgeSource + TEMPLATES + scoreSignificance + detectCandidates содержат birthday_upcoming', () => {
     expect(ENGINE).toMatch(/'birthday_upcoming'/);
@@ -20,13 +20,13 @@ describe('birthday wiring (structural)', () => {
     expect(ENGINE).toMatch(/case 'birthday_upcoming':/);
     expect(ENGINE).toMatch(/detectBirthday\(userId\)/);
   });
-  it('detectBirthday имеет ранний флаг-гейт (off=identical)', () => {
+  it('detectBirthday без флага', () => {
     const fn = ENGINE.slice(ENGINE.indexOf('async function detectBirthday'));
-    expect(fn).toMatch(/if\s*\(!isV2BirthdayEnabled\(userId\)\)\s*return\s*\[\]/);
+    expect(fn).not.toMatch(/isV2BirthdayEnabled/);
   });
-  it('enrichment-врезка за флагом + поле birthdays', () => {
+  it('enrichment-врезка без флага + поле birthdays', () => {
     expect(ENRICH).toMatch(/birthdays:\s*string\s*\|\s*null/);
-    expect(ENRICH).toMatch(/isV2BirthdayEnabled\(userId\)/);
+    expect(ENRICH).not.toMatch(/isV2BirthdayEnabled/);
     expect(ENRICH).toMatch(/buildBirthdaySection\(userId\)/);
     expect(ENRICH).toMatch(/if\s*\(data\.birthdays\)/);
   });
@@ -47,9 +47,9 @@ describe('memorial wiring (structural)', () => {
     expect(ENGINE).toMatch(/case 'memorial_upcoming':/);
     expect(ENGINE).toMatch(/detectMemorial\(userId\)/);
   });
-  it('detectMemorial имеет ранний флаг-гейт (off=identical)', () => {
+  it('detectMemorial без флага', () => {
     const fn = ENGINE.slice(ENGINE.indexOf('async function detectMemorial'));
-    expect(fn).toMatch(/if\s*\(!isV2BirthdayEnabled\(userId\)\)\s*return\s*\[\]/);
+    expect(fn).not.toMatch(/isV2BirthdayEnabled/);
   });
   it('тон мемориала тёплый: нет поздравлений/celebratory, есть память/рядом/береги', () => {
     const i = ENGINE.indexOf('memorial_upcoming:');
@@ -58,7 +58,7 @@ describe('memorial wiring (structural)', () => {
     expect(block).toMatch(/памят/);
     expect(block).toMatch(/рядом|береги/);
   });
-  it('enrichment-врезка memorials за флагом', () => {
+  it('enrichment-врезка memorials без флага', () => {
     expect(ENRICH).toMatch(/memorials:\s*string\s*\|\s*null/);
     expect(ENRICH).toMatch(/buildMemorialSection\(userId\)/);
     expect(ENRICH).toMatch(/if\s*\(data\.memorials\)/);

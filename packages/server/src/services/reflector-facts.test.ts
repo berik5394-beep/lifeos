@@ -6,16 +6,16 @@ const CORE = readFileSync(join(process.cwd(), 'src/services/reflector-core.ts'),
 const SVC = readFileSync(join(process.cwd(), 'src/services/reflector-service.ts'), 'utf-8');
 
 describe('ReflectorFacts расширены под коуча', () => {
-  it('интерфейс несёт savedSoFar/targetDate/pacingEnabled/now', () => {
+  it('интерфейс несёт savedSoFar/targetDate/now (pacingEnabled удалён)', () => {
     expect(CORE).toMatch(/savedSoFar:\s*number/);
     expect(CORE).toMatch(/targetDate:\s*Date/);
-    expect(CORE).toMatch(/pacingEnabled:\s*boolean/);
+    expect(CORE).not.toMatch(/pacingEnabled/);
     expect(CORE).toMatch(/now:\s*Date/);
     // Portfolio: ВСЕ незакрытые фин-цели массивом (не одна).
     expect(CORE).toMatch(/financeGoals:/);
   });
-  it('gatherReflectorFacts: savedSoFar с ДАТЫ ПОСТАНОВКИ цели + pacingEnabled по флагу', () => {
-    expect(SVC).toContain('isV2SavingsCoachEnabled');
+  it('gatherReflectorFacts: savedSoFar с ДАТЫ ПОСТАНОВКИ цели (без флага)', () => {
+    expect(SVC).not.toContain('isV2SavingsCoachEnabled');
     expect(SVC).toContain('savedSoFar');
     expect(SVC).toContain('targetDate');
     // Копим ОТ даты цели (createdAt), не с 1 января — иначе короткая

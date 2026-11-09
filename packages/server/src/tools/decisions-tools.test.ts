@@ -8,17 +8,17 @@ const LOG = readFileSync(join(__dirname, 'log-decision.ts'), 'utf8');
 const REV = readFileSync(join(__dirname, 'review-decision.ts'), 'utf8');
 
 describe('decision tools — money-safety', () => {
-  it('log_decision: needsConfirm + write + flag-gated', () => {
+  it('log_decision: needsConfirm + write (без флага)', () => {
     expect(logDecisionTool.name).toBe('log_decision');
     expect(logDecisionTool.needsConfirm).toBe(true);
     expect(logDecisionTool.sideEffects).toBe('write');
-    expect(LOG).toMatch(/isV2DecisionsEnabled\(ctx\.userId\)/);
+    expect(LOG).not.toMatch(/isV2DecisionsEnabled/);
   });
-  it('review_decision: needsConfirm + write + flag-gated', () => {
+  it('review_decision: needsConfirm + write (без флага)', () => {
     expect(reviewDecisionTool.name).toBe('review_decision');
     expect(reviewDecisionTool.needsConfirm).toBe(true);
     expect(reviewDecisionTool.sideEffects).toBe('write');
-    expect(REV).toMatch(/isV2DecisionsEnabled\(ctx\.userId\)/);
+    expect(REV).not.toMatch(/isV2DecisionsEnabled/);
   });
   it('write only Decision (no income/expense)', () => {
     for (const s of [LOG, REV]) {

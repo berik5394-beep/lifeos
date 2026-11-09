@@ -5,8 +5,8 @@ import { suppressPressureNudges, PRESSURE_SOURCES, type NudgeCandidate } from '.
 
 describe('mood-tone — Part 1 enrichment directive', () => {
   const enr = readFileSync(join(process.cwd(), 'src/services/v2-enrichment.ts'), 'utf8');
-  it('флаг-гейт + директива при direction down', () => {
-    expect(enr).toMatch(/isV2MoodToneEnabled\(/);
+  it('директива при direction down (без флага)', () => {
+    expect(enr).not.toMatch(/isV2MoodToneEnabled/);
     expect(enr).toMatch(/moodToneDirective/);
     expect(enr).toMatch(/будь мягче/);
     expect(enr).toMatch(/перекрывает выбранный стиль/);
@@ -41,8 +41,8 @@ describe('mood-tone — Part 2 suppressPressureNudges (pure)', () => {
 });
 describe('mood-tone — Part 2 wiring', () => {
   const eng = readFileSync(join(process.cwd(), 'src/services/v2-proactivity-engine.ts'), 'utf8');
-  it('filterCandidates зовёт suppress за флагом', () => {
-    expect(eng).toMatch(/isV2MoodToneEnabled\(/);
+  it('filterCandidates зовёт suppress (без флага)', () => {
+    expect(eng).not.toMatch(/isV2MoodToneEnabled/);
     expect(eng).toMatch(/suppressPressureNudges\(/);
   });
 });

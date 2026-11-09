@@ -607,8 +607,8 @@ export async function persistPlan(
     }
   });
 
-  // #engine: оценка усилия/нед фоном для созданных целей (под флагом
-  // month-load). После коммита транзакции — не гоняем открытую tx.
+  // #engine: оценка усилия/нед фоном для созданных целей. После коммита
+  // транзакции — не гоняем открытую tx.
   for (const wg of createdWeeklyGoals) {
     void estimateWeeklyGoalMinutesInBackground(wg.id, wg.goalText, userId);
   }

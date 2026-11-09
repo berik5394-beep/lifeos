@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { buildRunway } from './runway.js';
 
@@ -48,8 +48,6 @@ describe('runway buildRunway — реальная БД', () => {
 
 describe('buildRunway — CashSnapshot anchor (реальная БД)', () => {
   const now = new Date(2026, 5, 15);
-  beforeEach(() => { process.env.FEATURE_V2_RUNWAY_BALANCE = 'all'; });
-  afterEach(() => { delete process.env.FEATURE_V2_RUNWAY_BALANCE; });
 
   it('cashOnHand = balance − расходы после asOf (расход в день asOf НЕ вычитается)', async () => {
     const userId = await seedUser('cs-a@a.test');

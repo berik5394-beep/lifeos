@@ -122,9 +122,9 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   deleteIncomeTool,
   addIncomeTool,
   setBudgetTool,
-  // баланс счёта — точка отсчёта runway (флаг-гейт в хендлере)
+  // баланс счёта — точка отсчёта runway
   setBalanceTool,
-  // Решения↔исходы (мост #4) — флаг-гейт в хендлерах
+  // Решения↔исходы (мост #4)
   logDecisionTool,
   reviewDecisionTool,
   // external, needsConfirm:true (9B.2) — авто-исключён из агент-цикла
@@ -159,12 +159,12 @@ const ALL_TOOLS: ReadonlyArray<Tool> = [
   // Движок пересечения, горизонт ГОД — захват прогресса измеримой цели.
   updateGoalProgressTool,
   logGoalProgressTool,
-  // Obligations — память отношений+обещаний (флаг-гейт в хендлерах).
+  // Obligations — память отношений+обещаний.
   createObligationTool,
   listObligationsTool,
   settleObligationTool,
   cancelObligationTool,
-  // Сделки (спека 2026-11-05-deals) — флаг-гейт в хендлерах.
+  // Сделки (спека 2026-11-05-deals).
   createDealTool,
   updateDealTool,
   listDealsTool,

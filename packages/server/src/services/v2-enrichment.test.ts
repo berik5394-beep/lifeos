@@ -97,8 +97,8 @@ describe('structural — fetcher', () => {
   it('returns null on top-level failure (best-effort)', () => {
     expect(SRC).toMatch(/return null/);
   });
-  it('wires decisions branch behind flag with builder', () => {
-    expect(SRC).toMatch(/isV2DecisionsEnabled\(userId\)/);
+  it('wires decisions branch with builder', () => {
+    expect(SRC).not.toMatch(/isV2DecisionsEnabled/);
     expect(SRC).toMatch(/buildDecisionsContext\(/);
     expect(SRC).toMatch(/formatDecisionsSection\(/);
   });
@@ -175,25 +175,25 @@ describe('fetchV2EnrichmentAxesSection — axes integration (D1)', () => {
     );
     expect(enrichSrc).toContain('formatAxesSection');
   });
-  it('gated by isV2AxesEnabled', () => {
+  it('без флага', () => {
     const enrichSrc = readFileSync(
       join(process.cwd(), 'src/services/v2-enrichment.ts'),
       'utf-8',
     );
-    expect(enrichSrc).toContain('isV2AxesEnabled');
+    expect(enrichSrc).not.toContain('isV2AxesEnabled');
   });
 });
 
 describe('v2-enrichment — tone section wiring (D1)', () => {
-  it('imports getBotTraitsStore + formatToneSection + isV2IdentityEnabled', () => {
+  it('imports getBotTraitsStore + formatToneSection', () => {
     const s = readFileSync(join(process.cwd(), 'src/services/v2-enrichment.ts'), 'utf-8');
     expect(s).toContain('getBotTraitsStore');
     expect(s).toContain('formatToneSection');
-    expect(s).toContain('isV2IdentityEnabled');
+    expect(s).not.toContain('isV2IdentityEnabled');
   });
-  it('tone section appended under flag', () => {
+  it('tone section appended', () => {
     const s = readFileSync(join(process.cwd(), 'src/services/v2-enrichment.ts'), 'utf-8');
-    expect(s).toMatch(/isV2IdentityEnabled\(\s*userId\s*\)/);
+    expect(s).not.toMatch(/isV2IdentityEnabled/);
     expect(s).toMatch(/formatToneSection\(/);
   });
 });

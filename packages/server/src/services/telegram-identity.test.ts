@@ -15,11 +15,11 @@ describe('telegram-bot.ts — /identity command (E1)', () => {
     expect(SRC).toContain('getBotTraitsStore');
     expect(SRC).toContain('generateGrowthNarrative');
   });
-  it('gated by isV2IdentityEnabled', () => {
+  it('без флага', () => {
     const idx = SRC.indexOf("bot.command('identity'");
     expect(idx).toBeGreaterThan(0);
     const region = SRC.slice(idx, idx + 1500);
-    expect(region).toContain('isV2IdentityEnabled');
+    expect(region).not.toContain('isV2IdentityEnabled');
   });
   it('shows all 4 traits in formatIdentityForTelegram', () => {
     const idx = SRC.indexOf('async function formatIdentityForTelegram');

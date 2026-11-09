@@ -1,5 +1,4 @@
 import { prisma } from '../lib/prisma.js';
-import { isV2GoalHabitsEnabled } from '../lib/feature-flags.js';
 import { calculateStreak } from './streak-service.js';
 
 /**
@@ -8,14 +7,14 @@ import { calculateStreak } from './streak-service.js';
  * серия N дней») и для экрана (POST /habits/:id/log → облачко робота).
  * Раньше это знал только мозг: отметка тапом давала лишь улыбку (2026-11-09).
  *
- * null — привычка не привязана к цели / флаг выкл. / цель не найдена.
+ * null — привычка не привязана к цели / цель не найдена.
  * Best-effort: ошибка не должна ломать отметку.
  */
 export async function habitGoalLink(
   userId: string,
   goalId: string | null | undefined,
 ): Promise<{ goalText: string; streak: number } | null> {
-  if (!goalId || !isV2GoalHabitsEnabled(userId)) return null;
+  if (!goalId) return null;
   try {
     const [goal, streak] = await Promise.all([
       // userId — вторая линия защиты: старые привязки к чужой цели (до IDOR-фикса /habits).

@@ -11,7 +11,6 @@ import {
 import { localHour, localDayStartUTC } from '../lib/tz.js';
 import { deliverNotification } from './push-service.js';
 import { getEngagement, isReceptiveHour } from './engagement/index.js';
-import { isV2EngagementEnabled, isV2GoalSlotEnabled } from '../lib/feature-flags.js';
 
 /**
  * Phase 5 R5 P4-fold — DB-glue ЕДИНОГО Insight-стора. Вся ЛОГИКА
@@ -243,7 +242,7 @@ export async function deliverTopInsight(
   // v2 P2 — engagement: defer NON-critical delivery outside the user's
   // active hours. Critical (severity>=8) always delivers. Best-effort; on
   // any failure or sparse data, isReceptiveHour returns true → no deferral.
-  if (isV2EngagementEnabled(userId) && severityBand(row.severity) !== 'critical') {
+  if (severityBand(row.severity) !== 'critical') {
     try {
       const eng = await getEngagement(userId, now);
       if (!isReceptiveHour(eng.activeHours, hour)) {
@@ -274,11 +273,9 @@ export async function deliverTopInsight(
   // чтобы ответ «да» пришёл агенту С контекстом предложения (иначе «да» —
   // в пустоту: getRecentHistory нудж не видел). crisis дефолт false →
   // попадает в последние-6. Best-effort — сбой НЕ роняет доставку.
-  if (isV2GoalSlotEnabled(userId)) {
-    await prisma.chatMessage
-      .create({ data: { userId, role: 'assistant', content: row.message } })
-      .catch(() => {});
-  }
+  await prisma.chatMessage
+    .create({ data: { userId, role: 'assistant', content: row.message } })
+    .catch(() => {});
   return { deliveredId: row.id };
 }
 

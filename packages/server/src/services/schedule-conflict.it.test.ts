@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { fetchV2EnrichmentData, buildV2EnrichmentBlock } from './v2-enrichment.js';
 import { localDayStartUTC } from '../lib/tz.js';
@@ -21,10 +21,6 @@ async function seedEvent(userId: string, startTime: string, endTime: string | nu
 }
 
 describe('M3 кросс-домен задача↔календарь: конфликт доходит до мозга (end-to-end, тест-БД)', () => {
-  beforeEach(() => {
-    process.env.FEATURE_V2_SCHEDULE_CONFLICT = 'all';
-  });
-
   it('ДОКАЗАТЕЛЬСТВО: задача 14:00 ∩ встреча 14:00–15:00 → блок содержит ⚠️ Конфликт', async () => {
     const userId = await seedUser(`sc-a-${Date.now()}@a.test`);
     await seedTask(userId, '14:00');
@@ -41,15 +37,6 @@ describe('M3 кросс-домен задача↔календарь: конфл
     const userId = await seedUser(`sc-b-${Date.now()}@a.test`);
     await seedTask(userId, '09:00');
     await seedEvent(userId, '14:00', '15:00');
-    const block = buildV2EnrichmentBlock((await fetchV2EnrichmentData(userId))!);
-    expect(block).not.toContain('⚠️ Конфликт');
-  });
-
-  it('флаг OFF → нет конфликта (off=байт-идентично)', async () => {
-    const userId = await seedUser(`sc-c-${Date.now()}@a.test`);
-    await seedTask(userId, '14:00');
-    await seedEvent(userId, '14:00', '15:00');
-    process.env.FEATURE_V2_SCHEDULE_CONFLICT = 'none';
     const block = buildV2EnrichmentBlock((await fetchV2EnrichmentData(userId))!);
     expect(block).not.toContain('⚠️ Конфликт');
   });

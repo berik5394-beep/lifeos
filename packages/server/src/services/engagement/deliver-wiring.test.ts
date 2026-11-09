@@ -6,8 +6,8 @@ const SRC = readFileSync(
   join(process.cwd(), 'src/services/insight-store.ts'), 'utf-8');
 
 describe('deliverTopInsight receptive-hour defer', () => {
-  it('imports engagement + flag', () => {
-    expect(SRC).toMatch(/isV2EngagementEnabled/);
+  it('imports engagement (без флага)', () => {
+    expect(SRC).not.toMatch(/isV2EngagementEnabled/);
     expect(SRC).toMatch(/getEngagement/);
     expect(SRC).toMatch(/isReceptiveHour/);
   });

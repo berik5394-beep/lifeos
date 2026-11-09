@@ -7,7 +7,7 @@ const src = readFileSync(join(process.cwd(), 'src/services/v2-enrichment.ts'), '
 
 describe('energy-link enrichment врезка', () => {
   it('флаг-гейт + buildEnergyLink + рендер', () => {
-    expect(src).toContain('isV2EnergyEnabled');
+    expect(src).not.toContain('isV2EnergyEnabled');
     expect(src).toContain('buildEnergyLink');
     expect(src).toContain('formatEnergyLinkSection');
   });

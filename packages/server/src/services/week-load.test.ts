@@ -26,8 +26,8 @@ describe('describeWeekLoad', () => {
 
 describe('week-load — проводка (structural)', () => {
   const SRC = readFileSync(join(process.cwd(), 'src/services/week-load.ts'), 'utf-8');
-  it('maybeWeekLoadLine: флаг + fit + дедуп против СВОИХ time:week_load', () => {
-    expect(SRC).toContain('isV2WeekLoadEnabled');
+  it('maybeWeekLoadLine: без флага; fit + дедуп против СВОИХ time:week_load', () => {
+    expect(SRC).not.toContain('isV2WeekLoadEnabled');
     expect(SRC).toContain('computeCapacityFit');
     expect(SRC).toMatch(/count\([\s\S]*?source: 'week_load'[\s\S]*?gte: dayStart/);
     expect(SRC).toContain("'time:week_load'");

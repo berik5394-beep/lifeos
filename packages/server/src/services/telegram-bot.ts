@@ -9,12 +9,9 @@ import { NOTIFY_REDIRECT, NOTIFY_WELCOME, notifyOnlyRoute, telegramBotMode } fro
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type AxisName } from './user-axes/index.js';
-import { isV2AxesEnabled } from '../lib/feature-flags.js';
 import { getFeedbackStore } from './feedback/index.js';
 import { getBotTraitsStore, traitLabel } from './bot-traits/index.js';
 import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
-import { isV2IdentityEnabled } from '../lib/feature-flags.js';
-import { isV2ObligationsEnabled } from '../lib/feature-flags.js';
 import { listObligations } from './obligations/index.js';
 import { getHermesStore } from './hermes/index.js';
 import { analyzeFinancePhoto, buildFinancePending } from './finance-vision.js';
@@ -347,10 +344,6 @@ export function createTelegramBot(): Telegraf {
         from.first_name || '',
         from.username,
       );
-      if (!isV2AxesEnabled(userId)) {
-        await ctx.reply('Личностные оси выключены для тебя. Спроси админа подключить FEATURE_V2_AXES.');
-        return;
-      }
       const text = await formatAxesForTelegram(userId);
       await ctx.reply(text);
     } catch (err) {
@@ -372,10 +365,6 @@ export function createTelegramBot(): Telegraf {
         from.first_name || '',
         from.username,
       );
-      if (!isV2ObligationsEnabled(userId)) {
-        await ctx.reply('Обязательства выключены для тебя.');
-        return;
-      }
       const rows = await listObligations(userId, { status: 'open' });
       if (rows.length === 0) {
         await ctx.reply('Открытых обязательств нет.');
@@ -410,10 +399,6 @@ export function createTelegramBot(): Telegraf {
         from.first_name || '',
         from.username,
       );
-      if (!isV2IdentityEnabled(userId)) {
-        await ctx.reply('Identity evolution выключена для тебя.');
-        return;
-      }
       const text = await formatIdentityForTelegram(userId);
       await ctx.reply(text);
     } catch (err) {

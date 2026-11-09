@@ -4,12 +4,13 @@ import { join } from 'node:path';
 
 const impl = readFileSync(join(process.cwd(), 'src/services/entity-graph/postgres-impl.ts'), 'utf8');
 
-describe('T5 graph — upsertEntity attributes guard за флагом', () => {
+describe('T5 graph — upsertEntity attributes guard', () => {
   it('upsertEntity принимает opts.deliberate', () => {
     expect(impl).toMatch(/opts\??\s*:\s*\{\s*deliberate\?\s*:\s*boolean/);
   });
-  it('обе точки merge имеют флаг-ветку mergeAttributes', () => {
-    const on = impl.match(/isV2MemGraphEnabled\(userId\)\s*\n?\s*\?\s*mergeAttributes\(/g) || [];
+  it('все точки merge идут через mergeAttributes (флаг удалён)', () => {
+    expect(impl).not.toMatch(/isV2MemGraphEnabled/);
+    const on = impl.match(/const mergedAttributes = mergeAttributes\(/g) || [];
     expect(on.length).toBe(3); // точный матч, resolve-merge, переименование «Брат» → имя
   });
 });
@@ -28,8 +29,8 @@ describe('T5 graph — FTS rank-порог в дедупе writeMemory', () => {
   const epi = readFileSync(join(process.cwd(), 'src/services/episodic-memory.ts'), 'utf8');
   it('константа MEM_DEDUP_MIN_RANK', () => { expect(epi).toMatch(/MEM_DEDUP_MIN_RANK\s*=\s*0\.08/); });
   it('rank в SELECT дедупа', () => { expect(epi).toMatch(/ts_rank\([\s\S]*?\)\s+AS rank/); });
-  it('rankOk гейт за флагом', () => {
-    expect(epi).toMatch(/isV2MemGraphEnabled\(userId\)/);
+  it('rankOk гейт (без флага)', () => {
+    expect(epi).not.toMatch(/isV2MemGraphEnabled/);
     expect(epi).toMatch(/rankOk/);
   });
 });

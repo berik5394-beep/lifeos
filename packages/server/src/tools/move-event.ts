@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { defineTool } from './_types.js';
 import { findEventByTitle, googleNote, lookupMiss, moveEvent, whenText } from '../services/event-change.js';
 import { proposeReschedule } from '../services/reschedule.js';
-import { isV2ScheduleConflictEnabled } from '../lib/feature-flags.js';
 import { findCreationConflict, itemWindow } from '../services/schedule-conflict/index.js';
 
 /**
@@ -72,7 +71,7 @@ export const moveEventTool = defineTool({
     const newDay = after.date.toISOString().slice(0, 10);
 
     let conflict = '';
-    if (after.startTime && isV2ScheduleConflictEnabled(userId)) {
+    if (after.startTime) {
       const w = itemWindow('event', after.startTime, after.endTime);
       if (w) {
         conflict =

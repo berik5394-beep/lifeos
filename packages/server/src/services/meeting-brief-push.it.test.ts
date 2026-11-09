@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeAll } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { generateEventReminders } from './proactive-notifications.js';
 import { localDateOnlyUTC } from '../lib/tz.js';
@@ -8,12 +8,7 @@ import { localDateOnlyUTC } from '../lib/tz.js';
  * человеком — не «подготовься», а что обещал ты/тебе, долги, сделка, что помню.
  */
 const prisma = new PrismaClient();
-const saved = process.env.FEATURE_V2_PERSON_TYPES;
-beforeAll(() => {
-  process.env.FEATURE_V2_PERSON_TYPES = 'all'; // как в проде
-});
 afterAll(async () => {
-  process.env.FEATURE_V2_PERSON_TYPES = saved;
   await prisma.$disconnect();
 });
 

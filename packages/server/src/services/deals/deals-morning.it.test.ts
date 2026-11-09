@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../../test/integration/build-test-app.js';
@@ -11,22 +11,16 @@ import { createDeal, dealStepsTodayLabels } from './service.js';
 /**
  * Утро: шаги по сделкам на сегодня — в брифинге (GET /briefing/morning,
  * GET /notifications/briefing), в утреннем пуше и в контексте робота.
- * Флаг выкл. → ключей нет, тело пуша байт-в-байт прежнее.
  */
 const prisma = new PrismaClient();
 let app: FastifyInstance;
-const ORIG = process.env.FEATURE_V2_DEALS;
 beforeAll(async () => {
   app = await buildTestApp([briefingRoutes, notificationRoutes]);
 });
 afterAll(async () => {
-  if (ORIG === undefined) delete process.env.FEATURE_V2_DEALS;
-  else process.env.FEATURE_V2_DEALS = ORIG;
   await app.close();
   await prisma.$disconnect();
 });
-afterEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
-process.env.FEATURE_V2_DEALS = 'all';
 
 const TODAY = localDateStr('UTC');
 const d = (s: string) => new Date(s + 'T00:00:00Z');
@@ -48,8 +42,7 @@ async function seed(tag: string, names: string[] = ['Ахмет']) {
   return { userId, ids, headers: { authorization: `Bearer ${app.jwt.sign({ sub: userId })}` } };
 }
 
-const MORNING_KEYS = ['date', 'quote', 'tasks', 'events', 'habits', 'budget', 'streak', 'steps', 'dayProgress'];
-const NOTIF_KEYS = ['tasks', 'events', 'habitsProgress', 'streak', 'quote', 'budgetStatus'];
+
 
 describe('утро × сделки', () => {
   it('GET /briefing/morning: deals — шаги на сегодня', async () => {
@@ -61,20 +54,10 @@ describe('утро × сделки', () => {
     });
   });
 
-  it('GET /briefing/morning: флаг выкл. → ключа deals нет, ключи как раньше', async () => {
-    const { headers } = await seed('brief-off');
-    process.env.FEATURE_V2_DEALS = '';
-    const body = (await app.inject({ method: 'GET', url: '/briefing/morning', headers })).json();
-    expect(Object.keys(body)).toEqual(MORNING_KEYS);
-  });
-
-  it('GET /notifications/briefing: dealSteps на сегодня; флаг выкл. → ключа нет', async () => {
+  it('GET /notifications/briefing: dealSteps на сегодня', async () => {
     const { ids, headers } = await seed('notif');
     const on = (await app.inject({ method: 'GET', url: '/notifications/briefing', headers })).json();
     expect(on.dealSteps).toEqual([{ id: ids[0], personName: 'Ахмет', title: 'сделка Ахмет', nextStepText: 'связаться', date: TODAY }]);
-    process.env.FEATURE_V2_DEALS = '';
-    const off = (await app.inject({ method: 'GET', url: '/notifications/briefing', headers })).json();
-    expect(Object.keys(off)).toEqual(NOTIF_KEYS);
   });
 
   it('утренний пуш: после встреч — шаги по сделкам (до 3 имён)', async () => {
@@ -86,18 +69,9 @@ describe('утро × сделки', () => {
     );
   });
 
-  it('утренний пуш: флаг выкл. → тело как раньше', async () => {
-    const { userId } = await seed('push-off', ['Ахмет', 'Серик']);
-    process.env.FEATURE_V2_DEALS = '';
-    const [n] = await buildMorning(userId, 'Берик', new Date(), 'UTC');
-    expect(n.body).toBe('1 задача на сегодня, 1 встреча (первая в 10:00 — «Планёрка»). Начнём?');
-  });
-
-  it('контекст робота: подписи шагов на сегодня; флаг выкл. → undefined', async () => {
+  it('контекст робота: подписи шагов на сегодня', async () => {
     const { userId } = await seed('ctx', ['Ахмет', 'Серик']);
     expect(await dealStepsTodayLabels(userId, d(TODAY))).toEqual(['Ахмет — связаться', 'Серик — отправить КП']);
-    process.env.FEATURE_V2_DEALS = '';
-    expect(await dealStepsTodayLabels(userId, d(TODAY))).toBeUndefined();
   });
 
   it('нит: утренний пуш — длинный шаг обрезан до ~60 символов', async () => {

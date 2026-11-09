@@ -106,22 +106,19 @@ export const completeMultipleHabitsTool = defineTool({
     // одиночный complete_habit). Раньше — общий «Не получилось» (аудит 2026-11-09).
     const closedTasks: string[] = [];
     if (notFound.length > 0 && !input.date) {
-      const { isV2RescheduleEnabled } = await import('../lib/feature-flags.js');
-      if (isV2RescheduleEnabled(userId)) {
-        const { matchTaskByWholeWords } = await import('../services/task-title.js');
-        const { runRegistryTool } = await import('./index.js');
-        const open = await prisma.task.findMany({
-          where: { userId, completed: false, cancelled: false },
-          orderBy: { createdAt: 'desc' },
-          take: 50,
-        });
-        for (const name of [...notFound]) {
-          const task = matchTaskByWholeWords(name, open);
-          if (!task) continue;
-          await runRegistryTool('complete_task', { taskId: task.id, title: task.title }, ctx);
-          closedTasks.push(task.title);
-          notFound.splice(notFound.indexOf(name), 1);
-        }
+      const { matchTaskByWholeWords } = await import('../services/task-title.js');
+      const { runRegistryTool } = await import('./index.js');
+      const open = await prisma.task.findMany({
+        where: { userId, completed: false, cancelled: false },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      });
+      for (const name of [...notFound]) {
+        const task = matchTaskByWholeWords(name, open);
+        if (!task) continue;
+        await runRegistryTool('complete_task', { taskId: task.id, title: task.title }, ctx);
+        closedTasks.push(task.title);
+        notFound.splice(notFound.indexOf(name), 1);
       }
     }
 

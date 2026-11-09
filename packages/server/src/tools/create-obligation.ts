@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { defineTool } from './_types.js';
 import { createObligation } from '../services/obligations/index.js';
 import { normalizeDirection } from '../services/obligations/types.js';
-import { isV2ObligationsEnabled } from '../lib/feature-flags.js';
 
 export const createObligationTool = defineTool({
   name: 'create_obligation',
@@ -48,7 +47,6 @@ export const createObligationTool = defineTool({
     'я обещал маме позвонить завтра',
   ],
   handler: async (input, ctx) => {
-    if (!isV2ObligationsEnabled(ctx.userId)) return { error: 'функция отключена' };
     const direction = normalizeDirection(String(input.direction || ''));
     if (!direction) return { error: 'не понял направление (я должен / мне должны)' };
     const created = await createObligation({

@@ -6,8 +6,8 @@ import { formatRunwaySection, buildV2EnrichmentBlock } from './v2-enrichment.js'
 const src = readFileSync(join(process.cwd(), 'src/services/v2-enrichment.ts'), 'utf-8');
 
 describe('runway enrichment врезка', () => {
-  it('флаг-гейт + buildRunway + рендер', () => {
-    expect(src).toContain('isV2RunwayEnabled');
+  it('без флага + buildRunway + рендер', () => {
+    expect(src).not.toContain('isV2RunwayEnabled');
     expect(src).toContain('buildRunway');
     expect(src).toContain('formatRunwaySection');
   });

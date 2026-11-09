@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../test/integration/build-test-app.js';
@@ -13,18 +13,12 @@ import { setPendingAction, peekPendingAction } from './pending-actions.js';
  */
 const prisma = new PrismaClient();
 let app: FastifyInstance;
-const KEY = 'FEATURE_V2_GOAL_INTAKE';
-const prev = process.env[KEY];
 beforeAll(async () => {
   app = await buildTestApp([goalRoutes]);
 });
 afterAll(async () => {
   await app.close();
   await prisma.$disconnect();
-});
-afterEach(() => {
-  if (prev === undefined) delete process.env[KEY];
-  else process.env[KEY] = prev;
 });
 
 async function user(tag: string) {
@@ -39,7 +33,6 @@ const YEAR = new Date().getFullYear();
 
 describe('разбор цели — чат (commitGoal)', () => {
   it('денежная цель: «Цель записана» + деньги по записанным доходам/тратам + вопрос', async () => {
-    process.env[KEY] = 'all';
     const { userId } = await user('money');
     // 3 мес.: доход 900к, траты 600к → свободно 100к/мес.
     await prisma.income.create({ data: { userId, date: daysAgo(20), source: 'Зарплата', amount: 900_000 } });
@@ -53,16 +46,7 @@ describe('разбор цели — чат (commitGoal)', () => {
     expect(intake).toContain('Скажи «да»');
   });
 
-  it('флаг выкл. → ответ как раньше, без разбора', async () => {
-    delete process.env[KEY];
-    const { userId } = await user('off');
-    const msg = await commitGoal(userId, { area: 'finance', goalText: 'Подушка', target: 5_000_000 });
-    expect(msg).not.toContain('\n\n');
-    expect(msg).toMatch(/Буду вести\.$/);
-  });
-
   it('правка существующей цели — не постановка, разбора нет', async () => {
-    process.env[KEY] = 'all';
     const { userId } = await user('upd');
     const g = await prisma.yearlyGoal.create({ data: { userId, year: YEAR, area: 'finance', goalText: 'Подушка', target: 1_000_000 } });
     const msg = await commitGoal(userId, { area: 'finance', goalText: 'Подушка', target: 2_000_000, goalId: g.id });
@@ -73,7 +57,6 @@ describe('разбор цели — чат (commitGoal)', () => {
 
 describe('разбор цели — экран (POST /goals/yearly/:id/intake)', () => {
   it('не-денежная: темп + привычка по теме; текст в чате один раз', async () => {
-    process.env[KEY] = 'all';
     const { userId, headers } = await user('books');
     await prisma.habit.create({ data: { userId, name: 'Читать 20 минут', category: 'personal', frequency: 'daily' } });
     await prisma.habit.create({ data: { userId, name: 'Зарядка', category: 'health', frequency: 'daily' } });
@@ -102,7 +85,6 @@ describe('разбор цели — экран (POST /goals/yearly/:id/intake)',
   });
 
   it('старое неотвеченное предложение снимается: «да» не подтвердит его вслепую', async () => {
-    process.env[KEY] = 'all';
     const { userId, headers } = await user('pending');
     await setPendingAction(userId, 'add_expense', { amount: 5000, category: 'food' }, 'Записать расход 5 000 ₸?');
     const g = await prisma.yearlyGoal.create({ data: { userId, year: YEAR, area: 'health', goalText: 'Бегать по утрам' } });
@@ -112,7 +94,6 @@ describe('разбор цели — экран (POST /goals/yearly/:id/intake)',
   });
 
   it('старая цель (>10 мин) или чужая → null, в чат ничего', async () => {
-    process.env[KEY] = 'all';
     const a = await user('old');
     const b = await user('stranger');
     const old = await prisma.yearlyGoal.create({
@@ -124,10 +105,4 @@ describe('разбор цели — экран (POST /goals/yearly/:id/intake)',
     expect(await prisma.chatMessage.count({ where: { userId: { in: [a.userId, b.userId] } } })).toBe(0);
   });
 
-  it('флаг выкл. → null', async () => {
-    delete process.env[KEY];
-    const { userId, headers } = await user('roff');
-    const g = await prisma.yearlyGoal.create({ data: { userId, year: YEAR, area: 'health', goalText: 'Бег' } });
-    expect((await app.inject({ method: 'POST', url: `/goals/yearly/${g.id}/intake`, headers })).json().text).toBeNull();
-  });
 });

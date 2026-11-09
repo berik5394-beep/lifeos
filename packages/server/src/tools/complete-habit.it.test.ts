@@ -1,11 +1,10 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { completeHabitTool } from './complete-habit.js';
 import { buildGoalHabitHealth } from '../services/goal-habits/index.js';
 
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
-beforeEach(() => { process.env.FEATURE_V2_GOAL_HABITS = 'all'; });
 
 async function seedUser(email: string): Promise<string> {
   const u = await prisma.user.create({ data: { email, name: 'H', passwordHash: 'x' } });

@@ -5,16 +5,13 @@ import { join } from 'node:path';
 const SRC = readFileSync(join(__dirname, 'proactive-scheduler.ts'), 'utf8');
 
 describe('proactive-scheduler — v2 wiring (E1)', () => {
-  it('imports isV2ProactivityEnabled', () => {
-    expect(SRC).toMatch(/from '\.\.\/lib\/feature-flags\.js'/);
-    expect(SRC).toMatch(/isV2ProactivityEnabled/);
-  });
+
   it('imports getProactivityEngine', () => {
     expect(SRC).toMatch(/from '\.\/v2-proactivity-engine\.singleton\.js'/);
     expect(SRC).toMatch(/getProactivityEngine/);
   });
-  it('hook is flag-gated, awaited inside try/catch with console.warn', () => {
-    expect(SRC).toMatch(/isV2ProactivityEnabled\(\s*userId\s*\)/);
+  it('hook awaited inside try/catch with console.warn (без флага)', () => {
+    expect(SRC).not.toMatch(/isV2ProactivityEnabled/);
     expect(SRC).toMatch(/getProactivityEngine\(\)\.runForUser\(\s*userId\s*\)/);
     expect(SRC).toMatch(/\[v2-proactivity\]/);
   });

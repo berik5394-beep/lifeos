@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../test/integration/build-test-app.js';
@@ -25,20 +25,13 @@ import { createDeal } from './deals/service.js';
  */
 const prisma = new PrismaClient();
 let app: FastifyInstance;
-const ORIG = process.env.FEATURE_V2_RESCHEDULE;
 beforeAll(async () => {
   app = await buildTestApp([taskRoutes, chatRoutes, eventRoutes]);
 });
-afterEach(() => {
-  process.env.FEATURE_V2_RESCHEDULE = 'all';
-});
 afterAll(async () => {
-  if (ORIG === undefined) delete process.env.FEATURE_V2_RESCHEDULE;
-  else process.env.FEATURE_V2_RESCHEDULE = ORIG;
   await app.close();
   await prisma.$disconnect();
 });
-process.env.FEATURE_V2_RESCHEDULE = 'all';
 
 const TZ = 'Asia/Almaty';
 const { tomorrow } = civilDayRefs(TZ);
@@ -189,21 +182,6 @@ describe('перегруз дня → предложение сдвинуть г
     expect((await prisma.task.findUnique({ where: { id: mail.id } }))?.date.toISOString().slice(0, 10)).toBe(tomorrow);
   });
 
-  it('флаг выкл. → всё как раньше: без proposal и без pending', async () => {
-    process.env.FEATURE_V2_RESCHEDULE = '';
-    const { userId, headers } = await overloadedTomorrow('off');
-    const res = await app.inject({
-      method: 'POST',
-      url: '/tasks',
-      headers,
-      payload: { title: 'Отчёт', category: 'work', priority: 'medium', date: tomorrow, estimatedMinutes: 30 },
-    });
-    expect(res.json().proposal).toBeUndefined();
-    const out = (await createTaskTool.handler({ title: 'Ещё', date: tomorrow }, { userId })) as { message: string; rescheduleStaged?: boolean };
-    expect(out.message).not.toContain('перегружен: дел');
-    expect(out.rescheduleStaged).toBeUndefined();
-    expect(await prisma.pendingAction.findUnique({ where: { userId } })).toBeNull();
-  });
 });
 
 describe('этап 2: встречи съедают время дня', () => {
@@ -321,27 +299,11 @@ describe('этап 2: «сделал X» — привычка или задач�
     expect(await prisma.habitLog.count({ where: { habitId: h.id } })).toBe(0);
   });
 
-  it('флаг выкл. → как раньше: «привычка не найдена» / «Задача не найдена»', async () => {
-    process.env.FEATURE_V2_RESCHEDULE = '';
-    const userId = await u('off2');
-    await prisma.habit.create({ data: { userId, name: 'Бег', category: 'health', frequency: 'daily' } });
-    await prisma.task.create({ data: { userId, title: 'Отчёт', category: 'work', priority: 'medium', date: d(tomorrow) } });
-    const habits = await prisma.habit.findMany({ where: { userId, active: true }, select: { id: true, name: true } });
-    await expect(completeHabitTool.handler({ name: 'отчёт' }, { userId })).rejects.toThrow(buildNotFoundMessage('отчёт', habits));
-    expect(await prisma.task.count({ where: { userId, completed: true } })).toBe(0);
-  });
 });
 
 describe('шаги по сделкам × перегруз дня', () => {
-  const ORIG_DEALS = process.env.FEATURE_V2_DEALS;
-  afterAll(() => {
-    if (ORIG_DEALS === undefined) delete process.env.FEATURE_V2_DEALS;
-    else process.env.FEATURE_V2_DEALS = ORIG_DEALS;
-  });
-
   // Завтра: свободно 60 мин, «Почта»+«Банк» = 60 (влезает). Шаг по сделке +20 → 80.
   it('шаг по сделке грузит день: двигаем только задачи, шаг остаётся', async () => {
-    process.env.FEATURE_V2_DEALS = 'all';
     const { userId, mail } = await overloadedTomorrow('deal-step');
     await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', nextStepDate: tomorrow, nextStepText: 'связаться' });
     const p = await proposeReschedule(userId, tomorrow, null);
@@ -351,14 +313,6 @@ describe('шаги по сделкам × перегруз дня', () => {
     expect(p?.text).toContain('Звонки/шаги по сделкам (1) не двигаю');
     const pending = await prisma.pendingAction.findUnique({ where: { userId } });
     expect(JSON.stringify(pending?.inputJson)).not.toContain('deal:');
-  });
-
-  it('флаг сделок выкл. → как раньше: день влезает, предложения нет', async () => {
-    process.env.FEATURE_V2_DEALS = '';
-    const { userId } = await overloadedTomorrow('deal-off');
-    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', nextStepDate: tomorrow, nextStepText: 'связаться' });
-    expect(await proposeReschedule(userId, tomorrow, null)).toBeNull();
-    process.env.FEATURE_V2_DEALS = 'all';
   });
 });
 

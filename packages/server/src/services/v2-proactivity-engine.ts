@@ -3,7 +3,7 @@
  *
  * Single source of truth for outbound proactive nudges based on the new
  * memory tiers (semantic / episodic / procedural / emotional). Runs per
- * scheduler tick (every 10 min, behind FEATURE_V2_PROACTIVITY flag).
+ * scheduler tick (every 10 min).
  *
  * Flow: runForUser → detectCandidates (13 detectors) → filterCandidates
  * (4 gates in order: DND, RateLimit, Significance, Dedup) → pick top by
@@ -425,7 +425,6 @@ import {
 import { getUserTimezone } from '../lib/user-context.js';
 import { runAgent } from './claude-agent.js';
 import { getEngagement, adaptiveThreshold } from './engagement/index.js';
-import { isV2EngagementEnabled, isV2MoodToneEnabled, isV2OpenLoopsEnabled } from '../lib/feature-flags.js';
 import { gatherOpenLoops, shouldNudgeOpenLoops } from './open-loops.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { persistCandidates } from './insight-store.js';
@@ -552,8 +551,6 @@ function humanDay(d: Date): string {
 
 async function detectObligationDue(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2ObligationsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2ObligationsEnabled(userId)) return [];
     const { prisma } = await import('../lib/prisma.js');
     const now = Date.now();
     const rows = await prisma.obligation.findMany({
@@ -607,8 +604,6 @@ async function detectObligationDue(userId: string): Promise<NudgeCandidate[]> {
 
 async function detectDecisionReview(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2DecisionsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2DecisionsEnabled(userId)) return [];
     const { prisma } = await import('../lib/prisma.js');
     const now = Date.now();
     const rows = await prisma.decision.findMany({
@@ -645,8 +640,6 @@ async function detectDecisionReview(userId: string): Promise<NudgeCandidate[]> {
 // топ-категория ест ≥25% месячной нормы ИЛИ долги сдвигают цель на ≥1 мес.
 async function detectGoalImpact(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2GoalImpactEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2GoalImpactEnabled(userId)) return [];
     const { buildGoalImpact } = await import('./goal-impact/index.js');
     const gi = await buildGoalImpact(userId);
     if (!gi) return [];
@@ -677,8 +670,6 @@ async function detectGoalImpact(userId: string): Promise<NudgeCandidate[]> {
 // Runway: короткий запас денег (по записям). Кандидат при short/critical/underwater.
 async function detectRunwayLow(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2RunwayEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2RunwayEnabled(userId)) return [];
     const { buildRunway } = await import('./runway/index.js');
     const rw = await buildRunway(userId);
     if (!rw) return [];
@@ -707,8 +698,6 @@ async function detectRunwayLow(userId: string): Promise<NudgeCandidate[]> {
 // Energy↔Result: связь сон↔выполнение подтверждена И недавно недосып.
 async function detectEnergyLink(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2EnergyEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2EnergyEnabled(userId)) return [];
     const { buildEnergyLink } = await import('./energy-link/index.js');
     const el = await buildEnergyLink(userId);
     if (!el) return [];
@@ -734,8 +723,6 @@ async function detectEnergyLink(userId: string): Promise<NudgeCandidate[]> {
 // Relationships: застоявшийся человек × открытое обязательство по нему (FK).
 async function detectRelationshipLink(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2RelationshipsEnabled, isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2RelationshipsEnabled(userId)) return [];
     const { buildRelationshipNudge } = await import('./relationship-link/index.js');
     const rn = await buildRelationshipNudge(userId);
     if (!rn) return [];
@@ -751,9 +738,8 @@ async function detectRelationshipLink(userId: string): Promise<NudgeCandidate[]>
       },
       toneHint: 'gentle',
     };
-    // Усиление (План B): тип-вес в payload ТОЛЬКО при флаге person-types →
-    // off=байт-идентично (без typeWeight scoreSignificance даёт прежнее).
-    if (isV2PersonTypesEnabled(userId) && rn.typeWeight !== undefined) {
+    // Усиление (План B): тип-вес человека в payload → scoreSignificance.
+    if (rn.typeWeight !== undefined) {
       (cand.payload as Record<string, unknown>).typeWeight = rn.typeWeight;
     }
     cand.significance = scoreSignificance(cand);
@@ -766,12 +752,10 @@ async function detectRelationshipLink(userId: string): Promise<NudgeCandidate[]>
 
 /**
  * Память ДР (мост #2): человек с днём рождения сегодня/завтра → нудж
- * «Завтра ДР у Ахмета — поздравишь?». READ-ONLY. Флаг-гейт ранний (off=identical).
+ * «Завтра ДР у Ахмета — поздравишь?». READ-ONLY.
  */
 async function detectBirthday(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2BirthdayEnabled, isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2BirthdayEnabled(userId)) return [];
     const rows = await buildUpcomingBirthdays(userId, new Date(), 1); // окно: сегодня + завтра
     const out: NudgeCandidate[] = [];
     for (const r of rows) {
@@ -789,12 +773,9 @@ async function detectBirthday(userId: string): Promise<NudgeCandidate[]> {
         },
         toneHint: 'gentle',
       };
-      // Усиление (План B): тип-вес в payload ТОЛЬКО при флаге person-types →
-      // off=байт-идентично (без typeWeight scoreSignificance даёт прежнее).
-      if (isV2PersonTypesEnabled(userId)) {
-        const { personTypeWeight } = await import('./person-types/index.js');
-        (cand.payload as Record<string, unknown>).typeWeight = personTypeWeight(r.personType);
-      }
+      // Усиление (План B): тип-вес человека в payload → scoreSignificance.
+      const { personTypeWeight } = await import('./person-types/index.js');
+      (cand.payload as Record<string, unknown>).typeWeight = personTypeWeight(r.personType);
       cand.significance = scoreSignificance(cand);
       out.push(cand);
     }
@@ -807,14 +788,12 @@ async function detectBirthday(userId: string): Promise<NudgeCandidate[]> {
 
 /**
  * День памяти (мост #2): человек с death_date сегодня/завтра → бережный нудж.
- * READ-ONLY. Флаг-гейт ранний (off=identical). Тон ВСЕГДА supportive —
+ * READ-ONLY. Тон ВСЕГДА supportive —
  * generateNudge берёт фиксированный шаблон (без стиль-rewrite), токсичный
  * стиль недостижим.
  */
 async function detectMemorial(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2BirthdayEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2BirthdayEnabled(userId)) return [];
     const rows = await buildUpcomingMemorials(userId, new Date(), 1); // окно: сегодня + завтра
     const out: NudgeCandidate[] = [];
     for (const r of rows) {
@@ -842,12 +821,10 @@ async function detectMemorial(userId: string): Promise<NudgeCandidate[]> {
 /**
  * Привычка↔цель (interconnection): цель, чьи привязанные привычки буксуют
  * ≥3 дней → нудж «цель проседает». Чинит захардкоженный goalsBehind:0
- * реальным числом. READ-ONLY. Флаг-гейт ранний (off=identical).
+ * реальным числом. READ-ONLY.
  */
 async function detectGoalHabitStall(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2GoalHabitsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2GoalHabitsEnabled(userId)) return [];
     const health = await buildGoalHabitHealth(userId, new Date());
     const worst = pickWorstStall(computeStall(health, 3));
     if (!worst) return [];
@@ -876,13 +853,12 @@ async function detectGoalHabitStall(userId: string): Promise<NudgeCandidate[]> {
 /**
  * Завал открытых петель (interconnection): много просрочек + неотмеченных
  * привычек одновременно → нудж «N просрочек, разгрести?». READ-ONLY.
- * Флаг-гейт ранний (off=identical: detector → []). Дедуп — как у соседей
+ * Дедуп — как у соседей
  * без entityId: scope `open_loop_pileup:global` (gate4 пропускает, частоту
  * держит rate-limit gate).
  */
 async function detectOpenLoopPileup(userId: string): Promise<NudgeCandidate[]> {
   try {
-    if (!isV2OpenLoopsEnabled(userId)) return [];
     const l = await gatherOpenLoops(userId).catch(() => null);
     if (!l || !shouldNudgeOpenLoops(l)) return [];
     const cand: NudgeCandidate = {
@@ -1204,8 +1180,6 @@ async function detectMonthlyGoalStall(userId: string): Promise<NudgeCandidate[]>
 // Person-types: важный ЗАПУЩЕННЫЙ человек × тип × owed-money (READ-ONLY).
 async function detectNeglectedKeyPerson(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2PersonTypesEnabled(userId)) return [];
     const { buildNeglectedKeyPerson } = await import('./person-types/index.js');
     const n = await buildNeglectedKeyPerson(userId);
     if (!n) return [];
@@ -1232,8 +1206,6 @@ async function detectNeglectedKeyPerson(userId: string): Promise<NudgeCandidate[
 // Person-meeting: бриф перед встречей на ВНУТРЕННЕМ календаре (тип↔дело↔деньги).
 async function detectPersonMeeting(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2PersonTypesEnabled(userId)) return [];
     const { buildPersonMeetingBriefs } = await import('./person-types/index.js');
     const briefs = await buildPersonMeetingBriefs(userId);
     // Ранний бриф — за 3 ч … 75 мин: за час тот же бриф придёт пушем «Через час: …»
@@ -1269,8 +1241,6 @@ const DEAL_SOURCE_GAP_DAYS = 2;
 // иначе «пора шаг» звучал бы каждый день вечно.
 async function detectDealNextStepDue(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2DealsEnabled(userId)) return [];
     const { prisma } = await import('../lib/prisma.js');
     const { getUserTimezone } = await import('../lib/user-context.js');
     const { localDateOnlyUTC } = await import('../lib/tz.js');
@@ -1337,8 +1307,6 @@ async function pickDealNudge(
 // 2 дня на источник; gate4 и R10 стора — 3 дня на ключ (короче недели — не мешают).
 async function detectDealStepOverdue(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2DealsEnabled(userId)) return [];
     const { prisma } = await import('../lib/prisma.js');
     const { getUserTimezone } = await import('../lib/user-context.js');
     const { localDateOnlyUTC } = await import('../lib/tz.js');
@@ -1366,8 +1334,6 @@ async function detectDealStepOverdue(userId: string): Promise<NudgeCandidate[]> 
 // просроченный шаг — deal_step_overdue). Давление → в PRESSURE_SOURCES. Каденс как выше.
 async function detectDealStale(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2DealsEnabled(userId)) return [];
     const { prisma } = await import('../lib/prisma.js');
     const { OPEN_STAGES } = await import('./deals/stages.js');
     const { instrumental } = await import('./deals/format.js');
@@ -1422,8 +1388,6 @@ async function sourceNudgedWithin(userId: string, source: NudgeSource, days: num
 // ЗДЕСЬ (ревью I1): gate4_Dedup и R10-кулдаун стора — только 3 дня.
 async function detectSalesPlanBehind(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2DealsEnabled(userId)) return [];
     const { salesPlanStatus } = await import('./deals/service.js');
     const { describePlan } = await import('./deals/format.js');
     const { getUserTimezone } = await import('../lib/user-context.js');
@@ -1736,22 +1700,18 @@ export class V2ProactivityEngine implements ProactivityEngine {
     if (!(await gate2_RateLimit(userId, now))) return [];
     // mood-tone Part 2: в эмоциональном спаде не наваливаем — «давящие»
     // нуджи глушатся (поддержка/время-критичное/деньги-защита остаются).
-    // Best-effort: сбой mood-чтения → не глушим. off → ветка не выполняется.
-    if (isV2MoodToneEnabled(userId)) {
-      const shift = await getEmotionalMemory()
-        .detectMoodShift(userId)
-        .catch(() => null);
-      candidates = suppressPressureNudges(candidates, shift);
-      if (candidates.length === 0) return [];
-    }
+    // Best-effort: сбой mood-чтения → не глушим.
+    const shift = await getEmotionalMemory()
+      .detectMoodShift(userId)
+      .catch(() => null);
+    candidates = suppressPressureNudges(candidates, shift);
+    if (candidates.length === 0) return [];
     let sigThreshold = 0.6;
-    if (isV2EngagementEnabled(userId)) {
-      try {
-        const eng = await getEngagement(userId, now);
-        sigThreshold = adaptiveThreshold(0.6, eng.receptiveness);
-      } catch (err) {
-        console.warn('[engagement:gate3] failed:', err);
-      }
+    try {
+      const eng = await getEngagement(userId, now);
+      sigThreshold = adaptiveThreshold(0.6, eng.receptiveness);
+    } catch (err) {
+      console.warn('[engagement:gate3] failed:', err);
     }
     const passed: NudgeCandidate[] = [];
     for (const c of candidates) {

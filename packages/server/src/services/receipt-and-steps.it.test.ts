@@ -101,14 +101,12 @@ describe('чек с фото → трата', () => {
 describe('даты через робота — календарный день юзера (Алматы)', () => {
   it('трата, доход, баланс — сегодня по Алматы, не «вчера»', async () => {
     const { userId } = await user('dates');
-    process.env.FEATURE_V2_RUNWAY_BALANCE = 'all';
     await runRegistryTool('add_expense', { amount: 100, category: 'еда' }, { userId });
     await runRegistryTool('add_income', { amount: 200, source: 'зп' }, { userId });
     await runRegistryTool('set_balance', { balance: 5000 }, { userId });
     expect((await prisma.expense.findFirst({ where: { userId } }))?.date.toISOString().slice(0, 10)).toBe(TODAY_ALA);
     expect((await prisma.income.findFirst({ where: { userId } }))?.date.toISOString().slice(0, 10)).toBe(TODAY_ALA);
     expect((await prisma.cashSnapshot.findFirst({ where: { userId } }))?.asOf.toISOString().slice(0, 10)).toBe(TODAY_ALA);
-    delete process.env.FEATURE_V2_RUNWAY_BALANCE;
   });
 });
 

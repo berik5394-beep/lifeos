@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { prisma as appPrisma } from '../../lib/prisma.js';
 import { createDeal, updateDeal } from './service.js';
@@ -14,7 +14,6 @@ const { needsLocalTools, mayNeedLocalTools, mayNeedDealTools, handleMessage } = 
  */
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
-beforeEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
 afterEach(() => { vi.restoreAllMocks(); });
 
 async function user(tag: string) {
@@ -53,13 +52,6 @@ describe('инструменты на живые фразы о сделках', 
     expect(await needsLocalTools(userId, 'как там Ахмет по оборудованию?')).toBe(false);
   });
 
-  it('флаг off → по имени клиента не включаем', async () => {
-    const userId = await user('off');
-    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
-    process.env.FEATURE_V2_DEALS = '';
-    expect(await needsLocalTools(userId, 'как там Ахмет по оборудованию?')).toBe(false);
-  });
-
   it('болтовня без имени клиента → без инструментов', async () => {
     const userId = await user('chat');
     await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
@@ -78,20 +70,10 @@ const CHITCHAT = [
   'скинул вес на 3 кг за месяц',
 ];
 
-describe('ревью-3 I5: словарь сделок только при включённых сделках', () => {
+describe('ревью-3 I5: словарь сделок', () => {
   // 2026-11-09: общий словарь стал «инструменты по умолчанию, кроме болтовни»
-  // (mayNeedLocalTools). Сделки по-прежнему НИЧЕГО не добавляют при выключенном
-  // флаге: needsLocalTools == mayNeedLocalTools (+ привычки юзера).
-  it('флаг off: словарь/имена сделок ничего не добавляют — needsLocalTools == mayNeedLocalTools', async () => {
-    const userId = await user('off-corpus');
-    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
-    process.env.FEATURE_V2_DEALS = '';
-    for (const p of [...PHRASES, ...CHITCHAT, 'добавь задачу купить хлеб', 'расскажи анекдот про кота', 'как там Ахмет по оборудованию?']) {
-      expect({ p, tools: await needsLocalTools(userId, p) }).toEqual({ p, tools: mayNeedLocalTools(p) });
-    }
-  });
-
-  it('флаг on: болтовня/общие вопросы с «опасными» корнями — без инструментов (даже при открытой сделке)', async () => {
+  // (mayNeedLocalTools). Флаг сделок удалён — сделки всегда включены.
+  it('болтовня/общие вопросы с «опасными» корнями — без инструментов (даже при открытой сделке)', async () => {
     const userId = await user('on-chat');
     await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
     for (const p of CHITCHAT.filter((t) => /\?$/.test(t) || /^придумай/.test(t))) {

@@ -152,8 +152,8 @@ describe('captureActivity — fire-and-forget structural', () => {
     expect(() => captureActivity('user-1', null)).not.toThrow();
   });
 
-  it('captureActivity за флагом isV2MemoryEnabled', () => {
-    expect(SRC).toMatch(/isV2MemoryEnabled\(/);
+  it('captureActivity без флага — пишет всегда', () => {
+    expect(SRC).not.toMatch(/isV2MemoryEnabled/);
   });
 
   it('recordEvent вызывается fire-and-forget (void + .catch), не await', () => {

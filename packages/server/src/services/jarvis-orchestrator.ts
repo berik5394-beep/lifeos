@@ -7,7 +7,7 @@ import {
   ritualOptsFor,
 } from './assistant-service.js';
 import { buildJarvisPrompt } from '../ai/jarvis-prompt.js';
-import { extractFromTranscript, extractFromChat } from './dictation-service.js';
+import { extractFromChat } from './dictation-service.js';
 import {
   parseBookingIntent,
   buildBookingUrl,
@@ -47,7 +47,6 @@ import {
   BATCH_ACTION,
   type BatchItem,
 } from './pending-actions.js';
-import { isV2MemoryEnabled } from '../lib/feature-flags.js';
 import { captureV2InBackground } from './v2-capture.js';
 import {
   buildV2EnrichmentBlock,
@@ -58,24 +57,11 @@ import {
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
 import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, openDealsForMatching, DEAL_INCOME_CHOICE, PARTIAL_PAYMENT, JUST_INCOME_EXIT, JUST_INCOME_RE, dealAdvancesSum } from './deals/index.js';
-import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
-import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
-import { isV2IdentityEnabled } from '../lib/feature-flags.js';
-import { isV2HermesEnabled } from '../lib/feature-flags.js';
-import { isV2RealtimeEnabled } from '../lib/feature-flags.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
-import {
-  isV2InlineNudgeEnabled,
-  isV2SavingsCoachEnabled,
-  isV2ObligationsEnabled,
-  isV2AntiFabEnabled,
-  isV2MemQualityEnabled,
-  isV2SupersedeEnabled,
-} from '../lib/feature-flags.js';
 import {
   routeToSkill,
   buildSkillInstruction,
@@ -141,8 +127,6 @@ export interface JarvisResponse {
   openPanel?: string | null;
 }
 
-/** Флаг сделок выключен → «покажи сделки» не панель, а как до фичи (ревью I4). */
-const DEALS_PANEL_OFF: ReadonlySet<string> = new Set(['deals']);
 
 const PANEL_REPLY: Record<string, string> = {
   tasks: 'Открываю задачи',
@@ -252,9 +236,7 @@ async function captureInBackground(
     // intent-TZ фикс: «сегодня/завтра» в извлечённых задачах = календарь юзера.
     const tz = await getUserTimezone(userId);
     const todayCivil = civilDayRefs(tz).today;
-    const extracted = isV2MemQualityEnabled(userId)
-      ? await extractFromChat(text, user?.name || 'друг', { detectSupersede: isV2SupersedeEnabled(userId), tz })
-      : await extractFromTranscript(text, user?.name || 'друг', tz);
+    const extracted = await extractFromChat(text, user?.name || 'друг', { tz });
     let tasks = 0;
     let memories = 0;
     if (!opts.memoriesOnly && extracted.tasks.length > 0) {
@@ -282,7 +264,7 @@ async function captureInBackground(
     // задачами не атомарна по смыслу.
     for (const m of extracted.memories) {
       // ОДНА ПАМЯТЬ (M3 Unit A): ЕДИНЫЙ писатель writeMemory (дедуп+embedding+
-      // episodic-поля). Legacy captureMemory удалён (FEATURE_V2_WRITE=all в проде).
+      // episodic-поля). Legacy captureMemory удалён (флага записи больше нет).
       const r = await writeMemory(userId, {
         type: m.type,
         content: m.content,
@@ -292,18 +274,16 @@ async function captureInBackground(
         importance: m.importance,
       });
       memories++;
-      if (isV2SupersedeEnabled(userId) && m.supersedesTopic && r.action !== 'skipped') {
+      if (m.supersedesTopic && r.action !== 'skipped') {
         await supersedeByTopic(userId, m.type, m.supersedesTopic, r.id).catch(() => null);
       }
     }
-    // v2.0 Week 5 D3 — dual-write to new memory tiers behind flag.
+    // v2.0 Week 5 D3 — запись в новые слои памяти (сущности/события/эмоции).
     // Fire-and-forget so legacy capture's return time is unchanged;
     // captureV2InBackground itself has top-level try/catch and never throws.
-    if (isV2MemoryEnabled(userId)) {
-      void captureV2InBackground(userId, text, msgId ?? 'unknown').catch(
-        (err) => console.warn('[v2-capture] hook:', err),
-      );
-    }
+    void captureV2InBackground(userId, text, msgId ?? 'unknown').catch(
+      (err) => console.warn('[v2-capture] hook:', err),
+    );
     return { tasks, memories };
   } catch {
     return { tasks: 0, memories: 0 };
@@ -581,10 +561,10 @@ export function mayNeedDealTools(text: string): boolean {
 }
 
 /**
- * Ревью I-b: словаря мало («как там Ахмет по оборудованию?»). При включённых
- * сделках — словарь сделок и имя клиента с открытой сделкой в сообщении тоже
+ * Ревью I-b: словаря мало («как там Ахмет по оборудованию?»). Для
+ * сделок — словарь сделок и имя клиента с открытой сделкой в сообщении тоже
  * включают инструменты. Один запрос (открытые сделки, тот же, что для дохода);
- * сбой — только словари. Флаг off — ровно прежний mayNeedLocalTools.
+ * сбой — только словари.
  */
 /** Быстрые действия «одна запись» — для списка дел не годятся. */
 const SINGLE_WRITE_INTENTS = new Set(['create_task', 'create_event', 'complete_task', 'complete_habit']);
@@ -628,7 +608,7 @@ export async function needsLocalTools(userId: string, text: string): Promise<boo
   } catch {
     /* подсказка — best-effort */
   }
-  if (text.trim().length < 12 || !isV2DealsEnabled(userId)) return false;
+  if (text.trim().length < 12) return false;
   if (mayNeedDealTools(text)) return true;
   try {
     const open = await openDealsForMatching(userId);
@@ -969,7 +949,7 @@ export async function runConfirmedAction(
       });
     }
     // Коуч по накоплениям: после подтверждённого расхода — дописать
-    // строку, если трата бьёт по фин-цели (гейт+флаг внутри хука).
+    // строку, если трата бьёт по фин-цели (гейт внутри хука).
     if (action === 'add_expense') {
       const coach = await maybeSavingsCoachLine(userId, input);
       if (coach) message += `\n\n${coach}`;
@@ -1148,7 +1128,7 @@ async function handleMessageCore(
         return { reply, intent: 'cancel_pending' };
       }
       // Ревью I-d: «получил 2 млн» → «от Серика» — тот же путь сделки, что и одной фразой.
-      if (pending.action === 'add_income' && slot === 'source' && isV2DealsEnabled(userId)) {
+      if (pending.action === 'add_income' && slot === 'source') {
         // Ревью-3 I1: «аванс» был в первой фразе («получил аванс 2 млн») — помним его.
         const routed = await routeDealIncome(userId, Number(pending.input.amount), text.trim(), text, {
           partial: pending.input.__partial === true,
@@ -1254,7 +1234,7 @@ async function handleMessageCore(
   // intent-TZ фикс (аудит brain-hands 2026-06-11): «сегодня/завтра» в
   // интентах/брони = календарь ЮЗЕРА, не UTC сервера (Алматы 00–05 → вчера).
   const userTz = await getUserTimezone(userId);
-  const intentP = parseIntent(text, userTz, undefined, { disabledPanels: isV2DealsEnabled(userId) ? undefined : DEALS_PANEL_OFF }).then(
+  const intentP = parseIntent(text, userTz).then(
     // Несколько дел в одном сообщении — быстрый путь создал бы ОДНУ запись со
     // всем текстом. Отдаём агенту: он создаст по задаче/встрече на каждое дело.
     (ip) => (isMultiItemRequest(text) && SINGLE_WRITE_INTENTS.has(ip.action) ? { action: 'unknown' as const, text } : ip),
@@ -1626,7 +1606,7 @@ async function handleMessageCore(
     // Ревью сделок B2/X1: «получил 2 млн от Ахмета» при открытой сделке с Ахметом —
     // оплата сделки, а не голый доход (иначе Income задвоится при «выиграна»).
     // Маршрутизация НИЧЕГО не пишет: сделка закрывается только на «Подтвердить».
-    if (intent.action === 'add_income' && input.source != null && isV2DealsEnabled(userId)) {
+    if (intent.action === 'add_income' && input.source != null) {
       const routed = await routeDealIncome(userId, Number(input.amount), String(input.source), text);
       if (routed) {
         await saveTurn(userId, text, routed.reply);
@@ -1828,20 +1808,18 @@ async function handleMessageCore(
   const optIn = gathered?.context.therapeuticMode !== false;
   const finalTherapeutic = therapeuticMode && optIn;
 
-  // Real-Time Foundation: пояс юзера в промпт ТОЛЬКО при флаге (best-effort,
-  // off → undefined → байт-идентично). userTz уже резолвнут выше (тот же
-  // getUserTimezone, падает в 'UTC') — без второго запроса.
-  const realtimeTz = isV2RealtimeEnabled(userId) ? userTz : undefined;
+  // Real-Time Foundation: пояс юзера в промпт. userTz уже резолвнут выше (тот
+  // же getUserTimezone, падает в 'UTC') — без второго запроса.
   let system = gathered
     ? buildJarvisPrompt(gathered.context, {
         ...ritualOptsFor(intent, gathered.dayCompletionPercent),
         channel,
         therapeuticMode: finalTherapeutic,
-        inlineNudge: isV2InlineNudgeEnabled(userId),
-        goalCapture: isV2SavingsCoachEnabled(userId),
-        obligationCapture: isV2ObligationsEnabled(userId),
-        antiFab: isV2AntiFabEnabled(userId),
-        nowTz: realtimeTz,
+        inlineNudge: true,
+        goalCapture: true,
+        obligationCapture: true,
+        antiFab: true,
+        nowTz: userTz,
       })
     : 'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
 
@@ -1849,7 +1827,7 @@ async function handleMessageCore(
   // оси, тон, цена часа/команда, навыки, нужны ли инструменты — НЕ зависят друг
   // от друга, раньше шли по очереди. Теперь — одновременно; применяем в прежнем
   // порядке (память → оси → тон → время=деньги → навык). Каждый — best-effort.
-  const memoryOn = !!gathered && isV2MemoryEnabled(userId);
+  const memoryOn = !!gathered;
   const [enrich, toneSection, timeLines, skill, toolsHint] = await Promise.all([
     // v2.0 Week 5 D3 — additive memory enrichment block (best-effort, dropped
     // silently on fault → legacy prompt unaffected). Бюджет 2500мс: enrichment
@@ -1867,12 +1845,10 @@ async function handleMessageCore(
     // v2 Phase B2 — lazy refresh bot traits (stale > 6h) → затем тон бота
     // (тон читает свежие traits, поэтому — цепочкой, но параллельно остальному).
     (async () => {
-      if (isV2IdentityEnabled(userId)) {
-        try {
-          await getBotTraitsStore().refreshTraitsIfStale(userId);
-        } catch (err) {
-          console.warn('[orchestrator:identity-refresh] failed:', err);
-        }
+      try {
+        await getBotTraitsStore().refreshTraitsIfStale(userId);
+      } catch (err) {
+        console.warn('[orchestrator:identity-refresh] failed:', err);
       }
       if (!memoryOn) return '';
       return withTimeout(fetchV2EnrichmentToneSection(userId), 1500, '').catch(() => '');
@@ -1892,7 +1868,6 @@ async function handleMessageCore(
     // детерминированный раннер (две фазы: пакет → подтверждение), без агента;
     // иначе — план навыка в промпт агенту. Best-effort: сбой → обычный агент.
     (async (): Promise<{ reply: string | null; instruction: string | null }> => {
-      if (!isV2HermesEnabled(userId)) return { reply: null, instruction: null };
       try {
         const skills = await getHermesStore().activeSkills(userId);
         const matched = await routeToSkill(userId, text, skills);
@@ -2178,24 +2153,22 @@ async function handleMessageCore(
   void trackInterests(userId, text);
 
   // v2 Phase B1 — post-process content rules (Gate 1: step-count)
-  if (isV2AxesEnabledFlag(userId)) {
-    try {
-      const axes = await getUserAxesStore().getAxes(userId);
-      const stepCount = extractStepCount(reply);
-      const gate1 = shouldForceOneStep(axes, stepCount);
-      if (gate1.force) {
-        // Dev-only signal — MUST stay server-side. Do NOT create a
-        // user-facing Insight and do NOT prepend a marker to `reply`:
-        // those leaked internal diagnostics straight to the user (the
-        // "⚠️ Gate 1 rule fired" Telegram message + the "(gate-1: 1-step)"
-        // reply prefix). Detection is kept as the hook; real 1-step
-        // enforcement (reply regeneration under a step constraint) is a
-        // deliberate follow-up, not a UI-text stub.
-        console.log(`[axes:gate1] ${gate1.reason}`);
-      }
-    } catch (err) {
-      console.warn('[axes:postprocess] failed:', err);
+  try {
+    const axes = await getUserAxesStore().getAxes(userId);
+    const stepCount = extractStepCount(reply);
+    const gate1 = shouldForceOneStep(axes, stepCount);
+    if (gate1.force) {
+      // Dev-only signal — MUST stay server-side. Do NOT create a
+      // user-facing Insight and do NOT prepend a marker to `reply`:
+      // those leaked internal diagnostics straight to the user (the
+      // "⚠️ Gate 1 rule fired" Telegram message + the "(gate-1: 1-step)"
+      // reply prefix). Detection is kept as the hook; real 1-step
+      // enforcement (reply regeneration under a step constraint) is a
+      // deliberate follow-up, not a UI-text stub.
+      console.log(`[axes:gate1] ${gate1.reason}`);
     }
+  } catch (err) {
+    console.warn('[axes:postprocess] failed:', err);
   }
 
   await saveTurn(userId, text, reply);

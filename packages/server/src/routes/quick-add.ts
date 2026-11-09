@@ -104,7 +104,7 @@ export async function quickAddRoutes(app: FastifyInstance): Promise<void> {
       });
       linkTaskToGoalInBackground(request.userId, task.id, task.title);
 
-      // Перегруз дня (флаг): быстрое добавление — тот же движок, что POST /tasks.
+      // Перегруз дня: быстрое добавление — тот же движок, что POST /tasks.
       const proposal = await proposeReschedule(request.userId, parsed.date, task.id, new Date(), { fromCard: true });
       // Наложение по времени («позвонить завтра в 10:30» поверх встречи) — главный
       // путь задач со временем с экрана (POST /tasks приложение шлёт без времени).

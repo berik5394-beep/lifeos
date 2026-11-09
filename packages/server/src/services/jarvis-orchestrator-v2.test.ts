@@ -14,25 +14,20 @@ describe('jarvis-orchestrator — v2 wiring (D3)', () => {
     expect(SRC).toMatch(/buildV2EnrichmentBlock/);
     expect(SRC).toMatch(/fetchV2EnrichmentData/);
   });
-  it('imports isV2MemoryEnabled', () => {
-    expect(SRC).toMatch(/from '\.\.\/lib\/feature-flags\.js'/);
-    expect(SRC).toMatch(/isV2MemoryEnabled/);
-  });
-  it('captureInBackground wraps captureV2 in isV2MemoryEnabled gate, fire-and-forget', () => {
+  it('captureInBackground вызывает captureV2 fire-and-forget (без флага)', () => {
     const capFn = SRC.slice(SRC.indexOf('async function captureInBackground'));
     const head = capFn.slice(0, 3000);
-    expect(head).toMatch(/isV2MemoryEnabled\(\s*userId\s*\)/);
+    expect(SRC).not.toMatch(/isV2MemoryEnabled/);
     expect(head).toMatch(/void\s+captureV2InBackground\(/);
     expect(head).toMatch(/\.catch\(/);
   });
   it('пишет через единый writeMemory; legacy captureMemory удалён (M3 Unit A)', () => {
-    expect(SRC).toMatch(/extractFromTranscript\(/);
+    expect(SRC).toMatch(/extractFromChat\(/);
     expect(SRC).toMatch(/writeMemory\(/);
     expect(SRC).not.toMatch(/(await|void)\s+captureMemory\(/);
   });
-  it('handleMessage appends v2 enrichment block to system prompt under flag', () => {
+  it('handleMessage appends v2 enrichment block to system prompt', () => {
     const handle = SRC.slice(SRC.indexOf('export async function handleMessage'));
-    expect(handle).toMatch(/isV2MemoryEnabled\(\s*userId\s*\)/);
     expect(handle).toMatch(/fetchV2EnrichmentData\(\s*userId\s*\)/);
     expect(handle).toMatch(/buildV2EnrichmentBlock\(/);
     // Block is appended (string concat) — not replacing system.

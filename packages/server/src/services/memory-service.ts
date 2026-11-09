@@ -1,6 +1,5 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { isV2ForgetEnabled, isV2DecayEnabled } from '../lib/feature-flags.js';
 import {
   embedDocument,
   embedQuery,
@@ -134,7 +133,7 @@ export function mergeDetails(
 }
 
 // M3 Unit A (2026-06-06): legacy writer captureMemory удалён — единый писатель
-// writeMemory (episodic-memory.ts) заменил его (FEATURE_V2_WRITE=all в проде).
+// writeMemory (episodic-memory.ts) заменил его (флага записи больше нет).
 // getRelevantMemories (legacy reader) ещё жив — Unit B.
 
 export async function getRelevantMemories(
@@ -144,37 +143,28 @@ export async function getRelevantMemories(
 ): Promise<MemoryRow[]> {
   const now = new Date();
 
-  // F1+F3 (за флагом FEATURE_V2_FORGET): из recall убираем сырые
-  // type='message' строки (30% шума в проде) и чтим invalidAt
-  // (инвалидированные записи скрыты — supersession). OFF → пусто →
-  // SQL/where байт-идентичны сегодняшним во всех трёх путях.
-  const forget = isV2ForgetEnabled(userId);
+  // F1+F3: из recall убираем сырые type='message' строки (30% шума в проде)
+  // и чтим invalidAt (инвалидированные записи скрыты — supersession) — во
+  // всех трёх путях.
   // Время «забыто ли» — часы ПРИЛОЖЕНИЯ (`now`), как у писателя forgetMemory
   // и у ветки без запроса ниже; NOW() базы, отстающей на мс, оставлял только
   // что забытое видимым (флейк дедупа 2026-11-08). ISO от new Date() — не ввод юзера.
-  const forgetSql = forget
-    ? `AND m.type <> 'message' AND (m."invalidAt" IS NULL OR m."invalidAt" > '${now.toISOString()}'::timestamptz)`
-    : '';
+  const forgetSql = `AND m.type <> 'message' AND (m."invalidAt" IS NULL OR m."invalidAt" > '${now.toISOString()}'::timestamptz)`;
 
   // Task 4 read-side decay Part 2: importance в FTS-скоринге умножается на
-  // свежесть когда флаг FEATURE_V2_DECAY включён. Старая низко-важная память
-  // тонет (halflife 90 дней: 100% сегодня → 50% через 90д → 25% через 180д).
-  // OFF → impTerm РОВНО прежний литерал → итоговый SQL байт-идентичен.
+  // свежесть. Старая низко-важная память тонет (halflife 90 дней: 100%
+  // сегодня → 50% через 90д → 25% через 180д).
   const MEM_HALFLIFE_DAYS = 90;
-  const impTerm = isV2DecayEnabled(userId)
-    ? `(m.importance::float / 10.0) * power(2, - extract(epoch from (NOW() - m."createdAt")) / (86400.0 * ${MEM_HALFLIFE_DAYS}))`
-    : `(m.importance::float / 10.0)`;
+  const impTerm = `(m.importance::float / 10.0) * power(2, - extract(epoch from (NOW() - m."createdAt")) / (86400.0 * ${MEM_HALFLIFE_DAYS}))`;
 
   // Без query — простой top-K
   if (!query || query.trim().length < 2) {
     const where: Prisma.MemoryWhereInput = {
       userId,
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      type: { not: 'message' },
+      AND: [{ OR: [{ invalidAt: null }, { invalidAt: { gt: now } }] }],
     };
-    if (forget) {
-      where.type = { not: 'message' };
-      where.AND = [{ OR: [{ invalidAt: null }, { invalidAt: { gt: now } }] }];
-    }
     const rows = await prisma.memory.findMany({
       where,
       orderBy: [{ importance: 'desc' }, { createdAt: 'desc' }],
@@ -228,7 +218,7 @@ export async function getRelevantMemories(
 
   // Fallback: FTS + importance + recency (без семантики).
   // $queryRawUnsafe с позиционными параметрами ($1 userId, $2 query,
-  // $3 limit) — чтобы врезать ${forgetSql} за флагом. Сами параметры
+  // $3 limit) — чтобы врезать ${forgetSql}. Сами параметры
   // по-прежнему биндятся (никакого concat пользовательского ввода);
   // forgetSql — серверная константа без user-input.
   const result = await prisma.$queryRawUnsafe<MemoryRow[]>(

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../test/integration/build-test-app.js';
@@ -19,10 +19,6 @@ afterAll(async () => {
   await app.close();
   await prisma.$disconnect();
 });
-beforeEach(() => {
-  process.env.FEATURE_V2_GOAL_HABITS = 'all';
-});
-
 async function setup(tag: string, withGoal: boolean) {
   const u = await prisma.user.create({
     data: { email: `hgl-${tag}-${Date.now()}@a.test`, name: 'H', passwordHash: 'x', timezone: 'Asia/Almaty' },

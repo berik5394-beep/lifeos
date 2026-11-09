@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { defineTool } from './_types.js';
-import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { createDeal, describeCreated, parseStage, DEAL_INCOME_ACTION } from '../services/deals/index.js';
 import { setPendingAction } from '../services/pending-actions.js';
 import { getUserTimezone } from '../lib/user-context.js';
@@ -28,7 +27,6 @@ export const createDealTool = defineTool({
   sideEffects: 'write',
   examples: ['Ахмет хочет оборудование на 2 млн', 'новая сделка с Даной — склад', 'Серик готов брать сервис, уже на переговорах'],
   handler: async (input, ctx) => {
-    if (!isV2DealsEnabled(ctx.userId)) return { error: 'deals_disabled', hint: 'сделки выключены — клиента запомни через remember_entity/set_person_type, напоминание связаться — create_task' };
     const stage = input.stage ? parseStage(input.stage) : 'new';
     if (!stage) return { message: `Не понял стадию «${input.stage}». Варианты: новая, переговоры, КП, договор, выиграна, проиграна.`, needsInput: true };
     const now = new Date();

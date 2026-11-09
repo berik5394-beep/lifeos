@@ -1,11 +1,10 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { createDeal, updateDeal } from './service.js';
 
 /** Выигранная сделка → +50 монет один раз (refKey deal:<id>), любым путём. */
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
-beforeEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
 
 const NOW = new Date();
 async function user(tag: string) {

@@ -1,13 +1,7 @@
 import { MODELS } from '../lib/models.js';
 import { withLiveProgress } from './life-facts.js';
-import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
-import {
-  isV2SavingsCoachEnabled,
-  isV2AntiFabEnabled,
-  isV2RealtimeEnabled,
-} from '../lib/feature-flags.js';
 import { countOverduePending } from './task-overdue.js';
 import { dealStepsTodayLabels } from './deals/service.js';
 import { getUserTimezone } from '../lib/user-context.js';
@@ -154,7 +148,7 @@ export async function gatherAssistantContext(
       // Живой прогресс (life-facts): чат говорит то же, что экран целей.
       .then((gs) => withLiveProgress(userId, gs)),
     getRelevantMemories(userId, text, 20),
-    knownIntent ? Promise.resolve(knownIntent) : parseIntent(text, tz, undefined, { disabledPanels: isV2DealsEnabled(userId) ? undefined : new Set(['deals']) }),
+    knownIntent ? Promise.resolve(knownIntent) : parseIntent(text, tz),
     // meta#9: план на эту неделю (WeeklyGoal, weekStart = понедельник)
     (() => {
       // Понедельник недели юзера (weekStart @db.Date). SSOT-хелпер —
@@ -177,7 +171,7 @@ export async function gatherAssistantContext(
         take: 10,
       });
     })(),
-    // Шаги по сделкам сегодня — только при флаге сделок (off → undefined → строки нет).
+    // Шаги по сделкам сегодня.
     // Best-effort: сбой сделок не роняет ответ робота (строки просто нет).
     dealStepsTodayLabels(userId, todayDateOnly).catch((err: unknown) => {
       console.warn('[assistant] deal steps skipped:', err instanceof Error ? err.message : err);
@@ -225,17 +219,13 @@ export async function gatherAssistantContext(
       )._sum.amount ?? 0)
     : 0;
   const tasksCompleted = todayTasks.filter((t) => t.completed).length;
-  // За флагом коуча: к сводке целей добавляем сумму/срок/id, чтобы бот мог
-  // сослаться на goalId при ПРАВКЕ («передвинь срок», «цель теперь 150к»)
-  // → надёжный update вместо текст-матча. Off → строка байт-в-байт.
-  const goalCaptureCtx = isV2SavingsCoachEnabled(userId);
+  // К сводке целей добавляем сумму/срок/id, чтобы бот мог сослаться на
+  // goalId при ПРАВКЕ («передвинь срок», «цель теперь 150к») → надёжный
+  // update вместо текст-матча.
   const yearlyGoalsSummary =
     yearlyGoals.length > 0
       ? yearlyGoals
           .map((g) => {
-            if (!goalCaptureCtx) {
-              return `${g.area}: ${g.goalText} (${Math.round(g.progress)}%)`;
-            }
             const num =
               g.target != null
                 ? `, ${Math.round(g.target)}${g.area === 'finance' ? '₸' : ''}`
@@ -250,12 +240,9 @@ export async function gatherAssistantContext(
           .join('; ')
       : 'Не заданы';
 
-  // #5 честность: реальный счётчик просрочки в контекст — ТОЛЬКО за флагом
-  // (off → undefined → строка не рендерится, байт-идентично). Раньше модель
+  // #5 честность: реальный счётчик просрочки в контекст. Раньше модель
   // выдумывала «128 задач висят», т.к. в контексте были только задачи на сегодня.
-  const overduePending = isV2AntiFabEnabled(userId)
-    ? await countOverduePending(userId, todayDateOnly)
-    : undefined;
+  const overduePending = await countOverduePending(userId, todayDateOnly);
   const context: AssistantContext = {
     userName: user.name,
     assistantStyle: user.assistantStyle as AssistantContext['assistantStyle'],
@@ -372,16 +359,14 @@ export async function getAssistantReply(
   const gathered = await gatherAssistantContext(userId, text);
   if (!gathered) throw new Error('Пользователь не найден');
 
-  // Real-Time Foundation: пояс юзера в промпт ТОЛЬКО при флаге (off→undefined→
-  // байт-идентично). getUserTimezone сам падает в 'UTC' при сбое.
-  const nowTz = isV2RealtimeEnabled(userId)
-    ? await getUserTimezone(userId)
-    : undefined;
+  // Real-Time Foundation: пояс юзера в промпт. getUserTimezone сам падает в
+  // 'UTC' при сбое.
+  const nowTz = await getUserTimezone(userId);
   const systemPrompt = buildJarvisPrompt(gathered.context, {
     ...ritualOptsFor(gathered.intent, gathered.dayCompletionPercent),
     therapeuticMode,
-    goalCapture: isV2SavingsCoachEnabled(userId),
-    antiFab: isV2AntiFabEnabled(userId),
+    goalCapture: true,
+    antiFab: true,
     nowTz,
   });
 

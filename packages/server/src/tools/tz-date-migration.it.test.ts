@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { createTaskTool } from './create-task.js';
 import { createEventTool } from './create-event.js';
@@ -17,10 +17,6 @@ async function seedAlmaty(email: string): Promise<string> {
 const TODAY_ALMATY = localDateStr('Asia/Almaty'); // реальная календарная дата юзера
 
 describe('TZ date FIX: Almaty юзер — «сегодня» записывается на верную дату + конфликт срабатывает', () => {
-  beforeEach(() => {
-    process.env.FEATURE_V2_SCHEDULE_CONFLICT = 'all';
-  });
-
   it('create_task «сегодня» → @db.Date == календарная дата Almaty (не civil−1)', async () => {
     const userId = await seedAlmaty(`tzm-a-${Date.now()}@a.test`);
     const res = (await createTaskTool.handler(
