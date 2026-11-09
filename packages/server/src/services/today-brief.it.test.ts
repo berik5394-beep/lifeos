@@ -3,8 +3,8 @@ import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../test/integration/build-test-app.js';
 import { briefingRoutes } from '../routes/briefing.js';
-import { rememberBrief } from './today-brief.js';
-import { localDateStr } from '../lib/tz.js';
+import { greetingForHour, rememberBrief } from './today-brief.js';
+import { localDateStr, localHour } from '../lib/tz.js';
 
 /**
  * Утренний бриф в приложении = тот же, что в пуше (аудит проводки 2026-11-08):
@@ -33,7 +33,8 @@ describe('GET /briefing/today', () => {
     const r = await app.inject({ method: 'GET', url: '/briefing/today', headers });
     expect(r.statusCode).toBe(200);
     const b = r.json();
-    expect(b.title).toBe('Доброе утро, Берик.');
+    // Приветствие — по часу юзера (бриф открывают и вечером).
+    expect(b.title).toBe(`${greetingForHour(localHour('UTC'))}, Берик.`);
     expect(b.text).toContain('1 задача на сегодня');
     expect(b.text).toContain('первая в 10:00 — «Планёрка»');
     expect(b.day).toBe(TODAY);
@@ -46,5 +47,14 @@ describe('GET /briefing/today', () => {
     rememberBrief(userId, TODAY, { title: 'Доброе утро, Берик.', text: 'Сегодня 3 задачи и долг Серику до пятницы. Начнём?' });
     const b = (await app.inject({ method: 'GET', url: '/briefing/today', headers })).json();
     expect(b.text).toBe('Сегодня 3 задачи и долг Серику до пятницы. Начнём?');
+  });
+
+  it('вечером бриф не говорит «Доброе утро»', async () => {
+    const { userId, headers } = await user('c');
+    rememberBrief(userId, TODAY, { title: 'Доброе утро, Берик.', text: 'Доброе утро! 2 задачи на сегодня.' });
+    const b = (await app.inject({ method: 'GET', url: '/briefing/today', headers })).json();
+    const hello = greetingForHour(localHour('UTC'));
+    expect(b.title).toBe(`${hello}, Берик.`);
+    expect(b.text).toBe(`${hello}! 2 задачи на сегодня.`);
   });
 });

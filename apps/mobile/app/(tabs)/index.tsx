@@ -41,12 +41,10 @@ import { useYearActivity } from '@/hooks/use-year-activity';
 import { useToolActive } from '@/hooks/use-content-width';
 import { useRoomToolStore } from '@/stores/room-tool-store';
 import { useToday } from '@/hooks/use-today';
+import { greetingForHour } from '@/utils/greeting';
 
 function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Доброе утро';
-  if (hour < 18) return 'Добрый день';
-  return 'Добрый вечер';
+  return greetingForHour(new Date().getHours());
 }
 
 

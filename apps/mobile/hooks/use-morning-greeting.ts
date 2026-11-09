@@ -4,6 +4,7 @@ import { api, BRAIN_TIMEOUT_MS } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { formatDate } from '@/utils/dates';
 import { useChatStore } from '@/stores/chat-store';
+import { greetingForHour } from '@/utils/greeting';
 
 interface AssistantResponse {
   reply: string;
@@ -54,7 +55,7 @@ export function useMorningGreeting(): UseMorningGreetingResult {
           .then((response) => setGreeting(response.reply)),
       )
       .catch(() => {
-        setGreeting('Доброе утро! Отличного дня!');
+        setGreeting(`${greetingForHour(new Date().getHours())}! Отличного дня!`);
       })
       .finally(() => {
         setIsLoading(false);

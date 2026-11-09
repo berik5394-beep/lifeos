@@ -6,7 +6,7 @@
  * Кэш на день в памяти процесса (Railway — один инстанс; рестарт → пересчёт).
  */
 import { prisma } from '../lib/prisma.js';
-import { localDateStr } from '../lib/tz.js';
+import { localDateStr, localHour } from '../lib/tz.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { buildMorning } from './proactive-notifications.js';
 import { composeMorningBrief } from './morning-brief.js';
@@ -27,15 +27,36 @@ export function rememberBrief(userId: string, day: string, brief: TodayBrief): v
   cache.set(userId, { day, brief });
 }
 
+/** Приветствие по часу юзера: бриф дня открывают и вечером. */
+export function greetingForHour(hour: number): string {
+  if (hour >= 5 && hour < 12) return 'Доброе утро';
+  if (hour >= 12 && hour < 18) return 'Добрый день';
+  if (hour >= 18 && hour < 23) return 'Добрый вечер';
+  return 'Доброй ночи';
+}
+
+const MORNING_RE = /^Доброе утро/;
+
+/**
+ * Первое открытие за день — не обязательно утром (Berik 2026-11-09: в 17:26
+ * приложение сказало «Доброе утро»). Кэш хранит утренний текст пуша, а
+ * приветствие в начале заголовка и текста меняем по часу на момент показа.
+ */
+function withTimeOfDay(brief: TodayBrief, hour: number): TodayBrief {
+  const hello = greetingForHour(hour);
+  return { ...brief, title: brief.title.replace(MORNING_RE, hello), text: brief.text.replace(MORNING_RE, hello) };
+}
+
 export async function getTodayBrief(userId: string, now: Date = new Date()): Promise<TodayBrief> {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, timezone: true } });
   const tz = user?.timezone || 'UTC';
   const day = localDateStr(tz, now);
+  const hour = localHour(tz, now);
   const hit = cache.get(userId);
-  if (hit && hit.day === day) return { ...hit.brief, day };
+  if (hit && hit.day === day) return { ...withTimeOfDay(hit.brief, hour), day };
   const [n] = await buildMorning(userId, user?.name ?? 'друг', now, tz);
   const text = await withTimeout(composeMorningBrief(userId, n.body, now), 10_000, n.body).catch(() => n.body);
   const brief = { title: n.title, text };
   rememberBrief(userId, day, brief);
-  return { ...brief, day };
+  return { ...withTimeOfDay(brief, hour), day };
 }
