@@ -496,7 +496,7 @@ export default function PlannerScreen() {
         <Text style={styles.greetingText}>
           {greeting}, {userName}!
         </Text>
-        <Card style={styles.quoteCard}>
+        <View style={styles.quoteCard}>
           <View style={styles.quoteHeader}>
             <Text style={[styles.quoteText, { flex: 1 }]}>{quote.text}</Text>
             <TouchableOpacity
@@ -512,7 +512,7 @@ export default function PlannerScreen() {
             </TouchableOpacity>
           </View>
           <Text style={styles.quoteAuthor}>— {quote.author}</Text>
-        </Card>
+        </View>
 
         {/* Day Progress Ring */}
         <Pressable
@@ -843,8 +843,9 @@ function createStyles(c: C) {
       marginBottom: spacing.sm,
     },
     quoteCard: {
-      // Цвет темы (было зашитое #1A2540 — на светлых темах текст не читался).
-      backgroundColor: c.surface,
+      // Без рамки и своего фона — прямо на фоне экрана, цвета текста из темы
+      // (Berik 2026-11-09: тёмно-синяя карточка выпирала на любой теме).
+      paddingHorizontal: spacing.xs,
       marginBottom: spacing.md,
     },
     quoteText: {
