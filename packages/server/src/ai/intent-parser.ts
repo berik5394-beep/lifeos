@@ -301,7 +301,10 @@ export function deterministicIntent(
   // С суммой («добавь чек на 5000») — это трата словами, камера не нужна (ревью).
   if (!/\d/.test(text) && RECEIPT_TRIGGERS.some((re) => re.test(text.trim()))) return { action: 'open_panel', panel: 'receipt' };
 
-  for (const re of DICTATION_TRIGGERS) {
+  // «запиши разговор с мамой: в субботу едем к бабушке» — содержание уже сказано:
+  // это не включение диктофона (раньше текст после двоеточия терялся) — решает мозг.
+  const dictationWithContent = /[:—–-]\s*\S+(?:\s+\S+){2,}/.test(text);
+  for (const re of dictationWithContent ? [] : DICTATION_TRIGGERS) {
     if (re.test(text)) return { action: 'start_dictation' };
   }
   // «помнишь про отчёт? поставь задачу» — это действие, не поиск в памяти.
@@ -325,7 +328,9 @@ export function deterministicIntent(
   // в 14:00» уходило в подбор билетов («Куда летим/едем?»). Дела/задачи/встречи
   // — не поездка; голое «поехать/съездить» — поездка, только если дальше
   // направление («в Астану», «на море») или travel-сущность (билет, отель…).
-  const taskFrame = TASK_FRAME.test(lower);
+  // «купить билеты в кино/театр/на концерт» — дело дня, не подбор поездки (аудит 2026-11-09).
+  const eventTickets = /билет[а-яё]*\s+(?:в|на)\s+(?:кино|кинотеатр|театр|концерт|матч|футбол|цирк|музей|спектакл|выставк|балет|оперу|фестивал|шоу|игру|стендап)/i.test(lower);
+  const taskFrame = TASK_FRAME.test(lower) || eventTickets;
   const motionOk = !BARE_MOTION.test(lower) || MOTION_WITH_DIRECTION.test(lower) || TRAVEL_NOUNS.test(text);
   if (!taskFrame && STRONG_TRAVEL.test(lower) && motionOk) {
     return { action: 'plan_travel', query: text };

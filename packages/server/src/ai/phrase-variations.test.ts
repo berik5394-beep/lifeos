@@ -214,3 +214,15 @@ describe('ловушки: одно слово — не намерение', () =
     expect(deterministicIntent(phrase)?.action).not.toBe(wrong);
   });
 });
+
+describe('аудит 2026-11-09: мелочи быстрого пути', () => {
+  it('«купить билеты в кино на субботу» — не подбор поездки', () => {
+    expect(deterministicIntent('купить билеты в кино на субботу')?.action).not.toBe('plan_travel');
+    expect(deterministicIntent('купи билеты на концерт')?.action).not.toBe('plan_travel');
+    expect(deterministicIntent('купи билеты в Астану')?.action).toBe('plan_travel');
+  });
+  it('«запиши разговор с мамой: …» с текстом — не диктофон; голое «запиши разговор» — диктофон', () => {
+    expect(deterministicIntent('запиши разговор с мамой: в субботу едем к бабушке')?.action).not.toBe('start_dictation');
+    expect(deterministicIntent('запиши разговор')?.action).toBe('start_dictation');
+  });
+});

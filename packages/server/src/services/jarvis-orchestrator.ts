@@ -1025,7 +1025,18 @@ export async function ensureTurnSaved(
     const saved = await prisma.chatMessage.count({
       where: { userId, role: 'user', content: text.slice(0, MAX_USER_TEXT), createdAt: { gte: new Date(since.getTime() - CLOCK_SKEW_MS) } },
     });
-    if (saved === 0) await saveTurn(userId, text, reply || '…', crisis);
+    if (saved === 0) {
+      // «да» на вопрос: ветка подтверждения уже записала «(подтверждено)» + ответ —
+      // подставляем настоящие слова юзера, а не пишем ответ второй раз (аудит
+      // 2026-11-09: в чате и контексте агента ответ дублировался).
+      const confirmed = await prisma.chatMessage.findFirst({
+        where: { userId, role: 'user', content: '(подтверждено)', createdAt: { gte: new Date(since.getTime() - CLOCK_SKEW_MS) } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      if (confirmed) await prisma.chatMessage.update({ where: { id: confirmed.id }, data: { content: text.slice(0, MAX_USER_TEXT) } });
+      else await saveTurn(userId, text, reply || '…', crisis);
+    }
   } catch {
     /* история — не критично, не валим ответ */
   }
