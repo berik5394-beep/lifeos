@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildStartGreeting } from './conversation-greeting.js';
+import { buildStartGreeting, dayLine } from './conversation-greeting.js';
 import type { GatheredContext } from './assistant-service.js';
 
 /** Час — пользователя, не сервера: на Railway (UTC) в Алматы в 8 утра было «Доброй ночи». */
@@ -20,5 +20,18 @@ describe('приветствие первой сессии дня', () => {
   });
   it('не первая сессия → без приветствия', () => {
     expect(buildStartGreeting(gathered, false, 8)).toBeNull();
+  });
+});
+
+
+describe('dayLine — строка про задачи в приветствии разговора', () => {
+  it('ноль задач — не «все выполнены»', () => {
+    expect(dayLine(0, 0, 'Осталось', 'Все задачи выполнены!')).toBe(' Задач на сегодня нет.');
+  });
+  it('есть незакрытые — сколько из скольких', () => {
+    expect(dayLine(5, 2, 'Осталось', 'Все задачи выполнены!')).toBe(' Осталось: 2 из 5.');
+  });
+  it('все закрыты — хвалим', () => {
+    expect(dayLine(3, 0, 'Осталось', 'Все задачи выполнены!')).toBe(' Все задачи выполнены!');
   });
 });

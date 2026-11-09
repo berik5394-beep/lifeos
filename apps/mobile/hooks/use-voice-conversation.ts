@@ -82,6 +82,9 @@ interface MessageResponse {
   done?: boolean;
   /** «Открой задачи» → вкладка дома (за экраном разговора). */
   openPanel?: string | null;
+  /** Пусто — почему: тишина или сбой распознавания на сервере. */
+  reason?: 'silence' | 'service';
+  message?: string;
 }
 
 export interface UseVoiceConversationReturn {
@@ -503,6 +506,19 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
           return;
         }
 
+        // Сбой распознавания на сервере (ключ, лимит) — говорим честно и НЕ
+        // слушаем по кругу: раньше «живой» режим молча перезапускал запись, а
+        // сервер снова и снова отвечал ошибкой (прод 2026-11-09, ключ Groq).
+        if (!data.transcription && data.reason === 'service') {
+          addAssistantMessage('', {
+            status: 'error',
+            message: data.message || 'Распознавание речи сейчас не работает — напиши текстом.',
+          });
+          setState('confirming');
+          resetIdleTimers();
+          return;
+        }
+
         if (text) {
           // Add user transcription before processing response
           if (data.transcription) {
@@ -641,17 +657,22 @@ export function useVoiceConversation(): UseVoiceConversationReturn {
         return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      const { recording } = await Audio.Recording.createAsync(
-        {
-          ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-          isMeteringEnabled: true,
-        } as Audio.RecordingOptions,
-      );
+      // Микрофон мог ещё держать голос робота или распознавание с дома (тап по
+      // микрофону открывал разговор посреди его записи) — iOS не даёт начать
+      // новую запись, пока старая сессия не отпущена. Отпускаем и пробуем
+      // ещё раз через паузу, а не сразу «Не удалось начать запись».
+      Speech.stop();
+      const opts = { ...Audio.RecordingOptionsPresets.HIGH_QUALITY, isMeteringEnabled: true } as Audio.RecordingOptions;
+      let recording: Audio.Recording;
+      try {
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        ({ recording } = await Audio.Recording.createAsync(opts));
+      } catch {
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 400));
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        ({ recording } = await Audio.Recording.createAsync(opts));
+      }
 
       // Пока запись запускалась, разговор закрыли/завершили — cleanup уже прошёл с
       // пустой ссылкой, запись никто бы не остановил (оранжевая точка, следующий голос

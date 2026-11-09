@@ -3,12 +3,6 @@ import { useVoice } from '@/hooks/use-voice';
 import { useUtterance } from '@/hooks/use-utterance';
 import { DictationModal } from '@/components/voice';
 import { stopSpeaking } from '@/services/tts-voice';
-import { navigateTo } from '@/navigation/ref';
-
-function openConversation(): void {
-  stopSpeaking();
-  navigateTo('VoiceConversation');
-}
 
 /**
  * Один микрофон на весь дом (инструменты ↔ комната). Два useVoice на двух
@@ -22,6 +16,10 @@ export interface SharedVoice {
   error: string | null;
   startRecording: () => Promise<void> | void;
   stopRecording: () => Promise<void> | void;
+  /** Запись зафиксирована коротким нажатием — показать «отправить» и «отмена». */
+  locked: boolean;
+  sendRecording: () => Promise<void> | void;
+  cancelRecording: () => Promise<void> | void;
   /** Сказанное/набранное → кодовое слово, диктофон, режим разговора или мозг. */
   send: (text: string) => void;
   /** Юзер печатает — робот «слушает». */
@@ -35,12 +33,12 @@ export interface SharedVoice {
 const Ctx = createContext<SharedVoice | null>(null);
 
 export function SharedVoiceProvider({ children }: { children: ReactNode }) {
-  const { isRecording, isProcessing, lastResult, liveTranscript, error, startRecording, stopRecording } = useVoice({
-    transcribeOnly: true,
-    // Тап по микрофону — разговор без рук (говоришь, робот отвечает голосом и
-    // снова слушает); удержание — как раньше, «держи и говори».
-    onTap: openConversation,
-  });
+  // Кнопка как в WhatsApp: нажал — говоришь — «отправить»; или держишь и
+  // отпускаешь. Раньше тап открывал «Режим общения» и сразу же отдавал ему
+  // микрофон, который ещё держало распознавание, — запись не начиналась
+  // (Berik 2026-11-09). Живой разговор — словами «давай поговорим».
+  const { isRecording, isProcessing, lastResult, liveTranscript, error, startRecording, stopRecording, locked, sendRecording, cancelRecording } =
+    useVoice({ transcribeOnly: true });
   const utterance = useUtterance();
   const handle = utterance.handle;
   useEffect(() => {
@@ -61,13 +59,16 @@ export function SharedVoiceProvider({ children }: { children: ReactNode }) {
         return startRecording();
       },
       stopRecording,
+      locked,
+      sendRecording,
+      cancelRecording,
       send: (text: string) => handle(text, false),
       typing,
       setTyping,
       inputHighlight,
       setInputHighlight,
     }),
-    [isRecording, isProcessing, liveTranscript, error, startRecording, stopRecording, handle, typing, inputHighlight],
+    [isRecording, isProcessing, liveTranscript, error, startRecording, stopRecording, locked, sendRecording, cancelRecording, handle, typing, inputHighlight],
   );
   return (
     <Ctx.Provider value={value}>

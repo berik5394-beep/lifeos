@@ -545,7 +545,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   const showReply =
     introStep == null && !zoomed && ((chatLoading && !!host) || !!reply);
   const voiceBubble = isRecording
-    ? liveTranscript || 'Слушаю… говори, пока держишь кнопку'
+    ? liveTranscript || 'Слушаю…'
     : isProcessing
       ? 'Распознаю…'
       : voiceNote;

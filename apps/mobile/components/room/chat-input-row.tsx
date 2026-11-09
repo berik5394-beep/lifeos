@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Keyboard, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/use-colors';
 import { spacing, fontSize } from '@/constants';
@@ -10,7 +10,8 @@ let rowSeq = 0;
 
 /**
  * Одна строка разговора с роботом под обоими экранами (инструменты ↔ комната):
- * микрофон «держи и говори», текст, отправить. Один микрофон на всё приложение.
+ * микрофон (нажми — говори — отправь, или держи и отпусти), текст, отправить.
+ * Один микрофон на всё приложение.
  */
 export const ChatInputRow = memo(function ChatInputRow() {
   const c = useColors();
@@ -39,6 +40,37 @@ export const ChatInputRow = memo(function ChatInputRow() {
     v.send(t);
   }, [text, sending, v, rowId]);
 
+  // Запись зафиксирована коротким нажатием (как в WhatsApp): слева «отмена»,
+  // посередине — что расслышал, справа «отправить».
+  if (v.locked) {
+    return (
+      <View style={styles.inputRow}>
+        <Pressable
+          style={styles.round}
+          onPress={() => void v.cancelRecording()}
+          accessibilityRole="button"
+          accessibilityLabel="Отменить запись"
+        >
+          <Feather name="x" size={20} color={c.textSecondary} />
+        </Pressable>
+        <View style={[styles.input, styles.listening]}>
+          <View style={styles.dot} />
+          <Text style={styles.listeningText} numberOfLines={2}>
+            {v.liveTranscript || 'Слушаю… говори, потом нажми «отправить»'}
+          </Text>
+        </View>
+        <Pressable
+          style={[styles.round, styles.roundSend]}
+          onPress={() => void v.sendRecording()}
+          accessibilityRole="button"
+          accessibilityLabel="Отправить сказанное"
+        >
+          <Feather name="send" size={19} color={c.text} />
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.inputRow}>
       <Pressable
@@ -46,7 +78,7 @@ export const ChatInputRow = memo(function ChatInputRow() {
         onPressIn={() => void v.startRecording()}
         onPressOut={() => void v.stopRecording()}
         accessibilityRole="button"
-        accessibilityLabel="Голос: тап — разговор без рук, удерживать — сказать фразу"
+        accessibilityLabel="Голос: нажми — говори — отправь; или держи и отпусти"
       >
         {v.isProcessing ? (
           <ActivityIndicator size="small" color={c.primary} />
@@ -100,6 +132,9 @@ function createStyles(c: ReturnType<typeof useColors>) {
     roundActive: { backgroundColor: c.danger },
     roundSend: { backgroundColor: c.primary },
     glow: { borderWidth: 3, borderColor: c.warning },
+    listening: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.danger },
+    listeningText: { flex: 1, color: c.text, fontSize: fontSize.md },
     input: {
       flex: 1,
       minHeight: 44,

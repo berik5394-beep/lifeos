@@ -128,6 +128,10 @@ export interface UseVoiceReturn {
   stopRecording: () => Promise<void>;
   /** Cancel recording without processing (like slide-to-cancel in WhatsApp) */
   cancelRecording: () => Promise<void>;
+  /** Запись зафиксирована коротким нажатием: идёт сама до «отправить»/«отмена». */
+  locked: boolean;
+  /** «Отправить» у зафиксированной записи. */
+  sendRecording: () => Promise<void>;
   /** Toggle recording on/off */
   toggleRecording: () => Promise<void>;
   /** Speak a message via TTS (Russian) */
@@ -142,7 +146,7 @@ export interface UseVoiceReturn {
 
 let speechRecognitionAvailable: boolean | null = null;
 
-/** Короче этого «нажал-отпустил» — не запись, а случайное касание: подсказываем держать. */
+/** Короче этого «нажал-отпустил» — короткое нажатие: запись фиксируется (до «отправить»). */
 const MIN_HOLD_MS = 350;
 
 async function isSpeechRecognitionAvailable(): Promise<boolean> {
@@ -218,14 +222,14 @@ export interface UseVoiceOptions {
    *  Для экранов, которые сами шлют текст в мозг (чат → /voice/chat),
    *  иначе команда исполнится дважды. */
   transcribeOnly?: boolean;
-  /** Короткий тап вместо удержания — вместо подсказки «удерживай» (Джарвис: тап = разговор без рук). */
-  onTap?: () => void;
 }
+
+/** Зафиксированная запись не висит бесконечно: через минуту фраза уходит сама. */
+const LOCKED_MAX_MS = 60_000;
 
 export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
   const transcribeOnly = options.transcribeOnly === true;
-  const onTapRef = useRef(options.onTap);
-  onTapRef.current = options.onTap;
+  const [locked, setLocked] = useState(false);
   const [state, setState] = useState<VoiceState>('idle');
   // Удержание кнопки (push-to-talk): колбэки живут дольше рендера, поэтому
   // правду о состоянии держим в ref-ах, а не в замыкании `state`. Иначе
@@ -454,7 +458,7 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
         if (!current.granted) {
           const asked = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
           if (asked.granted) {
-            setError('Готово! Теперь зажми микрофон и говори.');
+            setError('Готово! Теперь нажми микрофон и говори.');
             return;
           }
           setError('Нет доступа к микрофону. Разреши его в Настройках → LifeOS.');
@@ -749,8 +753,9 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
   startInnerRef.current = startInner;
   cancelRef.current = cancelRecording;
 
-  // Нажал — пишем, отпустил — отправляем (services/push-to-talk держит гонку
-  // «отпустил раньше, чем запись началась»). Стабильный объект: колбэки — через ref.
+  // Кнопка как в WhatsApp (services/push-to-talk): короткое нажатие — запись
+  // держится сама до «отправить»; удержание — отпустил, отправилось. Гонку
+  // «отпустил раньше, чем запись началась» держит там же. Колбэки — через ref.
   const ptt = useMemo(
     () =>
       createPushToTalk({
@@ -763,15 +768,28 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
         isRecording: () => stateRef.current === 'recording',
         now: () => Date.now(),
         minHoldMs: MIN_HOLD_MS,
-        onTooShort: () => {
-          if (onTapRef.current) onTapRef.current();
-          else setError('Удерживай кнопку, пока говоришь, и отпусти, когда закончишь.');
-        },
+        onLockChange: setLocked,
       }),
     [],
   );
   const startRecording = ptt.pressIn;
   const publicStop = ptt.pressOut;
+  const sendRecording = ptt.send;
+  const cancelViaButton = ptt.cancel;
+  const lockedNow = locked && state === 'recording';
+
+  // Запись оборвалась сама (сбой распознавания) — снимаем только фиксацию.
+  // Не cancel(): в момент «отправить» он успевал отменить уходящую фразу.
+  useEffect(() => {
+    if (locked && state !== 'recording') ptt.unlock();
+  }, [locked, state, ptt]);
+
+  // Зафиксированная запись — не дольше минуты, потом отправляется сама.
+  useEffect(() => {
+    if (!lockedNow) return;
+    const t = setTimeout(() => void ptt.send(), LOCKED_MAX_MS);
+    return () => clearTimeout(t);
+  }, [lockedNow, ptt]);
 
   // ==========================================================
   // TOGGLE
@@ -821,7 +839,9 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
       amplitude,
       startRecording,
       stopRecording: publicStop,
-      cancelRecording,
+      cancelRecording: cancelViaButton,
+      locked: lockedNow,
+      sendRecording,
       toggleRecording,
       speak,
       reset,
@@ -836,7 +856,9 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
       amplitude,
       startRecording,
       publicStop,
-      cancelRecording,
+      cancelViaButton,
+      lockedNow,
+      sendRecording,
       toggleRecording,
       speak,
       reset,

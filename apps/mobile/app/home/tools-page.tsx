@@ -143,7 +143,7 @@ export const ToolsPage = memo(function ToolsPage({
     return () => clearTimeout(t);
   }, [voice.error]);
   const voiceBubble = voice.isRecording
-    ? voice.liveTranscript || 'Слушаю… говори, пока держишь кнопку'
+    ? voice.liveTranscript || 'Слушаю…'
     : voice.isProcessing
       ? 'Распознаю…'
       : voiceNote;

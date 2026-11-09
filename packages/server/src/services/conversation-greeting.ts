@@ -16,6 +16,16 @@ import { disclaimerShort } from '../data/disclaimer.js';
  * что и весь остальной мозг) — расхождение исключено by design.
  */
 
+/**
+ * Строка про задачи дня. Ноль задач — это не «все выполнены» (Berik 2026-11-09:
+ * пустой день, а робот хвалит за выполненные задачи).
+ */
+export function dayLine(total: number, pending: number, leftWord: string, allDone: string): string {
+  if (total === 0) return ' Задач на сегодня нет.';
+  if (pending > 0) return ` ${leftWord}: ${pending} из ${total}.`;
+  return ` ${allDone}`;
+}
+
 function timeGreeting(
   name: string,
   style: AssistantStyle,
@@ -45,10 +55,10 @@ function timeGreeting(
     return g[gender === 'male' ? 'male' : 'female'][style];
   }
   if (hour >= 12 && hour < 17) {
-    return `Добрый день, ${name}!${pendingTasks > 0 ? ` Осталось ${pendingTasks} задач.` : ' Все задачи выполнены!'} Чем помочь?`;
+    return `Добрый день, ${name}!${dayLine(totalTasks, pendingTasks, 'Осталось', 'Все задачи выполнены!')} Чем помочь?`;
   }
   if (hour >= 17 && hour < 22) {
-    return `Добрый вечер, ${name}!${pendingTasks > 0 ? ` Ещё ${pendingTasks} задач не закрыты.` : ' Все задачи на сегодня выполнены!'} Как прошёл день?`;
+    return `Добрый вечер, ${name}!${dayLine(totalTasks, pendingTasks, 'Не закрыто', 'Все задачи на сегодня выполнены!')} Как прошёл день?`;
   }
   return `Доброй ночи, ${name}. Поздновато, не пора ли отдохнуть?`;
 }

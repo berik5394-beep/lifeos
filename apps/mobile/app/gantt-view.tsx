@@ -62,10 +62,18 @@ export default function GanttViewScreen() {
   const weekTasks = useMemo(() => {
     const start = formatDate(weekDays[0]);
     const end = formatDate(weekDays[6]);
-    return tasks.filter((t) => {
-      const d = typeof t.date === 'string' ? t.date.split('T')[0] : '';
-      return d >= start && d <= end;
-    });
+    // По порядку: день → время → без времени в конце. Отменённые не рисуем.
+    return tasks
+      .filter((t) => {
+        const d = typeof t.date === 'string' ? t.date.split('T')[0] : '';
+        return d >= start && d <= end && !(t as { cancelled?: boolean }).cancelled;
+      })
+      .sort((a, b) => {
+        const da = String(a.date).slice(0, 10);
+        const db = String(b.date).slice(0, 10);
+        if (da !== db) return da < db ? -1 : 1;
+        return (a.time ?? '99:99').localeCompare(b.time ?? '99:99');
+      });
   }, [tasks, weekDays]);
 
   const getDayIndex = (dateStr: string): number => {
@@ -83,6 +91,7 @@ export default function GanttViewScreen() {
         <Text style={styles.headerTitle}>Таймлайн</Text>
         <View style={{ width: 32 }} />
       </View>
+      <Text style={styles.hint}>Задачи этой недели по дням. Длина полоски — сколько займёт задача, ✓ — уже сделана.</Text>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={styles.ganttContainer}>
@@ -116,7 +125,10 @@ export default function GanttViewScreen() {
 
               const barColor = CATEGORY_COLORS[task.category] || '#6B7280';
               const estimatedHours = (task.estimatedMinutes ?? 60) / 60;
-              const barWidth = Math.max(DAY_WIDTH * 0.8, DAY_WIDTH * estimatedHours / 8);
+              // Название должно читаться (раньше «Дождать…» на 80 px), а длина
+              // всё ещё растёт с оценкой времени задачи.
+              const barWidth = Math.max(DAY_WIDTH * 1.8, DAY_WIDTH * estimatedHours / 8);
+              const done = task.completed;
 
               return (
                 <View key={task.id} style={styles.barRow}>
@@ -128,10 +140,11 @@ export default function GanttViewScreen() {
                         width: Math.min(barWidth, (7 - dayIdx) * DAY_WIDTH - 20),
                         backgroundColor: barColor,
                       },
+                      done && styles.barDone,
                     ]}
                   >
-                    <Text style={styles.barText} numberOfLines={1}>
-                      {task.title}
+                    <Text style={[styles.barText, done && styles.barTextDone]} numberOfLines={2}>
+                      {done ? `✓ ${task.title}` : task.title}
                     </Text>
                     {task.time && (
                       <Text style={styles.barTime}>{task.time}</Text>
@@ -182,9 +195,10 @@ function createStyles(c: Theme) {
     dayNumber: { fontSize: fontSize.md, color: c.text, fontWeight: '600', marginTop: 2 },
     dayNumberToday: { color: c.primary },
     barsContainer: { paddingTop: spacing.sm },
-    barRow: { height: 36, justifyContent: 'center', marginBottom: spacing.xs },
+    barRow: { minHeight: 44, justifyContent: 'center', marginBottom: spacing.xs },
     bar: {
-      height: 28,
+      minHeight: 36,
+      paddingVertical: 4,
       borderRadius: borderRadius.sm,
       flexDirection: 'row',
       alignItems: 'center',
@@ -193,6 +207,9 @@ function createStyles(c: Theme) {
     },
     barText: { fontSize: fontSize.xs, color: '#FFF', fontWeight: '600', flex: 1 },
     barTime: { fontSize: 10, color: 'rgba(255,255,255,0.7)' },
+    barDone: { opacity: 0.45 },
+    barTextDone: { textDecorationLine: 'line-through' },
+    hint: { fontSize: fontSize.xs, color: c.textSecondary, paddingHorizontal: spacing.md, paddingTop: spacing.sm },
     emptyContainer: { padding: spacing.xl, alignItems: 'center' },
     emptyText: { fontSize: fontSize.md, color: c.textMuted },
   });

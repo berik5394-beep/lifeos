@@ -319,7 +319,7 @@ export default function VoiceConversationScreen() {
               width={120}
             />
             <Text style={styles.waveformHint}>
-              {isContinuous ? 'Слушаю... скажи «стоп» чтобы выключить' : 'Говорите — я остановлюсь автоматически'}
+              {isContinuous ? 'Слушаю… нажми микрофон — отправлю сразу' : 'Говори — замолчишь, и я отправлю сам'}
             </Text>
           </View>
         )}
