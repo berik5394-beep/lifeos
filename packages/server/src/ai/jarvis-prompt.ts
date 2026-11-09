@@ -79,6 +79,9 @@ export interface AssistantContext {
   upcomingEvents: { title: string; startTime: string | null; date: string }[];
   spentThisMonth: number;
   budgetLimit: number;
+  /** Траты только категорий с лимитом (для «из лимита»); без него — как раньше. */
+  spentInLimited?: number;
+  budgetCategories?: string[];
   currentStreak: number;
   weekProgress: number;
   yearlyGoalsSummary: string;
@@ -215,9 +218,13 @@ export function renderContext(
     );
   }
   if (ctx.budgetLimit > 0) {
-    const pct = Math.round((ctx.spentThisMonth / ctx.budgetLimit) * 100);
+    const inLimit = ctx.spentInLimited ?? ctx.spentThisMonth;
+    const pct = Math.round((inLimit / ctx.budgetLimit) * 100);
+    const cats = ctx.budgetCategories?.length ? ` (${ctx.budgetCategories.join(', ')})` : '';
     L.push(
-      `Финансы: потрачено за месяц ${ctx.spentThisMonth}₸ из ${ctx.budgetLimit}₸ (${pct}%)`,
+      ctx.spentInLimited !== undefined
+        ? `Финансы: всего потрачено за месяц ${ctx.spentThisMonth}₸; по категориям с лимитом${cats} — ${inLimit}₸ из ${ctx.budgetLimit}₸ (${pct}%)`
+        : `Финансы: потрачено за месяц ${ctx.spentThisMonth}₸ из ${ctx.budgetLimit}₸ (${pct}%)`,
     );
   } else if (ctx.spentThisMonth > 0) {
     L.push(`Финансы: потрачено за месяц ${ctx.spentThisMonth}₸ (бюджет не задан)`);

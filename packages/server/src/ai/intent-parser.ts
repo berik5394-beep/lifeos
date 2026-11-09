@@ -271,6 +271,22 @@ export function isHabitShorthand(rest: string): boolean {
   return r.split(/\s+и\s+|,|\+/).every((part) => part.trim().split(/\s+/).filter(Boolean).length <= 3);
 }
 
+const WEEKDAYS_RU = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+/** День недели календарной даты 'YYYY-MM-DD'. */
+function weekdayRu(civil: string): string {
+  return WEEKDAYS_RU[new Date(civil + 'T00:00:00Z').getUTCDay()];
+}
+/**
+ * «пятница = 2026-11-13; …» на 7 дней вперёд — разбор намерений иначе сам
+ * считал «в пятницу», не зная сегодняшнего дня недели (аудит 2026-11-09).
+ */
+function nextWeekdays(today: string): string {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = addCivilDays(today, i + 1);
+    return `${weekdayRu(d)} = ${d}`;
+  }).join('; ');
+}
+
 export function deterministicIntent(
   text: string,
   tz: string = 'UTC',
@@ -534,7 +550,8 @@ export async function parseIntent(
 - unknown: { "action": "unknown", "text": string }
 - (plan_travel / search_memory / start_dictation — см. ШАГИ 1-3 выше, не сюда)
 
-Текущая дата: ${days.today}. "завтра" = ${days.tomorrow}, "послезавтра" = ${days.dayAfter}.
+Текущая дата: ${days.today} (${weekdayRu(days.today)}). "завтра" = ${days.tomorrow}, "послезавтра" = ${days.dayAfter}.
+Ближайшие дни недели: ${nextWeekdays(days.today)}.
 Категории задач: work, personal, health, finance, education, home.
 Приоритеты: low, medium, high, critical.
 Категории расходов: food (еда), transport (транспорт), entertainment (развлечения), clothing (одежда), health (здоровье), home (дом), other (другое).

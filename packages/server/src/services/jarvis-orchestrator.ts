@@ -2101,8 +2101,11 @@ async function handleMessageCore(
     // было unhandled rejection при сбое.
     // Агент в этом ходу уже создал задачу (create_task) — фон извлекает
     // только память/людей, иначе та же задача появлялась второй раз.
+    // Аудит 2026-11-09: и после ЛЮБОЙ другой записи (перенос, долг, встреча,
+    // сделка) — иначе «перенеси звонок маме на завтра» давало ещё и новую задачу
+    // «Звонок маме» из фона, без аудита и без слова в ответе.
     const agentCreatedTask = await getToolCounts(userId, turnStart)
-      .then((rows) => rows.some((r) => r.toolName === 'create_task' && r.count > 0))
+      .then((rows) => rows.some((r) => r.count > 0 && registry.get(r.toolName)?.sideEffects === 'write'))
       .catch(() => false);
     void captureInBackground(userId, text, String(Date.now()), { memoriesOnly: agentCreatedTask }).catch((err) => {
       console.warn(

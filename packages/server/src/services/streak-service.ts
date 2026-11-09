@@ -76,18 +76,17 @@ export async function calculateWeekProgress(
   userId: string,
   today: Date = new Date(),
 ): Promise<number> {
-  const dayOfWeek = today.getDay();
+  // today — @db.Date (UTC-полночь календарного дня) → считаем в UTC.
+  const dayOfWeek = today.getUTCDay();
   const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
-  const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() + mondayOffset);
-  weekStart.setHours(0, 0, 0, 0);
-
+  const weekStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() + mondayOffset));
   const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 7);
+  weekEnd.setUTCDate(weekStart.getUTCDate() + 7);
 
+  // Отменённые («убери задачу») — не невыполненные (аудит 2026-11-09).
   const weekTasks = await prisma.task.findMany({
-    where: { userId, date: { gte: weekStart, lt: weekEnd } },
+    where: { userId, date: { gte: weekStart, lt: weekEnd }, cancelled: false },
     select: { completed: true },
   });
 

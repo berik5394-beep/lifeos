@@ -18,7 +18,8 @@ describe('assistant-service: @db.Date конвенции (review-catch d67417d)'
     expect(SRC).toContain('localDateOnlyUTC');
     expect(SRC).toContain('todayDateOnly = localDateOnlyUTC');
     expect(SRC).toContain('date: todayDateOnly, cancelled');
-    expect(SRC).toContain('gte: todayDateOnly, lt: tomorrowDateOnly');
+    // События — сегодня и завтра (аудит 2026-11-09), той же convA.
+    expect(SRC).toContain('gte: todayDateOnly, lt: dayAfterDateOnly');
     expect(SRC).toContain('calculateWeekProgress(userId, todayDateOnly)');
     // habit-day: привычки пишутся календарной датой (complete-habit и приложение)
     // → читаются той же convA; старая convB (localDayStartUTC) не должна вернуться.

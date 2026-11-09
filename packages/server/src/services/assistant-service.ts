@@ -84,6 +84,7 @@ export async function gatherAssistantContext(
   const tz = user.timezone || 'Asia/Almaty';
   const todayDateOnly = localDateOnlyUTC(tz);
   const tomorrowDateOnly = new Date(todayDateOnly.getTime() + 24 * 60 * 60 * 1000);
+  const dayAfterDateOnly = new Date(tomorrowDateOnly.getTime() + 24 * 60 * 60 * 1000);
   const [ly, lm] = localDateStr(tz).split('-').map(Number);
   await carryBudgetLimits(userId, lm, ly);
   const monthStart = new Date(Date.UTC(ly, lm - 1, 1));
@@ -118,8 +119,9 @@ export async function gatherAssistantContext(
       where: { userId, date: todayDateOnly, completed: true },
       select: { habitId: true },
     }),
+    // «Ближайшие» — сегодня и завтра (вечером мозг должен знать утреннюю встречу).
     prisma.calendarEvent.findMany({
-      where: { userId, date: { gte: todayDateOnly, lt: tomorrowDateOnly } },
+      where: { userId, date: { gte: todayDateOnly, lt: dayAfterDateOnly } },
       select: { title: true, startTime: true, date: true },
       orderBy: { startTime: 'asc' },
     }),
@@ -127,9 +129,11 @@ export async function gatherAssistantContext(
       where: { userId, date: { gte: monthStart, lt: monthEnd } },
       _sum: { amount: true },
     }),
-    prisma.budgetLimit.aggregate({
+    // Лимиты по категориям: «из лимита» считаем только траты ЭТИХ категорий
+    // (аудит 2026-11-09: лимит на еду 60к против всех трат 400к → «667%»).
+    prisma.budgetLimit.findMany({
       where: { userId, month: lm, year: ly },
-      _sum: { monthlyLimit: true },
+      select: { category: true, monthlyLimit: true },
     }),
     calculateStreak(userId, tz),
     calculateWeekProgress(userId, todayDateOnly),
@@ -205,7 +209,16 @@ export async function gatherAssistantContext(
           .join('; ')
       : undefined;
   const spentThisMonth = expenseAgg._sum.amount ?? 0;
-  const budgetLimit = budgetAgg._sum.monthlyLimit ?? 0;
+  const limited = budgetAgg.filter((b) => b.monthlyLimit > 0);
+  const budgetLimit = limited.reduce((sum, b) => sum + b.monthlyLimit, 0);
+  const spentInLimited = limited.length
+    ? ((
+        await prisma.expense.aggregate({
+          where: { userId, date: { gte: monthStart, lt: monthEnd }, category: { in: limited.map((b) => b.category) } },
+          _sum: { amount: true },
+        })
+      )._sum.amount ?? 0)
+    : 0;
   const tasksCompleted = todayTasks.filter((t) => t.completed).length;
   // За флагом коуча: к сводке целей добавляем сумму/срок/id, чтобы бот мог
   // сослаться на goalId при ПРАВКЕ («передвинь срок», «цель теперь 150к»)
@@ -253,6 +266,8 @@ export async function gatherAssistantContext(
     })),
     spentThisMonth,
     budgetLimit,
+    spentInLimited,
+    budgetCategories: limited.map((b) => b.category),
     currentStreak,
     weekProgress,
     yearlyGoalsSummary,
@@ -286,7 +301,7 @@ export async function gatherAssistantContext(
   // «одевайся легко / выезжай раньше» рождается само, без случайного
   // web_search. Best-effort: сеть не должна валить/тормозить чат
   // (Open-Meteo, без ключа; getWeather сам с таймаутом).
-  if (upcomingEvents.length > 0) {
+  if (upcomingEvents.some((e) => e.date.getTime() === todayDateOnly.getTime())) {
     try {
       const w = await getWeather('Алматы');
       if (w.description && !w.description.includes('ошибка')) {
