@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { Modal, SwipeableRow, TapToAdd } from '@/components/ui';
+import { Modal, SwipeableRow, TapToAdd, TapToAddArea } from '@/components/ui';
 import { spacing, fontSize } from '@/constants';
 import { useColors } from '@/hooks/use-colors';
 import { RU_MONTHS_GENITIVE } from '@/utils/dates';
@@ -67,7 +67,7 @@ export function DayDetailSheet({
     <Modal visible={dateKey !== null} onClose={onClose} title={dateKey ? ruDate(dateKey) : ''}>
       <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
         {(events.length > 0 || onAddEvent) && (
-          <View style={styles.section}>
+          <TapToAddArea style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>События</Text>
             {events.map((e) =>
               onEditEvent && onDeleteEvent ? (
@@ -80,10 +80,10 @@ export function DayDetailSheet({
               ),
             )}
             {onAddEvent ? <TapToAdd hint="Новое событие: «14:00 встреча»" onSubmit={onAddEvent} /> : null}
-          </View>
+          </TapToAddArea>
         )}
 
-        <View style={styles.section}>
+        <TapToAddArea style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Задачи</Text>
           {tasks.map((t) => (
             <SwipeableRow key={t.id} onDelete={() => onDelete(t)} deleteLabel="Удалить задачу">
@@ -105,7 +105,7 @@ export function DayDetailSheet({
             </SwipeableRow>
           ))}
           <TapToAdd hint="Новая задача" onSubmit={onAddTask} />
-        </View>
+        </TapToAddArea>
         {tasks.length > 0 && (
           <Text style={[styles.hint, { color: colors.textSecondary }]}>
             Цвет — важность: тап по кружку меняет его. Тап по задаче — выполнено. Тап по встрече — перенести.

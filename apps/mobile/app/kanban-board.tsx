@@ -29,7 +29,7 @@ import { spacing, fontSize, borderRadius } from '@/constants';
 import { useTaskStore } from '@/stores/task-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { TagChip } from '@/components/ui/tag-chip';
-import { TapToAdd } from '@/components/ui/tap-to-add';
+import { TapToAdd, TapToAddArea } from '@/components/ui/tap-to-add';
 import { hapticMedium, hapticLight } from '@/services/haptics';
 import type { Theme } from '@/constants/themes';
 import { formatDate } from '@/utils/dates';
@@ -448,7 +448,7 @@ export default function KanbanBoardScreen() {
           {COLUMNS.map((col, colIndex) => {
             const colTasks = tasksByColumn[col.id] || [];
             return (
-              <View
+              <TapToAddArea
                 key={col.id}
                 style={[styles.column, { width: columnWidth }]}
                 onLayout={handleColumnLayout(col.id)}
@@ -492,7 +492,7 @@ export default function KanbanBoardScreen() {
                     <TapToAdd hint="Новая задача" onSubmit={(t) => handleAddToColumn(col.id, t)} />
                   }
                 />
-              </View>
+              </TapToAddArea>
             );
           })}
         </ScrollView>

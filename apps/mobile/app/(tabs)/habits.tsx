@@ -33,6 +33,7 @@ import {
   StatCard,
   SwipeableRow,
   TapToAdd,
+  TapToAddArea,
 } from '@/components/ui';
 import { spacing, borderRadius, fontSize, habitCategories } from '@/constants';
 import { FadeInView } from '@/components/ui/fade-in-view';
@@ -1445,7 +1446,7 @@ export default function HabitsScreen() {
       {/* Нет привычек — сразу призыв (раньше: кольцо 0 % «Продолжай!» и три нулевые
           карточки, а «Новая привычка» — ниже первого экрана). */}
       {activeHabits.length === 0 && !isLoading && (
-        <View style={styles.emptyState}>
+        <TapToAddArea style={styles.emptyState}>
           <Text style={styles.emptyEmoji}>{'🌱'}</Text>
           <Text style={styles.emptyTitle}>Заведи первую привычку</Text>
           <Text style={styles.emptyDesc}>
@@ -1454,7 +1455,7 @@ export default function HabitsScreen() {
           <View style={styles.emptyAdd}>
             <TapToAdd hint="Новая привычка" onSubmit={handleQuickAddHabit} />
           </View>
-        </View>
+        </TapToAddArea>
       )}
 
       {/* Progress Ring */}

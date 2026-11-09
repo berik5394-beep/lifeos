@@ -24,7 +24,7 @@ import { Modal } from '@/components/ui/modal';
 import { AnimatedProgressBar } from '@/components/ui/animated-progress-bar';
 import { ProgressCircle } from '@/components/ui/progress-circle';
 import { SwipeableRow } from '@/components/ui/swipeable-row';
-import { TapToAdd } from '@/components/ui/tap-to-add';
+import { TapToAdd, TapToAddArea } from '@/components/ui/tap-to-add';
 
 import { useGoalStore } from '@/stores/goal-store';
 import { useHabitStore } from '@/stores/habit-store';
@@ -566,7 +566,7 @@ const AreaCard = React.memo(function AreaCard({
       {isExpanded && (
         <View style={{ padding: spacing.md, paddingTop: spacing.md }}>
           {/* ────── Goals section ────── */}
-          <View style={{ marginBottom: spacing.md }}>
+          <TapToAddArea style={{ marginBottom: spacing.md }}>
             <Text style={styles.areaSectionTitle}>Цели на год</Text>
 
             {goals.length === 0 ? (
@@ -605,7 +605,7 @@ const AreaCard = React.memo(function AreaCard({
               ))
             )}
             <TapToAdd hint="Новая цель" onSubmit={handleQuickAddGoal} />
-          </View>
+          </TapToAddArea>
 
           {/* ────── Habits section ────── */}
           <View>

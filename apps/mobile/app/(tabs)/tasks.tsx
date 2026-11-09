@@ -24,6 +24,7 @@ import {
   StatCard,
   SwipeableRow,
   TapToAdd,
+  TapToAddArea,
 } from '@/components/ui';
 import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -289,7 +290,7 @@ const WeekDayColumn = React.memo(function WeekDayColumn({
   const total = tasks.length;
 
   return (
-    <View style={[styles.weekDayColumn, isCurrentDay && styles.weekDayColumnActive]}>
+    <TapToAddArea style={[styles.weekDayColumn, isCurrentDay && styles.weekDayColumnActive]}>
       <View style={[styles.weekDayHeader, isCurrentDay && styles.weekDayHeaderActive]}>
         <Text style={[styles.weekDayLabel, isCurrentDay && styles.weekDayLabelActive]}>
           {dayLabel}
@@ -345,7 +346,7 @@ const WeekDayColumn = React.memo(function WeekDayColumn({
       </View>
       {/* Тап по пустой строке внизу дня — задача сразу на этот день */}
       <TapToAdd hint="Добавить" onSubmit={handleAdd} />
-    </View>
+    </TapToAddArea>
   );
 });
 
@@ -898,7 +899,7 @@ export default function TasksScreen() {
         </View>
 
         {/* Task Overview Table — первым: «Задачи» = список (раньше он был третьим блоком, между счётчиками и донатами). */}
-        <Card style={styles.tableCard}>
+        <Card style={styles.tableCard} tapToAdd>
           <Text style={styles.sectionTitle}>Обзор задач</Text>
 
           {monthTasks.map((task) => (

@@ -658,7 +658,7 @@ export default function PlannerScreen() {
         </View>
 
         {/* Tasks for selected day / all week */}
-        <Card style={styles.section}>
+        <Card style={styles.section} tapToAdd>
           <Text style={styles.sectionTitle}>
             {selectedDayIndex !== null
               ? `Задачи — ${weekDays[selectedDayIndex].label}, ${weekDays[selectedDayIndex].dayNum}`
@@ -692,7 +692,7 @@ export default function PlannerScreen() {
         </Card>
 
         {/* Weekly Goals */}
-        <Card style={styles.section}>
+        <Card style={styles.section} tapToAdd>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Цели на неделю</Text>
           </View>

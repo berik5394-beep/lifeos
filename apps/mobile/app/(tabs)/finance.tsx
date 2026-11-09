@@ -1317,7 +1317,7 @@ export default function FinanceScreen() {
         </Card>
 
         {/* DEBTS */}
-        <Card style={styles.tableCard}>
+        <Card style={styles.tableCard} tapToAdd>
           <View style={styles.tableTitleRow}>
             <Text style={[styles.tableTitle, { color: c.warning }]}>ДОЛГИ</Text>
           </View>
@@ -1406,7 +1406,7 @@ export default function FinanceScreen() {
         <Text style={styles.journalDateLabel}>{journalMonthLabel}</Text>
 
         {/* DAILY EXPENSES */}
-        <Card style={styles.journalCard}>
+        <Card style={styles.journalCard} tapToAdd>
           <View style={styles.journalTitleRow}>
             <Text style={[styles.journalTitle, { color: c.danger }]}>
               ЕЖЕДНЕВНЫЕ ТРАТЫ
@@ -1462,7 +1462,7 @@ export default function FinanceScreen() {
         </Card>
 
         {/* DAILY INCOME */}
-        <Card style={styles.journalCard}>
+        <Card style={styles.journalCard} tapToAdd>
           <View style={styles.journalTitleRow}>
             <Text style={[styles.journalTitle, { color: c.success }]}>
               ЕЖЕДНЕВНЫЕ ПОСТУПЛЕНИЯ
