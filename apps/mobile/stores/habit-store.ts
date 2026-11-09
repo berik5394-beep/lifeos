@@ -193,8 +193,15 @@ export const useHabitStore = create<HabitState>((set, get) => ({
         };
       });
     try {
-      putLog(await api.post<HabitLog>(`/habits/${habitId}/log`, { date, completed }, token, QUEUE_OFFLINE));
-      if (completed) useRobotReactionStore.getState().react('happy');
+      // reaction — «шаг к цели X, серия N» (сервер, тот же источник, что у голоса).
+      const { reaction, ...log } = await api.post<HabitLog & { reaction?: string }>(
+        `/habits/${habitId}/log`,
+        { date, completed },
+        token,
+        QUEUE_OFFLINE,
+      );
+      putLog(log);
+      if (completed) useRobotReactionStore.getState().react('happy', reaction);
     } catch (err) {
       // Без сети отметка в очереди — показываем её сразу.
       if (isOfflineQueued(err)) {

@@ -5,6 +5,7 @@ import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { matchHabit, buildNotFoundMessage } from './_habit-match.js';
 import { onHabitDone } from '../services/coins.js';
+import { habitGoalLink } from '../services/habit-goal-link.js';
 
 /** SSOT Step 5 — write-tool. 1:1 с legacy complete_habit. */
 export const completeHabitTool = defineTool({
@@ -87,20 +88,9 @@ export const completeHabitTool = defineTool({
       create: { habitId: habit.id, userId, date: today, completed: true },
     });
     await onHabitDone(userId, habit.id, today.toISOString().slice(0, 10), habit.name);
-    let suffix = '';
-    try {
-      const { isV2GoalHabitsEnabled } = await import('../lib/feature-flags.js');
-      if (habit.goalId && isV2GoalHabitsEnabled(userId)) {
-        const [goal, streak] = await Promise.all([
-          // userId — вторая линия защиты: старые привязки к чужой цели (до IDOR-фикса /habits).
-          prisma.yearlyGoal.findFirst({ where: { id: habit.goalId, userId }, select: { goalText: true } }),
-          import('../services/streak-service.js').then((m) => m.calculateStreak(userId)),
-        ]);
-        if (goal) suffix = ` — это к цели «${goal.goalText}», серия ${streak} дней`;
-      }
-    } catch {
-      /* best-effort: связка не должна ломать отметку */
-    }
+    // Связка с целью — общий помощник (тот же текст знает и экран: POST /habits/:id/log).
+    const link = await habitGoalLink(userId, habit.goalId);
+    const suffix = link ? ` — это к цели «${link.goalText}», серия ${link.streak} дней` : '';
     return { message: `Привычка "${habit.name}" отмечена${dayLabel} ✅${suffix}`, habitId: habit.id };
   },
 });

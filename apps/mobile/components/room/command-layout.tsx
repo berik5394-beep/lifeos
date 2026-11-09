@@ -3,6 +3,7 @@ import { Keyboard, Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
 import { useChatStore } from '@/stores/chat-store';
+import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 import { ChatInputRow } from './chat-input-row';
 import { ChatReplyBubble } from './chat-reply-bubble';
 import { spacing } from '@/constants';
@@ -52,6 +53,34 @@ const CommandReply = memo(function CommandReply({ routeName }: { routeName: stri
   );
 });
 
+/** Сколько держать облачко реакции на экранное действие (как на доме). */
+const SCREEN_BUBBLE_MS = 9000;
+
+/**
+ * Реакция робота на действие С ЭТОГО экрана (встреча наложилась, лимит трат,
+ * шаг к цели…). Раньше её видели только дом и комната: в Календаре, Сделках,
+ * Дневнике, Канбане робот «молчал» (Berik 2026-11-09: робот смотрит за всем).
+ * Только свежая (не проигрываем старую на новом экране), до тапа или таймера.
+ */
+const ScreenReaction = memo(function ScreenReaction({ routeName }: { routeName: string }) {
+  const route = useCurrentRoute();
+  const reaction = useRobotReactionStore((s) => s.reaction);
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const hold = reaction?.holdMs ?? SCREEN_BUBBLE_MS;
+  const fresh = reaction?.text && Date.now() - reaction.at < hold ? reaction : null;
+  useEffect(() => {
+    if (!fresh) return;
+    const t = setTimeout(() => setDismissed(fresh.id), Math.max(0, hold - (Date.now() - fresh.at)));
+    return () => clearTimeout(t);
+  }, [fresh?.id, hold]);
+  if (route !== routeName || !fresh?.text || dismissed === fresh.id) return null;
+  return (
+    <View style={styles.reply}>
+      <ChatReplyBubble text={fresh.text} tail="bottom" onDismiss={() => setDismissed(fresh.id)} />
+    </View>
+  );
+});
+
 /**
  * Строка «Скажи роботу» + ответ робота на ЛЮБОМ экране стека (Настройки,
  * Канбан, Фокус, Камера, Гант…). Раньше команда уходила только с дома —
@@ -69,6 +98,7 @@ export const CommandLayout = memo(function CommandLayout({ routeName, children }
   return (
     <View style={styles.fill}>
       <View style={styles.fill}>{children}</View>
+      <ScreenReaction routeName={routeName} />
       <CommandReply routeName={routeName} />
       <View style={wrap}>
         <ChatInputRow />

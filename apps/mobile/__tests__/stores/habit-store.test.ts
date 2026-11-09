@@ -1,5 +1,6 @@
 import { api } from '@/services/api';
 import { useHabitStore } from '@/stores/habit-store';
+import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 
 const mockedApi = api as jest.Mocked<typeof api>;
 
@@ -135,6 +136,16 @@ describe('useHabitStore', () => {
       const logs = useHabitStore.getState().logs;
       expect(logs['2026-04-13']).toHaveLength(1);
       expect(logs['2026-04-13'][0].completed).toBe(false);
+    });
+
+    it('шаг к цели с сервера → облачко робота, в лог не попадает', async () => {
+      useHabitStore.setState({ logs: {} });
+      mockedApi.post.mockResolvedValueOnce({ ...MOCK_LOG, reaction: '«Бег» — шаг к цели «Марафон».' });
+
+      await useHabitStore.getState().toggleHabitLog('habit-1', '2026-04-13', true);
+
+      expect(useRobotReactionStore.getState().reaction).toMatchObject({ emotion: 'happy', text: '«Бег» — шаг к цели «Марафон».' });
+      expect(useHabitStore.getState().logs['2026-04-13'][0]).not.toHaveProperty('reaction');
     });
   });
 });

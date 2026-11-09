@@ -7,6 +7,7 @@ import { validate, parseMonth, invalidDateReply } from '../middleware/validate.j
 import { rateLimiter } from '../middleware/security.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { onHabitDone } from '../services/coins.js';
+import { habitGoalLink, habitGoalReactionText } from '../services/habit-goal-link.js';
 import { habitAutoCompleteSchema } from '../services/habit-auto.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { localDateStr } from '../lib/tz.js';
@@ -209,7 +210,9 @@ export async function habitRoutes(app: FastifyInstance): Promise<void> {
         ? `Отметил привычку «${habit.name}»`
         : `Снял отметку с привычки «${habit.name}»`,
     });
-    return reply.send(log);
+    // Робот и с экрана говорит то же, что голосом: к какой цели шаг и какая серия.
+    const link = completed ? await habitGoalLink(request.userId, habit.goalId) : null;
+    return reply.send(link ? { ...log, reaction: habitGoalReactionText(habit.name, link) } : log);
   });
 
   // habit-day (2026-11-05): приложение подтягивает отметки с сервера, а не только
