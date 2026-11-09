@@ -22,9 +22,9 @@ describe('detectMoneyIntent — надёжный детект денег', () =>
       action: 'add_expense', amount: 5000, category: 'такси', description: 'такси',
     });
   });
-  it('доход с ведущим словом, источник отсутствует', () => {
+  it('доход с ведущим словом: «зарплату» — это и есть источник (аудит 2026-11-09)', () => {
     expect(detectMoneyIntent('я получил зарплату 350000')).toEqual({
-      action: 'add_income', amount: 350000,
+      action: 'add_income', amount: 350000, source: 'Зарплата',
     });
   });
   it('доход с источником', () => {
@@ -149,7 +149,6 @@ const SAME_AS_BEFORE = [
   'сегодня купил на 3000 продукты',
   '5000 на такси',
   '5 000 на продукты',
-  'я получил зарплату 350000',
   'доход 50000 от фриланса',
   'потратил 50 000 на ремонт',
   'получил 2 000 000 от Ахмета',
@@ -210,5 +209,15 @@ describe('detectMoneyIntent — как до сделок, кроме намер�
     expect(detectMoneyIntent(t)).toEqual(expected);
     // и это действительно отличие от прежнего (иначе — в SAME_AS_BEFORE)
     if (t !== 'потратил 3000тг на еду') expect(preDeals(t)).not.toEqual(expected);
+  });
+});
+
+describe('аудит 2026-11-09: источник дохода', () => {
+  it('«получил зарплату 350000» — источник «Зарплата», без «Откуда?»', () => {
+    expect(detectMoneyIntent('получил зарплату 350000')).toEqual({ action: 'add_income', amount: 350000, source: 'Зарплата' });
+    expect(detectMoneyIntent('получил премию 100000')).toMatchObject({ source: 'Премия' });
+  });
+  it('«выплатил зарплату 200000 Айгерим» — не доход', () => {
+    expect(detectMoneyIntent('выплатил зарплату 200000 Айгерим')).toBeNull();
   });
 });

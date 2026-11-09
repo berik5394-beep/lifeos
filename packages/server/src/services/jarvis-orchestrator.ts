@@ -41,6 +41,7 @@ import {
   clearPendingAction,
   readConfirmSignal,
   awaitingSlot,
+  isSlotAnswer,
   clientPendingInput,
 } from './pending-actions.js';
 import { isV2MemoryEnabled } from '../lib/feature-flags.js';
@@ -1066,7 +1067,14 @@ async function handleMessageCore(
   }
 
   // ---- Фаза 1.2: ждём подтверждения предыдущего денежного действия? ----
-  const pending = await peekPendingAction(userId);
+  let pending = await peekPendingAction(userId);
+  // Аудит 2026-11-09: ждали «откуда доход?», а пришла новая просьба — вопрос
+  // снимаем (ничего не записано) и разбираем фразу как обычно, а не кладём её
+  // в источник («Записать доход 80000 ₸ (на еду в месяц не больше 50000)?»).
+  if (pending && awaitingSlot(pending) && readConfirmSignal(text) !== 'cancel' && !isSlotAnswer(text)) {
+    await takePendingAction(userId);
+    pending = null;
+  }
   if (pending) {
     const signal = readConfirmSignal(text);
     // #189 слот-филл: pending ждёт категорию (расход)/источник (доход).

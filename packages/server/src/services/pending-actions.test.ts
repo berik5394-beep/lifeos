@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   setPendingAction,
+  isSlotAnswer,
   peekPendingAction,
   takePendingAction,
   clearPendingAction,
@@ -182,4 +183,16 @@ describe('clientPendingInput — служебные __-ключи не уход�
   it('без служебных ключей — тот же набор полей', () => {
     expect(clientPendingInput({ dealId: 'd', markWon: true, amount: 5 })).toEqual({ dealId: 'd', markWon: true, amount: 5 });
   });
+});
+
+describe('isSlotAnswer — ответ на «Откуда доход?/На что?» vs новая просьба', () => {
+  it.each(['от работы', 'Серик', 'фриланс', 'такси', 'клиент Ахмет', 'кафе с друзьями'])('«%s» — ответ', (t) => {
+    expect(isSlotAnswer(t)).toBe(true);
+  });
+  it.each(['на еду в месяц не больше 50000', 'отменить задачу', 'получил 2 письма от Серика', 'какие задачи на сегодня?', 'создай задачу купить хлеб'])(
+    '«%s» — новая просьба',
+    (t) => {
+      expect(isSlotAnswer(t)).toBe(false);
+    },
+  );
 });

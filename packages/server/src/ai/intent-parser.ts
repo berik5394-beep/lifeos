@@ -179,8 +179,11 @@ export function detectMoneyIntent(text: string): MoneyIntent | null {
     const amount = parseAmount(m[1], m[2], m[3] ?? m[4]);
     if (amount > MAX_MONEY_AMOUNT) return null;
     if (!looksLikeMoney(amount, m[5] ?? '', !!(m[2] || m[3] || m[4]), text)) return null;
+    // «выплатил зарплату 200000 Айгерим» — это расход, не доход: в мозг.
+    if (/^(?:[а-яё]+\s+){0,3}?(?:вы|за|о)платил|отдал|перев[её]л/i.test(text) && !/^(?:получил|заработал|доход)/i.test(text)) return null;
     if (Number.isFinite(amount) && amount > 0) {
-      const source = cleanRest(m[5]);
+      // «получил зарплату 350000» — источник уже назван, не переспрашиваем.
+      const source = cleanRest(m[5]) || (/зарплат/i.test(text) ? 'Зарплата' : /преми/i.test(text) ? 'Премия' : '');
       return source
         ? { action: 'add_income', amount, source }
         : { action: 'add_income', amount };
