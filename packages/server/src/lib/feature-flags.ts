@@ -22,18 +22,6 @@ function isEnabledForUser(envValue: string | undefined, userId: string): boolean
     .some((s) => s === `user-${userId}`);
 }
 
-/**
- * Привычка↔цель (interconnection, аудит-фикс). Same shape as isV2AxesEnabled.
- */
-export function isV2GoalHabitsEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_GOAL_HABITS;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
 /** Забывание-троица (F1/F3/F5): message вне recall, ридер чтит invalidAt, дедуп не сбрасывает createdAt. */
 export function isV2ForgetEnabled(userId: string): boolean {
   const raw = process.env.FEATURE_V2_FORGET;
@@ -105,19 +93,6 @@ export function isV2ScheduleConflictEnabled(userId: string): boolean {
  */
 export function isV2RecentActivityEnabled(userId: string): boolean {
   const raw = process.env.FEATURE_V2_RECENT_ACTIVITY;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
- * Решения↔исходы: журнал решений + ретро + детектор decision_review.
- * Same shape as isV2AxesEnabled (env FEATURE_V2_DECISIONS).
- */
-export function isV2DecisionsEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_DECISIONS;
   if (raw === undefined) return false;
   const flag = raw.trim();
   if (flag === '' || flag === 'none' || flag === 'false') return false;

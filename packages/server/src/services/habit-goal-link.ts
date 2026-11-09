@@ -1,5 +1,4 @@
 import { prisma } from '../lib/prisma.js';
-import { isV2GoalHabitsEnabled } from '../lib/feature-flags.js';
 import { calculateStreak } from './streak-service.js';
 
 /**
@@ -15,7 +14,7 @@ export async function habitGoalLink(
   userId: string,
   goalId: string | null | undefined,
 ): Promise<{ goalText: string; streak: number } | null> {
-  if (!goalId || !isV2GoalHabitsEnabled(userId)) return null;
+  if (!goalId) return null;
   try {
     const [goal, streak] = await Promise.all([
       // userId — вторая линия защиты: старые привязки к чужой цели (до IDOR-фикса /habits).

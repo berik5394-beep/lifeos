@@ -605,8 +605,6 @@ async function detectObligationDue(userId: string): Promise<NudgeCandidate[]> {
 
 async function detectDecisionReview(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2DecisionsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2DecisionsEnabled(userId)) return [];
     const { prisma } = await import('../lib/prisma.js');
     const now = Date.now();
     const rows = await prisma.decision.findMany({
@@ -824,12 +822,10 @@ async function detectMemorial(userId: string): Promise<NudgeCandidate[]> {
 /**
  * Привычка↔цель (interconnection): цель, чьи привязанные привычки буксуют
  * ≥3 дней → нудж «цель проседает». Чинит захардкоженный goalsBehind:0
- * реальным числом. READ-ONLY. Флаг-гейт ранний (off=identical).
+ * реальным числом. READ-ONLY.
  */
 async function detectGoalHabitStall(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2GoalHabitsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2GoalHabitsEnabled(userId)) return [];
     const health = await buildGoalHabitHealth(userId, new Date());
     const worst = pickWorstStall(computeStall(health, 3));
     if (!worst) return [];

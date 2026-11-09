@@ -97,8 +97,8 @@ describe('structural — fetcher', () => {
   it('returns null on top-level failure (best-effort)', () => {
     expect(SRC).toMatch(/return null/);
   });
-  it('wires decisions branch behind flag with builder', () => {
-    expect(SRC).toMatch(/isV2DecisionsEnabled\(userId\)/);
+  it('wires decisions branch with builder', () => {
+    expect(SRC).not.toMatch(/isV2DecisionsEnabled/);
     expect(SRC).toMatch(/buildDecisionsContext\(/);
     expect(SRC).toMatch(/formatDecisionsSection\(/);
   });
@@ -191,7 +191,7 @@ describe('v2-enrichment — tone section wiring (D1)', () => {
     expect(s).toContain('formatToneSection');
     expect(s).not.toContain('isV2IdentityEnabled');
   });
-  it('tone section appended under flag', () => {
+  it('tone section appended', () => {
     const s = readFileSync(join(process.cwd(), 'src/services/v2-enrichment.ts'), 'utf-8');
     expect(s).not.toMatch(/isV2IdentityEnabled/);
     expect(s).toMatch(/formatToneSection\(/);

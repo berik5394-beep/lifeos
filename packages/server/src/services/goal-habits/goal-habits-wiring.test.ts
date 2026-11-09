@@ -9,9 +9,9 @@ const CH = readFileSync(join(__dirname, '..', '..', 'tools', 'complete-habit.ts'
 const HEALTH = readFileSync(join(__dirname, 'health.ts'), 'utf8');
 
 describe('goal-habits wiring (structural)', () => {
-  it('флаг isV2GoalHabitsEnabled', () => {
-    expect(FLAGS).toMatch(/export function isV2GoalHabitsEnabled/);
-    expect(FLAGS).toMatch(/FEATURE_V2_GOAL_HABITS/);
+  it('флага FEATURE_V2_GOAL_HABITS больше нет', () => {
+    expect(FLAGS).not.toMatch(/isV2GoalHabitsEnabled/);
+    expect(FLAGS).not.toMatch(/FEATURE_V2_GOAL_HABITS/);
   });
   it('goal_habits_stall в engine union+TEMPLATES+score+detectCandidates', () => {
     expect(ENGINE).toMatch(/'goal_habits_stall'/);
@@ -19,17 +19,17 @@ describe('goal-habits wiring (structural)', () => {
     expect(ENGINE).toMatch(/case 'goal_habits_stall':/);
     expect(ENGINE).toMatch(/detectGoalHabitStall\(userId\)/);
   });
-  it('detectGoalHabitStall ранний флаг-гейт', () => {
+  it('detectGoalHabitStall без флага', () => {
     const fn = ENGINE.slice(ENGINE.indexOf('async function detectGoalHabitStall'));
-    expect(fn).toMatch(/if\s*\(!isV2GoalHabitsEnabled\(userId\)\)\s*return\s*\[\]/);
+    expect(fn).not.toMatch(/isV2GoalHabitsEnabled/);
   });
   it('ЧЕСТНОСТЬ: complete-habit.ts бросает на промахе, нет тихого notFound-return', () => {
     expect(CH).toMatch(/throw new Error\(buildNotFoundMessage/);
     expect(CH).not.toMatch(/return\s*{\s*message:\s*'Привычка не найдена'/);
   });
-  it('enrichment врезка goalHabits за флагом', () => {
+  it('enrichment врезка goalHabits без флага', () => {
     expect(ENRICH).toMatch(/goalHabits:\s*string\s*\|\s*null/);
-    expect(ENRICH).toMatch(/isV2GoalHabitsEnabled\(userId\)/);
+    expect(ENRICH).not.toMatch(/isV2GoalHabitsEnabled/);
     expect(ENRICH).toMatch(/if\s*\(gh\)/);
   });
   it('money-safety: health.ts (goal-habits) без prisma write', () => {

@@ -1,6 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  isV2DecisionsEnabled,
   isV2WriteEnabled,
   isV2RealtimeEnabled,
   isV2DayLoadEnabled,
@@ -8,7 +7,6 @@ import {
   isV2WeekLoadEnabled,
   isV2MonthLoadEnabled,
   isV2YearLoadEnabled,
-  isV2GoalHabitsEnabled,
   isV2EntityResolveEnabled,
   isV2ForgetEnabled,
   isV2PatternDedupEnabled,
@@ -55,18 +53,6 @@ describe('isV2PatternDedupEnabled', () => {
   it('all → true', () => { process.env[KEY] = 'all'; expect(isV2PatternDedupEnabled('u1')).toBe(true); });
   it('none/false/empty → false', () => { for (const v of ['none','false','']) { process.env[KEY]=v; expect(isV2PatternDedupEnabled('u1')).toBe(false); } });
   it('csv', () => { process.env[KEY]='user-u1'; expect(isV2PatternDedupEnabled('u1')).toBe(true); expect(isV2PatternDedupEnabled('u2')).toBe(false); });
-});
-
-describe('isV2GoalHabitsEnabled', () => {
-  const KEY = 'FEATURE_V2_GOAL_HABITS';
-  afterEach(() => { delete process.env[KEY]; });
-  it('undefined → false', () => { delete process.env[KEY]; expect(isV2GoalHabitsEnabled('u1')).toBe(false); });
-  it('"all" → true', () => { process.env[KEY] = 'all'; expect(isV2GoalHabitsEnabled('u1')).toBe(true); });
-  it('user-<id> адресно', () => {
-    process.env[KEY] = 'user-u1';
-    expect(isV2GoalHabitsEnabled('u1')).toBe(true);
-    expect(isV2GoalHabitsEnabled('u2')).toBe(false);
-  });
 });
 
 describe('isV2YearLoadEnabled', () => {
@@ -203,32 +189,6 @@ describe('isV2WriteEnabled', () => {
   it('ignores trailing/leading whitespace in flag itself', () => {
     process.env.FEATURE_V2_WRITE = '  all  ';
     expect(isV2WriteEnabled('x')).toBe(true);
-  });
-});
-
-describe('isV2DecisionsEnabled', () => {
-  afterEach(() => {
-    delete process.env.FEATURE_V2_DECISIONS;
-  });
-  it('unset → false', () => {
-    expect(isV2DecisionsEnabled('u1')).toBe(false);
-  });
-  it('none/false/empty → false', () => {
-    for (const v of ['none', 'false', '']) {
-      process.env.FEATURE_V2_DECISIONS = v;
-      expect(isV2DecisionsEnabled('u1')).toBe(false);
-    }
-  });
-  it('all/true → true', () => {
-    process.env.FEATURE_V2_DECISIONS = 'all';
-    expect(isV2DecisionsEnabled('anybody')).toBe(true);
-    process.env.FEATURE_V2_DECISIONS = 'true';
-    expect(isV2DecisionsEnabled('anybody')).toBe(true);
-  });
-  it('user-list матчит только своих', () => {
-    process.env.FEATURE_V2_DECISIONS = 'user-u1';
-    expect(isV2DecisionsEnabled('u1')).toBe(true);
-    expect(isV2DecisionsEnabled('u2')).toBe(false);
   });
 });
 

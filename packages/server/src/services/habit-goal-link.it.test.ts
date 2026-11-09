@@ -20,7 +20,6 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 beforeEach(() => {
-  process.env.FEATURE_V2_GOAL_HABITS = 'all';
 });
 
 async function setup(tag: string, withGoal: boolean) {

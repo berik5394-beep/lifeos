@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { isV2DecisionsEnabled } from '../lib/feature-flags.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -25,7 +24,6 @@ export const reviewDecisionTool = defineTool({
   sideEffects: 'write',
   examples: ['поставщик A сработал, себестоимость −12%'],
   handler: async (input, ctx) => {
-    if (!isV2DecisionsEnabled(ctx.userId)) return { error: 'функция отключена' };
     const found = await prisma.decision.findFirst({
       where: {
         userId: ctx.userId,

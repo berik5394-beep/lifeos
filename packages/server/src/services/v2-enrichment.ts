@@ -19,8 +19,6 @@ import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
 import {
-  isV2DecisionsEnabled,
-  isV2GoalHabitsEnabled,
   isV2RecentActivityEnabled,
   isV2ScheduleConflictEnabled,
   isV2MemQualityEnabled,
@@ -505,25 +503,21 @@ export async function fetchV2EnrichmentData(
       withTimeout(buildRelationshipNudge(userId), CROSS_DOMAIN_BUDGET_MS, null)
         .then((r) => r?.insightText ?? null)
         .catch(() => null),
-      isV2DecisionsEnabled(userId)
-        ? withTimeout(
-            buildDecisionsContext(userId).then((c) => renderDecisionsInsight(c)),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          ).catch(() => null)
-        : Promise.resolve(null),
+      withTimeout(
+        buildDecisionsContext(userId).then((c) => renderDecisionsInsight(c)),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      ).catch(() => null),
       withTimeout(buildBirthdaySection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null),
       withTimeout(buildMemorialSection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null),
-      isV2GoalHabitsEnabled(userId)
-        ? withTimeout(
-            buildGoalHabitHealth(userId).then((h) => {
-              const w = pickWorstStall(computeStall(h, 3));
-              return w ? formatStallText(w) : null;
-            }),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          ).catch(() => null)
-        : Promise.resolve(null),
+      withTimeout(
+        buildGoalHabitHealth(userId).then((h) => {
+          const w = pickWorstStall(computeStall(h, 3));
+          return w ? formatStallText(w) : null;
+        }),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      ).catch(() => null),
       isV2RecentActivityEnabled(userId)
         ? withTimeout(
             (isV2MemQualityEnabled(userId)
