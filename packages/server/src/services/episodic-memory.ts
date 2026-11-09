@@ -110,7 +110,7 @@ export type WriteMemoryInput = {
  * Эпизодические (event/emotion/place/message/action-типы) — нет: это
  * разные события во времени.
  */
-const STABLE_TYPES = new Set(['fact', 'preference', 'person', 'decision']);
+export const STABLE_TYPES = new Set(['fact', 'preference', 'person', 'decision']);
 
 /** Минимальный ts_rank для засчёта FTS-дедупа.
  *  Слабый матч (один общий токен, rank ≤ порог) — не обновляет чужую строку,
@@ -203,6 +203,49 @@ export function shouldEmbed(input: {
 }
 
 /**
+ * С какой живой записью того же типа слить `content` (правила — pickDedupTarget).
+ * Один поиск для записи новой памяти (writeMemory) и для разовой склейки
+ * старых дублей (memory-dedupe-backfill): excludeId — сама запись,
+ * before — только более ранние (выживает старшая).
+ */
+export async function findDedupTarget(
+  userId: string,
+  type: string,
+  content: string,
+  opts: { excludeId?: string; before?: Date } = {},
+): Promise<DedupCandidate | null> {
+  const norm = normalizeMemoryText(content);
+  const cands = await prisma.$queryRaw<Array<DedupCandidate & { newLex: number }>>`
+    SELECT m.id, m.importance, m.tags, m.details,
+      ts_rank(to_tsvector('russian', coalesce(m.content, '')), plainto_tsquery('russian', ${content})) AS rank,
+      (to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${content})) AS fwd,
+      (to_tsvector('russian', ${content}) @@ plainto_tsquery('russian', coalesce(m.content, ''))) AS rev,
+      (regexp_replace(regexp_replace(lower(btrim(coalesce(m.content, ''))), '\\s+', ' ', 'g'), '[.!…[:space:]]+$', '') = ${norm}) AS exact,
+      length(to_tsvector('russian', coalesce(m.content, '')))::int AS "oldLex",
+      length(to_tsvector('russian', ${content}))::int AS "newLex"
+    FROM "Memory" m
+    WHERE m."userId" = ${userId}
+      AND m.type = ${type}
+      -- Забытое («Неправда», supersede) — не цель дедупа: иначе новое
+      -- знание сольётся в скрытую строку и тоже станет невидимым.
+      -- Время — часы ПРИЛОЖЕНИЯ, как у писателя (forgetMemory ставит
+      -- invalidAt = new Date()). С NOW() базы, отстающей хоть на 1 мс,
+      -- только что забытое считалось живым (флейк 2026-11-08).
+      AND (m."invalidAt" IS NULL OR m."invalidAt" > ${new Date()})
+      AND (
+        to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${content})
+        OR to_tsvector('russian', ${content}) @@ plainto_tsquery('russian', coalesce(m.content, ''))
+        OR regexp_replace(regexp_replace(lower(btrim(coalesce(m.content, ''))), '\\s+', ' ', 'g'), '[.!…[:space:]]+$', '') = ${norm}
+      )
+      ${opts.excludeId ? Prisma.sql`AND m.id <> ${opts.excludeId}` : Prisma.empty}
+      ${opts.before ? Prisma.sql`AND m."createdAt" < ${opts.before}` : Prisma.empty}
+    ORDER BY rank DESC
+    LIMIT 10;
+  `;
+  return pickDedupTarget(cands, cands[0]?.newLex ?? 0);
+}
+
+/**
  * ОДНА ПАМЯТЬ M2 — ЕДИНЫЙ писатель в `Memory`.
  *
  * Вбирает лучшее из обоих legacy/v2:
@@ -232,34 +275,7 @@ export async function writeMemory(
 
     // --- 1. Дедуп (порт из captureMemory) для стабильных типов ---
     if (STABLE_TYPES.has(input.type)) {
-      const norm = normalizeMemoryText(content);
-      const cands = await prisma.$queryRaw<Array<DedupCandidate & { newLex: number }>>`
-        SELECT m.id, m.importance, m.tags, m.details,
-          ts_rank(to_tsvector('russian', coalesce(m.content, '')), plainto_tsquery('russian', ${content})) AS rank,
-          (to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${content})) AS fwd,
-          (to_tsvector('russian', ${content}) @@ plainto_tsquery('russian', coalesce(m.content, ''))) AS rev,
-          (regexp_replace(regexp_replace(lower(btrim(coalesce(m.content, ''))), '\\s+', ' ', 'g'), '[.!…[:space:]]+$', '') = ${norm}) AS exact,
-          length(to_tsvector('russian', coalesce(m.content, '')))::int AS "oldLex",
-          length(to_tsvector('russian', ${content}))::int AS "newLex"
-        FROM "Memory" m
-        WHERE m."userId" = ${userId}
-          AND m.type = ${input.type}
-          -- Забытое («Неправда», supersede) — не цель дедупа: иначе новое
-          -- знание сольётся в скрытую строку и тоже станет невидимым.
-          -- Время — часы ПРИЛОЖЕНИЯ, как у писателя (forgetMemory ставит
-          -- invalidAt = new Date()). С NOW() базы, отстающей хоть на 1 мс,
-          -- только что забытое считалось живым (флейк 2026-11-08).
-          AND (m."invalidAt" IS NULL OR m."invalidAt" > ${new Date()})
-          AND (
-            to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${content})
-            OR to_tsvector('russian', ${content}) @@ plainto_tsquery('russian', coalesce(m.content, ''))
-            OR regexp_replace(regexp_replace(lower(btrim(coalesce(m.content, ''))), '\\s+', ' ', 'g'), '[.!…[:space:]]+$', '') = ${norm}
-          )
-        ORDER BY rank DESC
-        LIMIT 10;
-      `;
-
-      const existing = pickDedupTarget(cands, cands[0]?.newLex ?? 0);
+      const existing = await findDedupTarget(userId, input.type, content);
       if (existing) {
         const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags])).slice(0, 10);
         const merged = mergeDetails(existing.details, details);
@@ -321,7 +337,7 @@ export async function writeMemory(
  * Эмбедим только если shouldEmbed(input) (knob/тип) И embeddingsEnabled().
  * Best-effort: сбой Voyage не валит запись (семантика опциональна).
  */
-async function storeMemoryEmbedding(
+export async function storeMemoryEmbedding(
   id: string,
   content: string,
   details: string | null,

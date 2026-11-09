@@ -12,6 +12,10 @@ import { runWeekly, runEventCheck } from './reflector-v2/index.js';
 import { getProactivityEngine } from './v2-proactivity-engine.singleton.js';
 import { withCronLock } from './cron-runner.js';
 import { buildDailyDigest, isOpsDigestHour } from './ai-economics.js';
+import { runMemoryDedupeBackfill, backfillLogLine, type BackfillMode } from './cron/memory-dedupe-backfill.js';
+
+/** Склейка старых дублей памяти: dry (счёт) → после просмотра цифр apply. */
+const MEMORY_DEDUPE_BACKFILL_MODE: BackfillMode = 'dry';
 import { hasOpsRecipients, opsAlertRecipients } from '../lib/ops-alert.js';
 import { syncGoogleCalendar, GOOGLE_SYNC_INTERVAL_MS } from './google-calendar-sync.js';
 import { runMoodRetention } from './cron/mood-retention-cron.js';
@@ -146,6 +150,21 @@ async function tick(): Promise<void> {
     // Глобальные (без флага); withCronLock enforces the
     // 24h / 7d interval regardless of how often tick fires. Each hook
     // is its own try/catch — a cron failure must not break the user loop.
+    // Разовая склейка старых дублей памяти (Berik 2026-11-10). Один запуск на
+    // имя задачи (замок на 10 лет): сначала dry — только счёт в лог; apply —
+    // отдельным деплоем после просмотра цифр. Пары id — в лог (вернуть: restoreMemory).
+    try {
+      await withCronLock(`memory-dedupe-backfill-${MEMORY_DEDUPE_BACKFILL_MODE}-v1`, 3650 * 24 * 60 * 60 * 1000, null, async () => {
+        const r = await runMemoryDedupeBackfill(MEMORY_DEDUPE_BACKFILL_MODE);
+        console.log(backfillLogLine(r));
+        for (let i = 0; i < r.pairs.length; i += 40) {
+          console.log(`[memory-dedupe] pairs ${r.pairs.slice(i, i + 40).map((p) => `${p.from}>${p.into}`).join(' ')}`);
+        }
+      });
+    } catch (err) {
+      console.warn('[memory-dedupe] failed:', err instanceof Error ? err.message : err);
+    }
+
     // Утренняя сводка владельцу (Berik 2026-11-09): люди, стоимость моделей на
     // человека, вернулись ли, сбои — за вчера. 09:00 по Алматы (04 UTC), раз в день.
     if (isOpsDigestHour(new Date()) && hasOpsRecipients()) {

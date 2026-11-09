@@ -215,13 +215,16 @@ describe('episodic-memory.ts structural — writeMemory (единый писат
     expect(SRC).toMatch(/export async function writeMemory\s*\(/);
   });
 
-  it('дедуп: STABLE_TYPES + дубликат-$queryRaw по русскому FTS', () => {
+  it('дедуп: STABLE_TYPES + поиск цели по русскому FTS (findDedupTarget)', () => {
     const start = SRC.indexOf('export async function writeMemory');
     const body = SRC.slice(start, start + 4000);
     expect(body).toContain('STABLE_TYPES.has(');
-    expect(body).toContain('$queryRaw');
-    expect(body).toMatch(/to_tsvector\('russian'/);
-    expect(body).toMatch(/plainto_tsquery\('russian'/);
+    expect(body).toContain('findDedupTarget(');
+    // Сам поиск — общая функция (её зовёт и разовая склейка старых дублей).
+    const f = SRC.slice(SRC.indexOf('export async function findDedupTarget'));
+    expect(f).toContain('$queryRaw');
+    expect(f).toMatch(/to_tsvector\('russian'/);
+    expect(f).toMatch(/plainto_tsquery\('russian'/);
   });
 
   it('update-ветка зовёт shouldOverwriteContent и берёт importance = max', () => {
