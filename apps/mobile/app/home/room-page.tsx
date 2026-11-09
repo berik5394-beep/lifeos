@@ -41,7 +41,7 @@ import { thanksFor } from '@/services/robot-thanks';
 import { visiblePanels } from '@/services/panels';
 import { ROBOT_SIDE_W, planPurchaseView, type SpeechLayout } from '@/services/speech-layout';
 import { finishTier, placedItems, roomItemLabel, spotOf, type RoomVariant } from '@/services/room-catalog';
-import { RENDER_SCALE as R, ZOOM_IN, clampPan } from '@/services/room-geometry';
+import { RENDER_SCALE as R, ZOOM_IN, clampPan, headingFor, nearestTurn, surfaceToScene, zoomOffset, type RoomCam } from '@/services/room-geometry';
 import { furnitureTapNote, toolsInItem, type ToolKey } from '@/services/room-tools';
 import { TOOL_TITLE } from '@/components/room/tool-screens';
 import { INTRO_STEPS, furnitureBadge, isIntroDone, markIntroDone } from '@/services/room-intro';
@@ -63,6 +63,10 @@ function timeTint(hour: number): string {
 /** Поворот головы робота сдвигает дальнюю стену на столько pt — комната «приоткрывается». */
 const PARALLAX_PX = 10;
 const ZOOM_MS = 380;
+/** Поворот к стене (встать лицом к предмету / осмотреться). */
+const TURN_MS = 650;
+/** Встать перед предметом: приблизить мягче, чтобы было видно и стену вокруг. */
+const LOOK_ZOOM = 1.6;
 const THANKS_MS = 8000;
 /** Робот, пока открыт магазин (комната короче). */
 const FURNISH_ROBOT_SCALE = 0.6;
@@ -113,6 +117,9 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   const scheduleRevision = useScheduleStore((s) => s.revision);
   // Часть 6: ячейки видны, пока обставляешь или тащишь предмет.
   const [furnishing, setFurnishing] = useState(false);
+  /** Направление взгляда (целое 0..3) и предмет, перед которым «стоим». */
+  const [heading, setHeading] = useState(0);
+  const [viewing, setViewing] = useState<string | null>(null);
   // Клавиатура открыта → режим разговора: робот маленький над полем ввода,
   // ответ — справа от него, а не огромный робот на пол-экрана.
   const [kbOpen, setKbOpen] = useState(false);
@@ -187,7 +194,9 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   // Камера комнаты: поворот головы робота + наклон телефона (пиксели сцены).
   const tiltX = useSharedValue(0);
   const tiltY = useSharedValue(0);
-  const cam = useDerivedValue(() => ({ x: shift.value + tiltX.value, y: tiltY.value }));
+  // Куда смотрим: 0 — задняя стена, 1 — правая, 2 — передняя, 3 — левая (дробное — поворот).
+  const turn = useSharedValue(0);
+  const cam = useDerivedValue<RoomCam>(() => ({ x: shift.value + tiltX.value, y: tiltY.value, turn: turn.value }));
   // Сцена нарисована в R раз крупнее и уменьшена: издалека масштаб 1/R, вблизи — 1 (чётко).
   const sceneScale = useDerivedValue(() => zoom.value / R);
 
@@ -257,8 +266,8 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   }, [moveRobot]);
 
   const zoomWithOffset = useCallback(
-    (off: { x: number; y: number }) => {
-      zoom.value = withTiming(ZOOM_IN, { duration: ZOOM_MS });
+    (off: { x: number; y: number }, scale: number = ZOOM_IN) => {
+      zoom.value = withTiming(scale, { duration: ZOOM_MS });
       tx.value = withTiming(off.x, { duration: ZOOM_MS });
       ty.value = withTiming(off.y, { duration: ZOOM_MS });
       setZoomed(true);
@@ -274,6 +283,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
     setThanks(null);
     setNewItemId(null);
     setPlan(null);
+    setViewing(null);
     robotToRest();
   }, [zoom, tx, ty, robotToRest]);
 
@@ -377,18 +387,29 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
     [placeFromStorage],
   );
 
-  // Тап по мебели с инструментом — открываем его вкладку (два в предмете — спрашиваем какой).
-  const onItemTap = useCallback(
-    (id: string) => {
-      const it = useRoomStore.getState().items.find((i) => i.id === id);
-      if (!it) return;
-      const inside = toolsInItem(it.itemKey).filter((t) => tools.some((p) => p.key === t));
-      if (inside.length === 0) {
-        // Раньше — тишина: непонятно, сломано или так задумано.
-        const note = furnitureTapNote(it.itemKey, roomItemLabel(it.itemKey), visibleToolKeys, TOOL_TITLE);
-        if (note) setThanks(note);
+  // Повернуться к стене h (короткой дорогой); по окончании — onDone.
+  const turnTo = useCallback(
+    (h: number, onDone?: () => void) => {
+      const target = nearestTurn(turn.value, h);
+      const norm = ((h % 4) + 4) % 4;
+      setHeading(norm);
+      if (target === turn.value) {
+        onDone?.();
         return;
       }
+      turn.value = withTiming(target, { duration: TURN_MS }, (finished) => {
+        if (!finished) return;
+        turn.value = norm; // то же направление, без накопления оборотов
+        if (onDone) runOnJS(onDone)();
+      });
+    },
+    [turn],
+  );
+
+  // Открыть то, что лежит в предмете (два — спрашиваем какой).
+  const openItemTools = useCallback(
+    (itemKey: string) => {
+      const inside = toolsInItem(itemKey as never).filter((t) => tools.some((p) => p.key === t));
       if (inside.length === 1) showTool(inside[0]);
       else if (inside.length > 1) {
         Alert.alert('Что достать?', undefined, [
@@ -397,8 +418,44 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
         ]);
       }
     },
-    [tools, showTool, visibleToolKeys],
+    [tools, showTool],
   );
+
+  /**
+   * Тап по предмету (Berik 2026-11-09): «экран встаёт прямо перед ним» — комната
+   * поворачивается к его стене и приближает его. Повторный тап (или кнопка
+   * «Открыть») — достать инструмент, если он в предмете лежит.
+   */
+  const onItemTap = useCallback(
+    (id: string) => {
+      const it = useRoomStore.getState().items.find((i) => i.id === id);
+      if (!it || size.w === 0) return;
+      if (viewing === id) {
+        openItemTools(it.itemKey);
+        return;
+      }
+      const h = headingFor(it.surface) ?? heading;
+      turnTo(h, () => {
+        // Где предмет окажется, когда стена будет напротив, — туда и приближаем.
+        const sp = surfaceToScene(size.w * R, size.h * R, { x: 0, y: 0, turn: h }, it.surface, it.u, it.v);
+        // Сцена нарисована в R раз крупнее и уменьшена вокруг центра: экран = сцена / R.
+        const p = { x: sp.x / R, y: sp.y / R };
+        zoomWithOffset(zoomOffset(p, size.w, size.h, LOOK_ZOOM), LOOK_ZOOM);
+        robotToSide(p.x > size.w / 2 ? 'left' : 'right');
+      });
+      setViewing(id);
+      // Без инструмента внутри — робот скажет, что это (раньше тап был тишиной).
+      const inside = toolsInItem(it.itemKey).filter((t) => tools.some((p) => p.key === t));
+      if (inside.length === 0) {
+        const note = furnitureTapNote(it.itemKey, roomItemLabel(it.itemKey), visibleToolKeys, TOOL_TITLE);
+        if (note) setThanks(note);
+      }
+    },
+    [size, viewing, heading, turnTo, openItemTools, zoomWithOffset, robotToSide, tools, visibleToolKeys],
+  );
+
+  const viewingItem = viewing ? items.find((i) => i.id === viewing) ?? null : null;
+  const viewingTools = viewingItem ? toolsInItem(viewingItem.itemKey).filter((t) => tools.some((p) => p.key === t)) : [];
 
   const onBuy = useCallback(
     async (v: RoomVariant) => {
@@ -452,12 +509,15 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
     (shelf: 'furnish' | null) => {
       setFurnishing(shelf === 'furnish');
       if (shelf === 'furnish') {
+        // Обставляем в обычном виде (задняя стена напротив) — так понятнее, куда ставишь.
+        if (zoomed) zoomOut();
+        turnTo(0);
         fetchCatalog();
         fetchCoins();
         fetchFriendship();
       }
     },
-    [fetchCatalog, fetchCoins, fetchFriendship],
+    [fetchCatalog, fetchCoins, fetchFriendship, zoomed, zoomOut, turnTo],
   );
 
   const introTarget = introStep == null ? null : INTRO_STEPS[introStep].target;
@@ -669,6 +729,41 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
               )}
             </View>
           )}
+          {/* Осмотреться: повернуться к соседней стене (вся комната видна). */}
+          {!zoomed && !furnishing && !chatMode && introStep == null && size.w > 0 && (
+            <>
+              <Pressable
+                onPress={() => turnTo(heading - 1)}
+                style={[styles.turnBtn, styles.turnLeft]}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Повернуться налево"
+              >
+                <Feather name="chevron-left" size={30} color={ROOM_INK} style={ROOM_INK_HALO} />
+              </Pressable>
+              <Pressable
+                onPress={() => turnTo(heading + 1)}
+                style={[styles.turnBtn, styles.turnRight]}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Повернуться направо"
+              >
+                <Feather name="chevron-right" size={30} color={ROOM_INK} style={ROOM_INK_HALO} />
+              </Pressable>
+            </>
+          )}
+          {/* Стоим перед предметом с инструментом внутри — открыть его. */}
+          {zoomed && viewingTools.length > 0 && (
+            <Pressable
+              onPress={() => viewingItem && openItemTools(viewingItem.itemKey)}
+              style={styles.openPill}
+              accessibilityRole="button"
+            >
+              <Text style={styles.openPillText}>
+                Открыть {viewingTools.length === 1 ? `«${TOOL_TITLE[viewingTools[0]]}»` : 'что внутри'}
+              </Text>
+            </Pressable>
+          )}
           {zoomed && (
             <Pressable
               onPress={zoomOut}
@@ -727,5 +822,20 @@ function createStyles(c: ReturnType<typeof useColors>) {
     friendPillText: { color: ROOM_INK, fontSize: 13, fontWeight: '700', ...ROOM_INK_HALO },
     // Просто иконка, без кружка-подложки; зона нажатия прежняя 36×36.
     iconBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+    turnBtn: { position: 'absolute', top: '42%', width: 40, height: 56, alignItems: 'center', justifyContent: 'center' },
+    turnLeft: { left: 2 },
+    turnRight: { right: 2 },
+    openPill: {
+      position: 'absolute',
+      bottom: spacing.md,
+      alignSelf: 'center',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255,248,235,0.92)',
+      borderWidth: 2,
+      borderColor: '#2A1A0E',
+    },
+    openPillText: { fontSize: 16, fontWeight: '700', color: '#2A1A0E' },
   });
 }

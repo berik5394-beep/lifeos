@@ -1,7 +1,7 @@
 import React, { memo, type ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, { type DerivedValue, useAnimatedStyle } from 'react-native-reanimated';
-import { quadMatrix, roomFaces, type Pt, type RoomFaces } from '@/services/room-geometry';
+import { faceWeight, quadMatrix, roomFaces, type FaceName, type RoomCam } from '@/services/room-geometry';
 
 /**
  * Грань 3D-комнаты: обычный View w×h, натянутый матрицей перспективы на
@@ -22,14 +22,19 @@ export const RoomFace = memo(function RoomFace({
   /** Размер сцены — по нему строятся грани. */
   sceneW: number;
   sceneH: number;
-  face: keyof RoomFaces;
-  /** Сдвиг камеры (пиксели сцены): двигает дальнюю стену. */
-  cam: DerivedValue<Pt>;
+  face: FaceName;
+  /** Камера: сдвиг (двигает дальнюю стену) и поворот (куда смотрим). */
+  cam: DerivedValue<RoomCam>;
   children: ReactNode;
 }) {
-  const style = useAnimatedStyle(() => ({
-    transform: [{ matrix: quadMatrix(width, height, roomFaces(sceneW, sceneH, cam.value)[face]) }],
-  }));
+  const style = useAnimatedStyle(() => {
+    // Стена за спиной гаснет (и прижата к краю экрана) — не закрывает комнату.
+    const w = faceWeight(face, cam.value.turn ?? 0);
+    return {
+      opacity: w,
+      transform: [{ matrix: quadMatrix(width, height, roomFaces(sceneW, sceneH, cam.value)[face]) }],
+    };
+  });
   return (
     <Animated.View style={[styles.face, { width, height }, style]} pointerEvents="none">
       {children}

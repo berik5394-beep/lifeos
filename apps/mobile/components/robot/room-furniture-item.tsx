@@ -12,7 +12,7 @@ import Animated, {
   withTiming,
   withSpring,
 } from 'react-native-reanimated';
-import { RENDER_SCALE as R, placeAt, surfaceScale, surfaceToScene, type Pt, type Surface } from '@/services/room-geometry';
+import { RENDER_SCALE as R, faceWeight, placeAt, surfaceFace, surfaceScaleAt, surfaceToScene, type RoomCam, type Surface } from '@/services/room-geometry';
 import { TIER_COLOR, roomItemEmoji, roomItemLabel, spotOf, tierOf, type RoomItem } from '@/services/room-catalog';
 import { SoftSpot } from '@/components/room/face-light';
 import { hapticLight, hapticMedium } from '@/services/haptics';
@@ -34,7 +34,7 @@ interface RoomFurnitureItemProps {
   /** Текущее приближение комнаты: палец двигается по экрану, предмет — по комнате. */
   zoom: SharedValue<number>;
   /** Камера комнаты: дальние предметы сдвигаются вместе с задней стеной (объём). */
-  cam: DerivedValue<Pt>;
+  cam: DerivedValue<RoomCam>;
   /** Отпустил: точка на поверхности (свободно, куда хочет юзер). */
   onMove: (id: string, surface: Surface, u: number, v: number) => void;
   onRemove: (id: string) => void;
@@ -171,12 +171,15 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
   const style = useAnimatedStyle(() => {
     const s = SURF[si.value];
     const p = surfaceToScene(roomWidth, roomHeight, cam.value, s, su.value, sv.value);
+    // Стена за спиной (при повороте) — её предметы гаснут вместе с ней.
+    const w = faceWeight(surfaceFace(s), cam.value.turn ?? 0);
     return {
+      opacity: w,
       transform: [
         { translateX: p.x + dx.value - SIZE / 2 },
         { translateY: p.y + dy.value - SIZE / 2 },
         // Дальше от зрителя — мельче (перспектива комнаты).
-        { scale: lift.value * surfaceScale(s, su.value, sv.value) },
+        { scale: lift.value * surfaceScaleAt(roomWidth, roomHeight, cam.value, s, su.value, sv.value) },
       ],
     };
   });

@@ -63,7 +63,10 @@ export interface RoomFaces {
   right: Quad;
   floor: Quad;
   ceiling: Quad;
+  /** Передняя стена (за спиной в обычном виде) — видна, когда поворачиваешься. */
+  front: Quad;
 }
+export type FaceName = keyof RoomFaces;
 
 /**
  * Передний проём комнаты и задняя стена — доли сцены. Комната на весь экран:
@@ -74,26 +77,118 @@ export const FRONT = { l: 0, r: 1, t: 0, b: 1 };
 export const BACK = { l: 0.2, r: 0.8, t: 0.2, b: 0.56 };
 
 /**
+ * Камера комнаты. x, y — сдвиг (пиксели сцены): поворот головы робота, наклон
+ * телефона. turn — куда смотрим (Berik 2026-11-09: «встать перед предметом,
+ * вся комната видна»): 0 — на заднюю стену, 1 — на правую, 2 — на переднюю,
+ * 3 — на левую; дробное — посреди поворота (плавно).
+ */
+export interface RoomCam extends Pt {
+  turn?: number;
+}
+
+/**
+ * Углы комнаты: x ±1 (лево/право), y 0/1 (пол/потолок), z ±1 (перед/зад).
+ * У каждой грани — углы в порядке её рисунка: верх-лево, верх-право, низ-право, низ-лево.
+ */
+type Corner = readonly [number, number, number];
+const FACE_CORNERS: Record<FaceName, readonly [Corner, Corner, Corner, Corner]> = {
+  back: [[-1, 1, 1], [1, 1, 1], [1, 0, 1], [-1, 0, 1]],
+  left: [[-1, 1, -1], [-1, 1, 1], [-1, 0, 1], [-1, 0, -1]],
+  right: [[1, 1, 1], [1, 1, -1], [1, 0, -1], [1, 0, 1]],
+  front: [[1, 1, -1], [-1, 1, -1], [-1, 0, -1], [1, 0, -1]],
+  floor: [[-1, 0, 1], [1, 0, 1], [1, 0, -1], [-1, 0, -1]],
+  ceiling: [[-1, 1, -1], [1, 1, -1], [1, 1, 1], [-1, 1, 1]],
+};
+/** Куда смотрим (вперёд) и что справа — оси комнаты [x, z] для направлений 0..3. */
+const FWD: readonly (readonly [number, number])[] = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+const RIGHT: readonly (readonly [number, number])[] = [[1, 0], [0, -1], [-1, 0], [0, 1]];
+
+/** Стена за спиной при направлении h (её не рисуем). */
+export function nearWall(h: number): FaceName {
+  'worklet';
+  const i = ((h % 4) + 4) % 4;
+  return i === 0 ? 'front' : i === 1 ? 'left' : i === 2 ? 'back' : 'right';
+}
+
+/**
+ * Точка угла на экране при взгляде в направлении h. Дальние углы — к задней
+ * «стене-напротив» (BACK + сдвиг камеры), ближние — к краям экрана. collapse —
+ * стена за спиной: её углы прижаты к краю экрана (−1 лево, 1 право), откуда
+ * она выедет при повороте.
+ */
+function cornerAt(c: Corner, h: number, W: number, H: number, cam: Pt, collapse: number): Pt {
+  'worklet';
+  const f = FWD[h];
+  const r = RIGHT[h];
+  const far = f[0] * c[0] + f[1] * c[2] > 0;
+  const right = collapse !== 0 ? collapse > 0 : r[0] * c[0] + r[1] * c[2] > 0;
+  const top = c[1] === 1;
+  if (far && collapse === 0) {
+    return { x: (right ? BACK.r : BACK.l) * W + cam.x, y: (top ? BACK.t : BACK.b) * H + cam.y };
+  }
+  return { x: (right ? FRONT.r : FRONT.l) * W, y: (top ? FRONT.t : FRONT.b) * H };
+}
+
+function faceAt(face: FaceName, h: number, W: number, H: number, cam: Pt, collapse: number): Quad {
+  'worklet';
+  const c = FACE_CORNERS[face];
+  return [cornerAt(c[0], h, W, H, cam, collapse), cornerAt(c[1], h, W, H, cam, collapse), cornerAt(c[2], h, W, H, cam, collapse), cornerAt(c[3], h, W, H, cam, collapse)];
+}
+
+const lerpPt = (a: Pt, b: Pt, t: number): Pt => {
+  'worklet';
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+};
+
+/**
  * Грани комнаты на экране. `cam` — сдвиг «камеры» в пикселях сцены: двигается
  * только дальняя стена (передний проём — край экрана), поэтому при повороте
  * головы робота или наклоне телефона комната «приоткрывается» как настоящая.
+ * cam.turn — поворот: между направлениями a и a+1 грани плавно перетекают;
+ * стена, уходящая за спину, прижимается к левому краю, выходящая из-за
+ * спины — выезжает с правого.
  */
-export function roomFaces(W: number, H: number, cam: Pt = { x: 0, y: 0 }): RoomFaces {
+export function roomFaces(W: number, H: number, cam: RoomCam = { x: 0, y: 0 }): RoomFaces {
   'worklet';
-  const f = { tl: { x: FRONT.l * W, y: FRONT.t * H }, tr: { x: FRONT.r * W, y: FRONT.t * H }, br: { x: FRONT.r * W, y: FRONT.b * H }, bl: { x: FRONT.l * W, y: FRONT.b * H } };
-  const k = {
-    tl: { x: BACK.l * W + cam.x, y: BACK.t * H + cam.y },
-    tr: { x: BACK.r * W + cam.x, y: BACK.t * H + cam.y },
-    br: { x: BACK.r * W + cam.x, y: BACK.b * H + cam.y },
-    bl: { x: BACK.l * W + cam.x, y: BACK.b * H + cam.y },
+  const turn = cam.turn ?? 0;
+  const base = Math.floor(turn);
+  const t = turn - base;
+  const a = ((base % 4) + 4) % 4;
+  const b = (a + 1) % 4;
+  const nearA = nearWall(a);
+  const nearB = nearWall(b);
+  const one = (face: FaceName): Quad => {
+    const qa = faceAt(face, a, W, H, cam, face === nearA ? 1 : 0);
+    if (t === 0) return qa;
+    const qb = faceAt(face, b, W, H, cam, face === nearB ? -1 : 0);
+    return [lerpPt(qa[0], qb[0], t), lerpPt(qa[1], qb[1], t), lerpPt(qa[2], qb[2], t), lerpPt(qa[3], qb[3], t)];
   };
-  return {
-    back: [k.tl, k.tr, k.br, k.bl],
-    left: [f.tl, k.tl, k.bl, f.bl],
-    right: [k.tr, f.tr, f.br, k.br],
-    floor: [k.bl, k.br, f.br, f.bl],
-    ceiling: [f.tl, f.tr, k.tr, k.tl],
-  };
+  return { back: one('back'), left: one('left'), right: one('right'), floor: one('floor'), ceiling: one('ceiling'), front: one('front') };
+}
+
+/** Насколько грань видна (0 — за спиной, 1 — видна): стены за спиной гаснут при повороте. */
+export function faceWeight(face: FaceName, turn = 0): number {
+  'worklet';
+  if (face === 'floor' || face === 'ceiling') return 1;
+  const base = Math.floor(turn);
+  const t = turn - base;
+  const a = ((base % 4) + 4) % 4;
+  const b = (a + 1) % 4;
+  if (face === nearWall(a)) return t;
+  if (face === nearWall(b)) return 1 - t;
+  return 1;
+}
+
+/** Куда смотреть, чтобы стена была прямо перед тобой. Пол/потолок — null (текущее направление). */
+export function headingFor(s: Surface): number | null {
+  'worklet';
+  return s === 'wall-back' ? 0 : s === 'wall-right' ? 1 : s === 'wall-left' ? 3 : null;
+}
+
+/** Ближайшее по кругу значение turn с направлением h (поворот короткой дорогой). */
+export function nearestTurn(current: number, h: number): number {
+  const base = Math.round((current - h) / 4) * 4 + h;
+  return base;
 }
 
 /**
@@ -170,7 +265,7 @@ export function surfaceQuad(faces: RoomFaces, s: Surface): Quad {
 }
 
 /** Точка (u, v) поверхности → пиксели сцены. */
-export function surfaceToScene(W: number, H: number, cam: Pt, s: Surface, u: number, v: number): Pt {
+export function surfaceToScene(W: number, H: number, cam: RoomCam, s: Surface, u: number, v: number): Pt {
   'worklet';
   return applyMatrix(quadMatrix(1, 1, surfaceQuad(roomFaces(W, H, cam), s)), u, v);
 }
@@ -201,7 +296,7 @@ function clamp01(v: number, lo = EDGE, hi = 1 - EDGE): number {
  * Куда встанет предмет, отпущенный в точке экрана p: пол — на полу (с полями),
  * настенный — на ту стену, над которой палец (или ближайшую), не ниже пола.
  */
-export function placeAt(W: number, H: number, cam: Pt, spot: 'floor' | 'wall', p: Pt): { surface: Surface; u: number; v: number } {
+export function placeAt(W: number, H: number, cam: RoomCam, spot: 'floor' | 'wall', p: Pt): { surface: Surface; u: number; v: number } {
   'worklet';
   const faces = roomFaces(W, H, cam);
   if (spot === 'floor') {
@@ -231,4 +326,30 @@ export function surfaceScale(s: Surface, u: number, v: number): number {
   if (s === 'wall-back') return 0.72;
   if (s === 'wall-left') return 1.2 - 0.48 * u;
   return 0.72 + 0.48 * u;
+}
+
+/** Грань комнаты, на которой поверхность. */
+export function surfaceFace(s: Surface): FaceName {
+  'worklet';
+  return s === 'floor' ? 'floor' : s === 'wall-left' ? 'left' : s === 'wall-back' ? 'back' : 'right';
+}
+
+/**
+ * Масштаб предмета по тому, насколько близко его место — при любом повороте.
+ * Мера — неискажённый перспективой отрезок: у стены вертикаль, у пола — более
+ * длинная из осей; относительно задней стены в обычном виде. 0.65 подобран
+ * так, что в обычном виде размеры прежние (0.72 у стены напротив, ~1.2 у ближнего пола).
+ */
+export function surfaceScaleAt(W: number, H: number, cam: RoomCam, s: Surface, u: number, v: number): number {
+  'worklet';
+  const m = quadMatrix(1, 1, surfaceQuad(roomFaces(W, H, cam), s));
+  const e = 0.01;
+  const p0 = applyMatrix(m, u, v);
+  const pu = applyMatrix(m, u + e, v);
+  const pv = applyMatrix(m, u, v + e);
+  const lu = Math.hypot(pu.x - p0.x, pu.y - p0.y) / e;
+  const lv = Math.hypot(pv.x - p0.x, pv.y - p0.y) / e;
+  const L = s === 'floor' ? Math.max(lu, lv) / ((BACK.r - BACK.l) * W) : lv / ((BACK.b - BACK.t) * H);
+  if (!Number.isFinite(L) || L <= 0) return 0.72;
+  return Math.min(2.4, 0.72 * Math.pow(L, 0.65));
 }

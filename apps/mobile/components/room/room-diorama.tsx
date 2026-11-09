@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { type DerivedValue, useAnimatedStyle } from 'react-native-reanimated';
-import { BACK, type Pt } from '@/services/room-geometry';
+import { BACK, applyMatrix, quadMatrix, roomFaces, type RoomCam } from '@/services/room-geometry';
 import { RoomFace } from './room-face';
 import { FaceLight, SoftSpot } from './face-light';
 import { Wallpaper } from './wallpaper';
@@ -15,8 +15,8 @@ import type { RoomTier } from '@/services/room-catalog';
 
 /** Глубина комнаты в «пикселях текстуры» боковых стен, пола и потолка. */
 const DEPTH = 260 * R;
-/** Абажур висит на этой глубине (0 — край экрана, 1 — задняя стена). */
-const LAMP_DEPTH = 0.62;
+/** Абажур висит в центре потолка (доли потолка) — при любом повороте над серединой комнаты. */
+const LAMP_UV = { u: 0.5, v: 0.5 };
 
 /**
  * Комната робота — 3D-диорама в духе квартиры в СНГ на весь экран: задняя
@@ -36,15 +36,16 @@ export const RoomDiorama = memo(function RoomDiorama({
   width: number;
   height: number;
   hour: number;
-  /** Сдвиг камеры (пиксели сцены): поворот головы робота, наклон телефона. */
-  cam: DerivedValue<Pt>;
+  /** Камера: сдвиг (поворот головы робота, наклон телефона) и поворот взгляда. */
+  cam: DerivedValue<RoomCam>;
   /** Часть 6: купленная отделка стен/пола (null — исходная комната). */
   wallsTier?: RoomTier | null;
   floorTier?: RoomTier | null;
 }) {
-  const lampStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: cam.value.x * LAMP_DEPTH }, { translateY: cam.value.y * LAMP_DEPTH }],
-  }));
+  const lampStyle = useAnimatedStyle(() => {
+    const p = applyMatrix(quadMatrix(1, 1, roomFaces(width, height, cam.value).ceiling), LAMP_UV.u, LAMP_UV.v);
+    return { transform: [{ translateX: p.x - 32 * R }, { translateY: p.y }] };
+  });
   if (width === 0 || height === 0) return null;
   const bw = (BACK.r - BACK.l) * width;
   const bh = (BACK.b - BACK.t) * height;
@@ -55,6 +56,11 @@ export const RoomDiorama = memo(function RoomDiorama({
   const face = { sceneW: width, sceneH: height, cam };
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Подложка цветов комнаты: в середине поворота грани на миг расходятся —
+          вместо тёмных щелей видно потолок, стену и пол. */}
+      <View style={[styles.under, { top: 0, height: height * 0.22, backgroundColor: '#C9BFAB' }]} />
+      <View style={[styles.under, { top: height * 0.22, height: height * 0.4, backgroundColor: ROOM_PALETTE.wallpaperStripe }]} />
+      <View style={[styles.under, { top: height * 0.62, bottom: 0, backgroundColor: ROOM_PALETTE.floorSeam }]} />
       <RoomFace {...face} face="ceiling" width={bw} height={DEPTH}>
         <View style={styles.ceiling} />
         <View style={[styles.cornice, styles.bottomEdge]} />
@@ -83,6 +89,20 @@ export const RoomDiorama = memo(function RoomDiorama({
         <FaceLight id="floorY" stops={[[0, 0.5], [0.1, 0.18], [0.55, 0.04], [1, 0.22]]} />
         <FaceLight id="floorX" axis="x" stops={[[0, 0.32], [0.16, 0.04], [0.84, 0.04], [1, 0.36]]} />
       </RoomFace>
+      {/* Передняя стена — за спиной в обычном виде; видна, когда поворачиваешься. */}
+      <RoomFace {...face} face="front" width={bw} height={bh}>
+        <Wallpaper width={bw} tier={wallsTier} />
+        <View style={[styles.cornice, styles.topEdge]} />
+        <View style={[styles.doorShadow, { left: bw * 0.36 + 4 * R, top: bh * 0.18 + 4 * R, width: bw * 0.28, height: bh * 0.82 }]} />
+        <View style={[styles.door, { left: bw * 0.36, top: bh * 0.18, width: bw * 0.28, height: bh * 0.82 - 5 * R }]}>
+          <View style={styles.doorPanel} />
+          <View style={styles.doorPanel} />
+          <View style={[styles.doorKnob, { top: bh * 0.4 }]} />
+        </View>
+        <View style={[styles.plinth, { top: bh - 5 * R }]} />
+        <FaceLight id="frontX" axis="x" stops={[[0, 0.3], [0.08, 0.08], [0.92, 0.08], [1, 0.3]]} />
+        <FaceLight id="frontY" stops={[[0, 0.2], [0.08, 0.02], [0.86, 0.02], [1, 0.24]]} />
+      </RoomFace>
       <RoomFace {...face} face="back" width={bw} height={bh}>
         <Wallpaper width={bw} tier={wallsTier} />
         {day && <SoftSpot id="glow" cx={0.67} cy={0.33} rx={0.42} ry={0.42} color="#FFF4D6" opacity={0.28} />}
@@ -108,7 +128,7 @@ export const RoomDiorama = memo(function RoomDiorama({
         <FaceLight id="backY" stops={[[0, 0.2], [0.08, 0.02], [0.86, 0.02], [1, 0.24]]} />
       </RoomFace>
       <Animated.View
-        style={[styles.lamp, { left: width / 2 - 32 * R, top: BACK.t * LAMP_DEPTH * height }, lampStyle]}
+        style={[styles.lamp, lampStyle]}
       >
         <CeilingLamp lit={lit} />
       </Animated.View>
@@ -118,6 +138,7 @@ export const RoomDiorama = memo(function RoomDiorama({
 
 const styles = StyleSheet.create({
   abs: { position: 'absolute' },
+  under: { position: 'absolute', left: 0, right: 0 },
   ceiling: { flex: 1, backgroundColor: '#D8CFBD' },
   topEdge: { position: 'absolute', top: 0, left: 0, right: 0 },
   bottomEdge: { position: 'absolute', bottom: 0, left: 0, right: 0 },
@@ -126,5 +147,18 @@ const styles = StyleSheet.create({
   plinth: { position: 'absolute', left: 0, right: 0, height: 5 * R, backgroundColor: ROOM_PALETTE.plinth },
   carpetShadow: { position: 'absolute', borderRadius: 2 * R, backgroundColor: 'rgba(30,15,5,0.28)' },
   radiatorShadow: { position: 'absolute', borderRadius: 3 * R, backgroundColor: 'rgba(30,15,5,0.22)' },
-  lamp: { position: 'absolute', width: 64 * R },
+  lamp: { position: 'absolute', left: 0, top: 0, width: 64 * R },
+  door: {
+    position: 'absolute',
+    backgroundColor: '#8A5A36',
+    borderWidth: 3 * R,
+    borderColor: '#6B4226',
+    borderTopLeftRadius: 2 * R,
+    borderTopRightRadius: 2 * R,
+    padding: 8 * R,
+    gap: 8 * R,
+  },
+  doorPanel: { flex: 1, borderWidth: 2 * R, borderColor: 'rgba(60,35,15,0.45)', borderRadius: 2 * R },
+  doorKnob: { position: 'absolute', right: 10 * R, width: 7 * R, height: 7 * R, borderRadius: 4 * R, backgroundColor: '#E2C27A' },
+  doorShadow: { position: 'absolute', borderRadius: 2 * R, backgroundColor: 'rgba(30,15,5,0.25)' },
 });

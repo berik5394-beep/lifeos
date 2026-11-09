@@ -138,3 +138,54 @@ describe('свободная расстановка: поверхность ↔ 
     expect(low.v).toBeLessThanOrEqual(0.78);
   });
 });
+
+import { faceWeight, headingFor, nearestTurn, roomFaces as facesAt, BACK as BK } from '@/services/room-geometry';
+
+describe('поворот комнаты: встать лицом к любой стене', () => {
+  const W = 400;
+  const H = 800;
+  const backRect = [
+    { x: BK.l * W, y: BK.t * H },
+    { x: BK.r * W, y: BK.t * H },
+    { x: BK.r * W, y: BK.b * H },
+    { x: BK.l * W, y: BK.b * H },
+  ];
+  it('turn 0 — ровно как раньше (задняя стена напротив, перед — за спиной)', () => {
+    const f = facesAt(W, H, { x: 0, y: 0, turn: 0 });
+    expect(f.back).toEqual(backRect);
+    expect(faceWeight('front', 0)).toBe(0);
+    expect(faceWeight('back', 0)).toBe(1);
+  });
+  it('turn 1 — правая стена напротив, задняя слева, передняя справа, левая за спиной', () => {
+    const f = facesAt(W, H, { x: 0, y: 0, turn: 1 });
+    expect(f.right).toEqual(backRect);
+    // задняя стена — левая боковая: её левый верх у края экрана, правый — у «стены напротив»
+    expect(f.back[0]).toEqual({ x: 0, y: 0 });
+    expect(f.back[1]).toEqual({ x: BK.l * W, y: BK.t * H });
+    expect(f.front[1]).toEqual({ x: W, y: 0 });
+    expect(faceWeight('left', 1)).toBe(0);
+  });
+  it('turn 3 — левая стена напротив', () => {
+    expect(facesAt(W, H, { x: 0, y: 0, turn: 3 }).left).toEqual(backRect);
+    expect(facesAt(W, H, { x: 0, y: 0, turn: -1 }).left).toEqual(backRect);
+  });
+  it('середина поворота: уходящая стена гаснет, выходящая проявляется', () => {
+    expect(faceWeight('front', 0.5)).toBeCloseTo(0.5);
+    expect(faceWeight('left', 0.5)).toBeCloseTo(0.5);
+    expect(faceWeight('floor', 0.5)).toBe(1);
+  });
+  it('куда смотреть на предмет; поворот короткой дорогой', () => {
+    expect(headingFor('wall-left')).toBe(3);
+    expect(headingFor('wall-right')).toBe(1);
+    expect(headingFor('wall-back')).toBe(0);
+    expect(headingFor('floor')).toBeNull();
+    expect(nearestTurn(0, 3)).toBe(-1); // налево, а не три поворота направо
+    expect(nearestTurn(4, 1)).toBe(5);
+  });
+  it('картина на левой стене при turn 3 — внутри «стены напротив» (видна прямо)', () => {
+    const p = surfaceToScene(W, H, { x: 0, y: 0, turn: 3 }, 'wall-left', 0.5, 0.4);
+    expect(p.x).toBeCloseTo(W * 0.5, 0);
+    expect(p.y).toBeGreaterThan(BK.t * H);
+    expect(p.y).toBeLessThan(BK.b * H);
+  });
+});
