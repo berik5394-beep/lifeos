@@ -1,6 +1,7 @@
 import { MODELS } from '../lib/models.js';
 import { createAnthropic, QUICK_CALL } from '../lib/anthropic.js';
 import { civilDayRefs } from '../lib/tz.js';
+import { parseRuWhen } from '../lib/ru-when.js';
 import { MAX_MONEY_AMOUNT } from '../lib/money.js';
 import { cachedSystem } from '../lib/prompt-cache.js';
 
@@ -422,24 +423,15 @@ export function deterministicIntent(
   if (m) {
     const title = m[1].trim();
     const days = civilDayRefs(tz, now);
-    let date = days.today;
-    let cleanTitle = title;
-    // НЕ \b — Cyrillic word boundary в JS не работает (\w = [A-Za-z0-9_]).
-    // Слова достаточно характерные, ловим без границы.
-    // послезавтра проверяем ПЕРВЫМ — оно содержит подстроку "завтра".
-    if (/послезавтра/i.test(title)) {
-      date = days.dayAfter;
-      cleanTitle = title.replace(/\s*послезавтра\s*/i, ' ').trim();
-    } else if (/завтра/i.test(title)) {
-      date = days.tomorrow;
-      cleanTitle = title.replace(/\s*завтра\s*/i, ' ').trim();
-    } else if (/сегодня/i.test(title)) {
-      cleanTitle = title.replace(/\s*сегодня\s*/i, ' ').trim();
-    }
+    // Аудит 2026-11-09: день недели / «20 ноября» / «через 2 дня» / «в 15:00».
+    // Названо, но не бывает («31 ноября», «в 25:00», «вчера») — решает мозг.
+    const when = parseRuWhen(title, days.today);
+    if (when.invalid) return null;
     return {
       action: 'create_task',
-      title: cleanTitle || title,
-      date,
+      title: when.rest || title,
+      date: when.date,
+      ...(when.time ? { time: when.time } : {}),
       category: 'personal',
       priority: 'medium',
     };
