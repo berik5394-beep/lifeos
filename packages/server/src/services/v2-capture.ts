@@ -16,7 +16,6 @@ import { getEntityGraph } from './entity-graph/index.js';
 import { recordEvent } from './episodic-memory.js';
 import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { analyzeMessage as userAxesAnalyzeMessage } from './user-axes/analyze-message.js';
-import { isV2AxesEnabled } from '../lib/feature-flags.js';
 import {
   classifyFeedback,
   detectMoodDrop,
@@ -117,12 +116,10 @@ export async function captureV2InBackground(
       }),
       // v2 Phase B1 — user axes parallel branch (best-effort)
       (async () => {
-        if (isV2AxesEnabled(userId)) {
-          try {
-            await userAxesAnalyzeMessage(userId, msgId, text);
-          } catch (err) {
-            console.warn('[v2-capture:axes] failed:', err);
-          }
+        try {
+          await userAxesAnalyzeMessage(userId, msgId, text);
+        } catch (err) {
+          console.warn('[v2-capture:axes] failed:', err);
         }
       })(),
       // v2 Phase B3 — feedback loop (best-effort). Learns from the user's

@@ -60,7 +60,6 @@ import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal,
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
-import { isV2AxesEnabled as isV2AxesEnabledFlag } from '../lib/feature-flags.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { isV2IdentityEnabled } from '../lib/feature-flags.js';
 import { isV2RealtimeEnabled } from '../lib/feature-flags.js';
@@ -2173,24 +2172,22 @@ async function handleMessageCore(
   void trackInterests(userId, text);
 
   // v2 Phase B1 — post-process content rules (Gate 1: step-count)
-  if (isV2AxesEnabledFlag(userId)) {
-    try {
-      const axes = await getUserAxesStore().getAxes(userId);
-      const stepCount = extractStepCount(reply);
-      const gate1 = shouldForceOneStep(axes, stepCount);
-      if (gate1.force) {
-        // Dev-only signal — MUST stay server-side. Do NOT create a
-        // user-facing Insight and do NOT prepend a marker to `reply`:
-        // those leaked internal diagnostics straight to the user (the
-        // "⚠️ Gate 1 rule fired" Telegram message + the "(gate-1: 1-step)"
-        // reply prefix). Detection is kept as the hook; real 1-step
-        // enforcement (reply regeneration under a step constraint) is a
-        // deliberate follow-up, not a UI-text stub.
-        console.log(`[axes:gate1] ${gate1.reason}`);
-      }
-    } catch (err) {
-      console.warn('[axes:postprocess] failed:', err);
+  try {
+    const axes = await getUserAxesStore().getAxes(userId);
+    const stepCount = extractStepCount(reply);
+    const gate1 = shouldForceOneStep(axes, stepCount);
+    if (gate1.force) {
+      // Dev-only signal — MUST stay server-side. Do NOT create a
+      // user-facing Insight and do NOT prepend a marker to `reply`:
+      // those leaked internal diagnostics straight to the user (the
+      // "⚠️ Gate 1 rule fired" Telegram message + the "(gate-1: 1-step)"
+      // reply prefix). Detection is kept as the hook; real 1-step
+      // enforcement (reply regeneration under a step constraint) is a
+      // deliberate follow-up, not a UI-text stub.
+      console.log(`[axes:gate1] ${gate1.reason}`);
     }
+  } catch (err) {
+    console.warn('[axes:postprocess] failed:', err);
   }
 
   await saveTurn(userId, text, reply);

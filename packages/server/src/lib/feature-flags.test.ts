@@ -1,6 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  isV2AxesEnabled,
   isV2ObligationsEnabled,
   isV2GoalImpactEnabled,
   isV2RunwayEnabled,
@@ -175,42 +174,6 @@ describe('isV2AntiFabEnabled (Слой честности B)', () => {
   it('all → включено', () => { process.env[KEY] = 'all'; expect(isV2AntiFabEnabled('u1')).toBe(true); });
   it('none/false → off', () => { for (const v of ['none','false','']) { process.env[KEY]=v; expect(isV2AntiFabEnabled('u1')).toBe(false); } });
   it('csv адресно', () => { process.env[KEY]='user-u1'; expect(isV2AntiFabEnabled('u1')).toBe(true); expect(isV2AntiFabEnabled('u2')).toBe(false); });
-});
-
-describe('isV2AxesEnabled', () => {
-  const origEnv = process.env.FEATURE_V2_AXES;
-  afterEach(() => {
-    if (origEnv === undefined) delete process.env.FEATURE_V2_AXES;
-    else process.env.FEATURE_V2_AXES = origEnv;
-  });
-
-  it('returns false when env var unset', () => {
-    delete process.env.FEATURE_V2_AXES;
-    expect(isV2AxesEnabled('user-abc')).toBe(false);
-  });
-  it('returns false when env var = "none" or "false"', () => {
-    process.env.FEATURE_V2_AXES = 'none';
-    expect(isV2AxesEnabled('user-abc')).toBe(false);
-    process.env.FEATURE_V2_AXES = 'false';
-    expect(isV2AxesEnabled('user-abc')).toBe(false);
-  });
-  it('returns true for "all" or "true"', () => {
-    process.env.FEATURE_V2_AXES = 'all';
-    expect(isV2AxesEnabled('user-anybody')).toBe(true);
-    process.env.FEATURE_V2_AXES = 'true';
-    expect(isV2AxesEnabled('user-anybody')).toBe(true);
-  });
-  it('returns true for matching user-{id} in comma list', () => {
-    process.env.FEATURE_V2_AXES = 'user-abc,user-def';
-    expect(isV2AxesEnabled('abc')).toBe(true);
-    expect(isV2AxesEnabled('def')).toBe(true);
-    expect(isV2AxesEnabled('xyz')).toBe(false);
-  });
-  it('tolerates whitespace around commas', () => {
-    process.env.FEATURE_V2_AXES = '  user-abc , user-def  ';
-    expect(isV2AxesEnabled('abc')).toBe(true);
-    expect(isV2AxesEnabled('def')).toBe(true);
-  });
 });
 
 describe('isV2IdentityEnabled', () => {

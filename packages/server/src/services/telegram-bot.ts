@@ -8,7 +8,6 @@ import { handleMessage } from './jarvis-orchestrator.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type AxisName } from './user-axes/index.js';
-import { isV2AxesEnabled } from '../lib/feature-flags.js';
 import { getFeedbackStore } from './feedback/index.js';
 import { getBotTraitsStore, traitLabel } from './bot-traits/index.js';
 import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
@@ -328,10 +327,6 @@ export function createTelegramBot(): Telegraf {
         from.first_name || '',
         from.username,
       );
-      if (!isV2AxesEnabled(userId)) {
-        await ctx.reply('Личностные оси выключены для тебя. Спроси админа подключить FEATURE_V2_AXES.');
-        return;
-      }
       const text = await formatAxesForTelegram(userId);
       await ctx.reply(text);
     } catch (err) {

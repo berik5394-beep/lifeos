@@ -19,7 +19,6 @@ import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
 import {
-  isV2AxesEnabled,
   isV2ObligationsEnabled,
   isV2GoalImpactEnabled,
   isV2RunwayEnabled,
@@ -668,9 +667,6 @@ export async function fetchV2EnrichmentData(
  * Separate helper called by orchestrator after main enrichment data.
  */
 export async function fetchV2EnrichmentAxesSection(userId: string): Promise<string> {
-  if (!isV2AxesEnabled(userId)) {
-    return '';
-  }
   try {
     const axes = await getUserAxesStore().getAxes(userId);
     return formatAxesSection(axes);

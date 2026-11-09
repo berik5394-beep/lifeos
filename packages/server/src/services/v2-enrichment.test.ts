@@ -175,12 +175,12 @@ describe('fetchV2EnrichmentAxesSection — axes integration (D1)', () => {
     );
     expect(enrichSrc).toContain('formatAxesSection');
   });
-  it('gated by isV2AxesEnabled', () => {
+  it('без флага', () => {
     const enrichSrc = readFileSync(
       join(process.cwd(), 'src/services/v2-enrichment.ts'),
       'utf-8',
     );
-    expect(enrichSrc).toContain('isV2AxesEnabled');
+    expect(enrichSrc).not.toContain('isV2AxesEnabled');
   });
 });
 

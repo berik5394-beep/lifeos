@@ -23,23 +23,6 @@ function isEnabledForUser(envValue: string | undefined, userId: string): boolean
 }
 
 /**
- * v2 Phase B1 — Per-user gate for USER NEST axes feature.
- *
- * Values:
- *   "all" / "true"     → enabled for everyone
- *   "" / "none" / "false" / unset → disabled for everyone
- *   "user-X,user-Y"    → enabled only for those users (comma list)
- */
-export function isV2AxesEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_AXES;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
  * Привычка↔цель (interconnection, аудит-фикс). Same shape as isV2AxesEnabled.
  */
 export function isV2GoalHabitsEnabled(userId: string): boolean {
