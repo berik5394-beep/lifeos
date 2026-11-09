@@ -9,6 +9,7 @@
  */
 
 import type { FastifyInstance } from 'fastify';
+import { cleanTranscript } from '../lib/stt-hallucination.js';
 import { z } from 'zod';
 import { writeFile, unlink, readFile } from 'fs/promises';
 import { join } from 'path';
@@ -100,9 +101,7 @@ async function transcribeAudio(audioBase64: string, format: string): Promise<str
       response_format: 'text',
     });
 
-    return typeof transcription === 'string'
-      ? transcription.trim()
-      : String(transcription).trim();
+    return cleanTranscript(typeof transcription === 'string' ? transcription : String(transcription));
   } finally {
     try { await unlink(tempPath); } catch { /* ignore */ }
   }

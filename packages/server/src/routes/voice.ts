@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { cleanTranscript } from '../lib/stt-hallucination.js';
 import { z } from 'zod';
 import { writeFile, unlink, readFile } from 'fs/promises';
 import { join } from 'path';
@@ -270,9 +271,7 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
             response_format: 'text',
           });
 
-          text = typeof transcription === 'string'
-            ? transcription.trim()
-            : String(transcription).trim();
+          text = cleanTranscript(typeof transcription === 'string' ? transcription : String(transcription));
 
           app.log.info(`Groq Whisper transcribed: ${text.length} chars`);
         } catch (groqErr: any) {
