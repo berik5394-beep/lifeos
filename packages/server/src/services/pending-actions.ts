@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
+import { currentTurn, type TurnCtx } from '../lib/turn-context.js';
 
 /**
  * Confirm-FSM (SSOT Step 4). Денежные/необратимые действия не
@@ -109,22 +110,80 @@ export function clientPendingInput(input: Record<string, unknown>): Record<strin
   for (const [k, v] of Object.entries(input)) {
     if (!k.startsWith('__') || CLIENT_VISIBLE_INTERNAL.has(k)) out[k] = v;
   }
+  // Общий вопрос (batch): служебное прячем и у каждого пункта.
+  if (Array.isArray(out.items)) {
+    out.items = (out.items as Array<{ action?: unknown; input?: unknown; text?: unknown }>).map((i) => ({
+      action: i.action,
+      text: i.text,
+      input: i.input && typeof i.input === 'object' ? clientPendingInput(i.input as Record<string, unknown>) : i.input,
+    }));
+  }
   return out;
 }
 
+/** Несколько вопросов «да?» одного хода — одним pending (аудит 2026-11-09, M9). */
+export const BATCH_ACTION = 'batch';
+export type BatchItem = { action: string; input: Record<string, unknown>; text: string };
+
+/** «Записать расход 5000 ₸ (такси)? Подтверди — запишу.» → «Записать расход 5000 ₸ (такси)». */
+export function stripConfirmTail(text: string): string {
+  return text
+    .replace(/\s*(?:Подтверди[^.?!]*[.?!]|Подтвердить[^?]*\?|Скажи «да»[^.?!]*[.?!]?)\s*$/u, '')
+    .replace(/[?.!\s]+$/u, '')
+    .trim();
+}
+
+export function batchConfirmationText(items: BatchItem[]): string {
+  return (
+    `Нужно твоё «да» на ${items.length} ${items.length < 5 ? 'вещи' : 'вещей'}:\n` +
+    items.map((i) => `• ${stripConfirmTail(i.text)}`).join('\n') +
+    '\nПодтвердить всё?'
+  );
+}
+
+/**
+ * Поставить вопрос «да?». Если в ЭТОМ ЖЕ ходе уже стоит другой вопрос (агент
+ * предложил «удали трату такси и трату кофе», или цель + перенос графика) —
+ * не затираем его, а собираем всё в один общий вопрос: одно «да» выполнит всё.
+ * Раньше выживал только последний (или только первый) — остальное терялось.
+ * Слоты («откуда доход?») не склеиваем. Возвращает итоговый текст вопроса.
+ */
 export async function setPendingAction(
   userId: string,
   action: string,
   input: Record<string, unknown>,
   confirmationText: string,
   store: PendingStore = prismaPendingStore,
-): Promise<void> {
+  turn: TurnCtx | null = currentTurn(),
+): Promise<string> {
+  const isSlot = input.__awaitingCategory === true || input.__awaitingSource === true;
+  const stagedThisTurn = !!turn && turn.staged.has(userId);
+  turn?.staged.add(userId);
+  if (stagedThisTurn && !isSlot) {
+    const prev = await store.load(userId);
+    const prevSlot = !!prev && (prev.input.__awaitingCategory === true || prev.input.__awaitingSource === true);
+    if (prev && !prevSlot) {
+      const items: BatchItem[] =
+        prev.action === BATCH_ACTION && Array.isArray(prev.input.items)
+          ? (prev.input.items as BatchItem[])
+          : [{ action: prev.action, input: prev.input, text: prev.confirmationText }];
+      const same = items.some((i) => i.action === action && JSON.stringify(i.input) === JSON.stringify(input));
+      if (!same) {
+        const merged = [...items, { action, input, text: confirmationText }];
+        const text = batchConfirmationText(merged);
+        await store.save(userId, { action: BATCH_ACTION, input: { items: merged }, confirmationText: text, createdAt: Date.now() });
+        return text;
+      }
+      return prev.confirmationText;
+    }
+  }
   await store.save(userId, {
     action,
     input,
     confirmationText,
     createdAt: Date.now(),
   });
+  return confirmationText;
 }
 
 /** Свежий pending (или null если нет/протух). Протухший удаляет. */

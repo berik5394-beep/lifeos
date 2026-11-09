@@ -196,3 +196,37 @@ describe('isSlotAnswer — ответ на «Откуда доход?/На чт�
     },
   );
 });
+
+import { BATCH_ACTION, stripConfirmTail } from './pending-actions.js';
+describe('M9: несколько вопросов «да?» за ход — один общий', () => {
+  it('в одном ходе склеиваются, одинаковые не дублируются; вне хода — затирают как раньше', async () => {
+    const store = makeStore();
+    await clearPendingAction(U, store); // хранилище общее на файл — начинаем с чистого
+    const turn = { staged: new Set<string>() };
+    await setPendingAction(U, 'delete_expense', { id: 'taxi' }, 'Удалить трату 5000 ₸ (такси)? Подтверди — удалю.', store, turn);
+    const text = await setPendingAction(U, 'delete_expense', { id: 'coffee' }, 'Удалить трату 1500 ₸ (кофе)? Подтверди — удалю.', store, turn);
+    await setPendingAction(U, 'delete_expense', { id: 'coffee' }, 'Удалить трату 1500 ₸ (кофе)? Подтверди — удалю.', store, turn);
+    const p = await peekPendingAction(U, store);
+    expect(p?.action).toBe(BATCH_ACTION);
+    expect((p?.input.items as unknown[]).length).toBe(2);
+    expect(text).toBe('Нужно твоё «да» на 2 вещи:\n• Удалить трату 5000 ₸ (такси)\n• Удалить трату 1500 ₸ (кофе)\nПодтвердить всё?');
+    await setPendingAction(U, 'add_income', { amount: 1 }, 'Записать доход 1 ₸?', store, null);
+    expect((await peekPendingAction(U, store))?.action).toBe('add_income');
+  });
+
+  it('слот «откуда доход?» не склеивается', async () => {
+    const store = makeStore();
+    await clearPendingAction(U, store);
+    const turn = { staged: new Set<string>() };
+    await setPendingAction(U, 'add_income', { amount: 5, __awaitingSource: true }, 'Откуда доход?', store, turn);
+    await setPendingAction(U, 'delete_expense', { id: 'x' }, 'Удалить?', store, turn);
+    expect((await peekPendingAction(U, store))?.action).toBe('delete_expense');
+  });
+
+  it('stripConfirmTail / clientPendingInput для пунктов', () => {
+    expect(stripConfirmTail('Записать расход 3000 ₸ (обед)? Подтверди — запишу.')).toBe('Записать расход 3000 ₸ (обед)');
+    expect(clientPendingInput({ items: [{ action: 'a', text: 't', input: { amount: 1, __source: 'x' } }] })).toEqual({
+      items: [{ action: 'a', text: 't', input: { amount: 1 } }],
+    });
+  });
+});

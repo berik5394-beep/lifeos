@@ -43,6 +43,8 @@ import {
   awaitingSlot,
   isSlotAnswer,
   clientPendingInput,
+  BATCH_ACTION,
+  type BatchItem,
 } from './pending-actions.js';
 import { isV2MemoryEnabled } from '../lib/feature-flags.js';
 import { captureV2InBackground } from './v2-capture.js';
@@ -80,6 +82,7 @@ import {
   runSkillPlan,
   type SkillSpec,
 } from './hermes/index.js';
+import { runInTurn } from '../lib/turn-context.js';
 
 /**
  * JARVIS Orchestrator — единый мозг. Любое сообщение (текст или
@@ -864,6 +867,13 @@ export async function runConfirmedAction(
   input: Record<string, unknown>,
 ): Promise<string> {
   try {
+    // M9: несколько вопросов одного хода — одно «да» выполняет каждый по своей ветке.
+    if (action === BATCH_ACTION) {
+      const items = Array.isArray(input.items) ? (input.items as BatchItem[]) : [];
+      const out: string[] = [];
+      for (const it of items) out.push(await runConfirmedAction(userId, it.action, it.input));
+      return out.join('\n') || 'Готово.';
+    }
     // v2 H2 — batched skill action steps (from runSkillPlan Phase 2). On «да»
     // the user confirmed the money/confirm steps collected by the runner;
     // execute each through the registry (audit + zod per step). Money runs
@@ -1031,7 +1041,8 @@ export async function handleMessage(
   stream?: { onText?: (delta: string) => void },
 ): Promise<JarvisResponse> {
   const turnStart = new Date();
-  const res = await handleMessageCore(userId, text, channel, stream);
+  // Ход — в контексте: несколько вопросов «да?» за ход склеиваются в один (M9).
+  const res = await runInTurn(() => handleMessageCore(userId, text, channel, stream));
   // Berik 2026-11-09: «все просьбы роботу должны записываться». Ветки мозга
   // сохраняют ход сами (saveTurn в ~30 местах) — какая-то могла забыть. Здесь
   // одна гарантия на выходе: не записано за этот ход — записываем.
@@ -1933,8 +1944,8 @@ async function handleMessageCore(
     const stageConfirm = async (tool: string, args: Record<string, unknown>) => {
       acts.staged = true;
       const prompt = confirmPromptFor(tool, args);
-      await setPendingAction(userId, tool, args, prompt);
-      return prompt;
+      // Вернётся общий вопрос, если за ход их уже несколько.
+      return setPendingAction(userId, tool, args, prompt);
     };
     try {
       reply = await runAgent({

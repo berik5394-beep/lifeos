@@ -16,7 +16,7 @@ describe('claude-agent — confirm-bridge (structural)', () => {
     expect(SRC).toMatch(/partitionToolUses\(/);
   });
   it('confirm-proposal вызывает onConfirmTool (не runRegistryTool)', () => {
-    expect(SRC).toMatch(/return await onConfirmTool\(/);
+    expect(SRC).toMatch(/question = await onConfirmTool\(/);
   });
 });
 

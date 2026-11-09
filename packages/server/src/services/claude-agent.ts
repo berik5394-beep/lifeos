@@ -273,8 +273,28 @@ export async function runAgent(opts: AgentOptions): Promise<string> {
     // SECURITY-инвариант: confirm-tool в цикле НЕ исполняем. Стейдж + стоп:
     // отдаём детерминированный confirm-текст как финальный ответ.
     if (onConfirmTool && parted.confirmProposals.length > 0) {
-      const p = parted.confirmProposals[0];
-      return await onConfirmTool(p.name, (p.input as Record<string, unknown>) ?? {});
+      // M9 (аудит 2026-11-09): раньше — только ПЕРВОЕ предложение, а обычные
+      // инструменты того же ответа не выполнялись вовсе («создай задачу и удали
+      // трату» → задача терялась; «удали трату такси и трату кофе» → спрашивало
+      // одно). Теперь: обычные — выполняем сразу, предложения — все в один вопрос
+      // (setPendingAction склеивает их за ход), ответ — сделанное + общий вопрос.
+      const done: string[] = [];
+      for (const tu of toolUses) {
+        try {
+          const r = await runRegistryTool(tu.name, (tu.input as Record<string, unknown>) ?? {}, { userId: userId as string });
+          report(tu.name, true, r);
+          const msg = r && typeof r === 'object' ? (r as { message?: unknown }).message : undefined;
+          if (typeof msg === 'string' && msg.trim()) done.push(msg.trim());
+        } catch (e) {
+          report(tu.name, false);
+          done.push(`Не получилось: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      let question = '';
+      for (const p of parted.confirmProposals) {
+        question = await onConfirmTool(p.name, (p.input as Record<string, unknown>) ?? {});
+      }
+      return done.length ? `${done.join('\n')}\n\n${question}` : question;
     }
     if (response.stop_reason !== 'tool_use' || toolUses.length === 0 || round === maxToolRounds) {
       break;
