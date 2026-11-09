@@ -5,6 +5,24 @@ import { useAuthStore } from '@/stores/auth-store';
 import { formatDate } from '@/utils/dates';
 import { useChatStore } from '@/stores/chat-store';
 import { greetingForHour } from '@/utils/greeting';
+import type { ChipConfig } from '@/components/voice/morning-greeting';
+
+/**
+ * Первый день (Berik 2026-11-09, «первые 60 секунд»): сервер вместо пустого
+ * брифа знакомится — просит одной фразой дела, привычку и мечту. Кнопки не
+ * шлют сами (пример создал бы чужие дела), а вставляют начало в строку
+ * «Скажи роботу» — дописал и ➤. Голосом — микрофон рядом со строкой.
+ */
+export const FIRST_DAY_CHIPS: ChipConfig[] = [
+  { action: 'prefill', icon: '\u270D\uFE0F', label: 'Написать', text: 'На этой неделе мне нужно ' },
+  {
+    action: 'prefill',
+    icon: '\u{1F4A1}',
+    label: 'Пример',
+    text: 'На неделе сдать отчёт и купить продукты, хочу каждое утро делать зарядку, а в этом году мечтаю накопить на машину',
+  },
+  { action: 'voice_ask', icon: '\u{1F3A4}', label: 'Голосом' },
+];
 
 interface AssistantResponse {
   reply: string;
@@ -16,6 +34,8 @@ interface UseMorningGreetingResult {
   greeting: string;
   isLoading: boolean;
   dismissGreeting: () => void;
+  /** Кнопки знакомства вместо обычных (новичок); undefined — обычные. */
+  chips?: ChipConfig[];
   handleChipPress: (action: string, text: string) => Promise<string | null>;
 }
 
@@ -23,6 +43,7 @@ export function useMorningGreeting(): UseMorningGreetingResult {
   const [shouldShowGreeting, setShouldShowGreeting] = useState(false);
   const [greeting, setGreeting] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [firstDay, setFirstDay] = useState(false);
   const token = useAuthStore((state) => state.token);
 
   useEffect(() => {
@@ -43,10 +64,11 @@ export function useMorningGreeting(): UseMorningGreetingResult {
     // перегруз, темп целей). Раньше тут было общее «Доброе утро! Чем помочь?»,
     // и кто не открыл пуш, брифа не видел. Не вышло — прежнее приветствие.
     api
-      .get<{ title: string; text: string; day?: string }>('/briefing/today', token, { timeoutMs: BRAIN_TIMEOUT_MS })
+      .get<{ title: string; text: string; day?: string; firstDay?: boolean }>('/briefing/today', token, { timeoutMs: BRAIN_TIMEOUT_MS })
       .then((b) => {
         // Без сети api.get может вернуть кэш — вчерашний бриф не показываем.
         if (!b?.text || (b.day && b.day !== todayStr)) throw new Error('нет брифа на сегодня');
+        setFirstDay(b.firstDay === true);
         setGreeting(`${b.title} ${b.text}`);
       })
       .catch(() =>
@@ -81,6 +103,10 @@ export function useMorningGreeting(): UseMorningGreetingResult {
   const handleChipPress = useCallback(
     async (action: string, text: string): Promise<string | null> => {
       if (!token || action === 'voice_ask') return null;
+      if (action === 'prefill') {
+        useChatStore.getState().setPrefill({ text, for: 'Home' });
+        return null;
+      }
       await useChatStore.getState().sendMessage(text);
       const latest = useChatStore.getState().messages[0];
       return latest && latest.role === 'assistant' ? latest.content : null;
@@ -93,6 +119,7 @@ export function useMorningGreeting(): UseMorningGreetingResult {
     greeting,
     isLoading,
     dismissGreeting,
+    chips: firstDay ? FIRST_DAY_CHIPS : undefined,
     handleChipPress,
   };
 }

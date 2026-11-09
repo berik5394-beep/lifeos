@@ -226,6 +226,7 @@ export default function PlannerScreen() {
     greeting: morningGreeting,
     dismissGreeting,
     handleChipPress: handleMorningChipPress,
+    chips: morningChips,
   } = useMorningGreeting();
 
   const today = useToday();
@@ -815,6 +816,7 @@ export default function PlannerScreen() {
         onDismiss={dismissGreeting}
         greeting={morningGreeting}
         onChipPress={handleMorningChipPress}
+        chips={morningChips}
       />
 
       {/* Evening Ritual */}

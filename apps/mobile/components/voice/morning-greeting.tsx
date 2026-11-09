@@ -17,12 +17,16 @@ interface MorningGreetingProps {
   onDismiss: () => void;
   greeting: string;
   onChipPress: (action: string, text: string) => void;
+  /** Свои кнопки вместо обычных (первый день — знакомство). */
+  chips?: ChipConfig[];
 }
 
-interface ChipConfig {
+export interface ChipConfig {
   action: string;
   icon: string;
   label: string;
+  /** Что уходит в onChipPress (по умолчанию — подпись). */
+  text?: string;
 }
 
 const CHIPS: ChipConfig[] = [
@@ -58,6 +62,7 @@ function MorningGreetingComponent({
   onDismiss,
   greeting,
   onChipPress,
+  chips = CHIPS,
 }: MorningGreetingProps) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
@@ -148,12 +153,12 @@ function MorningGreetingComponent({
 
         {/* Chips */}
         <Animated.View style={[styles.chipsContainer, { opacity: chipsOpacity }]}>
-          {CHIPS.map((chip) => (
+          {chips.map((chip) => (
             <ChipButton
-              key={chip.action}
+              key={chip.label}
               icon={chip.icon}
               label={chip.label}
-              onPress={() => handleChipPress(chip.action, chip.label)}
+              onPress={() => handleChipPress(chip.action, chip.text ?? chip.label)}
             />
           ))}
         </Animated.View>
