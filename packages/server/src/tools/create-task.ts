@@ -55,6 +55,22 @@ export const createTaskTool = defineTool({
     // Фикс A: модель оставляет хвостовой предлог/дату в названии
     // («…отчёт на сегодня» → date выдернута, но «на» прилипло). Чистим.
     const title = sanitizeTaskTitle(input.title);
+    // Дубль: та же открытая задача на тот же день уже есть — не плодим. Мозг
+    // повторял прошлую команду из истории разговора («Записала оба дела» —
+    // хлеб второй раз, живой прогон 2026-11-09). Как у встреч (create_event).
+    const norm = (t: string) => sanitizeTaskTitle(t).toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
+    const sameDay = await prisma.task.findMany({
+      where: { userId: ctx.userId, date, completed: false, cancelled: false },
+      select: { id: true, title: true, time: true },
+    });
+    const dup = sameDay.find((t) => norm(t.title) === norm(title) && (t.time ?? null) === (input.time ?? null));
+    if (dup) {
+      return {
+        message: `Задача "${dup.title}" на ${day} уже есть — второй раз не записываю.`,
+        taskId: dup.id,
+        duplicate: true,
+      };
+    }
     const task = await prisma.task.create({
       data: {
         userId: ctx.userId,

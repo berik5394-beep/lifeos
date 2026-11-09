@@ -86,3 +86,10 @@ describe('голова «на завтра: отчёт» (прод: задача
     expect(sanitizeTaskTitle(a)).toBe(a),
   );
 });
+
+describe('sanitizeTaskTitle — точка из голоса', () => {
+  it('«купить хлеб .» после вырезания даты → «купить хлеб»', () => {
+    expect(sanitizeTaskTitle('купить хлеб .')).toBe('купить хлеб');
+    expect(sanitizeTaskTitle('Купить хлеб на завтра.')).toBe('Купить хлеб');
+  });
+});

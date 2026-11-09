@@ -47,3 +47,10 @@ describe('быстрый путь create_task с датой и временем'
     expect(deterministicIntent('создай задачу купить подарок на 31 ноября', 'Asia/Almaty', now)).toBeNull();
   });
 });
+
+describe('parseRuWhen — фраза с точкой из распознавания речи', () => {
+  it('«купить хлеб на завтра.» → rest без точки', () => {
+    const r = parseRuWhen('купить хлеб на завтра.', '2026-11-09');
+    expect(r).toMatchObject({ invalid: false, date: '2026-11-10', rest: 'купить хлеб' });
+  });
+});

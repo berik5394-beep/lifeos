@@ -58,6 +58,8 @@ export function isFailedResult(result: unknown): boolean {
     // только предложил и ждёт «да» (suggest_goal) — дела ещё нет: в память не
     // пишем («Цель на год «машина»» после ответа «нет»), записью не считаем.
     r.needsInput === true ||
+    // Дубль: задача уже была — ничего нового не записали.
+    r.duplicate === true ||
     r.pending === true
   );
 }

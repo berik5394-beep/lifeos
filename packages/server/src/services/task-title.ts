@@ -22,9 +22,12 @@ const LEADING_LEAD = new RegExp(`^(?:(?:${PREPS})\\s+)?(?:(?:${DATE_WORDS})\\s*)
  * пустой/пробельный — возвращает trimmed-исходник.
  */
 export function sanitizeTaskTitle(raw: string): string {
-  const original = raw.trim();
+  // Голос: Whisper ставит точку в конце фразы, и после вырезания «на завтра»
+  // она прилипала к названию — «купить хлеб .» (живой прогон 2026-11-09).
+  const original = raw.trim().replace(/[\s.,!?…;:]+$/u, '');
   let out = original.replace(LEADING_LEAD, '').replace(TRAILING_DATE, '').replace(TRAILING_PREP, '').trim();
-  if (out.length === 0) return original;
+  out = out.replace(/[\s.,!?…;:]+$/u, '').trim();
+  if (out.length === 0) return original || raw.trim();
   return out;
 }
 

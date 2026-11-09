@@ -133,6 +133,6 @@ export function parseRuWhen(text: string, today: string): RuWhen {
   }
 
   if (date !== null && date < today) return { invalid: true };
-  rest = rest.replace(/^[,\s—-]+|[,\s—-]+$/g, '').trim();
+  rest = rest.replace(/^[,\s—-]+|[,.!?…\s—-]+$/g, '').trim();
   return { invalid: false, date: date ?? today, ...(time ? { time } : {}), rest };
 }
