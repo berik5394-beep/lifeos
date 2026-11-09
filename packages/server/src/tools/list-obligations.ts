@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { defineTool } from './_types.js';
 import { listObligations } from '../services/obligations/index.js';
 import { normalizeDirection } from '../services/obligations/types.js';
-import { isV2ObligationsEnabled } from '../lib/feature-flags.js';
 
 export const listObligationsTool = defineTool({
   name: 'list_obligations',
@@ -19,7 +18,6 @@ export const listObligationsTool = defineTool({
   sideEffects: 'read',
   examples: ['что я кому должен', 'кто мне должен', 'мои обещания Серику'],
   handler: async (input, ctx) => {
-    if (!isV2ObligationsEnabled(ctx.userId)) return { obligations: [] };
     const dir = input.direction ? normalizeDirection(String(input.direction)) : null;
     const rows = await listObligations(ctx.userId, {
       status: 'open',

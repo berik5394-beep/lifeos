@@ -16,10 +16,10 @@ describe('obligations tools wiring', () => {
     }
   });
 
-  it('write-хендлеры флаг-гейтятся isV2ObligationsEnabled', () => {
+  it('write-хендлеры без флага (isV2ObligationsEnabled удалён)', () => {
     for (const f of ['create-obligation', 'settle-obligation', 'cancel-obligation']) {
       const src = readFileSync(join(process.cwd(), `src/tools/${f}.ts`), 'utf-8');
-      expect(src).toContain('isV2ObligationsEnabled');
+      expect(src).not.toContain('isV2ObligationsEnabled');
     }
   });
 

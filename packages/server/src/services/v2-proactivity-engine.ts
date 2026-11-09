@@ -552,8 +552,6 @@ function humanDay(d: Date): string {
 
 async function detectObligationDue(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2ObligationsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2ObligationsEnabled(userId)) return [];
     const { prisma } = await import('../lib/prisma.js');
     const now = Date.now();
     const rows = await prisma.obligation.findMany({

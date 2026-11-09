@@ -11,7 +11,6 @@ import { axisLabel, type AxisName } from './user-axes/index.js';
 import { getFeedbackStore } from './feedback/index.js';
 import { getBotTraitsStore, traitLabel } from './bot-traits/index.js';
 import { generateGrowthNarrative } from './bot-traits/growth-narrative.js';
-import { isV2ObligationsEnabled } from '../lib/feature-flags.js';
 import { listObligations } from './obligations/index.js';
 import { getHermesStore } from './hermes/index.js';
 import { analyzeFinancePhoto, buildFinancePending } from './finance-vision.js';
@@ -347,10 +346,6 @@ export function createTelegramBot(): Telegraf {
         from.first_name || '',
         from.username,
       );
-      if (!isV2ObligationsEnabled(userId)) {
-        await ctx.reply('Обязательства выключены для тебя.');
-        return;
-      }
       const rows = await listObligations(userId, { status: 'open' });
       if (rows.length === 0) {
         await ctx.reply('Открытых обязательств нет.');

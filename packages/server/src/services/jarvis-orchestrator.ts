@@ -67,7 +67,6 @@ import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
 import {
   isV2InlineNudgeEnabled,
   isV2SavingsCoachEnabled,
-  isV2ObligationsEnabled,
   isV2AntiFabEnabled,
   isV2MemQualityEnabled,
   isV2SupersedeEnabled,
@@ -1833,7 +1832,7 @@ async function handleMessageCore(
         therapeuticMode: finalTherapeutic,
         inlineNudge: isV2InlineNudgeEnabled(userId),
         goalCapture: isV2SavingsCoachEnabled(userId),
-        obligationCapture: isV2ObligationsEnabled(userId),
+        obligationCapture: true,
         antiFab: isV2AntiFabEnabled(userId),
         nowTz: realtimeTz,
       })

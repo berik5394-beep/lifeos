@@ -8,8 +8,8 @@ describe('obligations enrichment', () => {
     join(process.cwd(), 'src/services/v2-enrichment.ts'),
     'utf-8',
   );
-  it('за флагом + best-effort fetch + форматтер', () => {
-    expect(src).toContain('isV2ObligationsEnabled');
+  it('без флага + best-effort fetch + форматтер', () => {
+    expect(src).not.toContain('isV2ObligationsEnabled');
     expect(src).toContain('openObligationsForContext');
     expect(src).toContain('formatObligationsSection');
   });

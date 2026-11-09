@@ -296,7 +296,7 @@ export interface JarvisPromptOpts {
    *  (suggest_goal спрашивает, пишет на «да»). За isV2SavingsCoachEnabled. */
   goalCapture?: boolean;
   /** Obligations: ловить обещания/долги из диалога → предложить
-   *  create_obligation (запись на «да»). За isV2ObligationsEnabled. */
+   *  create_obligation (запись на «да»). Чат-мозг включает всегда. */
   obligationCapture?: boolean;
   /** Слой честности B — добавить пункт анти-фабрикации (isV2AntiFabEnabled). */
   antiFab?: boolean;

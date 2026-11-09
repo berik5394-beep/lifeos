@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { defineTool } from './_types.js';
 import { cancelObligation } from '../services/obligations/index.js';
-import { isV2ObligationsEnabled } from '../lib/feature-flags.js';
 
 export const cancelObligationTool = defineTool({
   name: 'cancel_obligation',
@@ -14,7 +13,6 @@ export const cancelObligationTool = defineTool({
   sideEffects: 'write',
   examples: ['отмени обязательство', 'это уже не актуально'],
   handler: async (input, ctx) => {
-    if (!isV2ObligationsEnabled(ctx.userId)) return { error: 'функция отключена' };
     const c = await cancelObligation(ctx.userId, String(input.id));
     if (!c) return { error: 'обязательство не найдено' };
     return { ok: true, cancelled: true };

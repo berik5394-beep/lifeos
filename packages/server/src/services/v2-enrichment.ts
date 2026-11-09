@@ -19,7 +19,6 @@ import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
 import {
-  isV2ObligationsEnabled,
   isV2GoalImpactEnabled,
   isV2RunwayEnabled,
   isV2EnergyEnabled,
@@ -490,13 +489,11 @@ export async function fetchV2EnrichmentData(
             BASE_MEMBER_BUDGET_MS,
             [],
           ),
-      isV2ObligationsEnabled(userId)
-        ? withTimeout(
-            openObligationsForContext(userId, 5).catch(() => []),
-            BASE_MEMBER_BUDGET_MS,
-            [],
-          )
-        : Promise.resolve([]),
+      withTimeout(
+        openObligationsForContext(userId, 5).catch(() => []),
+        BASE_MEMBER_BUDGET_MS,
+        [],
+      ),
       isV2GoalImpactEnabled(userId)
         ? withTimeout(
             factsPromise.then((f) => buildGoalImpact(userId, undefined, f)),
