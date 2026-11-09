@@ -74,11 +74,27 @@ export function shouldAlert(provider: ProviderName, kind: FailureKind, now: numb
   return { send: true, count: times.length };
 }
 
-export function opsAlertRecipients(): string[] {
-  return (process.env.OPS_ALERT_USER_IDS ?? '')
+const envList = (name: string): string[] =>
+  (process.env[name] ?? '')
     .split(',')
-    .map((s) => s.trim())
+    .map((x) => x.trim())
     .filter(Boolean);
+
+/** Настроены ли получатели вообще (без похода в БД). */
+export function hasOpsRecipients(): boolean {
+  return envList('OPS_ALERT_USER_IDS').length > 0 || envList('OPS_ALERT_EMAILS').length > 0;
+}
+
+/** Кому слать: OPS_ALERT_USER_IDS и/или OPS_ALERT_EMAILS (почта аккаунта — проще, чем id). */
+export async function opsAlertRecipients(): Promise<string[]> {
+  const ids = envList('OPS_ALERT_USER_IDS');
+  const emails = envList('OPS_ALERT_EMAILS').map((e) => e.toLowerCase());
+  if (emails.length > 0) {
+    const { prisma } = await import('./prisma.js');
+    const users = await prisma.user.findMany({ where: { email: { in: emails } }, select: { id: true } });
+    ids.push(...users.map((u) => u.id));
+  }
+  return [...new Set(ids)];
 }
 
 /** Сообщить о неуспешном ответе провайдера. Никогда не бросает. */
@@ -91,11 +107,10 @@ export function reportProviderFailure(provider: ProviderName, status: number, bo
     const text = alertText(provider, kind, count);
     if (!text) return;
     console.error(`[ops-alert] SEND ${provider}:${kind} — ${text.title}`);
-    const ids = opsAlertRecipients();
-    if (ids.length === 0) return;
+    if (!hasOpsRecipients()) return;
     // Ленивый импорт: lib/anthropic не тянет push/prisma в юнит-тесты.
-    void import('../services/push-service.js')
-      .then(({ deliverNotification }) =>
+    void Promise.all([opsAlertRecipients(), import('../services/push-service.js')])
+      .then(([ids, { deliverNotification }]) =>
         Promise.all(ids.map((id) => deliverNotification(id, text.title, text.body, { type: 'ops_alert' }))),
       )
       .catch((err) => console.warn('[ops-alert] deliver failed:', err instanceof Error ? err.message : err));
