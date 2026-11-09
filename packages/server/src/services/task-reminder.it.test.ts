@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { generateTaskReminders } from './proactive-notifications.js';
 import { localDayStartUTC } from '../lib/tz.js';
@@ -15,10 +15,6 @@ const TODAY = localDayStartUTC('UTC');
 const PAST = new Date('2000-01-01T00:00:00Z'); // now в прошлом → thirtyMinBefore всегда > now
 
 describe('generateTaskReminders — закрывает HOLLOW «за 30 мин до задачи» (тест-БД)', () => {
-  beforeEach(() => {
-    process.env.FEATURE_V2_TASK_REMINDER = 'all';
-  });
-
   it('timed незавершённая задача → нотиф task_reminder_30m за 30 мин', async () => {
     const userId = await seedUser(`tr-a-${Date.now()}@a.test`);
     await prisma.task.create({ data: { userId, title: 'Отчёт', category: 'work', priority: 'high', date: TODAY, time: '14:00', completed: false } });
@@ -40,13 +36,6 @@ describe('generateTaskReminders — закрывает HOLLOW «за 30 мин �
   it('задача без времени → нет нотифа', async () => {
     const userId = await seedUser(`tr-c-${Date.now()}@a.test`);
     await prisma.task.create({ data: { userId, title: 'X', category: 'work', priority: 'low', date: TODAY, time: null, completed: false } });
-    expect(await generateTaskReminders(userId, PAST)).toHaveLength(0);
-  });
-
-  it('флаг OFF → нет нотифа (off=байт-идентично)', async () => {
-    const userId = await seedUser(`tr-d-${Date.now()}@a.test`);
-    await prisma.task.create({ data: { userId, title: 'X', category: 'work', priority: 'low', date: TODAY, time: '14:00', completed: false } });
-    process.env.FEATURE_V2_TASK_REMINDER = 'none';
     expect(await generateTaskReminders(userId, PAST)).toHaveLength(0);
   });
 

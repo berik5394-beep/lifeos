@@ -19,8 +19,6 @@ import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
 import {
-  isV2RecentActivityEnabled,
-  isV2ScheduleConflictEnabled,
   isV2MemQualityEnabled,
   isV2DecayEnabled,
   isV2OpenLoopsEnabled,
@@ -518,19 +516,15 @@ export async function fetchV2EnrichmentData(
         CROSS_DOMAIN_BUDGET_MS,
         null,
       ).catch(() => null),
-      isV2RecentActivityEnabled(userId)
-        ? withTimeout(
-            (isV2MemQualityEnabled(userId)
-              ? significantMemories(userId, 6)
-              : recentEvents(userId, 6)
-            ).then((rows) => formatRecentActivitySection(rows) || null),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          ).catch(() => null)
-        : Promise.resolve(null),
-      isV2ScheduleConflictEnabled(userId)
-        ? withTimeout(buildScheduleConflict(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
-        : Promise.resolve(null),
+      withTimeout(
+        (isV2MemQualityEnabled(userId)
+          ? significantMemories(userId, 6)
+          : recentEvents(userId, 6)
+        ).then((rows) => formatRecentActivitySection(rows) || null),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      ).catch(() => null),
+      withTimeout(buildScheduleConflict(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null),
       withTimeout(buildNeglectedKeyPerson(userId), CROSS_DOMAIN_BUDGET_MS, null)
         .then((n) => n?.insightText ?? null)
         .catch(() => null),

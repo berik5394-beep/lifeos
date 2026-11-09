@@ -118,12 +118,11 @@ export const createEventTool = defineTool({
         source: 'voice',
       },
     });
-    // Проактивный конфликт ПРИ СОЗДАНИИ (флаг): встреча наложилась на задачу/
+    // Проактивный конфликт ПРИ СОЗДАНИИ: встреча наложилась на задачу/
     // встречу того же дня → «не успеешь» прямо в ответе. Best-effort.
     let conflictWarn = '';
     try {
-      const { isV2ScheduleConflictEnabled } = await import('../lib/feature-flags.js');
-      if (startTime && isV2ScheduleConflictEnabled(userId)) {
+      if (startTime) {
         const { findCreationConflict, itemWindow } = await import('../services/schedule-conflict/index.js');
         const w = itemWindow('event', startTime, endTime);
         if (w) {

@@ -62,45 +62,6 @@ export function isV2EntityResolveEnabled(userId: string): boolean {
 }
 
 /**
- * Напоминание «за 30 мин до задачи» (P1 HOLLOW fix). Новый push-выход в
- * scheduler → off=байт-идентично. Same shape: "all"/"true", "none"/"false"/unset, "user-X".
- */
-export function isV2TaskReminderEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_TASK_REMINDER;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
- * Конфликт задача↔календарь (кросс-домен слой B) — врезка в мозг. Same shape.
- */
-export function isV2ScheduleConflictEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_SCHEDULE_CONFLICT;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
- * Недавняя активность в мозг (v2-натив reader, шаг M3). Главный путь
- * enrichment читает свежие события Memory по createdAt → любой captureActivity
- * сразу виден. Same shape: "all"/"true", "none"/"false"/unset, "user-X".
- */
-export function isV2RecentActivityEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_RECENT_ACTIVITY;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
  * D (spec 2026-06-01): inline-проактивность из длинного текста.
  * Off → байт-в-байт сегодняшнее поведение. Env FEATURE_V2_INLINE_NUDGE
  * в форме "all"/"true" / "none"/unset / "user-X,user-Y".

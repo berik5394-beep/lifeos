@@ -4,7 +4,6 @@ import { dateOnlyUTC } from '../lib/tz.js';
 import { defineTool } from './_types.js';
 import { pickOpenTask } from '../services/task-title.js';
 import { proposeReschedule } from '../services/reschedule.js';
-import { isV2ScheduleConflictEnabled } from '../lib/feature-flags.js';
 import { findCreationConflict, itemWindow } from '../services/schedule-conflict/index.js';
 import { fmtDay } from '../services/event-change.js';
 
@@ -53,7 +52,7 @@ export const moveTaskTool = defineTool({
 
     const day = date.toISOString().slice(0, 10);
     let conflict = '';
-    if (time && isV2ScheduleConflictEnabled(userId)) {
+    if (time) {
       const w = itemWindow('task', time, null);
       if (w) conflict = (await findCreationConflict(userId, date, { title: task.title, kind: 'task', ...w }, { taskId: task.id }).catch(() => null)) ?? '';
     }

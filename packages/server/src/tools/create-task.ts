@@ -106,12 +106,11 @@ export const createTaskTool = defineTool({
     const weekLoad = reschedule || dayLoad ? null : await maybeWeekLoadLine(ctx.userId, new Date());
     const monthLoad = reschedule || dayLoad || weekLoad ? null : await maybeMonthLoadLine(ctx.userId, new Date());
     const extra = reschedule?.text ?? dayLoad ?? weekLoad ?? monthLoad;
-    // Проактивный конфликт ПРИ СОЗДАНИИ (флаг): timed-задача наложилась на
+    // Проактивный конфликт ПРИ СОЗДАНИИ: timed-задача наложилась на
     // встречу/задачу того же дня → «не успеешь» прямо в ответе. Best-effort.
     let conflictWarn = '';
     try {
-      const { isV2ScheduleConflictEnabled } = await import('../lib/feature-flags.js');
-      if (input.time && isV2ScheduleConflictEnabled(ctx.userId)) {
+      if (input.time) {
         const { findCreationConflict, itemWindow } = await import('../services/schedule-conflict/index.js');
         const w = itemWindow('task', input.time, null);
         if (w) {

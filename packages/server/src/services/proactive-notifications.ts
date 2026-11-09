@@ -1,7 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localDateOnlyUTC, localDaySlot, localHour, localDayOfWeek, localMonthRange } from '../lib/tz.js';
 import { countOverduePending } from './task-overdue.js';
-import { isV2TaskReminderEnabled } from '../lib/feature-flags.js';
 import { buildPersonMeetingBriefs } from './person-types/meeting-impl.js';
 import { meetingPushBody } from './person-types/meeting.js';
 import { delegationHints, delegationLine, durationMin, getHourRate, listTeam, LONG_MEETING_MIN, meetingCostLine } from './time-value.js';
@@ -159,7 +158,6 @@ export async function generateTaskReminders(
   now: Date = new Date(),
 ): Promise<ProactiveNotification[]> {
   const notifications: ProactiveNotification[] = [];
-  if (!isV2TaskReminderEnabled(userId)) return notifications;
 
   const user = await prisma.user.findUnique({
     where: { id: userId },

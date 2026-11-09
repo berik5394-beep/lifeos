@@ -70,7 +70,6 @@ describe('расписание с фото', () => {
 
 describe('задачи с фото', () => {
   it('задача поверх встречи → conflictWarning в ответе', async () => {
-    process.env.FEATURE_V2_SCHEDULE_CONFLICT = 'all';
     const { userId, headers } = await user('cap');
     await prisma.calendarEvent.create({ data: { userId, title: 'Планёрка', date: new Date(`${TODAY}T00:00:00Z`), startTime: '10:00', endTime: '11:00' } });
     const r = await app.inject({
@@ -79,7 +78,6 @@ describe('задачи с фото', () => {
     });
     expect(r.json().created).toBe(2);
     expect(r.json().conflictWarning).toBe('«Позвонить»: накладывается на время с встречей «Планёрка» 10:00–11:00.');
-    delete process.env.FEATURE_V2_SCHEDULE_CONFLICT;
   });
 });
 
