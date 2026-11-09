@@ -1,7 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  isV2GoalImpactEnabled,
-  isV2RunwayEnabled,
   isV2RunwayBalanceEnabled,
   isV2DecisionsEnabled,
   isV2EnergyEnabled,
@@ -235,42 +233,6 @@ describe('isV2WriteEnabled', () => {
   it('ignores trailing/leading whitespace in flag itself', () => {
     process.env.FEATURE_V2_WRITE = '  all  ';
     expect(isV2WriteEnabled('x')).toBe(true);
-  });
-});
-
-describe('isV2GoalImpactEnabled', () => {
-  afterEach(() => {
-    delete process.env.FEATURE_V2_GOAL_IMPACT;
-  });
-  it('unset → false', () => {
-    expect(isV2GoalImpactEnabled('u1')).toBe(false);
-  });
-  it('all → true', () => {
-    process.env.FEATURE_V2_GOAL_IMPACT = 'all';
-    expect(isV2GoalImpactEnabled('u1')).toBe(true);
-  });
-  it('user-list матчит только своих', () => {
-    process.env.FEATURE_V2_GOAL_IMPACT = 'user-u1';
-    expect(isV2GoalImpactEnabled('u1')).toBe(true);
-    expect(isV2GoalImpactEnabled('u2')).toBe(false);
-  });
-});
-
-describe('isV2RunwayEnabled', () => {
-  afterEach(() => {
-    delete process.env.FEATURE_V2_RUNWAY;
-  });
-  it('unset → false', () => {
-    expect(isV2RunwayEnabled('u1')).toBe(false);
-  });
-  it('all → true', () => {
-    process.env.FEATURE_V2_RUNWAY = 'all';
-    expect(isV2RunwayEnabled('u1')).toBe(true);
-  });
-  it('user-list матчит только своих', () => {
-    process.env.FEATURE_V2_RUNWAY = 'user-u1';
-    expect(isV2RunwayEnabled('u1')).toBe(true);
-    expect(isV2RunwayEnabled('u2')).toBe(false);
   });
 });
 

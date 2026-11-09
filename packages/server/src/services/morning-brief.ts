@@ -16,7 +16,6 @@ import { prisma } from '../lib/prisma.js';
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { localDateOnlyUTC, localMonthOnlyUTC, localWeekStartUTC } from '../lib/tz.js';
-import { isV2RunwayEnabled } from '../lib/feature-flags.js';
 import { buildRunway } from './runway/index.js';
 import { gatherDayLoad } from './day-load.js';
 import { computeCapacityFit } from './capacity-fit.js';
@@ -54,7 +53,7 @@ export async function gatherBriefExtras(userId: string, tz: string, now: Date = 
     // План недели и месяца (раньше в брифе только одна годовая цель).
     prisma.weeklyGoal.findMany({ where: { userId, weekStart: localWeekStartUTC(tz, now), archivedAt: null }, select: { completed: true } }).catch(() => []),
     prisma.monthlyGoal.findMany({ where: { userId, monthStart }, select: { completed: true } }).catch(() => []),
-    isV2RunwayEnabled(userId) ? buildRunway(userId, now).catch(() => null) : Promise.resolve(null),
+    buildRunway(userId, now).catch(() => null),
   ]);
 
   const limit = limits?._sum.monthlyLimit ?? 0;

@@ -19,8 +19,6 @@ import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
 import {
-  isV2GoalImpactEnabled,
-  isV2RunwayEnabled,
   isV2EnergyEnabled,
   isV2RelationshipsEnabled,
   isV2DecisionsEnabled,
@@ -401,10 +399,7 @@ export async function fetchV2EnrichmentData(
   try {
     // Дедуп: goal-impact и runway оба считают reflector-факты (тяжело: ~10
     // агрегатов). Считаем ОДИН раз и делим между ними. Один промис, оба await'ят.
-    const needFacts = isV2GoalImpactEnabled(userId) || isV2RunwayEnabled(userId);
-    const factsPromise = needFacts
-      ? gatherReflectorFacts(userId, new Date()).catch(() => null)
-      : Promise.resolve(null);
+    const factsPromise = gatherReflectorFacts(userId, new Date()).catch(() => null);
 
     const nowDate = new Date();
     // Комната робота (Часть 4): READ-ONLY, чтобы на «как тебе комната?» робот
@@ -494,24 +489,20 @@ export async function fetchV2EnrichmentData(
         BASE_MEMBER_BUDGET_MS,
         [],
       ),
-      isV2GoalImpactEnabled(userId)
-        ? withTimeout(
-            factsPromise.then((f) => buildGoalImpact(userId, undefined, f)),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          )
-            .then((gi) => gi?.insightText ?? null)
-            .catch(() => null)
-        : Promise.resolve(null),
-      isV2RunwayEnabled(userId)
-        ? withTimeout(
-            factsPromise.then((f) => buildRunway(userId, undefined, f)),
-            CROSS_DOMAIN_BUDGET_MS,
-            null,
-          )
-            .then((rw) => rw?.insightText ?? null)
-            .catch(() => null)
-        : Promise.resolve(null),
+      withTimeout(
+        factsPromise.then((f) => buildGoalImpact(userId, undefined, f)),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      )
+        .then((gi) => gi?.insightText ?? null)
+        .catch(() => null),
+      withTimeout(
+        factsPromise.then((f) => buildRunway(userId, undefined, f)),
+        CROSS_DOMAIN_BUDGET_MS,
+        null,
+      )
+        .then((rw) => rw?.insightText ?? null)
+        .catch(() => null),
       isV2EnergyEnabled(userId)
         ? withTimeout(buildEnergyLink(userId), CROSS_DOMAIN_BUDGET_MS, null)
             .then((el) => el?.insightText ?? null)

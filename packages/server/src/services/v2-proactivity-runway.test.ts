@@ -6,12 +6,12 @@ import { scoreSignificance, TEMPLATES } from './v2-proactivity-engine.js';
 const src = readFileSync(join(process.cwd(), 'src/services/v2-proactivity-engine.ts'), 'utf-8');
 
 describe('runway_low detector wiring', () => {
-  it('источник + шаблон + детектор + ранний флаг-гейт + регистрация', () => {
+  it('источник + шаблон + детектор + регистрация', () => {
     expect(src).toContain("'runway_low'");
     expect(src).toContain('runway_low:');
     expect(src).toContain('async function detectRunwayLow');
     expect(src).toMatch(
-      /async function detectRunwayLow[\s\S]*?isV2RunwayEnabled\(userId\)\)\s*return \[\]/,
+      /async function detectRunwayLow[\s\S]*?buildRunway\(userId\)/,
     );
     expect(src).toMatch(/detectCandidates[\s\S]*?detectRunwayLow\(userId\)/);
   });

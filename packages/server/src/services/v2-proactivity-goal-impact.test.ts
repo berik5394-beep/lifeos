@@ -9,13 +9,13 @@ const src = readFileSync(
 );
 
 describe('goal_impact detector wiring', () => {
-  it('источник + шаблон + детектор + ранний флаг-гейт + регистрация', () => {
+  it('источник + шаблон + детектор + регистрация', () => {
     expect(src).toContain("'goal_impact'");
     expect(src).toContain('goal_impact:'); // TEMPLATES + scoreSignificance case
     expect(src).toContain('async function detectGoalImpact');
-    // ранний флаг-return внутри detectGoalImpact (off=байт-идентично)
+    // detectGoalImpact считает без флага
     expect(src).toMatch(
-      /async function detectGoalImpact[\s\S]*?isV2GoalImpactEnabled\(userId\)\)\s*return \[\]/,
+      /async function detectGoalImpact[\s\S]*?buildGoalImpact\(userId\)/,
     );
     // зарегистрирован в Promise.allSettled
     expect(src).toMatch(/detectCandidates[\s\S]*?detectGoalImpact\(userId\)/);

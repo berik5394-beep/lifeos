@@ -126,32 +126,6 @@ export function isV2RecentActivityEnabled(userId: string): boolean {
 }
 
 /**
- * Goal-Impact (кросс-домен Срез 1). Same shape as isV2AxesEnabled:
- * "all"/"true", "none"/"false"/unset, or comma list "user-X,user-Y".
- */
-export function isV2GoalImpactEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_GOAL_IMPACT;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
- * Runway (кросс-домен #1). Same shape as isV2AxesEnabled:
- * "all"/"true", "none"/"false"/unset, or comma list "user-X,user-Y".
- */
-export function isV2RunwayEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_RUNWAY;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
  * Runway-баланс: якорь cashOnHand из CashSnapshot + инструмент set_balance.
  * Same shape as isV2AxesEnabled (env FEATURE_V2_RUNWAY_BALANCE).
  */

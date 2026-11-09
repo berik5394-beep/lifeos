@@ -12,8 +12,8 @@ const src = readFileSync(
 );
 
 describe('goal-impact enrichment врезка', () => {
-  it('флаг-гейт + buildGoalImpact + рендер за форматтером', () => {
-    expect(src).toContain('isV2GoalImpactEnabled');
+  it('без флага + buildGoalImpact + рендер за форматтером', () => {
+    expect(src).not.toContain('isV2GoalImpactEnabled');
     expect(src).toContain('buildGoalImpact');
     expect(src).toContain('formatGoalImpactSection');
   });

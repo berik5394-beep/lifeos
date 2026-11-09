@@ -643,8 +643,6 @@ async function detectDecisionReview(userId: string): Promise<NudgeCandidate[]> {
 // топ-категория ест ≥25% месячной нормы ИЛИ долги сдвигают цель на ≥1 мес.
 async function detectGoalImpact(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2GoalImpactEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2GoalImpactEnabled(userId)) return [];
     const { buildGoalImpact } = await import('./goal-impact/index.js');
     const gi = await buildGoalImpact(userId);
     if (!gi) return [];
@@ -675,8 +673,6 @@ async function detectGoalImpact(userId: string): Promise<NudgeCandidate[]> {
 // Runway: короткий запас денег (по записям). Кандидат при short/critical/underwater.
 async function detectRunwayLow(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2RunwayEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2RunwayEnabled(userId)) return [];
     const { buildRunway } = await import('./runway/index.js');
     const rw = await buildRunway(userId);
     if (!rw) return [];
