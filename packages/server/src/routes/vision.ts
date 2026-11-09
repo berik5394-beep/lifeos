@@ -141,6 +141,48 @@ function extractJSON(text: string): any {
 // ============================================================================
 const PHOTO_BODY_LIMIT = 15 * 1024 * 1024; // 15 MB
 
+const TASK_CATEGORIES = ['work', 'personal', 'health', 'finance', 'education', 'home'];
+const TASK_PRIORITIES = ['low', 'medium', 'high', 'critical'];
+const strOrEmpty = (v: unknown, max: number): string => (v == null ? '' : String(v).trim().slice(0, max));
+
+/** Задачи с фото → форма сохранения: битое поле чиним, строку без названия отбрасываем. */
+export function normalizeCapturedTasks(v: unknown): unknown {
+  if (!Array.isArray(v)) return v;
+  return v
+    .filter((t): t is Record<string, unknown> => !!t && typeof t === 'object')
+    .map((t) => {
+      const category = strOrEmpty(t.category, 32).toLowerCase();
+      const priority = strOrEmpty(t.priority, 16).toLowerCase();
+      const time = strOrEmpty(t.time, 8);
+      const notes = strOrEmpty(t.notes, 500);
+      return {
+        ...t,
+        title: strOrEmpty(t.title, 200),
+        category: TASK_CATEGORIES.includes(category) ? category : 'personal',
+        priority: TASK_PRIORITIES.includes(priority) ? priority : 'medium',
+        ...(time ? { time } : { time: undefined }),
+        ...(notes ? { notes } : { notes: undefined }),
+      };
+    })
+    .filter((t) => t.title.length > 0);
+}
+
+/** Пары расписания с фото → форма импорта (null/числа → строки, без предмета — мимо). */
+export function normalizeScheduleItems(v: unknown): unknown {
+  if (!Array.isArray(v)) return v;
+  return v
+    .filter((t): t is Record<string, unknown> => !!t && typeof t === 'object')
+    .map((t) => ({
+      day: strOrEmpty(t.day, 40),
+      time: strOrEmpty(t.time, 40),
+      subject: strOrEmpty(t.subject, 200),
+      room: strOrEmpty(t.room, 100),
+      teacher: strOrEmpty(t.teacher, 100),
+      notes: strOrEmpty(t.notes, 500),
+    }))
+    .filter((t) => t.subject.length > 0);
+}
+
 export async function visionRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
 
@@ -190,7 +232,9 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(500).send({ message: 'Нет ответа от Claude Vision' });
       }
 
-      const parsed = extractJSON(textBlock.text);
+      const parsed = extractJSON(textBlock.text) as { tasks?: unknown };
+      // Ответ модели — в форму приложения (null-время, «urgent», пустые названия).
+      if (parsed && typeof parsed === 'object') parsed.tasks = normalizeCapturedTasks(parsed.tasks);
       return reply.send(parsed);
     } catch (err: any) {
       if (err instanceof AppError) throw err;
@@ -257,7 +301,8 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
   // ----- Import schedule items as tasks -----------------------------------
   const importScheduleSchema = z.object({
     // Предел: недельное расписание ≤ ~60 пар; без него — неограниченная запись.
-    items: z.array(
+    // Аудит 2026-11-09: null/число в поле или одна пустая строка роняли весь импорт 400.
+    items: z.preprocess(normalizeScheduleItems, z.array(
       z.object({
         day: z.string().max(40).optional().default(''),
         time: z.string().max(40).optional().default(''),
@@ -266,7 +311,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
         teacher: z.string().max(100).optional().default(''),
         notes: z.string().max(500).optional().default(''),
       }),
-    ).max(100),
+    ).max(100)),
     dateISO: z.string().optional(), // yyyy-mm-dd — if provided, creates tasks for that date
   });
 
@@ -341,7 +386,9 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
 
   // ----- Save captured tasks to DB ----------------------------------------
   const saveTasksSchema = z.object({
-    tasks: z.array(
+    // Аудит 2026-11-09: модель отдаёт «time»: null / приоритет вне списка, юзер стирает
+    // одно название — раньше 400 и НИ ОДНА задача не сохранялась. Чиним по строке.
+    tasks: z.preprocess(normalizeCapturedTasks, z.array(
       z.object({
         title: z.string().min(1).max(200),
         category: z.string().max(32).optional().default('personal'),
@@ -349,7 +396,7 @@ export async function visionRoutes(app: FastifyInstance): Promise<void> {
         time: z.string().max(8).optional(),
         notes: z.string().max(500).optional(),
       }),
-    ).min(1).max(50),
+    ).min(1, 'Нет задач с названием — нечего сохранять').max(50)),
     dateISO: z.string().optional(),
   });
 
