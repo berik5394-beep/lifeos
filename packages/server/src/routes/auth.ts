@@ -61,6 +61,11 @@ const profileUpdateSchema = z.object({
   // Уровень интерфейса — в аккаунте (User.settings.uiComplexity), чтобы не
   // терялся на другом телефоне/после переустановки.
   uiComplexity: z.enum(['simple', 'standard', 'power']).optional(),
+  // Тумблеры уведомлений из Настроек (в User.settings; по умолчанию вкл).
+  // Аудит 2026-11-09: раньше жили только на телефоне — сервер слал всё равно.
+  morningReminder: z.boolean().optional(),
+  eveningReview: z.boolean().optional(),
+  taskReminders: z.boolean().optional(),
 });
 
 // ============================================================================
@@ -541,12 +546,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     // settings — JSON: сливаем, а не затираем (там могут быть другие ключи).
     let settingsUpdate: Record<string, unknown> | undefined;
-    if (body.checkIns !== undefined || body.uiComplexity !== undefined) {
+    const notifyKeys = (['morningReminder', 'eveningReview', 'taskReminders'] as const).filter((k) => body[k] !== undefined);
+    if (body.checkIns !== undefined || body.uiComplexity !== undefined || notifyKeys.length > 0) {
       const cur = await prisma.user.findUnique({ where: { id: userId }, select: { settings: true } });
       settingsUpdate = {
         ...((cur?.settings ?? {}) as Record<string, unknown>),
         ...(body.checkIns !== undefined ? { checkIns: body.checkIns } : {}),
         ...(body.uiComplexity !== undefined ? { uiComplexity: body.uiComplexity } : {}),
+        ...Object.fromEntries(notifyKeys.map((k) => [k, body[k]])),
       };
     }
 
@@ -610,10 +617,14 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     });
     if (!user) return reply.status(404).send({ message: 'Не найден' });
     const { settings, ...rest } = user;
-    const st = (settings ?? {}) as { checkIns?: unknown; uiComplexity?: unknown };
+    const st = (settings ?? {}) as { checkIns?: unknown; uiComplexity?: unknown; morningReminder?: unknown; eveningReview?: unknown; taskReminders?: unknown };
     const checkIns = st.checkIns !== false;
+    // Тумблеры уведомлений (по умолчанию вкл) — телефон подтягивает их при входе.
+    const morningReminder = st.morningReminder !== false;
+    const eveningReview = st.eveningReview !== false;
+    const taskReminders = st.taskReminders !== false;
     const uiComplexity =
       st.uiComplexity === 'simple' || st.uiComplexity === 'standard' || st.uiComplexity === 'power' ? st.uiComplexity : null;
-    return reply.send({ user: { ...rest, checkIns, uiComplexity }, disclaimer: disclaimerFull() });
+    return reply.send({ user: { ...rest, checkIns, uiComplexity, morningReminder, eveningReview, taskReminders }, disclaimer: disclaimerFull() });
   });
 }

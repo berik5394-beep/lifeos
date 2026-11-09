@@ -110,10 +110,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Очередь офлайн-записей, кэш ответов, заметки недели — не следующему аккаунту.
     const { wipeUserDeviceData } = await import('@/services/offline-sync');
     await wipeUserDeviceData().catch(() => {});
-    const { useRoomStore } = await import('@/stores/room-store');
-    useRoomStore.getState().reset();
-    const { useDealStore } = await import('@/stores/deal-store');
-    useDealStore.getState().reset();
+    // Сторы, облачко, будильники и настройки прошлого аккаунта — не следующему.
+    const { resetUserSession } = await import('@/services/session-reset');
+    await resetUserSession().catch(() => {});
     set({ token: null, refreshToken: null, user: null, error: null });
   },
 
@@ -134,9 +133,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await clearPersistedStores().catch(() => {});
     const { wipeUserDeviceData } = await import('@/services/offline-sync');
     await wipeUserDeviceData().catch(() => {});
-    // Сделки и запомненная доступность функции — не достаются следующему аккаунту.
-    const { useDealStore } = await import('@/stores/deal-store');
-    useDealStore.getState().reset();
+    // Сторы, облачко, будильники — не достаются следующему аккаунту.
+    const { resetUserSession } = await import('@/services/session-reset');
+    await resetUserSession().catch(() => {});
     set({ token: null, refreshToken: null, user: null, error: null });
   },
 

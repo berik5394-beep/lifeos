@@ -663,10 +663,15 @@ export async function generateProactiveNotifications(
   // знал имя, остальные говорили обезличенно).
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { timezone: true, name: true },
+    select: { timezone: true, name: true, settings: true },
   });
   const tz = user?.timezone || 'UTC';
   const name = user?.name ?? 'друг';
+  // Тумблеры Настроек (по умолчанию вкл): выключенное не шлём (аудит 2026-11-09).
+  const prefs = (user?.settings ?? {}) as Record<string, unknown>;
+  const morningOn = prefs.morningReminder !== false;
+  const eveningOn = prefs.eveningReview !== false;
+  const tasksOn = prefs.taskReminders !== false;
 
   const [
     eventReminders,
@@ -679,15 +684,15 @@ export async function generateProactiveNotifications(
     tomorrowPreview,
   ] = await Promise.all([
     generateEventReminders(userId),
-    generateTaskReminders(userId),
+    tasksOn ? generateTaskReminders(userId) : Promise.resolve([] as ProactiveNotification[]),
     generateBudgetAlerts(userId, tz, name),
     generateHabitNudges(userId, tz, name),
     // inactivityPing НЕ вызываем (Aydana fix d9b46f9) — функция
     // остаётся в коде для тестов/истории, но не пишет push.
     generateWeeklySummary(userId, tz, name),
-    generateMorningBriefing(userId),
-    generateEveningSummary(userId, tz, name),
-    generateTomorrowPreview(userId, tz, name),
+    morningOn ? generateMorningBriefing(userId) : Promise.resolve([] as ProactiveNotification[]),
+    eveningOn ? generateEveningSummary(userId, tz, name) : Promise.resolve([] as ProactiveNotification[]),
+    eveningOn ? generateTomorrowPreview(userId, tz, name) : Promise.resolve([] as ProactiveNotification[]),
   ]);
 
   return [

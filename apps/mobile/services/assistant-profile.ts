@@ -19,7 +19,18 @@ export type AssistantProfile = {
    * а не по стилю (по умолчанию вкл; User.therapeuticMode на сервере).
    */
   therapeuticMode?: boolean;
+  /** Тумблеры уведомлений Настроек (по умолчанию вкл; User.settings на сервере). */
+  morningReminder?: boolean;
+  eveningReview?: boolean;
+  taskReminders?: boolean;
 };
+
+/** Ключ тумблера в телефоне ↔ поле профиля на сервере. */
+export const NOTIFY_PREF_KEYS = {
+  morningReminder: 'morning_reminder',
+  eveningReview: 'evening_review',
+  taskReminders: 'task_reminders',
+} as const;
 
 const KEYS: (keyof AssistantProfile)[] = ['assistantStyle', 'assistantGender', 'wakeUpTime'];
 
@@ -28,6 +39,15 @@ function cache(p: AssistantProfile): void {
     const v = p[k];
     if (typeof v === 'string' && v) storage.set(k, v);
   }
+  for (const [field, key] of Object.entries(NOTIFY_PREF_KEYS) as [keyof typeof NOTIFY_PREF_KEYS, string][]) {
+    const v = p[field];
+    if (typeof v === 'boolean') storage.setBoolean(key, v);
+  }
+}
+
+/** Включён ли тумблер уведомлений (по умолчанию — да). */
+export function notifyPrefOn(field: keyof typeof NOTIFY_PREF_KEYS): boolean {
+  return storage.getBoolean(NOTIFY_PREF_KEYS[field]) !== false;
 }
 
 /** Сохранить на сервере (и в кэше). Ошибка — бросает: экран скажет «не сохранилось». */
@@ -51,6 +71,9 @@ export async function loadAssistantProfile(): Promise<AssistantProfile | null> {
       wakeUpTime: p.wakeUpTime,
       checkIns: typeof p.checkIns === 'boolean' ? p.checkIns : undefined,
       therapeuticMode: typeof p.therapeuticMode === 'boolean' ? p.therapeuticMode : undefined,
+      morningReminder: typeof p.morningReminder === 'boolean' ? p.morningReminder : undefined,
+      eveningReview: typeof p.eveningReview === 'boolean' ? p.eveningReview : undefined,
+      taskReminders: typeof p.taskReminders === 'boolean' ? p.taskReminders : undefined,
     };
     cache(picked);
     return picked;

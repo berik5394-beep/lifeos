@@ -24,6 +24,8 @@ jest.mock('@/services/storage', () => {
       set: (key: string, value: string) => store.set(key, value),
       delete: (key: string) => store.delete(key),
       remove: (key: string) => store.delete(key),
+      getBoolean: (key: string) => (store.has(key) ? store.get(key) === 'true' : undefined),
+      setBoolean: (key: string, value: boolean) => store.set(key, String(value)),
       contains: (key: string) => store.has(key),
       getAllKeys: () => [...store.keys()],
       keys: () => [...store.keys()],

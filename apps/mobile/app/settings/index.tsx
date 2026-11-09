@@ -11,7 +11,8 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { storage } from '@/services/storage';
 import { resyncDailyDigests, DEFAULT_WAKE_UP } from '@/services/daily-digests';
-import { saveAssistantProfile, loadAssistantProfile, type AssistantProfile } from '@/services/assistant-profile';
+import { saveAssistantProfile, loadAssistantProfile, NOTIFY_PREF_KEYS, type AssistantProfile } from '@/services/assistant-profile';
+import { cancelAllTaskReminders } from '@/services/task-reminders';
 import { exportCSV } from '@/services/export';
 import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore } from '@/stores/theme-store';
@@ -349,6 +350,9 @@ export default function SettingsScreen() {
       if (p.wakeUpTime) setWakeUpTime(p.wakeUpTime);
       if (typeof p.checkIns === 'boolean') setCheckIns(p.checkIns);
       if (typeof p.therapeuticMode === 'boolean') setSupportMode(p.therapeuticMode);
+      if (typeof p.morningReminder === 'boolean') setMorningReminder(p.morningReminder);
+      if (typeof p.eveningReview === 'boolean') setEveningReview(p.eveningReview);
+      if (typeof p.taskReminders === 'boolean') setTaskReminders(p.taskReminders);
     });
     return () => {
       alive = false;
@@ -400,23 +404,42 @@ export default function SettingsScreen() {
     });
   }, [supportMode]);
 
+  // Тумблеры уведомлений: в аккаунт (сервер не шлёт выключенное) + сразу
+  // пересобрать локальные (аудит 2026-11-09: раньше тумблеры ничего не меняли).
+  const saveNotifyPref = useCallback(
+    (field: 'morningReminder' | 'eveningReview' | 'taskReminders', next: boolean, rollback: () => void) => {
+      storage.setBoolean(NOTIFY_PREF_KEYS[field], next);
+      if (field === 'taskReminders') {
+        if (!next) cancelAllTaskReminders().catch(() => {});
+      } else {
+        resyncDailyDigests(storage.getString('wakeUpTime') ?? DEFAULT_WAKE_UP).catch(() => {});
+      }
+      saveAssistantProfile({ [field]: next }).catch(() => {
+        storage.setBoolean(NOTIFY_PREF_KEYS[field], !next);
+        rollback();
+        Alert.alert('Не сохранилось', 'Нет связи с сервером. Попробуй ещё раз.');
+      });
+    },
+    [],
+  );
+
   const handleToggleMorning = useCallback(() => {
     const next = !morningReminder;
     setMorningReminder(next);
-    storage.setBoolean('morning_reminder', next);
-  }, [morningReminder]);
+    saveNotifyPref('morningReminder', next, () => setMorningReminder(!next));
+  }, [morningReminder, saveNotifyPref]);
 
   const handleToggleEvening = useCallback(() => {
     const next = !eveningReview;
     setEveningReview(next);
-    storage.setBoolean('evening_review', next);
-  }, [eveningReview]);
+    saveNotifyPref('eveningReview', next, () => setEveningReview(!next));
+  }, [eveningReview, saveNotifyPref]);
 
   const handleToggleTasks = useCallback(() => {
     const next = !taskReminders;
     setTaskReminders(next);
-    storage.setBoolean('task_reminders', next);
-  }, [taskReminders]);
+    saveNotifyPref('taskReminders', next, () => setTaskReminders(!next));
+  }, [taskReminders, saveNotifyPref]);
 
   const handleAssistantStyleChange = useCallback((key: AssistantStyleKey) => {
     if (key === 'toxic') {

@@ -153,3 +153,16 @@ describe('auth поведенчески', () => {
     }
   });
 });
+
+describe('PATCH /auth/profile — тумблеры уведомлений (аудит 2026-11-09)', () => {
+  it('пишутся в settings, не затирая другие ключи', async () => {
+    const u = await prisma.user.create({
+      data: { email: `np-${Date.now()}@a.test`, name: 'N', passwordHash: 'x', settings: { checkIns: false } },
+    });
+    const headers = { authorization: `Bearer ${app.jwt.sign({ sub: u.id })}` };
+    const r = await app.inject({ method: 'PATCH', url: '/auth/profile', headers, payload: { morningReminder: false, taskReminders: false } });
+    expect(r.statusCode).toBe(200);
+    const after = await prisma.user.findUnique({ where: { id: u.id }, select: { settings: true } });
+    expect(after?.settings).toEqual({ checkIns: false, morningReminder: false, taskReminders: false });
+  });
+});

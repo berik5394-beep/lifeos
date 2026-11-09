@@ -1,4 +1,5 @@
 import { storage } from '@/services/storage';
+import { notifyPrefOn } from '@/services/assistant-profile';
 import {
   cancelLocalDigests,
   scheduleEveningReview,
@@ -25,8 +26,11 @@ export async function syncDailyDigests(serverPush: boolean, wakeUpTime?: string)
     return 'server';
   }
   await cancelLocalDigests();
-  await scheduleMorningBriefing(wakeUpTime ?? storage.getString('wakeUpTime') ?? DEFAULT_WAKE_UP);
-  await scheduleEveningReview('21:00');
+  // Тумблеры Настроек (аудит 2026-11-09: раньше их никто не читал).
+  if (notifyPrefOn('morningReminder')) {
+    await scheduleMorningBriefing(wakeUpTime ?? storage.getString('wakeUpTime') ?? DEFAULT_WAKE_UP);
+  }
+  if (notifyPrefOn('eveningReview')) await scheduleEveningReview('21:00');
   await scheduleWeeklyReport();
   return 'local';
 }

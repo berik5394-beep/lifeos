@@ -11,6 +11,7 @@
  */
 import * as Notifications from 'expo-notifications';
 import { scheduleAlarmNotification } from '@/services/alarm-notifications';
+import { notifyPrefOn } from '@/services/assistant-profile';
 
 export const TASK_REMINDER_PREFIX = 'task-reminder-';
 export const TASK_ALARM_PREFIX = 'task-alarm-';
@@ -77,6 +78,15 @@ export function remindersToCancel(scheduled: Scheduled[], taskIds: Set<string>):
     .map((n) => n.identifier);
 }
 
+/** Снять все напоминания и будильники задач (тумблер выкл, выход из аккаунта). */
+export async function cancelAllTaskReminders(scheduled?: Scheduled[]): Promise<void> {
+  const list = scheduled ?? ((await Notifications.getAllScheduledNotificationsAsync()) as unknown as Scheduled[]);
+  const ids = list
+    .filter((n) => n.identifier.startsWith(TASK_REMINDER_PREFIX) || n.identifier.startsWith(TASK_ALARM_PREFIX))
+    .map((n) => n.identifier);
+  await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id)));
+}
+
 /**
  * soft=false — мягкое «через 30 минут» шлёт сервер пушем (есть токен), здесь
  * только будильник во время задачи; иначе приходило два одинаковых напоминания.
@@ -88,6 +98,11 @@ export async function syncTaskReminders(
 ): Promise<void> {
   const soft = opts.soft ?? true;
   const scheduled = (await Notifications.getAllScheduledNotificationsAsync()) as unknown as Scheduled[];
+  // Тумблер «Напоминания о задачах» выключен — снимаем все и не ставим.
+  if (!notifyPrefOn('taskReminders')) {
+    await cancelAllTaskReminders(scheduled);
+    return;
+  }
   const cancel = remindersToCancel(scheduled, new Set(tasks.map((t) => t.id)));
   if (!soft) {
     for (const n of scheduled) if (n.identifier.startsWith(TASK_REMINDER_PREFIX) && !cancel.includes(n.identifier)) cancel.push(n.identifier);
