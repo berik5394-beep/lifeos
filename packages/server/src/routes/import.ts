@@ -11,6 +11,7 @@ import { AppError, NotFoundError, ValidationError } from '../lib/errors.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
+import { normalizeExpenseCategory } from '../lib/expense-category.js';
 
 // Import calls Claude API + parses files — tight cap per IP
 const importRateLimit = rateLimiter({ max: 5, windowMs: 60_000, keyPrefix: 'import' });
@@ -266,6 +267,7 @@ export async function materializeImport(
   userId: string,
   purpose: string,
   items: unknown[],
+  importId?: string,
 ): Promise<MaterializeResult> {
   const r: MaterializeResult = { events: 0, tasks: 0, expenses: 0, habits: 0 };
   if (!['meetings', 'tasks', 'expenses', 'habits'].includes(purpose)) return r;
@@ -280,9 +282,12 @@ export async function materializeImport(
         const title = str(it.title, 512);
         const date = safeDate(it.date);
         if (!title || !date) continue;
+        // Тот же файл загрузили ещё раз — встречу не дублируем (аудит 2026-11-09).
+        if (await prisma.calendarEvent.findFirst({ where: { userId, title, date, startTime: hhmm(it.startTime) }, select: { id: true } })) continue;
         await prisma.calendarEvent.create({
           data: {
             userId,
+            importId,
             title,
             date,
             startTime: hhmm(it.startTime),
@@ -296,11 +301,14 @@ export async function materializeImport(
       } else if (purpose === 'tasks') {
         const title = str(it.title, 500);
         if (!title) continue;
+        const taskDate = safeDate(it.date) ?? today;
+        if (await prisma.task.findFirst({ where: { userId, title, date: taskDate, cancelled: false }, select: { id: true } })) continue;
         await prisma.task.create({
           data: {
             userId,
+            importId,
             title,
-            date: safeDate(it.date) ?? today,
+            date: taskDate,
             time: hhmm(it.time),
             category: (str(it.category, 32) ?? 'personal').toLowerCase(),
             priority: (str(it.priority, 16) ?? 'medium').toLowerCase(),
@@ -311,22 +319,30 @@ export async function materializeImport(
       } else if (purpose === 'expenses') {
         const amount = Number(it.amount);
         if (!Number.isFinite(amount) || amount <= 0) continue;
+        const date = safeDate(it.date) ?? today;
+        const description = str(it.description, 500) ?? '';
+        // Повторная загрузка той же выписки — трату не задваиваем.
+        if (await prisma.expense.findFirst({ where: { userId, date, amount, description }, select: { id: true } })) continue;
         await prisma.expense.create({
           data: {
             userId,
-            date: safeDate(it.date) ?? today,
+            importId,
+            date,
             amount,
-            category: (str(it.category, 32) ?? 'other').toLowerCase(),
-            description: str(it.description, 500) ?? '',
+            // Ключ категории приложения («Продукты»/«groceries» → food), иначе мимо лимитов и таблиц.
+            category: normalizeExpenseCategory(str(it.category, 64), description),
+            description,
           },
         });
         r.expenses++;
       } else if (purpose === 'habits') {
         const name = str(it.name ?? it.title, 200);
         if (!name) continue;
+        if (await prisma.habit.findFirst({ where: { userId, name, active: true }, select: { id: true } })) continue;
         await prisma.habit.create({
           data: {
             userId,
+            importId,
             name,
             category: (str(it.category, 32) ?? 'personal').toLowerCase(),
             frequency: (str(it.frequency, 32) ?? 'daily').toLowerCase(),
@@ -468,6 +484,7 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
       request.userId,
       analysis.purpose,
       analysis.items,
+      imported.id,
     );
     const createdTotal =
       materialized.events +
@@ -529,7 +546,15 @@ export async function importRoutes(app: FastifyInstance): Promise<void> {
       throw new NotFoundError('Импортированный файл');
     }
 
-    await prisma.importedFile.delete({ where: { id } });
+    // Удалить импорт = убрать и то, что он создал (раньше траты оставались).
+    // Задачи — мягко (cancelled), привычки — в архив: у них есть связи/история.
+    await prisma.$transaction([
+      prisma.expense.deleteMany({ where: { userId: request.userId, importId: id } }),
+      prisma.calendarEvent.deleteMany({ where: { userId: request.userId, importId: id } }),
+      prisma.task.updateMany({ where: { userId: request.userId, importId: id }, data: { cancelled: true } }),
+      prisma.habit.updateMany({ where: { userId: request.userId, importId: id }, data: { active: false } }),
+      prisma.importedFile.delete({ where: { id } }),
+    ]);
     return reply.send({ success: true });
   });
 }

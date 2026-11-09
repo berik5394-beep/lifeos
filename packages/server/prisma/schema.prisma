@@ -213,9 +213,11 @@ model Habit {
   // Phase 5 P2 4/5 — re-decompose архивирует planner-привычку
   // (archivedAt), не удаляет. Habit.createdAt уже есть выше.
   archivedAt     DateTime?
+  importId       String? // аудит 2026-11-09: из какого импорта (повтор не задваивает, удаление импорта убирает)
 
   @@index([userId])
   @@index([planParentId])
+  @@index([importId])
 }
 
 model HabitLog {
@@ -269,12 +271,14 @@ model Task {
   planParentId   String?
   planParentType String?
   derivedFrom    String  @default("user")
+  importId       String? // аудит 2026-11-09: из какого импорта (повтор не задваивает, удаление импорта убирает)
 
   @@index([userId, date])
   @@index([userId, kanbanStatus])
   @@index([parentId])
   @@index([sharedSpaceId])
   @@index([planParentId])
+  @@index([importId])
 }
 
 model MonthlyGoal {
@@ -369,8 +373,10 @@ model Expense {
   description String
   amount      Float
   createdAt   DateTime @default(now())
+  importId    String? // аудит 2026-11-09: из какого импорта (повтор не задваивает, удаление импорта убирает)
 
   @@index([userId, date])
+  @@index([importId])
 }
 
 model Income {
@@ -517,9 +523,11 @@ model CalendarEvent {
   // синхронизации идёт по (userId, externalId).
   externalId  String?
   createdAt   DateTime @default(now())
+  importId    String? // аудит 2026-11-09: из какого импорта (повтор не задваивает, удаление импорта убирает)
 
   @@index([userId, date])
   @@index([userId, externalId])
+  @@index([importId])
 }
 
 model BudgetLimit {
