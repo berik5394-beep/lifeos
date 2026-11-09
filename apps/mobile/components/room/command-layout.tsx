@@ -7,11 +7,9 @@ import { ChatInputRow } from './chat-input-row';
 import { ChatReplyBubble } from './chat-reply-bubble';
 import { spacing } from '@/constants';
 import { routeHasCommandBar } from '@/services/command-bar';
+import { useCurrentRoute, useReplyBubble } from '@/hooks/use-reply-bubble';
 
 
-/** Ответ робота виден столько, если не ждёт подтверждения. */
-const BUBBLE_MS = 9000;
-const FRESH_REPLY_MS = 90_000;
 
 /** Высота клавиатуры (0 — закрыта). Своя, т.к. KeyboardAvoidingView под нативной шапкой промахивается на её высоту. */
 function useKeyboardHeight(): number {
@@ -27,23 +25,20 @@ function useKeyboardHeight(): number {
   return h;
 }
 
-/** Последний свежий ответ робота облачком над строкой (с кнопками, если ждёт «да»). */
-const CommandReply = memo(function CommandReply() {
-  const messages = useChatStore((s) => s.messages);
+/**
+ * Ответ робота облачком над строкой (с кнопками, если ждёт «да»). Одно облачко
+ * на всё приложение (use-reply-bubble): только на экране перед глазами, до
+ * тапа/смахивания; новый экран не показывает старый ответ заново.
+ */
+const CommandReply = memo(function CommandReply({ routeName }: { routeName: string }) {
   const loading = useChatStore((s) => s.isLoading);
   const confirmPendingAction = useChatStore((s) => s.confirmPendingAction);
-  const latest = messages[0];
-  const reply =
-    latest && latest.role === 'assistant' && Date.now() - new Date(latest.createdAt).getTime() < FRESH_REPLY_MS ? latest : undefined;
-  const [dismissed, setDismissed] = useState<string | null>(null);
-  useEffect(() => {
-    if (!reply || reply.pendingAction) return;
-    const t = setTimeout(() => setDismissed(reply.id), BUBBLE_MS);
-    return () => clearTimeout(t);
-  }, [reply]);
+  const route = useCurrentRoute();
+  const host = route === routeName ? routeName : null;
+  const { reply, dismiss } = useReplyBubble(host);
 
-  if (loading) return <View style={styles.reply}><ChatReplyBubble text="" thinking tail="bottom" /></View>;
-  if (!reply || dismissed === reply.id) return null;
+  if (loading && host) return <View style={styles.reply}><ChatReplyBubble text="" thinking tail="bottom" /></View>;
+  if (!reply) return null;
   return (
     <View style={styles.reply}>
       <ChatReplyBubble
@@ -51,7 +46,7 @@ const CommandReply = memo(function CommandReply() {
         tail="bottom"
         confirm={!!reply.pendingAction}
         onConfirm={(yes) => void confirmPendingAction(reply.id, yes)}
-        onDismiss={() => setDismissed(reply.id)}
+        onDismiss={dismiss}
       />
     </View>
   );
@@ -74,7 +69,7 @@ export const CommandLayout = memo(function CommandLayout({ routeName, children }
   return (
     <View style={styles.fill}>
       <View style={styles.fill}>{children}</View>
-      <CommandReply />
+      <CommandReply routeName={routeName} />
       <View style={wrap}>
         <ChatInputRow />
       </View>

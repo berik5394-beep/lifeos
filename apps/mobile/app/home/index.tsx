@@ -182,6 +182,8 @@ function HomePager() {
     () =>
       Gesture.Pan()
         .runOnJS(true)
+        // Один палец: щипок двумя в комнате — масштаб, а не листание страниц.
+        .maxPointers(1)
         .activeOffsetX([-22, 22])
         .failOffsetY([-14, 14])
         .onUpdate((e) => {
@@ -223,7 +225,7 @@ function HomePager() {
             style={styles.container}
           >
             <View style={{ width }}>
-              <ToolsPage tools={tools} tab={shownTab} onTab={onTab} width={width} />
+              <ToolsPage tools={tools} tab={shownTab} onTab={onTab} width={width} active={page === TOOLS_PAGE} />
             </View>
             <View style={{ width }}>
               <RoomPage active={page === ROOM_PAGE} />

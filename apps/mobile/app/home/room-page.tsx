@@ -28,6 +28,7 @@ import { useScheduleStore } from '@/stores/schedule-store';
 import { RoomIntro } from '@/components/room/room-intro';
 import { useColors } from '@/hooks/use-colors';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
+import { useCurrentRoute, useReplyBubble } from '@/hooks/use-reply-bubble';
 import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 import { useSharedVoice } from '@/hooks/shared-voice';
 import { useRoomStore } from '@/stores/room-store';
@@ -41,7 +42,7 @@ import { thanksFor } from '@/services/robot-thanks';
 import { visiblePanels } from '@/services/panels';
 import { ROBOT_SIDE_W, planPurchaseView, type SpeechLayout } from '@/services/speech-layout';
 import { SLOT_POS, finishTier, isPlaceSlot, roomItemLabel, spotOf, type RoomSpot, type RoomVariant } from '@/services/room-catalog';
-import { RENDER_SCALE as R, ZOOM_IN, clampPan, zoomOffset } from '@/services/room-geometry';
+import { RENDER_SCALE as R, ZOOM_IN, clampPan } from '@/services/room-geometry';
 import { furnitureTapNote, toolsInItem, type ToolKey } from '@/services/room-tools';
 import { TOOL_TITLE } from '@/components/room/tool-screens';
 import { INTRO_STEPS, furnitureBadge, isIntroDone, markIntroDone } from '@/services/room-intro';
@@ -72,9 +73,11 @@ const CHAT_ROBOT_SCALE = 0.42;
 const VOICE_NOTE_MS = 4000;
 const ROBOT_SIDE_SCALE = 0.68;
 /** Ответ робота показываем, если он свежий (пришёл в этой сессии). */
-const FRESH_REPLY_MS = 90_000;
 /** Ответ робота без «Подтвердить» сам уходит (как на экране инструментов). */
 const REPLY_BUBBLE_MS = 9000;
+/** Щипок: отпустил мельче этого — комната целиком; меньше 1× — лёгкая «резинка». */
+const PINCH_OUT_BELOW = 1.15;
+const PINCH_MIN = 0.85;
 
 export const RoomPage = memo(function RoomPage({ active = true }: { active?: boolean }) {
   const c = useColors();
@@ -89,7 +92,6 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   const [plan, setPlan] = useState<SpeechLayout | null>(null);
   const [newItemId, setNewItemId] = useState<string | null>(null);
   const [mirror, setMirror] = useState(false);
-  const [dismissedReply, setDismissedReply] = useState<string | null>(null);
   // Знакомство после установки: робот показывает, что где. null — тур не идёт.
   const [introStep, setIntroStep] = useState<number | null>(() => (isIntroDone() ? null : 0));
 
@@ -154,11 +156,10 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
     return () => clearTimeout(t);
   }, [voiceError]);
 
-  const latest = messages[0];
-  const reply =
-    latest && latest.role === 'assistant' && Date.now() - new Date(latest.createdAt).getTime() < FRESH_REPLY_MS
-      ? latest
-      : undefined;
+  // Ответ робота — одно облачко на всё приложение (use-reply-bubble).
+  const route = useCurrentRoute();
+  const host = active && (route ?? 'Home') === 'Home' ? 'room' : null;
+  const { reply, dismiss: dismissReply } = useReplyBubble(host);
   const replyEmotion = useRobotReaction(reply?.emotion, reply?.id ?? null);
   const happy = useRobotReaction('happy', reactionKey);
   // Действие с экрана инструментов — эмоцию видно и здесь, если свайпнул сразу.
@@ -268,15 +269,6 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
     [zoom, tx, ty],
   );
 
-  const zoomTo = useCallback(
-    (x: number, y: number) => {
-      if (size.w === 0) return;
-      zoomWithOffset(zoomOffset({ x, y }, size.w, size.h, ZOOM_IN));
-      robotToSide('left');
-    },
-    [size, zoomWithOffset, robotToSide],
-  );
-
   const zoomOut = useCallback(() => {
     zoom.value = withTiming(1, { duration: ZOOM_MS });
     tx.value = withTiming(0, { duration: ZOOM_MS });
@@ -293,21 +285,53 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
     useRoomToolStore.getState().openTool(tool);
   }, []);
 
-  // ─── Жесты сцены: двойное нажатие — приблизить/отдалить, вблизи — панорама ──
-  const onDoubleTap = useCallback(
-    (sx: number, sy: number) => {
-      if (zoomed) zoomOut();
-      else zoomTo(sx, sy);
+  // ─── Жесты сцены: щипок — приблизить/отдалить (как фото), вблизи — панорама ──
+  // Berik 2026-11-09: «увеличение не тапом, а раздвиганием пальцев». Масштаб
+  // плавный, вокруг точки между пальцами; отпустил почти на 1× — комната
+  // возвращается целиком.
+  const pinchStartZ = useSharedValue(1);
+  const pinchFX = useSharedValue(0);
+  const pinchFY = useSharedValue(0);
+  const onPinchEnd = useCallback(
+    (z: number) => {
+      if (z < PINCH_OUT_BELOW) {
+        zoomOut();
+        return;
+      }
+      if (!zoomed) robotToSide('left');
+      setZoomed(true);
     },
-    [zoomed, zoomOut, zoomTo],
+    [zoomed, zoomOut, robotToSide],
   );
-  const doubleTap = Gesture.Tap()
-    .numberOfTaps(2)
-    .onEnd((e, ok) => {
-      if (ok) runOnJS(onDoubleTap)(e.x, e.y);
+  const pinch = Gesture.Pinch()
+    .onStart((e) => {
+      pinchStartZ.value = zoom.value;
+      panStartX.value = tx.value;
+      panStartY.value = ty.value;
+      pinchFX.value = e.focalX - size.w / 2;
+      pinchFY.value = e.focalY - size.h / 2;
+    })
+    .onUpdate((e) => {
+      const z = Math.min(ZOOM_IN, Math.max(PINCH_MIN, pinchStartZ.value * e.scale));
+      // Точка между пальцами остаётся под пальцами: t = f − (z/z0)·(f − t0).
+      const k = z / pinchStartZ.value;
+      const t = clampPan(
+        { x: pinchFX.value - k * (pinchFX.value - panStartX.value), y: pinchFY.value - k * (pinchFY.value - panStartY.value) },
+        size.w,
+        size.h,
+        Math.max(1, z),
+      );
+      zoom.value = z;
+      tx.value = t.x;
+      ty.value = t.y;
+    })
+    .onEnd(() => {
+      runOnJS(onPinchEnd)(zoom.value);
     });
+  // Вблизи — одним пальцем смотреть по сторонам.
   const lookAround = Gesture.Pan()
     .enabled(zoomed)
+    .maxPointers(1)
     .minDistance(6)
     .onStart(() => {
       panStartX.value = tx.value;
@@ -323,7 +347,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
       tx.value = t.x;
       ty.value = t.y;
     });
-  const sceneGesture = Gesture.Simultaneous(doubleTap, lookAround);
+  const sceneGesture = Gesture.Simultaneous(pinch, lookAround);
 
   const sceneStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: sceneScale.value }],
@@ -454,11 +478,6 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   const nextIntro = useCallback(() => {
     setIntroStep((s) => (s == null || s >= INTRO_STEPS.length - 1 ? (markIntroDone(), null) : s + 1));
   }, []);
-  useEffect(() => {
-    if (!reply || reply.pendingAction) return;
-    const t = setTimeout(() => setDismissedReply(reply.id), REPLY_BUBBLE_MS);
-    return () => clearTimeout(t);
-  }, [reply]);
 
   const onConfirm = useCallback(
     (yes: boolean) => {
@@ -469,7 +488,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
 
   const pointing = zoomed;
   const showReply =
-    introStep == null && !zoomed && (chatLoading || (reply && dismissedReply !== reply.id));
+    introStep == null && !zoomed && ((chatLoading && !!host) || !!reply);
   const voiceBubble = isRecording
     ? liveTranscript || 'Слушаю… говори, пока держишь кнопку'
     : isProcessing
@@ -559,7 +578,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
                 tail="bottom"
                 confirm={!chatLoading && !!reply?.pendingAction}
                 onConfirm={onConfirm}
-                onDismiss={reply ? () => setDismissedReply(reply.id) : undefined}
+                onDismiss={reply ? dismissReply : undefined}
               />
             </View>
           )}
@@ -573,7 +592,8 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
                   tail="left"
                   confirm={!voiceBubble && !chatLoading && !!reply?.pendingAction}
                   onConfirm={onConfirm}
-                  onDismiss={!voiceBubble && reply ? () => setDismissedReply(reply.id) : undefined}
+                  onDismiss={!voiceBubble && reply ? dismissReply : undefined}
+                  horizontalOnly
                 />
               </ScrollView>
             </View>

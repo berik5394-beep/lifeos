@@ -12,6 +12,7 @@ import { ContentWidthContext, ToolActiveContext } from '@/hooks/use-content-widt
 import { RobotDodgeContext, type RobotDodge } from '@/hooks/use-robot-dodge';
 import { useColors } from '@/hooks/use-colors';
 import { useRobotReaction } from '@/hooks/use-robot-reaction';
+import { useCurrentRoute, useReplyBubble } from '@/hooks/use-reply-bubble';
 import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 import { useSharedVoice } from '@/hooks/shared-voice';
 import { useChatStore } from '@/stores/chat-store';
@@ -37,7 +38,6 @@ const ROBOT_INSET = ROBOT + spacing.sm * 2;
 const DODGE_BACK_MS = 900;
 /** Ответ/подсказка робота лежит поверх инструмента — сам уходит, чтобы не закрывать данные. */
 const BUBBLE_MS = 9000;
-const FRESH_REPLY_MS = 90_000;
 const VOICE_NOTE_MS = 4000;
 /** Вкладка простояла дольше — при возврате перечитать данные. */
 const STALE_TAB_MS = 30_000;
@@ -53,17 +53,19 @@ export const ToolsPage = memo(function ToolsPage({
   tab,
   onTab,
   width,
+  active = true,
 }: {
   tools: PanelDef[];
   tab: ToolKey;
   /** via — как пришли на вкладку (жест помечает подсказку «смахни» увиденной). */
   onTab: (t: ToolKey, via?: 'edge' | 'swipe') => void;
   width: number;
+  /** Страница инструментов перед глазами (не комната). */
+  active?: boolean;
 }) {
   const c = useColors();
   const styles = useMemo(() => createStyles(c), [c]);
   const token = useAuthStore((s) => s.token);
-  const messages = useChatStore((s) => s.messages);
   const chatLoading = useChatStore((s) => s.isLoading);
   const confirmPendingAction = useChatStore((s) => s.confirmPendingAction);
   const voice = useSharedVoice();
@@ -110,11 +112,11 @@ export const ToolsPage = memo(function ToolsPage({
     ],
   }));
 
-  const latest = messages[0];
-  const reply =
-    latest && latest.role === 'assistant' && Date.now() - new Date(latest.createdAt).getTime() < FRESH_REPLY_MS
-      ? latest
-      : undefined;
+  // Ответ робота — одно облачко на всё приложение (use-reply-bubble): виден
+  // здесь, пока эта вкладка перед глазами; держится до тапа/смахивания.
+  const route = useCurrentRoute();
+  const host = active && (route ?? 'Home') === 'Home' ? `tools:${tab}` : null; // null — навигация ещё не готова (старт = дом)
+  const { reply, dismiss: dismissReply } = useReplyBubble(host);
   const replyEmotion = useRobotReaction(reply?.emotion, reply?.id ?? null);
   // Действие с экрана (задача/привычка/трата сверх лимита) — робот реагирует сразу.
   const screenReaction = useRobotReactionStore((s) => s.reaction);
@@ -130,14 +132,7 @@ export const ToolsPage = memo(function ToolsPage({
   }, [freshScreen?.id, freshScreen?.text, freshScreen?.holdMs]);
   const screenText = freshScreen?.text && screenDismissed !== freshScreen.id ? freshScreen : null;
 
-  // Ответ робота: виден, пока не смахнули; без кнопок — уходит сам.
-  const [dismissed, setDismissed] = useState<string | null>(null);
-  useEffect(() => {
-    if (!reply || reply.pendingAction) return;
-    const t = setTimeout(() => setDismissed(reply.id), BUBBLE_MS);
-    return () => clearTimeout(t);
-  }, [reply]);
-  const showReply = chatLoading || (!!reply && dismissed !== reply.id);
+  const showReply = (chatLoading && !!host) || !!reply;
 
   // Голос: пока держишь — что расслышал; ошибка — подсказка.
   const [voiceNote, setVoiceNote] = useState<string | null>(null);
@@ -176,11 +171,7 @@ export const ToolsPage = memo(function ToolsPage({
         if (my === seq.current) setExplaining(false);
       });
   }, [tab, token]);
-  useEffect(() => {
-    if (!explain) return;
-    const t = setTimeout(() => setExplain(null), BUBBLE_MS);
-    return () => clearTimeout(t);
-  }, [explain]);
+  // Пояснение — тоже до тапа (смена вкладки сбрасывает его выше).
 
   // Открытые вкладки живут и прячутся (раньше экран создавался заново на каждое
   // переключение: 3–5 запросов, сброс прокрутки и под-вкладки). Вернулся на
@@ -228,7 +219,7 @@ export const ToolsPage = memo(function ToolsPage({
       tail="left"
       confirm={!chatLoading && !!reply?.pendingAction}
       onConfirm={(yes) => reply && void confirmPendingAction(reply.id, yes)}
-      onDismiss={reply ? () => setDismissed(reply.id) : undefined}
+      onDismiss={reply ? dismissReply : undefined}
     />
   ) : screenText ? (
     <Pressable
