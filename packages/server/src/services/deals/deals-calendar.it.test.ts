@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { createDeal } from './service.js';
 import { runRegistryTool } from '../../tools/index.js';
@@ -10,14 +10,9 @@ import { gatherPanelFacts } from '../robot-explain.js';
  * Флаг выкл. → ответы байт-в-байт прежние.
  */
 const prisma = new PrismaClient();
-const ORIG = process.env.FEATURE_V2_DEALS;
 afterAll(async () => {
-  if (ORIG === undefined) delete process.env.FEATURE_V2_DEALS;
-  else process.env.FEATURE_V2_DEALS = ORIG;
   await prisma.$disconnect();
 });
-afterEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
-process.env.FEATURE_V2_DEALS = 'all';
 
 const NOW = new Date('2026-03-10T09:00:00Z'); // вт; не «сегодня» реальных часов
 const d = (s: string) => new Date(s + 'T00:00:00Z');
@@ -48,27 +43,12 @@ describe('сделки × календарь', () => {
     expect(await prisma.calendarEvent.count({ where: { userId } })).toBe(1);
   });
 
-  it('get_calendar: флаг выкл. → только события, без kind', async () => {
-    const userId = await seed('tool-off');
-    process.env.FEATURE_V2_DEALS = '';
-    expect(await runRegistryTool('get_calendar', { from: '2026-03-10', to: '2026-03-11' }, { userId })).toEqual([EVENT]);
-  });
-
   it('пояснение робота: «Календарь» (3 дня) и «Сегодня» (1 день) — шаги по сделкам', async () => {
     const userId = await seed('explain');
     const cal = await gatherPanelFacts(userId, 'calendar', NOW);
     expect(cal).toContain('Шаги по сделкам: сегодня Ахмет — связаться; завтра Серик — спросить ответ по КП.');
     const today = await gatherPanelFacts(userId, 'today', NOW);
     expect(today).toContain('Шаги по сделкам: сегодня Ахмет — связаться.');
-  });
-
-  it('пояснение робота: флаг выкл. → факты как раньше', async () => {
-    const userId = await seed('explain-off');
-    process.env.FEATURE_V2_DEALS = '';
-    const cal = await gatherPanelFacts(userId, 'calendar', NOW);
-    const today = await gatherPanelFacts(userId, 'today', NOW);
-    expect(cal).toEqual(['Встречи (1): сегодня 10:00 — Планёрка.']);
-    expect(today.join(' ')).not.toContain('сделк');
   });
 
   it('«Сделки»: «сегодня» — по переданному now, не по часам сервера', async () => {

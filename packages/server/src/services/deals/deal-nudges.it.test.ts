@@ -1,11 +1,10 @@
-import { describe, it, expect, afterAll, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { V2ProactivityEngine } from '../v2-proactivity-engine.js';
 import { createDeal, setSalesPlan } from './service.js';
 
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
-beforeEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
 afterEach(() => { vi.useRealTimers(); });
 
 async function user(tag: string) {
@@ -49,14 +48,6 @@ describe('нуджи сделок', () => {
     const userId = await user('plan-early');
     await setSalesPlan(userId, 10_000_000);
     expect(await sources(userId)).not.toContain('sales_plan_behind');
-  });
-  it('флаг off → ни одного нуджа сделок', async () => {
-    const userId = await user('off');
-    const { deal } = await createDeal(userId, { personName: 'Ахмет', title: 'x' });
-    await prisma.deal.update({ where: { id: deal.id }, data: { nextStepAt: new Date(Date.now() - 86_400_000) } });
-    process.env.FEATURE_V2_DEALS = '';
-    const s = await sources(userId);
-    expect(s.filter((x) => x.startsWith('deal_') || x === 'sales_plan_behind')).toEqual([]);
   });
 });
 

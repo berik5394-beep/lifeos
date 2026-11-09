@@ -84,25 +84,22 @@ export async function buildPersonMeetingBriefs(
     }
 
     const dealByEntity = new Map<string, string>();
-    const { isV2DealsEnabled } = await import('../../lib/feature-flags.js');
-    if (isV2DealsEnabled(userId)) {
-      // Свой try: сбой сделок не должен ронять ВСЕ брифы встреч — идём дальше без них.
-      try {
-        const { dealBriefLine, OPEN_STAGES } = await import('../deals/index.js');
-        const deals = await prisma.deal.findMany({
-          where: { userId, stage: { in: [...OPEN_STAGES] }, personEntityId: { in: people.map((p) => p.id) } },
-          orderBy: { amount: { sort: 'desc', nulls: 'last' } },
-          select: { personEntityId: true, title: true, amount: true, stage: true, stageChangedAt: true },
-        });
-        for (const d of deals) {
-          if (!d.personEntityId || dealByEntity.has(d.personEntityId)) continue;
-          const daysInStage = Math.max(0, Math.floor((now.getTime() - d.stageChangedAt.getTime()) / DAY_MS));
-          dealByEntity.set(d.personEntityId, dealBriefLine({ title: d.title, amount: d.amount, stage: d.stage, daysInStage }));
-        }
-      } catch (err) {
-        console.warn('[person-types] meeting brief: deals lookup failed, brief without deals:', err instanceof Error ? err.message : err);
-        dealByEntity.clear();
+    // Свой try: сбой сделок не должен ронять ВСЕ брифы встреч — идём дальше без них.
+    try {
+      const { dealBriefLine, OPEN_STAGES } = await import('../deals/index.js');
+      const deals = await prisma.deal.findMany({
+        where: { userId, stage: { in: [...OPEN_STAGES] }, personEntityId: { in: people.map((p) => p.id) } },
+        orderBy: { amount: { sort: 'desc', nulls: 'last' } },
+        select: { personEntityId: true, title: true, amount: true, stage: true, stageChangedAt: true },
+      });
+      for (const d of deals) {
+        if (!d.personEntityId || dealByEntity.has(d.personEntityId)) continue;
+        const daysInStage = Math.max(0, Math.floor((now.getTime() - d.stageChangedAt.getTime()) / DAY_MS));
+        dealByEntity.set(d.personEntityId, dealBriefLine({ title: d.title, amount: d.amount, stage: d.stage, daysInStage }));
       }
+    } catch (err) {
+      console.warn('[person-types] meeting brief: deals lookup failed, brief without deals:', err instanceof Error ? err.message : err);
+      dealByEntity.clear();
     }
 
     const briefs: PersonMeetingBrief[] = [];

@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { gatherPanelFacts, explainPanel, factsFallback } from './robot-explain.js';
 import { createDeal } from './deals/service.js';
 
-/** Нит ревью: панель «Сделки» — факты из БД; флаг выкл. → как будто сделок нет. */
+/** Нит ревью: панель «Сделки» — факты из БД. */
 const prisma = new PrismaClient();
 const ORIG_KEY = process.env.CLAUDE_API_KEY;
 afterAll(async () => {
@@ -12,7 +12,6 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 beforeEach(() => {
-  process.env.FEATURE_V2_DEALS = 'all';
   delete process.env.CLAUDE_API_KEY; // без ИИ — ответ из фактов
 });
 
@@ -33,13 +32,4 @@ describe('пояснение робота: панель «Сделки»', () =>
     expect(ex.text).toMatch(/Ахмет/);
   });
 
-  it('флаг off → фактов нет, честное «пусто», сделки не просачиваются', async () => {
-    const userId = await userWithDeal('off');
-    process.env.FEATURE_V2_DEALS = '';
-    expect(await gatherPanelFacts(userId, 'deals')).toEqual([]);
-    const ex = await explainPanel(userId, 'deals');
-    expect(ex.source).toBe('empty');
-    expect(ex.text).toBe(factsFallback('deals', []));
-    expect(ex.text).not.toMatch(/2 млн ₸|оборудование, /);
-  });
 });

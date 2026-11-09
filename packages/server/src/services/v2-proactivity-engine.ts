@@ -1241,8 +1241,6 @@ const DEAL_SOURCE_GAP_DAYS = 2;
 // иначе «пора шаг» звучал бы каждый день вечно.
 async function detectDealNextStepDue(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2DealsEnabled(userId)) return [];
     const { prisma } = await import('../lib/prisma.js');
     const { getUserTimezone } = await import('../lib/user-context.js');
     const { localDateOnlyUTC } = await import('../lib/tz.js');
@@ -1309,8 +1307,6 @@ async function pickDealNudge(
 // 2 дня на источник; gate4 и R10 стора — 3 дня на ключ (короче недели — не мешают).
 async function detectDealStepOverdue(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2DealsEnabled(userId)) return [];
     const { prisma } = await import('../lib/prisma.js');
     const { getUserTimezone } = await import('../lib/user-context.js');
     const { localDateOnlyUTC } = await import('../lib/tz.js');
@@ -1338,8 +1334,6 @@ async function detectDealStepOverdue(userId: string): Promise<NudgeCandidate[]> 
 // просроченный шаг — deal_step_overdue). Давление → в PRESSURE_SOURCES. Каденс как выше.
 async function detectDealStale(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2DealsEnabled(userId)) return [];
     const { prisma } = await import('../lib/prisma.js');
     const { OPEN_STAGES } = await import('./deals/stages.js');
     const { instrumental } = await import('./deals/format.js');
@@ -1394,8 +1388,6 @@ async function sourceNudgedWithin(userId: string, source: NudgeSource, days: num
 // ЗДЕСЬ (ревью I1): gate4_Dedup и R10-кулдаун стора — только 3 дня.
 async function detectSalesPlanBehind(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2DealsEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2DealsEnabled(userId)) return [];
     const { salesPlanStatus } = await import('./deals/service.js');
     const { describePlan } = await import('./deals/format.js');
     const { getUserTimezone } = await import('../lib/user-context.js');

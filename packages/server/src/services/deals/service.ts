@@ -9,7 +9,6 @@ import { salesPace, coveringDeals, type Pace } from './pace.js';
 import { formatDealsSection, describePlan, describeWhichDeal, fmtMoneyExact, dealStepLabel, describeSalesVsSavings, genitive } from './format.js';
 import { computePortfolioPace } from '../savings-pace.js';
 import { withTimeout } from '../../lib/with-timeout.js';
-import { isV2DealsEnabled } from '../../lib/feature-flags.js';
 import { onDealWon } from '../coins.js';
 import type { CapacityItem } from '../capacity-fit.js';
 
@@ -598,7 +597,7 @@ export interface DealStep {
 
 /**
  * Открытые сделки с шагом в [from, toExcl) (@db.Date, UTC-полночь гражданских
- * дат). Флаг выкл. → [] без запроса (всё, что на этом строится, — как раньше).
+ * дат).
  */
 export async function listDealSteps(
   userId: string,
@@ -606,7 +605,6 @@ export async function listDealSteps(
   toExcl: Date,
   opts: { limit?: number } = {},
 ): Promise<DealStep[]> {
-  if (!isV2DealsEnabled(userId)) return [];
   const rows = await prisma.deal.findMany({
     where: { userId, stage: { in: [...OPEN_STAGES] }, nextStepAt: { gte: from, lt: toExcl } },
     select: { id: true, personName: true, title: true, nextStepText: true, nextStepAt: true },
@@ -622,23 +620,21 @@ export async function listDealSteps(
   }));
 }
 
-/** Шаги по сделкам как спрос на время (день/неделя/месяц). Флаг выкл. → []. */
+/** Шаги по сделкам как спрос на время (день/неделя/месяц). */
 export async function dealStepLoadItems(userId: string, from: Date, toExcl: Date): Promise<CapacityItem[]> {
   const steps = await listDealSteps(userId, from, toExcl);
   return steps.map((s) => ({ label: dealStepLabel(s), demand: DEFAULT_DEAL_STEP_MINUTES, importance: DEAL_STEP_IMPORTANCE }));
 }
 
-/** Шаги по сделкам на день (@db.Date дня). Флаг выкл. → [] без запроса. */
+/** Шаги по сделкам на день (@db.Date дня). */
 export function listDealStepsForDay(userId: string, day: Date): Promise<DealStep[]> {
   return listDealSteps(userId, day, new Date(day.getTime() + 86_400_000));
 }
 
 /**
  * Подписи шагов на сегодня для контекста робота («Ахмет — связаться»).
- * Флаг выкл. → undefined: поле в контексте не задано, строка не рендерится.
  */
-export async function dealStepsTodayLabels(userId: string, today: Date): Promise<string[] | undefined> {
-  if (!isV2DealsEnabled(userId)) return undefined;
+export async function dealStepsTodayLabels(userId: string, today: Date): Promise<string[]> {
   return (await listDealStepsForDay(userId, today)).map(dealStepLabel);
 }
 

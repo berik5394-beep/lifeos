@@ -242,22 +242,17 @@ const PANEL_WORDS: Array<[RegExp, string]> = [
 const OPEN_PANEL_RE =
   /^(?:покажи|открой|открыть|выведи)(?:\s+мне)?(?:\s+(?:мои|мой|мою))?\s+([а-яё]+)(?:\s+(?:на\s+сегодня|на\s+неделю|за\s+неделю|за\s+месяц|на\s+месяц|на\s+завтра))?[.!]?$/i;
 
-/**
- * disabledPanels — панели за выключенным флагом (сделки): их слова не
- * перехватываем, фраза идёт дальше как до фичи (ревью сделок I4).
- */
 export interface IntentOptions {
-  disabledPanels?: ReadonlySet<string>;
 /** Модель для LLM-шага (замер Sonnet/Haiku); по умолчанию INTENT_MODEL. */
   model?: string;
 }
 
-export function detectOpenPanel(text: string, disabledPanels?: ReadonlySet<string>): string | null {
+export function detectOpenPanel(text: string): string | null {
   const m = text.trim().match(OPEN_PANEL_RE);
   if (!m) return null;
   const word = m[1].toLowerCase();
   for (const [re, panel] of PANEL_WORDS) {
-    if (re.test(word)) return disabledPanels?.has(panel) ? null : panel;
+    if (re.test(word)) return panel;
   }
   return null;
 }
@@ -320,7 +315,7 @@ export function deterministicIntent(
 ): VoiceIntent | null {
   const lower = text.toLowerCase();
 
-  const panel = detectOpenPanel(text, opts.disabledPanels);
+  const panel = detectOpenPanel(text);
   if (panel) return { action: 'open_panel', panel };
   // Чек с фото: мозг фото из чата не видит — открываем камеру приложения.
   // С суммой («добавь чек на 5000») — это трата словами, камера не нужна (ревью).

@@ -57,7 +57,6 @@ import {
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
 import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, openDealsForMatching, DEAL_INCOME_CHOICE, PARTIAL_PAYMENT, JUST_INCOME_EXIT, JUST_INCOME_RE, dealAdvancesSum } from './deals/index.js';
-import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
@@ -136,8 +135,6 @@ export interface JarvisResponse {
   openPanel?: string | null;
 }
 
-/** Флаг сделок выключен → «покажи сделки» не панель, а как до фичи (ревью I4). */
-const DEALS_PANEL_OFF: ReadonlySet<string> = new Set(['deals']);
 
 const PANEL_REPLY: Record<string, string> = {
   tasks: 'Открываю задачи',
@@ -621,7 +618,7 @@ export async function needsLocalTools(userId: string, text: string): Promise<boo
   } catch {
     /* подсказка — best-effort */
   }
-  if (text.trim().length < 12 || !isV2DealsEnabled(userId)) return false;
+  if (text.trim().length < 12) return false;
   if (mayNeedDealTools(text)) return true;
   try {
     const open = await openDealsForMatching(userId);
@@ -1141,7 +1138,7 @@ async function handleMessageCore(
         return { reply, intent: 'cancel_pending' };
       }
       // Ревью I-d: «получил 2 млн» → «от Серика» — тот же путь сделки, что и одной фразой.
-      if (pending.action === 'add_income' && slot === 'source' && isV2DealsEnabled(userId)) {
+      if (pending.action === 'add_income' && slot === 'source') {
         // Ревью-3 I1: «аванс» был в первой фразе («получил аванс 2 млн») — помним его.
         const routed = await routeDealIncome(userId, Number(pending.input.amount), text.trim(), text, {
           partial: pending.input.__partial === true,
@@ -1247,7 +1244,7 @@ async function handleMessageCore(
   // intent-TZ фикс (аудит brain-hands 2026-06-11): «сегодня/завтра» в
   // интентах/брони = календарь ЮЗЕРА, не UTC сервера (Алматы 00–05 → вчера).
   const userTz = await getUserTimezone(userId);
-  const intentP = parseIntent(text, userTz, undefined, { disabledPanels: isV2DealsEnabled(userId) ? undefined : DEALS_PANEL_OFF }).then(
+  const intentP = parseIntent(text, userTz).then(
     // Несколько дел в одном сообщении — быстрый путь создал бы ОДНУ запись со
     // всем текстом. Отдаём агенту: он создаст по задаче/встрече на каждое дело.
     (ip) => (isMultiItemRequest(text) && SINGLE_WRITE_INTENTS.has(ip.action) ? { action: 'unknown' as const, text } : ip),
@@ -1619,7 +1616,7 @@ async function handleMessageCore(
     // Ревью сделок B2/X1: «получил 2 млн от Ахмета» при открытой сделке с Ахметом —
     // оплата сделки, а не голый доход (иначе Income задвоится при «выиграна»).
     // Маршрутизация НИЧЕГО не пишет: сделка закрывается только на «Подтвердить».
-    if (intent.action === 'add_income' && input.source != null && isV2DealsEnabled(userId)) {
+    if (intent.action === 'add_income' && input.source != null) {
       const routed = await routeDealIncome(userId, Number(input.amount), String(input.source), text);
       if (routed) {
         await saveTurn(userId, text, routed.reply);

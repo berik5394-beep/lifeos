@@ -333,15 +333,8 @@ describe('этап 2: «сделал X» — привычка или задач�
 });
 
 describe('шаги по сделкам × перегруз дня', () => {
-  const ORIG_DEALS = process.env.FEATURE_V2_DEALS;
-  afterAll(() => {
-    if (ORIG_DEALS === undefined) delete process.env.FEATURE_V2_DEALS;
-    else process.env.FEATURE_V2_DEALS = ORIG_DEALS;
-  });
-
   // Завтра: свободно 60 мин, «Почта»+«Банк» = 60 (влезает). Шаг по сделке +20 → 80.
   it('шаг по сделке грузит день: двигаем только задачи, шаг остаётся', async () => {
-    process.env.FEATURE_V2_DEALS = 'all';
     const { userId, mail } = await overloadedTomorrow('deal-step');
     await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', nextStepDate: tomorrow, nextStepText: 'связаться' });
     const p = await proposeReschedule(userId, tomorrow, null);
@@ -351,14 +344,6 @@ describe('шаги по сделкам × перегруз дня', () => {
     expect(p?.text).toContain('Звонки/шаги по сделкам (1) не двигаю');
     const pending = await prisma.pendingAction.findUnique({ where: { userId } });
     expect(JSON.stringify(pending?.inputJson)).not.toContain('deal:');
-  });
-
-  it('флаг сделок выкл. → как раньше: день влезает, предложения нет', async () => {
-    process.env.FEATURE_V2_DEALS = '';
-    const { userId } = await overloadedTomorrow('deal-off');
-    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование', nextStepDate: tomorrow, nextStepText: 'связаться' });
-    expect(await proposeReschedule(userId, tomorrow, null)).toBeNull();
-    process.env.FEATURE_V2_DEALS = 'all';
   });
 });
 

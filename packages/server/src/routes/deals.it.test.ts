@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { buildTestApp } from '../../test/integration/build-test-app.js';
@@ -8,7 +8,6 @@ const prisma = new PrismaClient();
 let app: FastifyInstance;
 beforeAll(async () => { app = await buildTestApp([dealRoutes]); });
 afterAll(async () => { await app.close(); await prisma.$disconnect(); });
-beforeEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
 
 async function user(tag: string) {
   const u = await prisma.user.create({ data: { email: `drest-${tag}-${Date.now()}@a.test`, name: 'D', passwordHash: 'x', timezone: 'UTC' } });
@@ -82,11 +81,6 @@ describe('REST /deals', () => {
     expect(await prisma.salesPlan.count({ where: { userId } })).toBe(1);
   });
 
-  it('флаг off → 404', async () => {
-    process.env.FEATURE_V2_DEALS = '';
-    const { headers } = await user('off');
-    expect((await app.inject({ method: 'GET', url: '/deals', headers })).statusCode).toBe(404);
-  });
 });
 
 describe('аванс + «выиграна» — доход не задваивается (аудит 2026-11-09)', () => {

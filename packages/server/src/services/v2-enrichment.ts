@@ -21,7 +21,6 @@ import { axisLabel, type UserAxesValues } from './user-axes/index.js';
 import {
   isV2MemQualityEnabled,
   isV2DecayEnabled,
-  isV2DealsEnabled,
 } from '../lib/feature-flags.js';
 import { gatherDealsSection } from './deals/service.js';
 import { entityDecayScore } from './memory-decay.js';
@@ -417,9 +416,7 @@ export async function fetchV2EnrichmentData(
       CROSS_DOMAIN_BUDGET_MS,
       null,
     );
-    const dealsP: Promise<string | null> = isV2DealsEnabled(userId)
-      ? withTimeout(gatherDealsSection(userId, nowDate), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
-      : Promise.resolve(null);
+    const dealsP: Promise<string | null> = withTimeout(gatherDealsSection(userId, nowDate), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null);
     const [identity, patterns, moodShift, entityRows, obligationRows, goalImpact, runway, energyLink, relationship, decisions, birthdays, memorials, goalHabits, recentActivity, scheduleConflict, personTypes, personMeetings, openLoops] = await Promise.all([
       withTimeout(
         getBotIdentityService()

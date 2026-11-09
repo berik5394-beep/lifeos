@@ -1,11 +1,10 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { runRegistryTool } from './index.js';
 import { peekPendingAction } from '../services/pending-actions.js';
 
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
-beforeEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
 
 async function user(tag: string) {
   const u = await prisma.user.create({
@@ -126,20 +125,5 @@ describe('инструменты сделок', () => {
     expect(out.message).toBe('План продаж на декабрь 2026: 10 млн ₸. Буду считать темп.');
     const row = await prisma.salesPlan.findFirstOrThrow({ where: { userId } });
     expect(row.monthStart.toISOString().slice(0, 10)).toBe('2026-12-01');
-  });
-
-  it.each([
-    ['create_deal', { personName: 'Ахмет' }],
-    ['update_deal', { personName: 'Ахмет', nextStepDate: '2026-11-10' }],
-    ['list_deals', {}],
-    ['set_sales_plan', { amount: 1000 }],
-  ] as const)('флаг off → %s говорит агенту, чем заменить', async (tool, args) => {
-    process.env.FEATURE_V2_DEALS = '';
-    const userId = await user(`off-${tool}`);
-    const out = (await runRegistryTool(tool, { ...args }, { userId })) as Out & { hint?: string };
-    expect(out.error).toBe('deals_disabled');
-    expect(out.hint).toMatch(/^сделки выключены — /);
-    if (tool === 'update_deal') expect(out.hint).toMatch(/create_task.*create_obligation.*add_income/);
-    expect(await prisma.deal.count({ where: { userId } })).toBe(0);
   });
 });

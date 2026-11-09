@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { handleMessage, runConfirmedAction } from '../jarvis-orchestrator.js';
 import { peekPendingAction } from '../pending-actions.js';
@@ -10,7 +10,6 @@ import { createDeal, updateDeal, recordDealIncome, DEAL_INCOME_ACTION, DEAL_INCO
  */
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
-beforeEach(() => { process.env.FEATURE_V2_DEALS = 'all'; });
 
 const coins = (userId: string) => prisma.coinTransaction.count({ where: { userId, refKey: { startsWith: 'deal:' } } });
 
@@ -164,13 +163,6 @@ describe('доход от клиента с открытой сделкой', ()
     expect(r.pendingAction?.input).toMatchObject({ amount: 2_000_000, source: 'Ахмета' });
   });
 
-  it('флаг off → прежний add_income даже при сделке', async () => {
-    const userId = await user('off');
-    await createDeal(userId, { personName: 'Ахмет', title: 'оборудование' });
-    process.env.FEATURE_V2_DEALS = '';
-    const r = await handleMessage(userId, 'получил 2 млн от Ахмета');
-    expect(r.pendingAction?.action).toBe('add_income');
-  });
 });
 
 describe('страховка: доход уже записан руками', () => {
