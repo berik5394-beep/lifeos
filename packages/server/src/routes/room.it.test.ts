@@ -24,6 +24,9 @@ interface Item {
   itemKey: string;
   variantKey: string | null;
   slot: string | null;
+  surface: string | null;
+  x: number;
+  y: number;
 }
 
 async function user(tag: string, coins = 0) {
@@ -35,7 +38,8 @@ const get = async (headers: Record<string, string>) =>
   (await app.inject({ method: 'GET', url: '/room', headers })).json().items as Item[];
 const buy = (headers: Record<string, string>, variantKey: string, slot?: string | null) =>
   app.inject({ method: 'POST', url: '/room/buy', headers, payload: slot === undefined ? { variantKey } : { variantKey, slot } });
-const put = (headers: Record<string, string>, placements: Array<{ id: string; slot: string | null }>) =>
+type Placement = { id: string; slot?: string | null; surface?: string | null; x?: number; y?: number };
+const put = (headers: Record<string, string>, placements: Placement[]) =>
   app.inject({ method: 'PUT', url: '/room', headers, payload: { placements } });
 
 describe('/room/catalog', () => {
@@ -49,11 +53,14 @@ describe('/room/catalog', () => {
 });
 
 describe('/room/buy — покупка за монеты', () => {
-  it('хватает → предмет в первой свободной ячейке, монеты списаны', async () => {
+  it('хватает → предмет на полу в привычном месте, монеты списаны', async () => {
     const { userId, headers } = await user('buy', 500);
     const res = await buy(headers, 'mid:wardrobe');
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ item: { itemKey: 'wardrobe', variantKey: 'mid:wardrobe', slot: 'floor-back-left' }, balance: 150 });
+    expect(res.json()).toMatchObject({
+      item: { itemKey: 'wardrobe', variantKey: 'mid:wardrobe', surface: 'floor', x: 0.218, y: 0.27, slot: 'floor-back-left' },
+      balance: 150,
+    });
     expect(await coinBalance(userId)).toBe(150);
   });
 
@@ -82,14 +89,14 @@ describe('/room/buy — покупка за монеты', () => {
     expect((await buy(headers, 'free:plant')).statusCode).toBe(200);
   });
 
-  it('часы на пол нельзя; в занятую ячейку — старый предмет уходит в кладовку', async () => {
+  it('часы на пол нельзя; приложение до обновления выбрало ячейку → та же точка, без вытеснения', async () => {
     const { headers } = await user('slot', 1000);
     expect((await buy(headers, 'budget:clock', 'floor-back-left')).statusCode).toBe(400);
     const sofa = (await buy(headers, 'budget:sofa', 'floor-mid-left')).json().item as Item;
     const desk = (await buy(headers, 'budget:desk', 'floor-mid-left')).json().item as Item;
     const items = await get(headers);
-    expect(items.find((i) => i.id === desk.id)?.slot).toBe('floor-mid-left');
-    expect(items.find((i) => i.id === sofa.id)?.slot).toBeNull();
+    expect(items.find((i) => i.id === desk.id)).toMatchObject({ surface: 'floor', x: 0.116, y: 0.581 });
+    expect(items.find((i) => i.id === sofa.id)).toMatchObject({ surface: 'floor', x: 0.116, y: 0.581 });
   });
 
   it('новая отделка стен заменяет старую, старая — в кладовке', async () => {
@@ -100,55 +107,79 @@ describe('/room/buy — покупка за монеты', () => {
     expect((await get(headers)).find((i) => i.id === a.id)?.slot).toBeNull();
   });
 
-  it('ячейки кончились → покупка уходит в кладовку', async () => {
+  it('мест «по умолчанию» не хватает — всё равно в комнате (сдвиг), не в кладовке', async () => {
     const { headers } = await user('full', 0);
-    for (let i = 0; i < 3; i++) await buy(headers, 'free:picture');
-    const res = await buy(headers, 'free:picture');
-    expect(res.json().item.slot).toBeNull();
+    for (let i = 0; i < 4; i++) await buy(headers, 'free:picture');
+    const items = await get(headers);
+    expect(items.every((i) => i.surface?.startsWith('wall-'))).toBe(true);
+    expect(new Set(items.map((i) => `${i.surface}:${i.x}:${i.y}`)).size).toBe(4);
+  });
+
+  it('купить сразу в кладовку (slot: null)', async () => {
+    const { headers } = await user('to-store', 0);
+    const res = await buy(headers, 'free:plant', null);
+    expect(res.json().item).toMatchObject({ surface: null, slot: null });
   });
 });
 
-describe('PUT /room — перестановка по ячейкам', () => {
-  it('обмен местами двух предметов', async () => {
-    const { headers } = await user('swap', 500);
-    const a = (await buy(headers, 'budget:sofa', 'floor-back-left')).json().item as Item;
-    const b = (await buy(headers, 'budget:desk', 'floor-back-right')).json().item as Item;
+describe('PUT /room — свободная расстановка (каждый сам дизайнер)', () => {
+  it('ставлю диван в любую точку пола, картину — на левую стену', async () => {
+    const { headers } = await user('free', 500);
+    const sofa = (await buy(headers, 'budget:sofa')).json().item as Item;
+    const pic = (await buy(headers, 'free:picture')).json().item as Item;
     const res = await put(headers, [
-      { id: a.id, slot: 'floor-back-right' },
-      { id: b.id, slot: 'floor-back-left' },
+      { id: sofa.id, surface: 'floor', x: 0.33, y: 0.72 },
+      { id: pic.id, surface: 'wall-left', x: 0.7, y: 0.3 },
     ]);
     expect(res.statusCode).toBe(200);
     const items = await get(headers);
-    expect(items.find((i) => i.id === a.id)?.slot).toBe('floor-back-right');
-    expect(items.find((i) => i.id === b.id)?.slot).toBe('floor-back-left');
+    expect(items.find((i) => i.id === sofa.id)).toMatchObject({ surface: 'floor', x: 0.33, y: 0.72 });
+    expect(items.find((i) => i.id === pic.id)).toMatchObject({ surface: 'wall-left', x: 0.7, y: 0.3 });
   });
 
-  it('два предмета в одну ячейку → 409; стенное на пол → 400; чужой предмет → 404', async () => {
+  it('два предмета рядом — можно (юзер решает); стенное на пол → 400; без точки → 400; чужой → 404', async () => {
     const { headers } = await user('bad', 500);
-    const a = (await buy(headers, 'budget:sofa', 'floor-back-left')).json().item as Item;
-    const b = (await buy(headers, 'budget:desk', 'floor-back-right')).json().item as Item;
+    const a = (await buy(headers, 'budget:sofa')).json().item as Item;
+    const b = (await buy(headers, 'budget:desk')).json().item as Item;
     const c = (await buy(headers, 'budget:clock')).json().item as Item;
-    expect((await put(headers, [{ id: b.id, slot: 'floor-back-left' }])).statusCode).toBe(409);
-    expect((await put(headers, [{ id: c.id, slot: 'floor-front-left' }])).statusCode).toBe(400);
+    expect((await put(headers, [{ id: b.id, surface: 'floor', x: a.x, y: a.y }])).statusCode).toBe(200);
+    expect((await put(headers, [{ id: c.id, surface: 'floor', x: 0.5, y: 0.5 }])).statusCode).toBe(400);
+    expect((await put(headers, [{ id: a.id, surface: 'floor' }])).statusCode).toBe(400);
+    expect((await put(headers, [{ id: a.id, surface: 'floor', x: 1.5, y: 0.5 }])).statusCode).toBe(400);
     const other = await user('other', 500);
-    expect((await put(other.headers, [{ id: a.id, slot: null }])).statusCode).toBe(404);
-    expect((await get(headers)).find((i) => i.id === a.id)?.slot).toBe('floor-back-left');
+    expect((await put(other.headers, [{ id: a.id, surface: null }])).statusCode).toBe(404);
   });
 
   it('убрать в кладовку и вернуть бесплатно', async () => {
     const { userId, headers } = await user('store', 500);
     const a = (await buy(headers, 'budget:sofa')).json().item as Item;
     const before = await coinBalance(userId);
-    await put(headers, [{ id: a.id, slot: null }]);
-    expect((await get(headers))[0].slot).toBeNull();
-    await put(headers, [{ id: a.id, slot: 'floor-front-right' }]);
-    expect((await get(headers))[0].slot).toBe('floor-front-right');
+    await put(headers, [{ id: a.id, surface: null }]);
+    expect((await get(headers))[0]).toMatchObject({ surface: null, slot: null });
+    await put(headers, [{ id: a.id, surface: 'floor', x: 0.8, y: 0.8 }]);
+    expect((await get(headers))[0]).toMatchObject({ surface: 'floor', x: 0.8, y: 0.8 });
     expect(await coinBalance(userId)).toBe(before);
+  });
+
+  it('приложение до обновления шлёт ячейку → та же точка на поверхности', async () => {
+    const { headers } = await user('legacy-put', 500);
+    const a = (await buy(headers, 'budget:sofa')).json().item as Item;
+    expect((await put(headers, [{ id: a.id, slot: 'floor-front-right' }])).statusCode).toBe(200);
+    expect((await get(headers))[0]).toMatchObject({ surface: 'floor', x: 0.907, y: 0.85, slot: 'floor-front-right' });
+  });
+
+  it('отделка — по-прежнему в своей ячейке', async () => {
+    const { headers } = await user('finish-put', 1000);
+    const w = (await buy(headers, 'budget:walls')).json().item as Item;
+    expect((await put(headers, [{ id: w.id, slot: null }])).statusCode).toBe(200);
+    expect((await get(headers))[0].slot).toBeNull();
+    expect((await put(headers, [{ id: w.id, slot: 'finish-walls' }])).statusCode).toBe(200);
+    expect((await get(headers))[0].slot).toBe('finish-walls');
   });
 });
 
-describe('мебель Части 4 переезжает в ячейки', () => {
-  it('старые предметы → бюджет/декор в свободных ячейках, лишнее — в кладовку', async () => {
+describe('мебель Части 4 переезжает в комнату', () => {
+  it('старые предметы → бюджет/декор на привычных местах, все в комнате', async () => {
     const { userId, headers } = await user('legacy');
     await prisma.roomItem.createMany({
       data: [
@@ -158,9 +189,9 @@ describe('мебель Части 4 переезжает в ячейки', () =>
       ],
     });
     const items = await get(headers);
-    expect(items.find((i) => i.itemKey === 'sofa')).toMatchObject({ variantKey: 'budget:sofa', slot: 'floor-back-left' });
-    expect(items.filter((i) => i.slot?.startsWith('wall-'))).toHaveLength(3);
-    expect(items.filter((i) => i.slot === null)).toHaveLength(1);
+    expect(items.find((i) => i.itemKey === 'sofa')).toMatchObject({ variantKey: 'budget:sofa', surface: 'floor', slot: 'floor-back-left' });
+    expect(items.filter((i) => i.surface?.startsWith('wall-'))).toHaveLength(4);
+    expect(items.filter((i) => i.surface === null)).toHaveLength(0);
     expect(await coinBalance(userId)).toBe(0); // старая мебель — даром
   });
 

@@ -210,3 +210,78 @@ export function legacyVariantKey(itemKey: string): string | null {
   if (itemKey in PAID_KINDS) return `budget:${itemKey}`;
   return null;
 }
+
+// ─── Свободная расстановка (Berik 2026-11-09: «каждый юзер сам дизайнер») ────
+/**
+ * Мебель и декор больше не в ячейках: предмет стоит на поверхности (пол или
+ * одна из стен) в точке (x, y) — доли поверхности (мобилка room-geometry.ts:
+ * floor — x слева→направо, y от задней стены к зрителю; wall-left — x от
+ * зрителя к задней; wall-back — x слева→направо; wall-right — x от задней к
+ * зрителю; у стен y сверху вниз). surface = null — в кладовке. Ячейки (slot)
+ * остались только у отделки (finish-*).
+ */
+export const SURFACES = ['floor', 'wall-left', 'wall-back', 'wall-right'] as const;
+export type Surface = (typeof SURFACES)[number];
+export type PlaceSlot = (typeof FLOOR_SLOTS)[number] | (typeof WALL_SLOTS)[number];
+
+/** Старая ячейка → та же точка на поверхности (посчитано обратной перспективой диорамы). */
+export const SLOT_SPOT: Record<PlaceSlot, { surface: Surface; x: number; y: number }> = {
+  'floor-back-left': { surface: 'floor', x: 0.218, y: 0.27 },
+  'floor-back-center': { surface: 'floor', x: 0.5, y: 0.24 },
+  'floor-back-right': { surface: 'floor', x: 0.782, y: 0.27 },
+  'floor-mid-left': { surface: 'floor', x: 0.116, y: 0.581 },
+  'floor-mid-right': { surface: 'floor', x: 0.884, y: 0.581 },
+  'floor-front-left': { surface: 'floor', x: 0.093, y: 0.85 },
+  'floor-front-right': { surface: 'floor', x: 0.907, y: 0.85 },
+  'wall-left': { surface: 'wall-left', x: 0.401, y: 0.497 },
+  'wall-center': { surface: 'wall-back', x: 0.5, y: 0.167 },
+  'wall-right': { surface: 'wall-right', x: 0.599, y: 0.497 },
+};
+
+export function isPlaceSlot(s: string | null | undefined): s is PlaceSlot {
+  return !!s && Object.prototype.hasOwnProperty.call(SLOT_SPOT, s);
+}
+
+/** Мебель — на пол, часы/картины — на любую стену. */
+export function fitsSurface(v: RoomVariant, s: string): s is Surface {
+  if (v.spot === 'floor') return s === 'floor';
+  if (v.spot === 'wall') return s === 'wall-left' || s === 'wall-back' || s === 'wall-right';
+  return false;
+}
+
+/** Для приложений до обновления: ближайшая старая ячейка той же поверхности. */
+export function legacySlotOf(surface: string | null, x: number, y: number): PlaceSlot | null {
+  if (!surface) return null;
+  let best: PlaceSlot | null = null;
+  let bd = Infinity;
+  for (const [slot, p] of Object.entries(SLOT_SPOT) as Array<[PlaceSlot, (typeof SLOT_SPOT)[PlaceSlot]]>) {
+    if (p.surface !== surface) continue;
+    const d = (p.x - x) ** 2 + (p.y - y) ** 2;
+    if (d < bd) {
+      bd = d;
+      best = slot;
+    }
+  }
+  return best;
+}
+
+/**
+ * Куда поставить новый предмет: первая из привычных точек, рядом с которой
+ * (ближе 0.12) ещё ничего не стоит; всё занято — первая точка со сдвигом.
+ */
+export function defaultSpot(
+  v: RoomVariant,
+  placed: ReadonlyArray<{ surface: string | null; x: number; y: number }>,
+): { surface: Surface; x: number; y: number } | null {
+  if (v.spot === 'finish') return null;
+  const order: PlaceSlot[] =
+    v.spot === 'wall' ? ['wall-center', 'wall-left', 'wall-right'] : [...FLOOR_SLOTS];
+  for (const s of order) {
+    const p = SLOT_SPOT[s];
+    const near = placed.some((o) => o.surface === p.surface && Math.hypot(o.x - p.x, o.y - p.y) < 0.12);
+    if (!near) return { ...p };
+  }
+  const p = SLOT_SPOT[order[0]];
+  const k = placed.length % 5;
+  return { surface: p.surface, x: Math.min(0.94, p.x + 0.06 * k), y: Math.min(0.9, p.y + 0.04 * k) };
+}

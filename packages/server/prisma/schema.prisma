@@ -1169,9 +1169,11 @@ model RoomItem {
   itemKey    String
   /// Часть 6: вариант каталога «<класс>:<вид>» (room-catalog.ts); null — старый предмет Части 4.
   variantKey String?
-  /// Часть 6: ячейка комнаты; null — в кладовке. Одна ячейка — один предмет.
+  /// Ячейка — только у отделки (finish-walls / finish-floor). Одна ячейка — один предмет.
   slot       String?
-  /// Часть 4 (свободная расстановка) — с Части 6 не используется.
+  /// Свободная расстановка (2026-11-09): поверхность floor | wall-left | wall-back |
+  /// wall-right; null (и нет slot) — в кладовке. x, y — доли этой поверхности.
+  surface    String?
   x          Float    @default(0.5)
   y          Float    @default(0.5)
   createdAt  DateTime @default(now())
