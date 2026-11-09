@@ -8,7 +8,7 @@ import { deliverNotification } from './push-service.js';
 import { deliverTopInsight } from './insight-store.js';
 import { runReflectorDaily } from './reflector-service.js';
 import { runTherapeuticDetectorsDaily } from './therapeutic-detector-service.js';
-import { isV2ProactivityEnabled, isV2CronEnabled, isV2ReflectorEnabled } from '../lib/feature-flags.js';
+import { isV2CronEnabled, isV2ReflectorEnabled } from '../lib/feature-flags.js';
 import { runWeekly, runEventCheck } from './reflector-v2/index.js';
 import { getProactivityEngine } from './v2-proactivity-engine.singleton.js';
 import { withCronLock } from './cron-runner.js';
@@ -329,19 +329,17 @@ async function tick(): Promise<void> {
         );
       }
 
-      // v2.0 Week 5 E1 — proactivity engine tick (behind flag, per-user).
+      // v2.0 Week 5 E1 — proactivity engine tick (per-user).
       // Runs before insight delivery so a nudge persisted this tick can
       // be pushed in the same loop iteration (unified insight store).
       // НЕ-фатально: per-user catch, остальные юзеры обрабатываются.
-      if (isV2ProactivityEnabled(userId)) {
-        try {
-          await getProactivityEngine().runForUser(userId);
-        } catch (err) {
-          console.warn(
-            `[v2-proactivity] runForUser failed user=${userId}:`,
-            err instanceof Error ? err.message : err,
-          );
-        }
+      try {
+        await getProactivityEngine().runForUser(userId);
+      } catch (err) {
+        console.warn(
+          `[v2-proactivity] runForUser failed user=${userId}:`,
+          err instanceof Error ? err.message : err,
+        );
       }
 
       // R6 — ЕДИНЫЙ Insight-стор: ≤1 пуш/день, top-severity, вне

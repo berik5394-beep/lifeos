@@ -22,14 +22,6 @@ function isEnabledForUser(envValue: string | undefined, userId: string): boolean
     .some((s) => s === `user-${userId}`);
 }
 
-export function isV2MemoryEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_MEMORY, userId);
-}
-
-export function isV2ProactivityEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_PROACTIVITY, userId);
-}
-
 /**
  * v2 Phase B1 — Per-user gate for USER NEST axes feature.
  *

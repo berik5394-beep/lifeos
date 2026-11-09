@@ -21,7 +21,6 @@ const flush = () => new Promise((r) => setTimeout(r, 300));
 
 describe('этап 4: факты и люди — и на пути с действием', () => {
   it('«потратил 5000 на ужин с Сериком» → память «ужинал с Сериком», люди (v2), без лишней задачи', async () => {
-    process.env.FEATURE_V2_MEMORY = 'all';
     const userId = (
       await prisma.user.create({ data: { email: `apc-${Date.now()}-${Math.random()}@a.test`, name: 'A', passwordHash: 'x', timezone: 'UTC' } })
     ).id;

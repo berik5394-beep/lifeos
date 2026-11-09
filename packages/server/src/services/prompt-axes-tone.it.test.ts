@@ -11,7 +11,6 @@ afterAll(() => prisma.$disconnect());
 
 describe('оси и тон в системном промпте', () => {
   it('флаги включены → оба блока в system', async () => {
-    process.env.FEATURE_V2_MEMORY = 'all';
     process.env.FEATURE_V2_AXES = 'all';
     process.env.FEATURE_V2_IDENTITY = 'all';
     const userId = (

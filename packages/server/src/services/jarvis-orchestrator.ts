@@ -47,7 +47,6 @@ import {
   BATCH_ACTION,
   type BatchItem,
 } from './pending-actions.js';
-import { isV2MemoryEnabled } from '../lib/feature-flags.js';
 import { captureV2InBackground } from './v2-capture.js';
 import {
   buildV2EnrichmentBlock,
@@ -296,14 +295,12 @@ async function captureInBackground(
         await supersedeByTopic(userId, m.type, m.supersedesTopic, r.id).catch(() => null);
       }
     }
-    // v2.0 Week 5 D3 — dual-write to new memory tiers behind flag.
+    // v2.0 Week 5 D3 — запись в новые слои памяти (сущности/события/эмоции).
     // Fire-and-forget so legacy capture's return time is unchanged;
     // captureV2InBackground itself has top-level try/catch and never throws.
-    if (isV2MemoryEnabled(userId)) {
-      void captureV2InBackground(userId, text, msgId ?? 'unknown').catch(
-        (err) => console.warn('[v2-capture] hook:', err),
-      );
-    }
+    void captureV2InBackground(userId, text, msgId ?? 'unknown').catch(
+      (err) => console.warn('[v2-capture] hook:', err),
+    );
     return { tasks, memories };
   } catch {
     return { tasks: 0, memories: 0 };
@@ -1849,7 +1846,7 @@ async function handleMessageCore(
   // оси, тон, цена часа/команда, навыки, нужны ли инструменты — НЕ зависят друг
   // от друга, раньше шли по очереди. Теперь — одновременно; применяем в прежнем
   // порядке (память → оси → тон → время=деньги → навык). Каждый — best-effort.
-  const memoryOn = !!gathered && isV2MemoryEnabled(userId);
+  const memoryOn = !!gathered;
   const [enrich, toneSection, timeLines, skill, toolsHint] = await Promise.all([
     // v2.0 Week 5 D3 — additive memory enrichment block (best-effort, dropped
     // silently on fault → legacy prompt unaffected). Бюджет 2500мс: enrichment

@@ -3,7 +3,7 @@
  *
  * Single source of truth for outbound proactive nudges based on the new
  * memory tiers (semantic / episodic / procedural / emotional). Runs per
- * scheduler tick (every 10 min, behind FEATURE_V2_PROACTIVITY flag).
+ * scheduler tick (every 10 min).
  *
  * Flow: runForUser → detectCandidates (13 detectors) → filterCandidates
  * (4 gates in order: DND, RateLimit, Significance, Dedup) → pick top by

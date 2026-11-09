@@ -3,7 +3,7 @@
  *
  * Pure builder (buildV2EnrichmentBlock) + async fetcher
  * (fetchV2EnrichmentData). Orchestrator appends the rendered block to
- * the system prompt only when isV2MemoryEnabled — additive, never
+ * the system prompt (always, when context was gathered) — additive, never
  * touches the legacy buildJarvisPrompt output.
  *
  * Block is whitespace-stable: missing data drops the *whole* line so

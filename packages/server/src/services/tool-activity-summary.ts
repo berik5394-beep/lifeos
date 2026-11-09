@@ -1,6 +1,5 @@
 import type { ToolSideEffects } from '../tools/_types.js';
 import { recordEvent } from './episodic-memory.js';
-import { isV2MemoryEnabled } from '../lib/feature-flags.js';
 import { STAGE_LABEL } from './deals/stages.js';
 
 /**
@@ -326,7 +325,6 @@ export function captureActivity(
 ): void {
   if (!summary) return;
   try {
-    if (!isV2MemoryEnabled(userId)) return;
     void recordEvent(userId, {
       type: summary.type,
       content: summary.content,
