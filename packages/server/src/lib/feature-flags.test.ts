@@ -8,7 +8,6 @@ import {
   isV2DecisionsEnabled,
   isV2EnergyEnabled,
   isV2RelationshipsEnabled,
-  isV2CronEnabled,
   isV2IdentityEnabled,
   isV2WriteEnabled,
   isV2RealtimeEnabled,
@@ -211,38 +210,6 @@ describe('isV2AxesEnabled', () => {
     process.env.FEATURE_V2_AXES = '  user-abc , user-def  ';
     expect(isV2AxesEnabled('abc')).toBe(true);
     expect(isV2AxesEnabled('def')).toBe(true);
-  });
-});
-
-describe('isV2CronEnabled — global flag (no userId arg)', () => {
-  const ORIG = process.env.FEATURE_V2_CRON;
-  afterEach(() => {
-    if (ORIG === undefined) delete process.env.FEATURE_V2_CRON;
-    else process.env.FEATURE_V2_CRON = ORIG;
-  });
-  it('unset → false', () => {
-    delete process.env.FEATURE_V2_CRON;
-    expect(isV2CronEnabled()).toBe(false);
-  });
-  it('"none" → false', () => {
-    process.env.FEATURE_V2_CRON = 'none';
-    expect(isV2CronEnabled()).toBe(false);
-  });
-  it('"false" → false', () => {
-    process.env.FEATURE_V2_CRON = 'false';
-    expect(isV2CronEnabled()).toBe(false);
-  });
-  it('"true" → true', () => {
-    process.env.FEATURE_V2_CRON = 'true';
-    expect(isV2CronEnabled()).toBe(true);
-  });
-  it('"all" → true (alias for true)', () => {
-    process.env.FEATURE_V2_CRON = 'all';
-    expect(isV2CronEnabled()).toBe(true);
-  });
-  it('"  true  " → true (whitespace tolerant)', () => {
-    process.env.FEATURE_V2_CRON = '  true  ';
-    expect(isV2CronEnabled()).toBe(true);
   });
 });
 

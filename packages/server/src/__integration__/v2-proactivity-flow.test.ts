@@ -56,8 +56,9 @@ describe('v2 proactivity flow — scheduler → engine chain', () => {
     expect(SCHED).not.toMatch(/isV2ProactivityEnabled/);
   });
 
-  it('cron hooks are gated by isV2CronEnabled (global)', () => {
-    expect(SCHED).toMatch(/isV2CronEnabled\(\s*\)/);
+  it('cron hooks run unconditionally (флага крона больше нет)', () => {
+    expect(SCHED).not.toMatch(/isV2CronEnabled/);
+    expect(SCHED).toMatch(/withCronLock\(/);
   });
 
   it('engine wires all 5 detectors via Promise.allSettled', () => {

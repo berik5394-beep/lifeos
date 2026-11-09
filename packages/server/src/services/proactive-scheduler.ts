@@ -8,7 +8,6 @@ import { deliverNotification } from './push-service.js';
 import { deliverTopInsight } from './insight-store.js';
 import { runReflectorDaily } from './reflector-service.js';
 import { runTherapeuticDetectorsDaily } from './therapeutic-detector-service.js';
-import { isV2CronEnabled, isV2ReflectorEnabled } from '../lib/feature-flags.js';
 import { runWeekly, runEventCheck } from './reflector-v2/index.js';
 import { getProactivityEngine } from './v2-proactivity-engine.singleton.js';
 import { withCronLock } from './cron-runner.js';
@@ -144,7 +143,7 @@ async function tick(): Promise<void> {
     //     engine reads MoodSnapshot in the loop below;
     //   - pattern-extraction's fresh patterns are visible to detectors
     //     on the same tick.
-    // Both behind isV2CronEnabled (global); withCronLock enforces the
+    // Глобальные (без флага); withCronLock enforces the
     // 24h / 7d interval regardless of how often tick fires. Each hook
     // is its own try/catch — a cron failure must not break the user loop.
     // Утренняя сводка владельцу (Berik 2026-11-09): люди, стоимость моделей на
@@ -162,60 +161,58 @@ async function tick(): Promise<void> {
       }
     }
 
-    if (isV2CronEnabled()) {
-      try {
-        const r = await withCronLock(
-          'mood-retention',
-          24 * 60 * 60 * 1000,
-          null,
-          runMoodRetention,
-        );
-        if (r.ran) console.log('[cron:mood-retention] tick: ran');
-      } catch (err) {
-        console.warn(
-          '[cron:mood-retention] tick hook failed:',
-          err instanceof Error ? err.message : err,
-        );
-      }
-      try {
-        const r = await withCronLock(
-          'pattern-extraction',
-          7 * 24 * 60 * 60 * 1000,
-          null,
-          runPatternExtraction,
-        );
-        if (r.ran) console.log('[cron:pattern-extraction] tick: ran');
-      } catch (err) {
-        console.warn(
-          '[cron:pattern-extraction] tick hook failed:',
-          err instanceof Error ? err.message : err,
-        );
-      }
-      // v2 Phase B2 — weekly bot-traits snapshot + refresh.
-      try {
-        await withCronLock('bot-traits-snapshot', 7 * 24 * 60 * 60 * 1000, null, async () => {
-          const store = getBotTraitsStore();
-          // Reuse the active-user set already computed for pattern-extraction
-          // if available; otherwise fetch users active in last 7 days.
-          const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-          const activeUserRows = await prisma.chatMessage.findMany({
-            where: { createdAt: { gte: since } },
-            select: { userId: true },
-            distinct: ['userId'],
-          });
-          for (const { userId } of activeUserRows) {
-            try {
-              await store.refreshTraits(userId);
-              await store.snapshot(userId);
-            } catch (err) {
-              console.warn(`[cron:bot-traits] user=${userId}:`, err);
-            }
-          }
-          console.log(`[cron:bot-traits] snapshotted ${activeUserRows.length} active users`);
+    try {
+      const r = await withCronLock(
+        'mood-retention',
+        24 * 60 * 60 * 1000,
+        null,
+        runMoodRetention,
+      );
+      if (r.ran) console.log('[cron:mood-retention] tick: ran');
+    } catch (err) {
+      console.warn(
+        '[cron:mood-retention] tick hook failed:',
+        err instanceof Error ? err.message : err,
+      );
+    }
+    try {
+      const r = await withCronLock(
+        'pattern-extraction',
+        7 * 24 * 60 * 60 * 1000,
+        null,
+        runPatternExtraction,
+      );
+      if (r.ran) console.log('[cron:pattern-extraction] tick: ran');
+    } catch (err) {
+      console.warn(
+        '[cron:pattern-extraction] tick hook failed:',
+        err instanceof Error ? err.message : err,
+      );
+    }
+    // v2 Phase B2 — weekly bot-traits snapshot + refresh.
+    try {
+      await withCronLock('bot-traits-snapshot', 7 * 24 * 60 * 60 * 1000, null, async () => {
+        const store = getBotTraitsStore();
+        // Reuse the active-user set already computed for pattern-extraction
+        // if available; otherwise fetch users active in last 7 days.
+        const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const activeUserRows = await prisma.chatMessage.findMany({
+          where: { createdAt: { gte: since } },
+          select: { userId: true },
+          distinct: ['userId'],
         });
-      } catch (err) {
-        console.warn('[cron:bot-traits] tick failed:', err);
-      }
+        for (const { userId } of activeUserRows) {
+          try {
+            await store.refreshTraits(userId);
+            await store.snapshot(userId);
+          } catch (err) {
+            console.warn(`[cron:bot-traits] user=${userId}:`, err);
+          }
+        }
+        console.log(`[cron:bot-traits] snapshotted ${activeUserRows.length} active users`);
+      });
+    } catch (err) {
+      console.warn('[cron:bot-traits] tick failed:', err);
     }
 
     for (const { id: userId, hasChannel } of users) {
@@ -307,13 +304,11 @@ async function tick(): Promise<void> {
           err instanceof Error ? err.message : err,
         );
       }
-      if (isV2ReflectorEnabled(userId)) {
-        try {
-          await runWeekly(userId, new Date());
-          await runEventCheck(userId, new Date());
-        } catch (err) {
-          console.warn('[reflector-v2:scheduler] failed:', err);
-        }
+      try {
+        await runWeekly(userId, new Date());
+        await runEventCheck(userId, new Date());
+      } catch (err) {
+        console.warn('[reflector-v2:scheduler] failed:', err);
       }
 
       // Phase 6 C4 — therapeutic-детекторы 1×/день/юзер. ≤1

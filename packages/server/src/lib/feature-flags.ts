@@ -244,20 +244,6 @@ export function isV2PersonTypesEnabled(userId: string): boolean {
 }
 
 /**
- * v2.0 Week 6 — global cron flag.
- *
- * Crons are global jobs (one sweep affects all users), so no per-user
- * tagging. Enable on Railway with FEATURE_V2_CRON=true once the v2
- * memory dual-write has been running for at least a few days (Week 7
- * after Berik SMOKE passes).
- */
-export function isV2CronEnabled(): boolean {
-  const flag = (process.env.FEATURE_V2_CRON ?? '').trim();
-  if (!flag || flag === 'none' || flag === 'false') return false;
-  return flag === 'true' || flag === 'all';
-}
-
-/**
  * v2 Phase B2 — Per-user gate for bot Identity Evolution feature.
  * Same shape as isV2AxesEnabled: "all"/"true", "none"/"false"/unset,
  * or comma list "user-X,user-Y".
@@ -292,19 +278,6 @@ export function isV2FeedbackEnabled(userId: string): boolean {
  */
 export function isV2HermesEnabled(userId: string): boolean {
   const raw = process.env.FEATURE_V2_HERMES;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
- * Reflector v2 — Per-user gate for cross-tier synthesis. Same shape as
- * isV2HermesEnabled: "all"/"true", "none"/"false"/unset, or "user-X,user-Y".
- */
-export function isV2ReflectorEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_REFLECTOR;
   if (raw === undefined) return false;
   const flag = raw.trim();
   if (flag === '' || flag === 'none' || flag === 'false') return false;

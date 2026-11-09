@@ -25,8 +25,7 @@ describe('v2 reflector flow — cross-tier consumption', () => {
 });
 
 describe('v2 reflector flow — wiring', () => {
-  it('scheduler runs both reflector-v2 entrypoints, gated', () => {
-    expect(SCHED).toContain('isV2ReflectorEnabled');
+  it('scheduler runs both reflector-v2 entrypoints', () => {
     expect(SCHED).toContain('runWeekly');
     expect(SCHED).toContain('runEventCheck');
   });

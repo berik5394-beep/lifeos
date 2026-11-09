@@ -21,9 +21,7 @@ describe('proactive-scheduler — bot-traits-snapshot cron (E2)', () => {
     expect(body).toContain('refreshTraits');
     expect(body).toContain('snapshot');
   });
-  it('gated by isV2CronEnabled', () => {
-    const idx = SRC.indexOf('bot-traits-snapshot');
-    const window = SRC.slice(Math.max(0, idx - 1500), idx + 200);
-    expect(window).toContain('isV2CronEnabled');
+  it('не за флагом крона', () => {
+    expect(SRC).not.toContain('isV2CronEnabled');
   });
 });
