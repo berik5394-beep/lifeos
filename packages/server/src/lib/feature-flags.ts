@@ -23,52 +23,11 @@ function isEnabledForUser(envValue: string | undefined, userId: string): boolean
 }
 
 /**
- * D (spec 2026-06-01): inline-проактивность из длинного текста.
- * Off → байт-в-байт сегодняшнее поведение. Env FEATURE_V2_INLINE_NUDGE
- * в форме "all"/"true" / "none"/unset / "user-X,user-Y".
- */
-export function isV2InlineNudgeEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_INLINE_NUDGE, userId);
-}
-
-/**
- * Real-Time Foundation — per-user gate настоящего времени. on → tz-capture хук
- * пишет User.timezone из X-Timezone, getTimeOfDay в поясе юзера, блок «СЕЙЧАС»
- * в промпте. off → байт-идентично (хук no-op, getTimeOfDay по серверному
- * времени, без блока). Env FEATURE_V2_REALTIME: "all"/"none"/unset/"user-X,user-Y".
- */
-export function isV2RealtimeEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_REALTIME, userId);
-}
-
-/**
- * Коуч по накоплениям (deadline-pacing + reactive-on-expense). Через
- * isEnabledForUser: "all" → все; "none"/"false"/unset → никто;
- * "user-X,user-Y" → перечисленные. ВНИМАНИЕ: "true" НЕ включает — для
- * глобального включения ставь "all".
- * Off → рефлектор и расходный путь работают как сегодня (байт-в-байт).
- */
-export function isV2SavingsCoachEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_SAVINGS_COACH, userId);
-}
-
-/**
  * Движок пересечения, срез 1 (день перегружен). Off → create_task ответ
  * байт-в-байт (нет оценки времени, нет строки нагрузки).
  */
 export function isV2DayLoadEnabled(userId: string): boolean {
   return isEnabledForUser(process.env.FEATURE_V2_DAY_LOAD, userId);
-}
-
-/**
- * Слой честности B — анти-фабрикация фактов в чате. on → (1) пункт в базовый
- * промпт «числа/даты/имена о делах юзера ТОЛЬКО из КОНТЕКСТА, не выдумывай» +
- * (2) реальный overdue-счётчик в контекст (#5, чтобы модель не сочиняла «128»).
- * off → байт-идентично (ни пункта, ни строки overdue). Env FEATURE_V2_ANTIFAB
- * ("all"/"none"/unset/"user-X"; "true" НЕ включает — ставь "all").
- */
-export function isV2AntiFabEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_ANTIFAB, userId);
 }
 
 /** Движок пересечения, срез 2 (неделя перегружена). Off → байт-в-байт. */

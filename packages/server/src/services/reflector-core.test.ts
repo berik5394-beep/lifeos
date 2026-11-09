@@ -30,11 +30,10 @@ function facts(p: Partial<ReflectorFacts> = {}): ReflectorFacts {
     financeGoalTarget: null,
     financeGoalText: null,
     goalVerdicts: [],
-    // Коуч-поля: pacingEnabled=false → эти тесты проверяют СТАРУЮ
-    // горизонт-ветку (= поведение при флаге off, байт-в-байт).
+    // Коуч-поля (pacing портфеля фин-целей — всегда; financeGoals пуст →
+    // pacing-блок молчит, тесты ниже про остальные правила).
     savedSoFar: 0,
     targetDate: new Date('2026-12-31T00:00:00Z'),
-    pacingEnabled: false,
     now: new Date('2026-06-01T00:00:00Z'),
     financeGoals: [],
     ...p,
@@ -56,52 +55,17 @@ describe('reflect — отрицательный денежный поток', (
   });
 });
 
-describe('reflect — горизонт фин-цели (де-хардкод 35M)', () => {
-  it('НЕТ фин-цели (target=null) → НЕ выдумываем горизонт (честность)', () => {
-    const r = reflect(facts({ financeGoalTarget: null }));
-    expect(
-      r.find((x) => x.scope === 'finance:goal_horizon'),
-    ).toBeUndefined();
-  });
-  it('цель есть, сбережения <=0 → goal_horizon_stalled', () => {
-    const r = reflect(
-      facts({
-        monthlyIncome: 300_000,
-        monthlyBurn: 300_000,
-        financeGoalTarget: 35_000_000,
-        financeGoalText: 'квартира',
-      }),
-    );
-    const c = r.find((x) => x.kind === 'goal_horizon_stalled');
-    expect(c).toBeDefined();
-    expect(c!.severity).toBe(7);
-  });
-  it('цель есть, горизонт >=30 лет → goal_horizon_far с числом лет', () => {
-    // 35M / (100k*12) ≈ 29.2 → возьмём меньше savings для >=30
+describe('reflect — старый горизонт-блок «≥30 лет» удалён (флаг коуча на проде all)', () => {
+  it('одиночная фин-цель без массива financeGoals → finance:goal_horizon не появляется', () => {
     const r = reflect(
       facts({
         monthlyIncome: 200_000,
-        monthlyBurn: 150_000, // savings 50k → 35M/600k ≈ 58 лет
+        monthlyBurn: 150_000,
         financeGoalTarget: 35_000_000,
         financeGoalText: 'квартира',
       }),
     );
-    const c = r.find((x) => x.kind === 'goal_horizon_far');
-    expect(c).toBeDefined();
-    expect(c!.message).toMatch(/лет/);
-  });
-  it('цель достижима за разумный срок → нет инсайта горизонта', () => {
-    const r = reflect(
-      facts({
-        monthlyIncome: 2_000_000,
-        monthlyBurn: 500_000, // savings 1.5M → 35M/18M ≈ 1.9 лет
-        financeGoalTarget: 35_000_000,
-        financeGoalText: 'квартира',
-      }),
-    );
-    expect(
-      r.find((x) => x.scope === 'finance:goal_horizon'),
-    ).toBeUndefined();
+    expect(r.find((x) => x.scope === 'finance:goal_horizon')).toBeUndefined();
   });
 });
 
@@ -145,7 +109,6 @@ describe('reflect — portfolio pacing (флаг on)', () => {
     goalVerdicts: [],
     savedSoFar: 0,
     targetDate: inM(12),
-    pacingEnabled: true,
     now: RNOW,
     financeGoals: [],
   };
@@ -188,16 +151,4 @@ describe('reflect — portfolio pacing (флаг on)', () => {
     expect(out.find((c) => c.scope === 'finance:goal_pace')).toBeUndefined();
   });
 
-  it('off-путь (pacingEnabled=false) — старый horizon-блок жив', () => {
-    const out = reflect({
-      ...pbase,
-      pacingEnabled: false,
-      monthlyIncome: 100_000,
-      monthlyBurn: 99_000, // savings 1000/мес
-      financeGoalTarget: 35_000_000,
-      financeGoalText: 'Большая цель',
-      financeGoals: [], // off-путь игнорит массив
-    });
-    expect(out.find((c) => c.scope === 'finance:goal_horizon')).toBeTruthy();
-  });
 });

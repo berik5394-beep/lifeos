@@ -4,11 +4,10 @@ import { join } from 'node:path';
 
 const FLAGS = readFileSync(join(process.cwd(), 'src/lib/feature-flags.ts'), 'utf8');
 
-describe('D — inline-nudge feature flag', () => {
-  it('exports isV2InlineNudgeEnabled using FEATURE_V2_INLINE_NUDGE', () => {
-    expect(FLAGS).toMatch(/export function isV2InlineNudgeEnabled/);
-    expect(FLAGS).toMatch(/FEATURE_V2_INLINE_NUDGE/);
-    expect(FLAGS).toMatch(/isEnabledForUser\(process\.env\.FEATURE_V2_INLINE_NUDGE, userId\)/);
+describe('D — inline-nudge: флаг удалён', () => {
+  it('FEATURE_V2_INLINE_NUDGE больше не читается', () => {
+    expect(FLAGS).not.toMatch(/isV2InlineNudgeEnabled/);
+    expect(FLAGS).not.toMatch(/FEATURE_V2_INLINE_NUDGE/);
   });
 });
 
@@ -19,8 +18,8 @@ describe('D — inline nudge prompt block', () => {
     expect(PROMPT).toMatch(/INLINE_NUDGE_BLOCK/);
     expect(PROMPT).toMatch(/opts\.inlineNudge/);
   });
-  it('orchestrator passes inlineNudge: isV2InlineNudgeEnabled(userId)', () => {
-    expect(ORCH).toMatch(/inlineNudge:\s*isV2InlineNudgeEnabled\(userId\)/);
-    expect(ORCH).toMatch(/isV2InlineNudgeEnabled/);
+  it('orchestrator всегда передаёт inlineNudge: true', () => {
+    expect(ORCH).not.toMatch(/isV2InlineNudgeEnabled/);
+    expect(ORCH).toMatch(/inlineNudge:\s*true/);
   });
 });

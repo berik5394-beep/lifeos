@@ -49,8 +49,6 @@ export interface ReflectorFacts {
   savedSoFar: number;
   /** Срок фин-цели (адаптер: targetDate или 31 дек). */
   targetDate: Date;
-  /** Флаг коуча: true → новый pacing-блок; false → старый «30 лет». */
-  pacingEnabled: boolean;
   /** Текущее время (для расчёта monthsLeft в чистом ядре). */
   now: Date;
   /** ГОД-пейсинг: измеримые НЕ-денежные цели для goal-pace ветки.
@@ -67,9 +65,6 @@ export interface ReflectorFacts {
   yearPacingEnabled?: boolean;
 }
 
-const YEAR_MONTHS = 12;
-/** Горизонт, дальше которого «цель практически недостижима». */
-const UNREACHABLE_YEARS = 30;
 
 /** Статус портфеля → метаданные инсайта. none/on_track_all отсутствуют
  *  → молчим (describePortfolioPace тоже вернёт null). */
@@ -125,73 +120,28 @@ export function reflect(f: ReflectorFacts): InsightCandidate[] {
     });
   }
 
-  // 2. Pacing фин-цели. ON (флаг коуча) → portfolio по ВСЕМ целям
-  //    (computePortfolioPace, якорь = самая денежная); OFF → старый
-  //    одно-целевой horizon-блок «≥30 лет» (байт-в-байт, rollback-safety).
-  if (f.pacingEnabled) {
-    if (f.monthlyIncome > 0 && f.financeGoals.length > 0) {
-      const pf = computePortfolioPace({
-        goals: f.financeGoals,
-        capacity: monthlySavings,
-        now: f.now,
-      });
-      const line = describePortfolioPace(pf);
-      const meta = PORTFOLIO_INSIGHT[pf.status];
-      if (line && meta) {
-        out.push({
-          kind: meta.kind,
-          scope: 'finance:goal_pace',
-          severity: meta.severity,
-          message: line,
-          rationale: `portfolio ${pf.status} anchorDelta=${Math.round(
-            pf.anchorDelta,
-          )} collisionDelta=${Math.round(pf.collisionDelta)}`,
-          source: 'reflector',
-          dismissKey: meta.dismissKey,
-        });
-      }
-    }
-  } else if (
-    f.financeGoalTarget !== null &&
-    f.financeGoalTarget > 0 &&
-    f.monthlyIncome > 0
-  ) {
-    if (monthlySavings <= 0) {
+  // 2. Pacing фин-цели: portfolio по ВСЕМ целям (computePortfolioPace,
+  //    якорь = самая денежная).
+  if (f.monthlyIncome > 0 && f.financeGoals.length > 0) {
+    const pf = computePortfolioPace({
+      goals: f.financeGoals,
+      capacity: monthlySavings,
+      now: f.now,
+    });
+    const line = describePortfolioPace(pf);
+    const meta = PORTFOLIO_INSIGHT[pf.status];
+    if (line && meta) {
       out.push({
-        kind: 'goal_horizon_stalled',
-        scope: 'finance:goal_horizon',
-        severity: 7,
-        message:
-          `Цель «${f.financeGoalText ?? 'финансовая'}» (${Math.round(
-            f.financeGoalTarget,
-          )}₸): при нулевых/отрицательных сбережениях она НЕ приближается. ` +
-          `Сначала вывести денежный поток в плюс.`,
-        rationale: `target=${f.financeGoalTarget} savings<=0`,
+        kind: meta.kind,
+        scope: 'finance:goal_pace',
+        severity: meta.severity,
+        message: line,
+        rationale: `portfolio ${pf.status} anchorDelta=${Math.round(
+          pf.anchorDelta,
+        )} collisionDelta=${Math.round(pf.collisionDelta)}`,
         source: 'reflector',
-        dismissKey: 'reflector_goal_horizon_stalled',
+        dismissKey: meta.dismissKey,
       });
-    } else {
-      const years =
-        Math.round(
-          (f.financeGoalTarget / (monthlySavings * YEAR_MONTHS)) * 10,
-        ) / 10;
-      if (years >= UNREACHABLE_YEARS) {
-        out.push({
-          kind: 'goal_horizon_far',
-          scope: 'finance:goal_horizon',
-          severity: 6,
-          message:
-            `Цель «${f.financeGoalText ?? 'финансовая'}» (${Math.round(
-              f.financeGoalTarget,
-            )}₸) при текущем темпе сбережений (~${Math.round(
-              monthlySavings,
-            )}₸/мес) — это ~${years} лет. Чтобы реально достичь — нужен ` +
-            `либо рост дохода, либо сокращение расходов.`,
-          rationale: `years=${years} savings=${Math.round(monthlySavings)}`,
-          source: 'reflector',
-          dismissKey: 'reflector_goal_horizon_far',
-        });
-      }
     }
   }
 

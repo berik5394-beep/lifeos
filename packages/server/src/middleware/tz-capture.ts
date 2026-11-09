@@ -1,6 +1,5 @@
 import { prisma } from '../lib/prisma.js';
 import { isValidIanaTz } from '../lib/tz.js';
-import { isV2RealtimeEnabled } from '../lib/feature-flags.js';
 
 /**
  * Real-Time Foundation — фиксация настоящего пояса устройства.
@@ -25,7 +24,6 @@ export async function captureTimezone(
   rawTz: unknown,
 ): Promise<void> {
   try {
-    if (!isV2RealtimeEnabled(userId)) return;
     const tz = typeof rawTz === 'string' ? rawTz : undefined;
     if (!tz || !isValidIanaTz(tz)) return;
     if (lastTz.get(userId) === tz) return; // cache: пишем только на смену

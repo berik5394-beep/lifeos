@@ -38,8 +38,8 @@ export const INLINE_NUDGE_BLOCK =
 
 // 2026-06 (financial-goal-capture): захват цели. Бот ЗАПИСЫВАЕТ цель
 // инструментом suggest_goal (тот спрашивает, пишет на «да»), а не только
-// советует; для измеримой — с target+срок. За флагом isV2SavingsCoachEnabled
-// (opts.goalCapture). Off → блок не добавляется, промпт байт-в-байт.
+// советует; для измеримой — с target+срок. Включается opts.goalCapture
+// (чат-мозг и голосовой ассистент — всегда).
 export const GOAL_CAPTURE_BLOCK =
   '\n\nЦЕЛИ — ЗАПИСЫВАЙ, НЕ ТОЛЬКО СОВЕТУЙ: когда пользователь ставит или ' +
   'выражает цель — прямо («поставь/хочу цель …») или между строк («хочу ' +
@@ -69,11 +69,10 @@ export interface AssistantContext {
   assistantGender: string;
   todayTasks: { title: string; completed: boolean }[];
   /** #5 честность: РЕАЛЬНОЕ число просроченных с прошлых дней (countOverduePending).
-   *  Заполняется ТОЛЬКО за флагом isV2AntiFabEnabled → off=поле отсутствует =
-   *  строка не рендерится (байт-идентично). Иначе модель выдумывала «128 висят». */
+   *  Без поля строка не рендерится. Иначе модель выдумывала «128 висят». */
   overduePending?: number;
-  /** Шаги по сделкам на сегодня («Ахмет — связаться»). Только при флаге
-   *  сделок → off = поле отсутствует = строка не рендерится (байт-идентично). */
+  /** Шаги по сделкам на сегодня («Ахмет — связаться»). Без поля строка не
+   *  рендерится. */
   dealStepsToday?: string[];
   habitsProgress: { total: number; completed: number };
   upcomingEvents: { title: string; startTime: string | null; date: string }[];
@@ -269,8 +268,8 @@ function ritualBlock(
   return `\n\nРИТУАЛ НОЧИ: пользователь ложится спать.${pct} Подведи краткий итог дня по реальным данным в своём стиле и пожелай спокойной ночи. 2-4 предложения, мягко.`;
 }
 
-// Слой честности B — анти-фабрикация фактов. За флагом isV2AntiFabEnabled
-// (opts.antiFab). Off → блок не добавляется, промпт байт-в-байт.
+// Слой честности B — анти-фабрикация фактов (opts.antiFab; чат-мозг и
+// голосовой ассистент включают всегда).
 export const ANTI_FABRICATION_BLOCK =
   '\n\nФАКТЫ — ТОЛЬКО ИЗ КОНТЕКСТА: любые числа, даты, имена, суммы и счётчики ' +
   'о делах пользователя (задачи, привычки, деньги, цели, встречи, серии) бери ' +
@@ -290,19 +289,18 @@ export interface JarvisPromptOpts {
    *  выше всего перебивает раньше — сюда уже НЕ-кризис. */
   therapeuticMode?: boolean;
   /** D (spec 2026-06-01): inline-проактивность из длинного рассказа.
-   *  За флагом isV2InlineNudgeEnabled — off → поведение не меняется. */
+   *  Чат-мозг включает всегда. */
   inlineNudge?: boolean;
   /** 2026-06 financial-goal-capture: записывать цель инструментом
-   *  (suggest_goal спрашивает, пишет на «да»). За isV2SavingsCoachEnabled. */
+   *  (suggest_goal спрашивает, пишет на «да»). */
   goalCapture?: boolean;
   /** Obligations: ловить обещания/долги из диалога → предложить
    *  create_obligation (запись на «да»). Чат-мозг включает всегда. */
   obligationCapture?: boolean;
-  /** Слой честности B — добавить пункт анти-фабрикации (isV2AntiFabEnabled). */
+  /** Слой честности B — добавить пункт анти-фабрикации. */
   antiFab?: boolean;
-  /** Real-Time Foundation: IANA-пояс юзера. Задан ТОЛЬКО когда
-   *  isV2RealtimeEnabled → впрыск блока «СЕЙЧАС» + getTimeOfDay в поясе.
-   *  undefined (off) → байт-идентично (серверное время, без блока). */
+  /** Real-Time Foundation: IANA-пояс юзера → впрыск блока «СЕЙЧАС» +
+   *  getTimeOfDay в поясе. undefined → серверное время, без блока. */
   nowTz?: string;
   /** Тест-инъекция момента для детерминизма (по умолчанию new Date()). */
   _now?: Date;

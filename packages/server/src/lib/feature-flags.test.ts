@@ -1,8 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  isV2RealtimeEnabled,
   isV2DayLoadEnabled,
-  isV2AntiFabEnabled,
   isV2WeekLoadEnabled,
   isV2MonthLoadEnabled,
   isV2YearLoadEnabled,
@@ -70,37 +68,6 @@ describe('isV2DayLoadEnabled', () => {
   it('all → включено', () => {
     process.env.FEATURE_V2_DAY_LOAD = 'all';
     expect(isV2DayLoadEnabled('u1')).toBe(true);
-  });
-});
-
-describe('isV2AntiFabEnabled (Слой честности B)', () => {
-  const KEY = 'FEATURE_V2_ANTIFAB'; const ORIG = process.env[KEY];
-  afterEach(() => { if (ORIG === undefined) delete process.env[KEY]; else process.env[KEY] = ORIG; });
-  it('off по умолчанию', () => { delete process.env[KEY]; expect(isV2AntiFabEnabled('u1')).toBe(false); });
-  it('all → включено', () => { process.env[KEY] = 'all'; expect(isV2AntiFabEnabled('u1')).toBe(true); });
-  it('none/false → off', () => { for (const v of ['none','false','']) { process.env[KEY]=v; expect(isV2AntiFabEnabled('u1')).toBe(false); } });
-  it('csv адресно', () => { process.env[KEY]='user-u1'; expect(isV2AntiFabEnabled('u1')).toBe(true); expect(isV2AntiFabEnabled('u2')).toBe(false); });
-});
-
-describe('isV2RealtimeEnabled', () => {
-  const ORIG = process.env.FEATURE_V2_REALTIME;
-  afterEach(() => {
-    if (ORIG === undefined) delete process.env.FEATURE_V2_REALTIME;
-    else process.env.FEATURE_V2_REALTIME = ORIG;
-  });
-  it('unset → false', () => {
-    delete process.env.FEATURE_V2_REALTIME;
-    expect(isV2RealtimeEnabled('user1')).toBe(false);
-  });
-  it('all → true для всех', () => {
-    process.env.FEATURE_V2_REALTIME = 'all';
-    expect(isV2RealtimeEnabled('user1')).toBe(true);
-    expect(isV2RealtimeEnabled('user-zzz')).toBe(true);
-  });
-  it('user-list → только перечисленные', () => {
-    process.env.FEATURE_V2_REALTIME = 'user-berikId,user-aydanaId';
-    expect(isV2RealtimeEnabled('berikId')).toBe(true);
-    expect(isV2RealtimeEnabled('otherId')).toBe(false);
   });
 });
 

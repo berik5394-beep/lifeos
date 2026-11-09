@@ -10,7 +10,6 @@ const base: ReflectorFacts = {
   goalVerdicts: [],
   savedSoFar: 0,
   targetDate: new Date('2026-12-31T00:00:00Z'),
-  pacingEnabled: true,
   now: NOW,
   financeGoals: [
     {
@@ -44,10 +43,6 @@ describe('reflect — pacing-ветка', () => {
         },
       ],
     });
-    expect(out.find((c) => c.scope === 'finance:goal_pace')).toBeUndefined();
-  });
-  it('pacingEnabled=false → старый блок (нет scope finance:goal_pace)', () => {
-    const out = reflect({ ...base, pacingEnabled: false });
     expect(out.find((c) => c.scope === 'finance:goal_pace')).toBeUndefined();
   });
 });

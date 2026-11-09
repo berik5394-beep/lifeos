@@ -60,14 +60,8 @@ import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal,
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
-import { isV2RealtimeEnabled } from '../lib/feature-flags.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
-import {
-  isV2InlineNudgeEnabled,
-  isV2SavingsCoachEnabled,
-  isV2AntiFabEnabled,
-} from '../lib/feature-flags.js';
 import {
   routeToSkill,
   buildSkillInstruction,
@@ -1814,20 +1808,18 @@ async function handleMessageCore(
   const optIn = gathered?.context.therapeuticMode !== false;
   const finalTherapeutic = therapeuticMode && optIn;
 
-  // Real-Time Foundation: пояс юзера в промпт ТОЛЬКО при флаге (best-effort,
-  // off → undefined → байт-идентично). userTz уже резолвнут выше (тот же
-  // getUserTimezone, падает в 'UTC') — без второго запроса.
-  const realtimeTz = isV2RealtimeEnabled(userId) ? userTz : undefined;
+  // Real-Time Foundation: пояс юзера в промпт. userTz уже резолвнут выше (тот
+  // же getUserTimezone, падает в 'UTC') — без второго запроса.
   let system = gathered
     ? buildJarvisPrompt(gathered.context, {
         ...ritualOptsFor(intent, gathered.dayCompletionPercent),
         channel,
         therapeuticMode: finalTherapeutic,
-        inlineNudge: isV2InlineNudgeEnabled(userId),
-        goalCapture: isV2SavingsCoachEnabled(userId),
+        inlineNudge: true,
+        goalCapture: true,
         obligationCapture: true,
-        antiFab: isV2AntiFabEnabled(userId),
-        nowTz: realtimeTz,
+        antiFab: true,
+        nowTz: userTz,
       })
     : 'Ты — JARVIS, дружелюбный AI-ассистент. Отвечай по-русски, кратко, без markdown.';
 

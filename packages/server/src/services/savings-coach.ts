@@ -1,7 +1,6 @@
 import type { PortfolioStatus } from './savings-pace.js';
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localMonthRange } from '../lib/tz.js';
-import { isV2SavingsCoachEnabled } from '../lib/feature-flags.js';
 import { gatherReflectorFacts } from './reflector-service.js';
 import { computePortfolioPace, describePortfolioPace } from './savings-pace.js';
 
@@ -46,7 +45,6 @@ export async function maybeSavingsCoachLine(
   expenseInput: Record<string, unknown>,
   now: Date = new Date(),
 ): Promise<string | null> {
-  if (!isV2SavingsCoachEnabled(userId)) return null;
   try {
     // Сумма расхода через те же синонимы, что у add_expense
     // (sum/cost/price→amount). Оркестратор передаёт СЫРОЙ вход —
