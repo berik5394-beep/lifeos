@@ -34,19 +34,6 @@ export function isV2GoalHabitsEnabled(userId: string): boolean {
   return flag.split(',').some((s) => s.trim() === `user-${userId}`);
 }
 
-/**
- * Память ДР (ключевые даты, мост #2). Same shape as isV2AxesEnabled:
- * "all"/"true", "none"/"false"/unset, or comma list "user-X,user-Y".
- */
-export function isV2BirthdayEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_BIRTHDAY;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
 /** Забывание-троица (F1/F3/F5): message вне recall, ридер чтит invalidAt, дедуп не сбрасывает createdAt. */
 export function isV2ForgetEnabled(userId: string): boolean {
   const raw = process.env.FEATURE_V2_FORGET;
@@ -75,7 +62,7 @@ export function isV2PatternDedupEnabled(userId: string): boolean {
 
 /**
  * Entity coreference resolve-then-merge (T1, память-качество №1).
- * Same shape as isV2BirthdayEnabled.
+ * Same shape as the other per-user flags.
  */
 export function isV2EntityResolveEnabled(userId: string): boolean {
   const raw = process.env.FEATURE_V2_ENTITY_RESOLVE;
@@ -131,30 +118,6 @@ export function isV2RecentActivityEnabled(userId: string): boolean {
  */
 export function isV2DecisionsEnabled(userId: string): boolean {
   const raw = process.env.FEATURE_V2_DECISIONS;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
- * Relationships / CRM-link (кросс-домен #3). Same shape as isV2AxesEnabled.
- */
-export function isV2RelationshipsEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_RELATIONSHIPS;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
- * Person-types / CRM-типы (мост #2). Same shape as isV2RelationshipsEnabled.
- */
-export function isV2PersonTypesEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_PERSON_TYPES;
   if (raw === undefined) return false;
   const flag = raw.trim();
   if (flag === '' || flag === 'none' || flag === 'false') return false;

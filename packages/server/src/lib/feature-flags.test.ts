@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   isV2DecisionsEnabled,
-  isV2RelationshipsEnabled,
   isV2WriteEnabled,
   isV2RealtimeEnabled,
   isV2DayLoadEnabled,
@@ -9,9 +8,7 @@ import {
   isV2WeekLoadEnabled,
   isV2MonthLoadEnabled,
   isV2YearLoadEnabled,
-  isV2BirthdayEnabled,
   isV2GoalHabitsEnabled,
-  isV2PersonTypesEnabled,
   isV2EntityResolveEnabled,
   isV2ForgetEnabled,
   isV2PatternDedupEnabled,
@@ -25,31 +22,6 @@ import {
   isV2MoodToneEnabled,
 } from './feature-flags.js';
 
-
-describe('isV2BirthdayEnabled', () => {
-  const KEY = 'FEATURE_V2_BIRTHDAY';
-  afterEach(() => { delete process.env[KEY]; });
-
-  it('undefined env → false', () => {
-    delete process.env[KEY];
-    expect(isV2BirthdayEnabled('u1')).toBe(false);
-  });
-  it('"all" → true для любого', () => {
-    process.env[KEY] = 'all';
-    expect(isV2BirthdayEnabled('u1')).toBe(true);
-  });
-  it('"none"/"" → false', () => {
-    process.env[KEY] = 'none';
-    expect(isV2BirthdayEnabled('u1')).toBe(false);
-    process.env[KEY] = '';
-    expect(isV2BirthdayEnabled('u1')).toBe(false);
-  });
-  it('user-<id> → только адресно', () => {
-    process.env[KEY] = 'user-u1,user-u2';
-    expect(isV2BirthdayEnabled('u1')).toBe(true);
-    expect(isV2BirthdayEnabled('u3')).toBe(false);
-  });
-});
 
 describe('isV2EntityResolveEnabled', () => {
   const KEY = 'FEATURE_V2_ENTITY_RESOLVE';
@@ -257,42 +229,6 @@ describe('isV2DecisionsEnabled', () => {
     process.env.FEATURE_V2_DECISIONS = 'user-u1';
     expect(isV2DecisionsEnabled('u1')).toBe(true);
     expect(isV2DecisionsEnabled('u2')).toBe(false);
-  });
-});
-
-describe('isV2RelationshipsEnabled', () => {
-  afterEach(() => {
-    delete process.env.FEATURE_V2_RELATIONSHIPS;
-  });
-  it('unset → false', () => {
-    expect(isV2RelationshipsEnabled('u1')).toBe(false);
-  });
-  it('all → true', () => {
-    process.env.FEATURE_V2_RELATIONSHIPS = 'all';
-    expect(isV2RelationshipsEnabled('u1')).toBe(true);
-  });
-  it('user-list матчит только своих', () => {
-    process.env.FEATURE_V2_RELATIONSHIPS = 'user-u1';
-    expect(isV2RelationshipsEnabled('u1')).toBe(true);
-    expect(isV2RelationshipsEnabled('u2')).toBe(false);
-  });
-});
-
-describe('isV2PersonTypesEnabled', () => {
-  afterEach(() => {
-    delete process.env.FEATURE_V2_PERSON_TYPES;
-  });
-  it('unset → false', () => {
-    expect(isV2PersonTypesEnabled('u1')).toBe(false);
-  });
-  it('all → true', () => {
-    process.env.FEATURE_V2_PERSON_TYPES = 'all';
-    expect(isV2PersonTypesEnabled('u1')).toBe(true);
-  });
-  it('user-list матчит только своих', () => {
-    process.env.FEATURE_V2_PERSON_TYPES = 'user-u1';
-    expect(isV2PersonTypesEnabled('u1')).toBe(true);
-    expect(isV2PersonTypesEnabled('u2')).toBe(false);
   });
 });
 

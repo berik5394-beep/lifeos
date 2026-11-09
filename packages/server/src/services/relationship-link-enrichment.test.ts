@@ -6,8 +6,8 @@ import { formatRelationshipSection, buildV2EnrichmentBlock } from './v2-enrichme
 const src = readFileSync(join(process.cwd(), 'src/services/v2-enrichment.ts'), 'utf-8');
 
 describe('relationship-link enrichment врезка', () => {
-  it('флаг-гейт + buildRelationshipNudge + рендер', () => {
-    expect(src).toContain('isV2RelationshipsEnabled');
+  it('без флага + buildRelationshipNudge + рендер', () => {
+    expect(src).not.toContain('isV2RelationshipsEnabled');
     expect(src).toContain('buildRelationshipNudge');
     expect(src).toContain('formatRelationshipSection');
   });
@@ -15,7 +15,7 @@ describe('relationship-link enrichment врезка', () => {
     expect(formatRelationshipSection(null)).toBe('');
     expect(formatRelationshipSection('не общались с X')).toContain('Отношения');
   });
-  it('buildV2EnrichmentBlock включает relationship когда есть; off → нет', () => {
+  it('buildV2EnrichmentBlock включает relationship когда есть; иначе нет', () => {
     const base = {
       identity: null,
       patterns: [],

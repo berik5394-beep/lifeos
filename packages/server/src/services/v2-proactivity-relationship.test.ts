@@ -6,12 +6,12 @@ import { scoreSignificance, TEMPLATES } from './v2-proactivity-engine.js';
 const src = readFileSync(join(process.cwd(), 'src/services/v2-proactivity-engine.ts'), 'utf-8');
 
 describe('relationship_link detector wiring', () => {
-  it('источник + шаблон + детектор + ранний флаг-гейт + регистрация', () => {
+  it('источник + шаблон + детектор + регистрация', () => {
     expect(src).toContain("'relationship_link'");
     expect(src).toContain('relationship_link:');
     expect(src).toContain('async function detectRelationshipLink');
     expect(src).toMatch(
-      /async function detectRelationshipLink[\s\S]*?isV2RelationshipsEnabled\(userId\)\)\s*return \[\]/,
+      /async function detectRelationshipLink[\s\S]*?buildRelationshipNudge\(userId\)/,
     );
     expect(src).toMatch(/detectCandidates[\s\S]*?detectRelationshipLink\(userId\)/);
   });

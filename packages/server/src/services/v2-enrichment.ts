@@ -19,13 +19,10 @@ import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
 import {
-  isV2RelationshipsEnabled,
   isV2DecisionsEnabled,
-  isV2BirthdayEnabled,
   isV2GoalHabitsEnabled,
   isV2RecentActivityEnabled,
   isV2ScheduleConflictEnabled,
-  isV2PersonTypesEnabled,
   isV2MemQualityEnabled,
   isV2DecayEnabled,
   isV2OpenLoopsEnabled,
@@ -505,11 +502,9 @@ export async function fetchV2EnrichmentData(
       withTimeout(buildEnergyLink(userId), CROSS_DOMAIN_BUDGET_MS, null)
         .then((el) => el?.insightText ?? null)
         .catch(() => null),
-      isV2RelationshipsEnabled(userId)
-        ? withTimeout(buildRelationshipNudge(userId), CROSS_DOMAIN_BUDGET_MS, null)
-            .then((r) => r?.insightText ?? null)
-            .catch(() => null)
-        : Promise.resolve(null),
+      withTimeout(buildRelationshipNudge(userId), CROSS_DOMAIN_BUDGET_MS, null)
+        .then((r) => r?.insightText ?? null)
+        .catch(() => null),
       isV2DecisionsEnabled(userId)
         ? withTimeout(
             buildDecisionsContext(userId).then((c) => renderDecisionsInsight(c)),
@@ -517,12 +512,8 @@ export async function fetchV2EnrichmentData(
             null,
           ).catch(() => null)
         : Promise.resolve(null),
-      isV2BirthdayEnabled(userId)
-        ? withTimeout(buildBirthdaySection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
-        : Promise.resolve(null),
-      isV2BirthdayEnabled(userId)
-        ? withTimeout(buildMemorialSection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
-        : Promise.resolve(null),
+      withTimeout(buildBirthdaySection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null),
+      withTimeout(buildMemorialSection(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null),
       isV2GoalHabitsEnabled(userId)
         ? withTimeout(
             buildGoalHabitHealth(userId).then((h) => {
@@ -546,18 +537,14 @@ export async function fetchV2EnrichmentData(
       isV2ScheduleConflictEnabled(userId)
         ? withTimeout(buildScheduleConflict(userId), CROSS_DOMAIN_BUDGET_MS, null).catch(() => null)
         : Promise.resolve(null),
-      isV2PersonTypesEnabled(userId)
-        ? withTimeout(buildNeglectedKeyPerson(userId), CROSS_DOMAIN_BUDGET_MS, null)
-            .then((n) => n?.insightText ?? null)
-            .catch(() => null)
-        : Promise.resolve(null),
-      isV2PersonTypesEnabled(userId)
-        ? withTimeout(buildPersonMeetingBriefs(userId), CROSS_DOMAIN_BUDGET_MS, [])
-            .then((bs) =>
-              bs.length ? bs.slice(0, 2).map((b) => b.insightText).filter(Boolean).join(' · ') : null,
-            )
-            .catch(() => null)
-        : Promise.resolve(null),
+      withTimeout(buildNeglectedKeyPerson(userId), CROSS_DOMAIN_BUDGET_MS, null)
+        .then((n) => n?.insightText ?? null)
+        .catch(() => null),
+      withTimeout(buildPersonMeetingBriefs(userId), CROSS_DOMAIN_BUDGET_MS, [])
+        .then((bs) =>
+          bs.length ? bs.slice(0, 2).map((b) => b.insightText).filter(Boolean).join(' · ') : null,
+        )
+        .catch(() => null),
       isV2OpenLoopsEnabled(userId)
         ? withTimeout(
             gatherOpenLoops(userId, nowDate).then((l) => formatOpenLoopsSection(l)),

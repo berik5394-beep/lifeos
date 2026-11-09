@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localDateOnlyUTC, localDaySlot, localHour, localDayOfWeek, localMonthRange } from '../lib/tz.js';
 import { countOverduePending } from './task-overdue.js';
-import { isV2PersonTypesEnabled, isV2TaskReminderEnabled } from '../lib/feature-flags.js';
+import { isV2TaskReminderEnabled } from '../lib/feature-flags.js';
 import { buildPersonMeetingBriefs } from './person-types/meeting-impl.js';
 import { meetingPushBody } from './person-types/meeting.js';
 import { delegationHints, delegationLine, durationMin, getHourRate, listTeam, LONG_MEETING_MIN, meetingCostLine } from './time-value.js';
@@ -112,7 +112,7 @@ export async function generateEventReminders(
   // Джарвис-бриф (docs/plan/jarvis-roadmap.md №1): встреча с известным человеком —
   // за час не голое «подготовься», а что обещал ты/тебе, долги, сделка, что помню.
   const briefs =
-    events.some((e) => e.startTime) && isV2PersonTypesEnabled(userId)
+    events.some((e) => e.startTime)
       ? await buildPersonMeetingBriefs(userId, now).catch(() => [])
       : [];
 

@@ -726,8 +726,6 @@ async function detectEnergyLink(userId: string): Promise<NudgeCandidate[]> {
 // Relationships: застоявшийся человек × открытое обязательство по нему (FK).
 async function detectRelationshipLink(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2RelationshipsEnabled, isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2RelationshipsEnabled(userId)) return [];
     const { buildRelationshipNudge } = await import('./relationship-link/index.js');
     const rn = await buildRelationshipNudge(userId);
     if (!rn) return [];
@@ -743,9 +741,8 @@ async function detectRelationshipLink(userId: string): Promise<NudgeCandidate[]>
       },
       toneHint: 'gentle',
     };
-    // Усиление (План B): тип-вес в payload ТОЛЬКО при флаге person-types →
-    // off=байт-идентично (без typeWeight scoreSignificance даёт прежнее).
-    if (isV2PersonTypesEnabled(userId) && rn.typeWeight !== undefined) {
+    // Усиление (План B): тип-вес человека в payload → scoreSignificance.
+    if (rn.typeWeight !== undefined) {
       (cand.payload as Record<string, unknown>).typeWeight = rn.typeWeight;
     }
     cand.significance = scoreSignificance(cand);
@@ -758,12 +755,10 @@ async function detectRelationshipLink(userId: string): Promise<NudgeCandidate[]>
 
 /**
  * Память ДР (мост #2): человек с днём рождения сегодня/завтра → нудж
- * «Завтра ДР у Ахмета — поздравишь?». READ-ONLY. Флаг-гейт ранний (off=identical).
+ * «Завтра ДР у Ахмета — поздравишь?». READ-ONLY.
  */
 async function detectBirthday(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2BirthdayEnabled, isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2BirthdayEnabled(userId)) return [];
     const rows = await buildUpcomingBirthdays(userId, new Date(), 1); // окно: сегодня + завтра
     const out: NudgeCandidate[] = [];
     for (const r of rows) {
@@ -781,12 +776,9 @@ async function detectBirthday(userId: string): Promise<NudgeCandidate[]> {
         },
         toneHint: 'gentle',
       };
-      // Усиление (План B): тип-вес в payload ТОЛЬКО при флаге person-types →
-      // off=байт-идентично (без typeWeight scoreSignificance даёт прежнее).
-      if (isV2PersonTypesEnabled(userId)) {
-        const { personTypeWeight } = await import('./person-types/index.js');
-        (cand.payload as Record<string, unknown>).typeWeight = personTypeWeight(r.personType);
-      }
+      // Усиление (План B): тип-вес человека в payload → scoreSignificance.
+      const { personTypeWeight } = await import('./person-types/index.js');
+      (cand.payload as Record<string, unknown>).typeWeight = personTypeWeight(r.personType);
       cand.significance = scoreSignificance(cand);
       out.push(cand);
     }
@@ -805,8 +797,6 @@ async function detectBirthday(userId: string): Promise<NudgeCandidate[]> {
  */
 async function detectMemorial(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2BirthdayEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2BirthdayEnabled(userId)) return [];
     const rows = await buildUpcomingMemorials(userId, new Date(), 1); // окно: сегодня + завтра
     const out: NudgeCandidate[] = [];
     for (const r of rows) {
@@ -1196,8 +1186,6 @@ async function detectMonthlyGoalStall(userId: string): Promise<NudgeCandidate[]>
 // Person-types: важный ЗАПУЩЕННЫЙ человек × тип × owed-money (READ-ONLY).
 async function detectNeglectedKeyPerson(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2PersonTypesEnabled(userId)) return [];
     const { buildNeglectedKeyPerson } = await import('./person-types/index.js');
     const n = await buildNeglectedKeyPerson(userId);
     if (!n) return [];
@@ -1224,8 +1212,6 @@ async function detectNeglectedKeyPerson(userId: string): Promise<NudgeCandidate[
 // Person-meeting: бриф перед встречей на ВНУТРЕННЕМ календаре (тип↔дело↔деньги).
 async function detectPersonMeeting(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2PersonTypesEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2PersonTypesEnabled(userId)) return [];
     const { buildPersonMeetingBriefs } = await import('./person-types/index.js');
     const briefs = await buildPersonMeetingBriefs(userId);
     // Ранний бриф — за 3 ч … 75 мин: за час тот же бриф придёт пушем «Через час: …»

@@ -14,17 +14,17 @@ describe('person-types wiring (гард)', () => {
     expect(ENGINE).toContain('neglected_key_person: {');
     expect(ENGINE).toContain('detectNeglectedKeyPerson(userId),');
   });
-  it('детектор флаг-гейтнут (off=identical)', () => {
-    expect(ENGINE).toContain('if (!isV2PersonTypesEnabled(userId)) return [];');
+  it('детектор без флага', () => {
+    expect(ENGINE).not.toContain('isV2PersonTypesEnabled');
   });
   it('set_person_type зарегистрирован', () => {
     expect(TOOLS).toContain('setPersonTypeTool');
   });
-  it('врезка personTypes за флагом', () => {
-    expect(ENRICH).toContain('isV2PersonTypesEnabled(userId)');
+  it('врезка personTypes без флага', () => {
+    expect(ENRICH).not.toContain('isV2PersonTypesEnabled');
     expect(ENRICH).toContain('formatPersonTypesSection');
   });
-  it('флаг существует', () => {
-    expect(FLAGS).toContain('export function isV2PersonTypesEnabled');
+  it('флага больше нет (всегда включено)', () => {
+    expect(FLAGS).not.toContain('isV2PersonTypesEnabled');
   });
 });

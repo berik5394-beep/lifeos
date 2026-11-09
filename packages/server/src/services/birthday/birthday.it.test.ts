@@ -6,7 +6,6 @@ import { listPersonBirthdays, buildUpcomingBirthdays, buildUpcomingMemorials } f
 const prisma = new PrismaClient();
 afterAll(() => prisma.$disconnect());
 beforeEach(() => {
-  process.env.FEATURE_V2_BIRTHDAY = 'all';
 });
 
 async function seedUser(email: string): Promise<string> {
