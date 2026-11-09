@@ -280,3 +280,11 @@ describe('parseIntentJson — устойчиво к обёрткам модел�
     expect(parseIntentJson('{"foo":1}')).toBeNull();
   });
 });
+
+describe('parseIntent — пустая фраза', () => {
+  it('не зовёт модель: старт живого разговора собирает контекст с text=""', async () => {
+    const { parseIntent } = await import('./intent-parser.js');
+    expect(await parseIntent('')).toEqual({ action: 'unknown', text: '' });
+    expect(await parseIntent('   ')).toEqual({ action: 'unknown', text: '   ' });
+  });
+});

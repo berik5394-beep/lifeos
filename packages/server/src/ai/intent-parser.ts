@@ -572,6 +572,9 @@ export async function parseIntent(
   now: Date = new Date(),
   opts: IntentOptions = {},
 ): Promise<VoiceIntent> {
+  // Пустая фраза (старт живого разговора собирает контекст с text='') —
+  // разбирать нечего; раньше уходил вызов Claude → 400 «non-empty content».
+  if (!text.trim()) return { action: 'unknown', text };
   // Fast path: детерминированные интенты без вызова Claude.
   const det = deterministicIntent(text, tz, now, opts);
   if (det) return det;
