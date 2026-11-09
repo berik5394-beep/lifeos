@@ -231,8 +231,20 @@ describe('аудит 2026-11-09: «вчера» и две суммы', () => {
   it('«купил на 5000 продуктов вчера» — «вчера» не в категории', () => {
     expect(deterministicIntent('купил на 5000 продуктов вчера', 'Asia/Almaty', now)).toMatchObject({ category: 'продуктов', date: '2026-11-08' });
   });
-  it('две суммы → мозгу (две записи), а не одна', () => {
-    expect(deterministicIntent('потратил 5000 на такси и 3000 на кофе', 'Asia/Almaty', now)).toBeNull();
+  it('две суммы → две траты (одним «да?»), а не одна на 8000', () => {
+    expect(deterministicIntent('потратил 5000 на такси и 3000 на кофе', 'Asia/Almaty', now)).toEqual({
+      action: 'add_expenses',
+      items: [
+        { amount: 5000, category: 'такси', description: 'такси' },
+        { amount: 3000, category: 'кофе', description: 'кофе' },
+      ],
+    });
+    expect(deterministicIntent('вчера потратил 5к на такси, 2000 на обед', 'Asia/Almaty', now)).toMatchObject({
+      action: 'add_expenses',
+      items: [{ amount: 5000, date: '2026-11-08' }, { amount: 2000, date: '2026-11-08' }],
+    });
+    // кусок без «на что» — не угадываем
+    expect(deterministicIntent('потратил 5000 на такси и 3000', 'Asia/Almaty', now)).toBeNull();
   });
   it('без «вчера» — без даты, как раньше', () => {
     expect(deterministicIntent('потратил 3000 на обед', 'Asia/Almaty', now)).not.toHaveProperty('date');

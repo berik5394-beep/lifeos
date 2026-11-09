@@ -1555,6 +1555,21 @@ async function handleMessageCore(
     'create_event',
     'send_telegram',
   ]);
+  // «потратил 5000 на такси и 3000 на кофе» — по трате на пункт, одним общим «да?»
+  // (setPendingAction склеивает за ход). Деньги — только после подтверждения.
+  if (intent.action === 'add_expenses') {
+    const items = ((intent as unknown as { items?: Array<Record<string, unknown>> }).items ?? []).filter((i) => isValidMoneyAmount(i.amount));
+    let question = '';
+    for (const it of items) question = await setPendingAction(userId, 'add_expense', it, confirmationText('add_expense', it));
+    const p = await pendingStagedSince(userId, turnStart);
+    await saveTurn(userId, text, question);
+    return {
+      reply: question,
+      intent: 'add_expense',
+      ...(p ? { pendingAction: { action: p.action, input: p.input }, confirmationText: p.confirmationText } : {}),
+    };
+  }
+
   if (EXECUTABLE.has(intent.action)) {
     const input: Record<string, unknown> = { ...intent };
     delete input.action;

@@ -287,6 +287,31 @@ function nextWeekdays(today: string): string {
   }).join('; ');
 }
 
+/**
+ * «5000 на такси и 3000 на кофе», «на такси 5000, на кофе 3к» → траты по одной.
+ * Любой кусок без суммы или без «на что» — не угадываем: [] (решит мозг).
+ */
+export function splitExpenses(rest: string): Array<{ amount: number; category: string; description: string }> {
+  const parts = rest
+    .replace(/[.!]+$/, '')
+    .split(/\s*(?:,|;|\s(?:и|ещё|еще|плюс|а также|а)\s)\s*/i)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const out: Array<{ amount: number; category: string; description: string }> = [];
+  for (const p of parts) {
+    const a = p.match(/^(?:на\s+)?(\d+(?:[.,]\d+)?)\s*(к|k|тыс[а-я]*\.?)?\s*(?:₸|тг|тенге)?\s+(?:на|за)\s+(.+)$/i);
+    const b = p.match(/^(?:на|за)\s+(.+?)\s+(\d+(?:[.,]\d+)?)\s*(к|k|тыс[а-я]*\.?)?\s*(?:₸|тг|тенге)?$/i);
+    const num = a ? a[1] : b ? b[2] : null;
+    const mult = a ? a[2] : b ? b[3] : undefined;
+    const what = (a ? a[3] : b ? b[1] : '').trim();
+    if (!num || !what || /\d/.test(what)) return [];
+    const amount = Math.round(Number(num.replace(',', '.')) * (mult ? 1000 : 1));
+    if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_MONEY_AMOUNT) return [];
+    out.push({ amount, category: what, description: what });
+  }
+  return out;
+}
+
 export function deterministicIntent(
   text: string,
   tz: string = 'UTC',
@@ -386,7 +411,15 @@ export function deterministicIntent(
   const money = detectMoneyIntent(dayWord ? text.replace(dayWord[0], ' ').replace(/\s{2,}/g, ' ').trim() : text);
   if (money) {
     const rest = money.action === 'add_expense' ? (money.category ?? '') : (money.source ?? '');
-    if (/\d/.test(rest) && /(?:^|\s)(?:и|ещё|еще|плюс|а)\s|,/.test(rest)) return null;
+    if (/\d/.test(rest) && /(?:^|\s)(?:и|ещё|еще|плюс|а)\s|,/.test(rest)) {
+      // «потратил 5000 на такси и 3000 на кофе» — две траты (одним вопросом «да?»),
+      // а не одна на 8000 (живой прогон 2026-11-09: модель так склеила). Доход — мозгу.
+      if (money.action !== 'add_expense') return null;
+      const items = splitExpenses((dayWord ? text.replace(dayWord[0], ' ').replace(/\s{2,}/g, ' ').trim() : text).replace(/^(?:[а-яё]+\s+){0,3}?(?:потратил[аи]?|потрачено|расход|трата|купил[аи]?\s+на|отдал[аи]?)\s+/i, ''));
+      if (items.length < 2) return null;
+      const date = dayWord ? addCivilDays(civilDayRefs(tz, now).today, /позавчера/i.test(dayWord[1]) ? -2 : -1) : undefined;
+      return { action: 'add_expenses', items: items.map((i) => ({ ...i, ...(date ? { date } : {}) })) } as unknown as VoiceIntent;
+    }
     if (dayWord) {
       // Доход задним числом инструмент не пишет — пусть решает мозг, а не «сегодня».
       if (money.action !== 'add_expense') return null;
@@ -506,6 +539,33 @@ export function parseIntentJson(raw: string): VoiceIntent | null {
   return null;
 }
 
+const MONTHS_IN = '(?:январ|феврал|март|апрел|ма[ея]|июн|июл|август|сентябр|октябр|ноябр|декабр)[а-я]*';
+/** «в ноябре хочу похудеть», «к концу года накопить», «цель на месяц» — это цель, не задача. */
+const GOAL_PHRASE = new RegExp(
+  `(?:^|\\s)(?:хочу|мечтаю|планирую|цель|задача на (?:месяц|неделю|год))(?![а-яё]).*?(?:в\\s+${MONTHS_IN}|в этом (?:месяце|году)|за (?:месяц|год|неделю)|на (?:этой )?неделе|к (?:концу|лету|зиме|осени|весне|новому году)|до (?:конца|нового года))|^(?:в\\s+${MONTHS_IN}|в этом месяце|за месяц|на этой неделе|к концу года)\\s+хочу`,
+  'i',
+);
+/** Глагол переноса/отмены — это ход по существующей задаче, не новая. */
+const MOVE_OR_CANCEL = /^(?:перенеси|перенести|сдвинь|передвинь|переставь|отложи|отмени|убери|удали|вычеркни)(?![а-яё])/i;
+/** Заём/долг — обязательство, не доход/расход. */
+const LOAN = /(?:^|\s)(?:занял[аи]?|занимал[аи]?|одолжил[аи]?|одалживал|в долг|долг[аиу]?|должен|должна|должны)(?![а-яё])/i;
+
+/**
+ * Разбор Haiku знает только плоские действия: «перенеси звонок маме на завтра»
+ * он превращал в НОВУЮ задачу, «в ноябре хочу похудеть на 3 кг» — в задачу на
+ * 30-е, «Ахмет занял у меня 100 тысяч» — в доход (живой прогон 2026-11-09).
+ * Такие фразы отдаём агенту: у него move_task, create_monthly_goal /
+ * suggest_goal, create_obligation.
+ */
+export function rerouteToAgent(ip: VoiceIntent, text: string): VoiceIntent {
+  const t = text.trim();
+  if (ip.action === 'create_task' && (MOVE_OR_CANCEL.test(t) || GOAL_PHRASE.test(t))) return { action: 'unknown', text };
+  // «я должен Серику 50000 до пятницы» — денежный долг (create_obligation), не задача.
+  if (ip.action === 'create_task' && LOAN.test(t) && /\d/.test(t)) return { action: 'unknown', text };
+  if ((ip.action === 'add_income' || ip.action === 'add_expense') && LOAN.test(t)) return { action: 'unknown', text };
+  return ip;
+}
+
 export async function parseIntent(
   text: string,
   tz: string = 'UTC',
@@ -595,7 +655,7 @@ export async function parseIntent(
     }
 
     const parsed = parseIntentJson(content.text);
-    return parsed ?? { action: 'unknown', text: content.text };
+    return parsed ? rerouteToAgent(parsed, text) : { action: 'unknown', text: content.text };
   } catch (err) {
     // C1 (AUDIT-2026-06): Claude недоступен / таймаут / rate-limit на шаге
     // разбора интента. НЕ роняем весь чат в 500 — откатываемся на free-form
