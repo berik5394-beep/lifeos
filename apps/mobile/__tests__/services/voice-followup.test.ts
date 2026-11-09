@@ -85,13 +85,8 @@ describe('чат не исполняет голосовую команду дв�
     const src = readFileSync(join(__dirname, '../../app/(tabs)/chat.tsx'), 'utf-8');
     expect(src).toMatch(/useVoice\(\{\s*transcribeOnly:\s*true\s*\}\)/);
   });
-  it('use-voice: в transcribeOnly processCommand возвращается ДО запроса к /voice/process', () => {
+  it('use-voice только распознаёт: сам в мозг (/voice/process) не ходит — команда не исполнится дважды', () => {
     const src = readFileSync(join(__dirname, '../../hooks/use-voice.ts'), 'utf-8');
-    const body = src.slice(src.indexOf('const processCommand = useCallback('));
-    const guard = body.indexOf('if (transcribeOnly)');
-    const call = body.indexOf("'/voice/process'");
-    expect(guard).toBeGreaterThan(-1);
-    expect(call).toBeGreaterThan(guard);
-    expect(body.slice(guard, call)).toMatch(/return;/);
+    expect(src).not.toMatch(/'\/voice\/process'/);
   });
 });

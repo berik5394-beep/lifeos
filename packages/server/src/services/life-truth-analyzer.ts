@@ -6,6 +6,7 @@
  */
 
 import { MODELS } from '../lib/models.js';
+import { COUNTABLE_TASK, userCalendar, withLiveProgress } from './life-facts.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
 import { calculateStreak } from './streak-service.js';
@@ -126,6 +127,8 @@ async function gatherAllUserData(userId: string): Promise<RawUserData | null> {
     return d;
   };
 
+  // Общие факты (life-facts): год по часам юзера, живой прогресс целей.
+  const { year: userYear } = await userCalendar(userId, now);
   const start3m = monthsAgo(3);
   const start30d = daysAgo(30);
   const start90d = daysAgo(90);
@@ -174,12 +177,13 @@ async function gatherAllUserData(userId: string): Promise<RawUserData | null> {
       where: { userId, date: { gte: start90d }, completed: true },
       select: { habitId: true, date: true, completed: true },
     }),
+    // Отменённые — не дело и не провал (как во всей статистике, life-facts).
     prisma.task.findMany({
-      where: { userId, date: { gte: start30d } },
+      where: { userId, ...COUNTABLE_TASK, date: { gte: start30d } },
       select: { completed: true, date: true, category: true },
     }),
     prisma.task.findMany({
-      where: { userId, date: { gte: start90d } },
+      where: { userId, ...COUNTABLE_TASK, date: { gte: start90d } },
       select: { completed: true, date: true },
     }),
     prisma.stepLog.findMany({
@@ -190,10 +194,12 @@ async function gatherAllUserData(userId: string): Promise<RawUserData | null> {
       where: { userId, date: { gte: start30d } },
       select: { mood: true, energy: true, sleepHours: true, date: true },
     }),
-    prisma.yearlyGoal.findMany({
-      where: { userId, year: now.getFullYear() },
-      select: { area: true, goalText: true, progress: true },
-    }),
+    prisma.yearlyGoal
+      .findMany({
+        where: { userId, year: userYear },
+        select: { area: true, goalText: true, progress: true, target: true, createdAt: true },
+      })
+      .then((gs) => withLiveProgress(userId, gs)),
     prisma.weeklyGoal.findMany({
       where: { userId, weekStart: { gte: start4w }, archivedAt: null },
       select: { goalText: true, completed: true, weekStart: true },

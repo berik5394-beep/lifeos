@@ -5,6 +5,7 @@
  */
 
 import { prisma } from '../../lib/prisma.js';
+import { withLiveProgress } from '../life-facts.js';
 import { getUserAxesStore } from '../user-axes/index.js';
 import { getBotTraitsStore } from '../bot-traits/index.js';
 import { getFeedbackStore } from '../feedback/index.js';
@@ -37,7 +38,10 @@ async function computeLegacy(userId: string, now: Date): Promise<ReflectorV2Fact
       prisma.habit.count({ where: { userId, active: true } }),
       prisma.task.count({ where: { userId, completed: false, cancelled: false, date: { lt: new Date(now.getTime() - 2 * DAY) } } }),
       prisma.budgetLimit.aggregate({ _sum: { monthlyLimit: true }, where: { userId, month: now.getUTCMonth() + 1, year: now.getUTCFullYear() } }),
-      prisma.yearlyGoal.findMany({ where: { userId, year: now.getUTCFullYear() }, select: { area: true, goalText: true, progress: true } }),
+      // Живой прогресс (life-facts): рефлектор говорит то же, что экран целей.
+      prisma.yearlyGoal
+        .findMany({ where: { userId, year: now.getUTCFullYear() }, select: { area: true, goalText: true, progress: true, target: true, createdAt: true } })
+        .then((gs) => withLiveProgress(userId, gs)),
     ]);
     const monthlyIncome = income._sum.amount ?? 0;
     const monthlyBurn = expense._sum.amount ?? 0;

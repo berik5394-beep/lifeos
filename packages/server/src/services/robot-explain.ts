@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma.js';
+import { withLiveProgress } from './life-facts.js';
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { withTimeout } from '../lib/with-timeout.js';
@@ -158,7 +159,9 @@ export async function gatherPanelFacts(
     case 'goals': {
       const year = Number(todayStr.slice(0, 4));
       const [yearly, weekly] = await Promise.all([
-        prisma.yearlyGoal.findMany({ where: { userId, year }, select: { goalText: true, progress: true }, take: 10 }),
+        prisma.yearlyGoal
+          .findMany({ where: { userId, year }, select: { goalText: true, area: true, progress: true, target: true, createdAt: true }, take: 10 })
+          .then((gs) => withLiveProgress(userId, gs)),
         prisma.weeklyGoal.findMany({
           where: { userId, weekStart: localWeekStartUTC(tz, now), archivedAt: null },
           select: { goalText: true, completed: true },

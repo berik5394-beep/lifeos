@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { userCalendar } from '../services/life-facts.js';
+import { withLiveProgress } from '../services/life-facts.js';
 import { prisma } from '../lib/prisma.js';
 import { getRelevantMemories } from '../services/memory-service.js';
 import { defineTool } from './_types.js';
@@ -38,26 +40,33 @@ export const getGoalProgressTool = defineTool({
   handler: async (input, ctx) => {
     const userId = ctx.userId;
     const now = new Date();
-    const year = now.getFullYear();
+    // Год — по часам пользователя, как у экрана целей (life-facts).
+    const { year } = await userCalendar(userId, now);
     const yearStart = new Date(year, 0, 1);
     // R4: темп года — из ЕДИНОЙ границы план↔факт (не локальная копия).
     const elapsedPct = yearElapsedPct(now);
     const area = input.area ? String(input.area).toLowerCase().trim() : null;
 
-    const goals = await prisma.yearlyGoal.findMany({
-      where: {
-        userId,
-        year,
-        ...(area ? { area: { equals: area, mode: 'insensitive' } } : {}),
-      },
-      select: {
-        id: true,
-        area: true,
-        goalText: true,
-        progress: true,
-        updatedAt: true, // 4/5.c: для истинного planStale
-      },
-    });
+    // Прогресс — живой (денежная цель = накоплено, как на экране целей; life-facts).
+    const goals = await withLiveProgress(
+      userId,
+      await prisma.yearlyGoal.findMany({
+        where: {
+          userId,
+          year,
+          ...(area ? { area: { equals: area, mode: 'insensitive' } } : {}),
+        },
+        select: {
+          id: true,
+          area: true,
+          goalText: true,
+          progress: true,
+          target: true,
+          createdAt: true,
+          updatedAt: true, // 4/5.c: для истинного planStale
+        },
+      }),
+    );
 
     // L99/W8 — честный сигнал наличия плана (не молчаливый void).
     // ВАЖНО: точный planStale (target ≠ дети) НЕ вычислим — у

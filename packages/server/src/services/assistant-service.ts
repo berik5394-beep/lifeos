@@ -1,4 +1,5 @@
 import { MODELS } from '../lib/models.js';
+import { withLiveProgress } from './life-facts.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { createAnthropic } from '../lib/anthropic.js';
 import { prisma } from '../lib/prisma.js';
@@ -137,17 +138,21 @@ export async function gatherAssistantContext(
     }),
     calculateStreak(userId, tz),
     calculateWeekProgress(userId, todayDateOnly),
-    prisma.yearlyGoal.findMany({
-      where: { userId, year: ly },
-      select: {
-        id: true,
-        area: true,
-        goalText: true,
-        progress: true,
-        target: true,
-        targetDate: true,
-      },
-    }),
+    prisma.yearlyGoal
+      .findMany({
+        where: { userId, year: ly },
+        select: {
+          id: true,
+          area: true,
+          goalText: true,
+          progress: true,
+          target: true,
+          targetDate: true,
+          createdAt: true,
+        },
+      })
+      // Живой прогресс (life-facts): чат говорит то же, что экран целей.
+      .then((gs) => withLiveProgress(userId, gs)),
     getRelevantMemories(userId, text, 20),
     knownIntent ? Promise.resolve(knownIntent) : parseIntent(text, tz, undefined, { disabledPanels: isV2DealsEnabled(userId) ? undefined : new Set(['deals']) }),
     // meta#9: план на эту неделю (WeeklyGoal, weekStart = понедельник)

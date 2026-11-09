@@ -12,6 +12,7 @@
  * (не чаще раза в час) — платим только за новое.
  */
 import { createHash } from 'node:crypto';
+import { COUNTABLE_TASK, userCalendar, withLiveProgress } from './life-facts.js';
 import { prisma } from '../lib/prisma.js';
 import { MODELS } from '../lib/models.js';
 import { createAnthropic } from '../lib/anthropic.js';
@@ -74,14 +75,18 @@ export function axesWords(a: {
 export async function gatherPortraitFacts(userId: string, now: Date = new Date()): Promise<string[]> {
   const since = new Date(now.getTime() - WINDOW_DAYS * DAY);
   const since14 = new Date(now.getTime() - 14 * DAY);
+  // Общие факты (life-facts): год по часам юзера, живой прогресс целей, без отменённых задач.
+  const { year } = await userCalendar(userId, now);
   const [about, habits, logs, spend, goals, journal, tasks, axes] = await Promise.all([
     gatherAboutMe(userId, now),
-    prisma.habit.findMany({ where: { userId, active: true }, select: { id: true, name: true }, take: 12 }),
+    prisma.habit.findMany({ where: { userId, active: true }, select: { id: true, name: true, createdAt: true }, take: 12 }),
     prisma.habitLog.groupBy({ by: ['habitId'], where: { userId, completed: true, date: { gte: since } }, _count: { _all: true } }),
     prisma.expense.groupBy({ by: ['category'], where: { userId, date: { gte: since } }, _sum: { amount: true } }),
-    prisma.yearlyGoal.findMany({ where: { userId, year: now.getUTCFullYear() }, select: { goalText: true, progress: true }, take: 6 }),
+    prisma.yearlyGoal
+      .findMany({ where: { userId, year }, select: { goalText: true, area: true, progress: true, target: true, createdAt: true }, take: 6 })
+      .then((gs) => withLiveProgress(userId, gs)),
     prisma.journalEntry.findMany({ where: { userId, date: { gte: since14 } }, select: { mood: true, energy: true, sleepHours: true } }),
-    prisma.task.findMany({ where: { userId, date: { gte: since14, lte: now } }, select: { completed: true } }),
+    prisma.task.findMany({ where: { userId, ...COUNTABLE_TASK, date: { gte: since14, lte: now } }, select: { completed: true } }),
     getUserAxesStore()
       .getAxes(userId)
       .catch(() => null),
@@ -94,7 +99,14 @@ export async function gatherPortraitFacts(userId: string, now: Date = new Date()
     out.push(`близкий человек: ${p.name}${extra ? ` (${short(extra, 70)})` : ''}`);
   }
   const done = new Map(logs.map((l) => [l.habitId, l._count._all]));
-  for (const h of habits) out.push(`привычка «${short(h.name, 40)}»: выполнена ${done.get(h.id) ?? 0} из ${WINDOW_DAYS} дней`);
+  // Окно — с создания привычки, если она моложе (не «3 из 30» у привычки трёхдневной давности).
+  for (const h of habits) {
+    const n = done.get(h.id) ?? 0;
+    const age = Math.ceil((now.getTime() - h.createdAt.getTime()) / DAY);
+    // Отметки бывают задним числом — окно не меньше их числа.
+    const days = Math.min(WINDOW_DAYS, Math.max(1, age, n));
+    out.push(`привычка «${short(h.name, 40)}»: выполнена ${n} из ${days} дней`);
+  }
   const spent = spend
     .map((s) => ({ c: s.category, a: Math.round(s._sum.amount ?? 0) }))
     .filter((s) => s.a > 0)

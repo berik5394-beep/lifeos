@@ -31,7 +31,10 @@ async function filled(u: string) {
   await prisma.memory.create({ data: { userId: u, type: 'fact', content: 'Владеет компанией по продаже турникетов', source: 'chat', tags: [] } });
   await prisma.memory.create({ data: { userId: u, type: 'preference', content: 'Любит кофе без сахара', source: 'chat', tags: [] } });
   await prisma.entity.create({ data: { userId: u, type: 'person', name: 'Ерлан', importance: 8, attributes: { relation: 'брат', город: 'Астана' } } });
-  const h = await prisma.habit.create({ data: { userId: u, name: 'Чтение', category: 'personal', frequency: 'daily' } });
+  // Привычке больше месяца — окно «из 30 дней» (у молодой окно — с её создания).
+  const h = await prisma.habit.create({
+    data: { userId: u, name: 'Чтение', category: 'personal', frequency: 'daily', createdAt: new Date(Date.now() - 40 * 86_400_000) },
+  });
   for (const n of [1, 2, 3]) await prisma.habitLog.create({ data: { userId: u, habitId: h.id, date: day(n), completed: true } });
   await prisma.expense.create({ data: { userId: u, date: day(2), category: 'food', description: 'обед', amount: 6000 } });
   await prisma.expense.create({ data: { userId: u, date: day(3), category: 'transport', description: 'такси', amount: 4000 } });

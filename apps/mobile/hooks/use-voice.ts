@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { Audio } from 'expo-av';
 import { createPushToTalk } from '@/services/push-to-talk';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -8,12 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { storage } from '@/services/storage';
-import {
-  planVoiceFollowUp,
-  confirmPendingVoiceAction,
-  type ProcessResponse,
-} from '@/services/voice-followup';
-import { normalizeEmotion, type RobotEmotion } from '@/services/robot-emotion';
+import type { RobotEmotion } from '@/services/robot-emotion';
 
 // Выбор голоса (по полу ассистента) — services/tts-voice.ts, общий с ответами чата.
 export { getPreferredVoiceIdentifier } from '@/services/tts-voice';
@@ -73,10 +68,8 @@ type ExpoSpeechRecognitionOptions = {
  * Fallback path: expo-av record → base64 → /voice/transcribe (Groq Whisper).
  *   - Used if speech recognition permission denied or unavailable.
  *
- * Command processing: /voice/process = единый мозг (handleMessage) — сервер
- * исполняет команду ДО ответа или ставит её на подтверждение (pendingAction).
- * Клиент только озвучивает ответ и показывает «Подтвердить / Отмена».
- * transcribeOnly: только распознать (чат сам шлёт текст в /voice/chat).
+ * Хук только распознаёт: сказанное (lastResult.transcript) вызывающий шлёт
+ * в единый мозг сам (строка ввода → /voice/chat).
  */
 
 export type VoiceState = 'idle' | 'recording' | 'processing' | 'speaking' | 'error';
@@ -204,23 +197,12 @@ async function recordAudio(): Promise<{ uri: string | null; cleanup: () => Promi
   } as unknown as { uri: string | null; cleanup: () => Promise<void> };
 }
 
-async function speakText(text: string): Promise<void> {
-  try {
-    const voiceId = await getPreferredVoiceIdentifier();
-    Speech.speak(text, { language: 'ru-RU', rate: 1.05, voice: voiceId });
-  } catch {
-    /* ignore */
-  }
-}
-
 // -------------------------------------------------------------
 // Main hook
 // -------------------------------------------------------------
 
 export interface UseVoiceOptions {
-  /** Только распознать речь: НЕ звать /voice/process и не озвучивать.
-   *  Для экранов, которые сами шлют текст в мозг (чат → /voice/chat),
-   *  иначе команда исполнится дважды. */
+  /** Исторический флаг: хук и так только распознаёт (текст в мозг шлёт вызывающий). */
   transcribeOnly?: boolean;
 }
 
@@ -228,7 +210,7 @@ export interface UseVoiceOptions {
 const LOCKED_MAX_MS = 60_000;
 
 export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
-  const transcribeOnly = options.transcribeOnly === true;
+  void options;
   const [locked, setLocked] = useState(false);
   const [state, setState] = useState<VoiceState>('idle');
   // Удержание кнопки (push-to-talk): колбэки живут дольше рендера, поэтому
@@ -357,9 +339,6 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
   }, []);
   const hapticMedium = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-  }, []);
-  const hapticSuccess = useCallback(() => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, []);
   const hapticError = useCallback(() => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
@@ -534,82 +513,15 @@ export function useVoice(options: UseVoiceOptions = {}): UseVoiceReturn {
   // STOP + PROCESS
   // ==========================================================
 
-  // voice-one-brain: деньги/необратимое сервер не исполняет без «да».
-  // Кнопки → /voice/confirm-action; сказать «да» в микрофон тоже работает.
-  const askToConfirm = useCallback((text: string, transcript: string) => {
-    const finish = async (confirm: boolean) => {
-      try {
-        const res = await confirmPendingVoiceAction(confirm);
-        if (isMountedRef.current) {
-          setLastResult({ intent: { action: res.intent ?? 'confirm_action' }, response: res.message, transcript, emotion: res.emotion });
-        }
-        void speakText(res.message);
-      } catch {
-        Alert.alert('Ошибка', 'Не получилось подтвердить. Попробуй ещё раз или скажи «да».');
-      }
-    };
-    Alert.alert('Подтверди', text, [
-      { text: 'Отмена', style: 'cancel', onPress: () => void finish(false) },
-      { text: 'Подтвердить', onPress: () => void finish(true) },
-    ]);
+  // Хук только распознаёт речь: фразу дальше шлёт тот, кто его позвал (строка
+  // ввода → /voice/chat — один мозг). Ветка «сам отправь в /voice/process и
+  // озвучь» была недостижима (все вызовы — transcribeOnly) — убрана 2026-11-09.
+  const processCommand = useCallback(async (transcript: string) => {
+    if (isMountedRef.current) {
+      setLastResult({ intent: { action: 'transcript' }, response: '', transcript, emotion: 'neutral' });
+      setState('idle');
+    }
   }, []);
-
-  const processCommand = useCallback(
-    async (transcript: string) => {
-      if (transcribeOnly) {
-        if (isMountedRef.current) {
-          setLastResult({ intent: { action: 'transcript' }, response: '', transcript, emotion: 'neutral' });
-          setState('idle');
-        }
-        return;
-      }
-      const token = useAuthStore.getState().token;
-      try {
-        // Единый мозг: сервер исполняет команду ДО ответа (или ждёт «да»),
-        // поэтому озвучиваем только его ответ — он правдивый.
-        const processData = await api.post<ProcessResponse>(
-          '/voice/process',
-          { text: transcript },
-          token || undefined,
-        );
-        const result: VoiceResult = {
-          intent: processData.intent ?? { action: 'unknown' },
-          response:
-            processData.response ||
-            `Я услышал: «${transcript}». Но не понял команду.`,
-          transcript,
-          emotion: normalizeEmotion(processData.emotion),
-          openPanel: processData.openPanel ?? null,
-        };
-        if (isMountedRef.current) {
-          setLastResult(result);
-          setState('speaking');
-          hapticSuccess();
-        }
-        void speakText(result.response);
-        const follow = planVoiceFollowUp(processData);
-        if (follow.kind === 'confirm') askToConfirm(follow.text, transcript);
-        // Слот-вопрос («На что потратил?») — показать текстом: следующая фраза
-        // станет значением слота, при выключенном звуке вопрос нельзя пропустить.
-        if (follow.kind === 'ask') Alert.alert('LifeOS', follow.text);
-        // Функциональный setter: прочитанный здесь `state` — из замыкания
-        // момента записи ('recording'), проверка по нему никогда не срабатывала.
-        setTimeout(() => {
-          if (isMountedRef.current) setState((s) => (s === 'speaking' ? 'idle' : s));
-        }, 2500);
-      } catch (err) {
-        console.warn('Voice process failed, showing transcript only', err);
-        if (isMountedRef.current) {
-          const failText = `Я услышал: «${transcript}». Не получилось выполнить — попробуй ещё раз.`;
-          setLastResult({ intent: { action: 'unknown' }, response: failText, transcript, emotion: 'worried' });
-          setState('idle');
-          hapticError();
-          Alert.alert('Не получилось', failText);
-        }
-      }
-    },
-    [transcribeOnly, hapticSuccess, hapticError, askToConfirm],
-  );
 
   const stopRecording = useCallback(async () => {
     if (stateRef.current !== 'recording') return;
