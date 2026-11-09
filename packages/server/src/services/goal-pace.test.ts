@@ -61,8 +61,8 @@ describe('describeGoalPace', () => {
 
 describe('goal-pace — проводка maybeGoalPaceLine (structural)', () => {
   const SRC = readFileSync(join(process.cwd(), 'src/services/goal-pace.ts'), 'utf-8');
-  it('гейт флагом + дедуп против СВОИХ goal:pace + source goal_pace', () => {
-    expect(SRC).toContain('isV2YearLoadEnabled');
+  it('без флага; дедуп против СВОИХ goal:pace + source goal_pace', () => {
+    expect(SRC).not.toContain('isV2YearLoadEnabled');
     expect(SRC).toMatch(/count\([\s\S]*?source: 'goal_pace'[\s\S]*?gte: dayStart/);
     expect(SRC).toContain("'goal:pace:'");
   });

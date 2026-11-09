@@ -5,14 +5,10 @@ import { getUserTimezone } from '../lib/user-context.js';
 import { defineTool } from './_types.js';
 import { linkTaskToGoalInBackground } from '../services/task-goal-link.js';
 import { sanitizeTaskTitle } from '../services/task-title.js';
-import {
-  estimateTaskMinutesInBackground,
-  maybeDayLoadLine,
-} from '../services/day-load.js';
+import { estimateTaskMinutesInBackground } from '../services/day-load.js';
 import { maybeWeekLoadLine } from '../services/week-load.js';
 import { maybeMonthLoadLine } from '../services/month-load.js';
 import { proposeReschedule } from '../services/reschedule.js';
-import { isV2RescheduleEnabled } from '../lib/feature-flags.js';
 
 /**
  * SSOT Step 5 — write-tool. Логика 1:1 с legacy action-executor
@@ -81,31 +77,29 @@ export const createTaskTool = defineTool({
         priority: input.priority || 'medium',
       },
     });
-    // Задача — явный шаг к годовой цели? Фоном (флаг FEATURE_V2_TASK_GOAL_LINK).
+    // Задача — явный шаг к годовой цели? Фоном.
     linkTaskToGoalInBackground(ctx.userId, task.id, title);
     const message = `Задача "${title}" создана на ${day}${
       input.time ? ' в ' + input.time : ''
     }`;
     // #engine slice1: фоновая ИИ-оценка времени задачи (для точности дня,
-    // не блокирует) + реактивная строка «день перегружен». Оба гейтнуты
-    // флагом FEATURE_V2_DAY_LOAD внутри (off → message байт-в-байт).
+    // не блокирует).
     void estimateTaskMinutesInBackground(
       task.id,
       title,
       input.category ?? null,
       ctx.userId,
     );
-    // Перегруз дня (флаг): проверяем ДЕНЬ ЗАДАЧИ (не «сегодня» — прежний баг)
-    // и предлагаем сдвинуть график одним касанием + цели. Есть предложение →
-    // оно вместо каскада строк ниже; нет (флаг выкл./влезает) → как раньше.
+    // Перегруз дня: проверяем ДЕНЬ ЗАДАЧИ (не «сегодня» — прежний баг) и
+    // предлагаем сдвинуть график одним касанием + цели. Есть предложение →
+    // оно вместо каскада строк ниже; нет (влезает) → неделя/месяц.
     const reschedule = await proposeReschedule(ctx.userId, day, task.id);
     // #engine: каскад горизонтов — показываем самый ближний перегруженный.
-    // Флаг вкл. → день задачи уже проверил движок выше; старую строку про
-    // СЕГОДНЯ не показываем (для задачи на завтра она говорила не о том дне).
-    const dayLoad = reschedule || isV2RescheduleEnabled(ctx.userId) ? null : await maybeDayLoadLine(ctx.userId, new Date());
-    const weekLoad = reschedule || dayLoad ? null : await maybeWeekLoadLine(ctx.userId, new Date());
-    const monthLoad = reschedule || dayLoad || weekLoad ? null : await maybeMonthLoadLine(ctx.userId, new Date());
-    const extra = reschedule?.text ?? dayLoad ?? weekLoad ?? monthLoad;
+    // День задачи уже проверил движок выше (старая строка про СЕГОДНЯ —
+    // для задачи на завтра говорила не о том дне — удалена).
+    const weekLoad = reschedule ? null : await maybeWeekLoadLine(ctx.userId, new Date());
+    const monthLoad = reschedule || weekLoad ? null : await maybeMonthLoadLine(ctx.userId, new Date());
+    const extra = reschedule?.text ?? weekLoad ?? monthLoad;
     // Проактивный конфликт ПРИ СОЗДАНИИ: timed-задача наложилась на
     // встречу/задачу того же дня → «не успеешь» прямо в ответе. Best-effort.
     let conflictWarn = '';

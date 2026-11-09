@@ -5,7 +5,6 @@ import { reflect, type ReflectorFacts } from './reflector-core.js';
 import { persistCandidates } from './insight-store.js';
 import { planVsFact } from './plan-vs-fact.js';
 import { localDayStartUTC } from '../lib/tz.js';
-import { isV2YearLoadEnabled } from '../lib/feature-flags.js';
 import { pickCoachableGoal } from './savings-pace.js';
 import { isMoneyGoal } from './goal-pace.js';
 import type { InsightCandidate } from './insight-core.js';
@@ -158,7 +157,6 @@ export async function gatherReflectorFacts(
         progress: g.progress,
         createdAt: g.createdAt,
       })),
-    yearPacingEnabled: isV2YearLoadEnabled(userId),
   };
 }
 

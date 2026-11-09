@@ -8,17 +8,17 @@ describe('create_task — хук движка пересечения (день)'
   it('фоновая оценка времени задачи', () => {
     expect(SRC).toContain('estimateTaskMinutesInBackground');
   });
-  it('реактивная строка «день перегружен» дописывается к ответу', () => {
-    expect(SRC).toContain('maybeDayLoadLine');
-    expect(SRC).toMatch(/maybeDayLoadLine[\s\S]*?message/);
+  it('день задачи проверяет движок сдвига (старой строки про «сегодня» нет)', () => {
+    expect(SRC).toContain('proposeReschedule(');
+    expect(SRC).not.toContain('maybeDayLoadLine');
   });
   it('week-хук после дня (день в приоритете)', () => {
     expect(SRC).toContain('maybeWeekLoadLine');
-    expect(SRC).toMatch(/dayLoad \? null : await maybeWeekLoadLine/);
+    expect(SRC).toMatch(/reschedule \? null : await maybeWeekLoadLine/);
   });
   it('month-хук — третий уровень каскада (после дня и недели)', () => {
     expect(SRC).toContain('maybeMonthLoadLine');
-    expect(SRC).toMatch(/dayLoad \|\| weekLoad \? null : await maybeMonthLoadLine/);
-    expect(SRC).toMatch(/\?\? weekLoad \?\? monthLoad/);
+    expect(SRC).toMatch(/reschedule \|\| weekLoad \? null : await maybeMonthLoadLine/);
+    expect(SRC).toMatch(/reschedule\?\.text \?\? weekLoad \?\? monthLoad/);
   });
 });

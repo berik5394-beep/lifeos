@@ -26,8 +26,8 @@ describe('describeMonthLoad', () => {
 
 describe('month-load — проводка (structural)', () => {
   const SRC = readFileSync(join(process.cwd(), 'src/services/month-load.ts'), 'utf-8');
-  it('maybeMonthLoadLine: флаг + fit + дедуп против СВОИХ time:month_load', () => {
-    expect(SRC).toContain('isV2MonthLoadEnabled');
+  it('maybeMonthLoadLine: без флага; fit + дедуп против СВОИХ time:month_load', () => {
+    expect(SRC).not.toContain('isV2MonthLoadEnabled');
     expect(SRC).toContain('computeCapacityFit');
     expect(SRC).toMatch(/count\([\s\S]*?source: 'month_load'[\s\S]*?gte: dayStart/);
     expect(SRC).toContain("'time:month_load'");

@@ -61,10 +61,7 @@ export interface ReflectorFacts {
     progress: number;
     createdAt: Date;
   }[];
-  /** Флаг ГОД-пейсинга (isV2YearLoadEnabled). */
-  yearPacingEnabled?: boolean;
 }
-
 
 /** Статус портфеля → метаданные инсайта. none/on_track_all отсутствуют
  *  → молчим (describePortfolioPace тоже вернёт null). */
@@ -166,30 +163,28 @@ export function reflect(f: ReflectorFacts): InsightCandidate[] {
     }
   }
 
-  // 4. ГОД-пейсинг измеримых не-денежных целей (additive, под флагом).
+  // 4. ГОД-пейсинг измеримых не-денежных целей (additive).
   //    Деньги уже покрыты блоком выше; здесь — книги/вес/навыки.
-  if (f.yearPacingEnabled) {
-    for (const g of f.measurableGoals ?? []) {
-      const pace = computeGoalPace(
-        { target: g.target, targetDate: g.targetDate, progress: g.progress, createdAt: g.createdAt },
-        f.now,
-      );
-      if (pace.monthsElapsed < 0.5) continue; // не нудим про свежие цели
-      const line = describeGoalPace(g.goalText, pace, g.target);
-      if (!line) continue;
-      out.push({
-        kind: 'goal_pace_behind',
-        scope: 'goal:pace:' + g.id,
-        severity: 4,
-        message: line,
-        rationale: `goal pace ${pace.status} done=${Math.round(pace.done)}/${g.target}`,
-        // ВАЖНО: проактив = 'reflector', реактив (maybeGoalPaceLine) =
-        // 'goal_pace'. Разные source → не глушат друг друга в один день
-        // (урок savings-coach 2026-06-02). scopeKey общий — для cooldown.
-        source: 'reflector',
-        dismissKey: 'reflector_goal_pace_' + g.id,
-      });
-    }
+  for (const g of f.measurableGoals ?? []) {
+    const pace = computeGoalPace(
+      { target: g.target, targetDate: g.targetDate, progress: g.progress, createdAt: g.createdAt },
+      f.now,
+    );
+    if (pace.monthsElapsed < 0.5) continue; // не нудим про свежие цели
+    const line = describeGoalPace(g.goalText, pace, g.target);
+    if (!line) continue;
+    out.push({
+      kind: 'goal_pace_behind',
+      scope: 'goal:pace:' + g.id,
+      severity: 4,
+      message: line,
+      rationale: `goal pace ${pace.status} done=${Math.round(pace.done)}/${g.target}`,
+      // ВАЖНО: проактив = 'reflector', реактив (maybeGoalPaceLine) =
+      // 'goal_pace'. Разные source → не глушат друг друга в один день
+      // (урок savings-coach 2026-06-02). scopeKey общий — для cooldown.
+      source: 'reflector',
+      dismissKey: 'reflector_goal_pace_' + g.id,
+    });
   }
 
   return out;

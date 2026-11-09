@@ -23,39 +23,6 @@ function isEnabledForUser(envValue: string | undefined, userId: string): boolean
 }
 
 /**
- * Движок пересечения, срез 1 (день перегружен). Off → create_task ответ
- * байт-в-байт (нет оценки времени, нет строки нагрузки).
- */
-export function isV2DayLoadEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_DAY_LOAD, userId);
-}
-
-/** Движок пересечения, срез 2 (неделя перегружена). Off → байт-в-байт. */
-export function isV2WeekLoadEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_WEEK_LOAD, userId);
-}
-
-/** Движок пересечения, срез 3 (месяц). Гейтит и data-слой (оценка целей),
- *  и будущий month-load нудж. Off → байт-в-байт. */
-export function isV2MonthLoadEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_MONTH_LOAD, userId);
-}
-
-/** Движок пересечения, горизонт ГОД (пейсинг измеримых целей). Off → байт-в-байт. */
-export function isV2YearLoadEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_YEAR_LOAD, userId);
-}
-
-/**
- * Перегруз дня → робот предлагает сдвинуть график одним касанием + предупреждение
- * о целях недели/месяца/года (спека 2026-11-05-day-overload-reschedule). Off →
- * create_task / POST /tasks / PUT /tasks байт-идентичны прежним.
- */
-export function isV2RescheduleEnabled(userId: string): boolean {
-  return isEnabledForUser(process.env.FEATURE_V2_RESCHEDULE, userId);
-}
-
-/**
  * Разбор цели при постановке (спека 2026-11-08-goal-intake-check): после записи
  * годовой цели — деньги/темп/время/привычки + одно предложение «да». OFF → ответ
  * «Цель записана…» байт-в-байт как раньше, разбор не считается и не пишется.

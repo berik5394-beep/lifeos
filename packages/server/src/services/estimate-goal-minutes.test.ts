@@ -29,8 +29,8 @@ describe('estimate-goal-minutes — проводка (structural)', () => {
     expect(SRC).toContain('createAnthropic');
     expect(SRC).toContain('MODELS.haiku');
   });
-  it('фоновый писатель: гейт флагом + идемпотентный updateMany', () => {
-    expect(SRC).toContain('isV2MonthLoadEnabled');
+  it('фоновый писатель: без флага, идемпотентный updateMany', () => {
+    expect(SRC).not.toContain('isV2MonthLoadEnabled');
     expect(SRC).toMatch(/weeklyGoal\.updateMany/);
     expect(SRC).toMatch(/estimatedMinutes: null/);
   });

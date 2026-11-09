@@ -1,7 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { localDayStartUTC, localDateOnlyUTC, localMonthOnlyUTC, localTimeStr } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
-import { isV2MonthLoadEnabled } from '../lib/feature-flags.js';
 import { sumWeekCapacity } from '../tools/_slots.js';
 import { computeCapacityFit, type CapacityFit, type CapacityItem } from './capacity-fit.js';
 import { mapPriority, DEFAULT_TASK_MINUTES } from './day-load.js';
@@ -51,7 +50,7 @@ export async function gatherMonthLoad(
       where: { userId, date: { gte: todayStart, lt: monthEndExcl } },
       select: { date: true, startTime: true, endTime: true },
     }),
-    // Шаги по сделкам месяца (то же окно, что у задач; флаг выкл. → []).
+    // Шаги по сделкам месяца (то же окно, что у задач).
     dealStepLoadItems(userId, monthStart, monthEndExcl),
   ]);
 
@@ -90,7 +89,6 @@ export async function gatherMonthLoad(
 
 /** Реактивная строка «месяц перегружен». Best-effort, ≤1/день дедуп против СВОИХ. */
 export async function maybeMonthLoadLine(userId: string, now: Date = new Date()): Promise<string | null> {
-  if (!isV2MonthLoadEnabled(userId)) return null;
   try {
     const { capacity, items } = await gatherMonthLoad(userId, now);
     const fit = computeCapacityFit({ capacity, items });

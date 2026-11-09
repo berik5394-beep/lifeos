@@ -1,7 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { addCivilDays, dateOnlyUTC, localDateStr, localMonthOnlyUTC, localTimeStr, localWeekStartUTC } from '../lib/tz.js';
-import { isV2RescheduleEnabled } from '../lib/feature-flags.js';
 import { availableMinutesToday } from '../tools/_slots.js';
 import { computeCapacityFit } from './capacity-fit.js';
 import { DEFAULT_TASK_MINUTES, mapPriority } from './day-load.js';
@@ -279,7 +278,7 @@ async function gatherWindow(userId: string, day: string, today: string, nowHHMM:
       where: { userId, date: { gte: from, lt: toExcl } },
       select: { date: true, startTime: true, endTime: true },
     }),
-    // Шаги по сделкам — нагрузка дня, но не двигаем (v1): fixed. Флаг выкл. → [].
+    // Шаги по сделкам — нагрузка дня, но не двигаем (v1): fixed.
     listDealSteps(userId, from, toExcl),
   ]);
   const days: ShiftDay[] = [];
@@ -405,7 +404,7 @@ export interface RescheduleProposal {
 /**
  * День `day` перегружен после добавления/переноса задачи `keepId`? → текст
  * предложения (+ PendingAction с переносами, если есть что двигать). null —
- * флаг выкл., день прошёл или влезает. Best-effort: не бросает.
+ * день прошёл или влезает. Best-effort: не бросает.
  */
 export async function proposeReschedule(
   userId: string,
@@ -417,7 +416,6 @@ export async function proposeReschedule(
    *  не на то, что юзер видит. */
   opts: { fromCard?: boolean } = {},
 ): Promise<RescheduleProposal | null> {
-  if (!isV2RescheduleEnabled(userId)) return null;
   try {
     const tz = await getUserTimezone(userId);
     const today = localDateStr(tz, now);
