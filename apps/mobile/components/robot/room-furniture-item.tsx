@@ -15,6 +15,7 @@ import Animated, {
 import { RENDER_SCALE as R, faceWeight, placeAt, surfaceFace, surfaceScaleAt, surfaceToScene, type RoomCam, type Surface } from '@/services/room-geometry';
 import { TIER_COLOR, roomItemEmoji, roomItemLabel, spotOf, tierOf, type RoomItem } from '@/services/room-catalog';
 import { SoftSpot } from '@/components/room/face-light';
+import { FloorLamp } from '@/components/room/floor-lamp';
 import { hapticLight, hapticMedium } from '@/services/haptics';
 
 const SIZE = 56 * R;
@@ -220,7 +221,12 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
             pointerEvents="none"
           />
         )}
-        <Text style={[styles.emoji, onWall ? styles.hung : styles.standing]}>{roomItemEmoji(item.itemKey)}</Text>
+        {item.itemKey === 'lamp' ? (
+          // Торшер нарисован: эмодзи торшера нет, а 💡 на полу выглядела ошибкой.
+          <FloorLamp size={SIZE} />
+        ) : (
+          <Text style={[styles.emoji, onWall ? styles.hung : styles.standing]}>{roomItemEmoji(item.itemKey)}</Text>
+        )}
         {badge ? (
           <Animated.View style={[styles.badge, badgeStyle]} pointerEvents="none">
             <Text style={styles.badgeText}>{badge}</Text>
