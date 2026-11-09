@@ -88,3 +88,20 @@ describe('REST /deals', () => {
     expect((await app.inject({ method: 'GET', url: '/deals', headers })).statusCode).toBe(404);
   });
 });
+
+describe('аванс + «выиграна» — доход не задваивается (аудит 2026-11-09)', () => {
+  it('сделка 2 млн, аванс 500к → предложение и запись — 1,5 млн', async () => {
+    const { headers, userId } = await user('adv');
+    const { noteDealAdvance } = await import('../services/deals/index.js');
+    const c = await app.inject({ method: 'POST', url: '/deals', headers, payload: { personName: 'Ахмет', title: 'станок', amount: 2000000 } });
+    const id = c.json().deal.id as string;
+    await prisma.income.create({ data: { userId, date: new Date(), source: 'аванс Ахмет', amount: 500000 } });
+    await noteDealAdvance(userId, id, 500000);
+    const won = await app.inject({ method: 'PUT', url: `/deals/${id}`, headers, payload: { stage: 'won' } });
+    expect(won.json()).toMatchObject({ incomeOffer: true, incomeDue: 1500000 });
+    const inc = await app.inject({ method: 'POST', url: `/deals/${id}/income`, headers });
+    expect(inc.json()).toMatchObject({ ok: true, already: false, amount: 1500000 });
+    const total = await prisma.income.aggregate({ where: { userId }, _sum: { amount: true } });
+    expect(total._sum.amount).toBe(2000000);
+  });
+});

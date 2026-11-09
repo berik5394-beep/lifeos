@@ -103,8 +103,12 @@ export function eventLine(e: DealEvent): string {
   return `${ddmm(civilToday(new Date(e.at)))} · ${eventText(e)}`;
 }
 
-export function incomeOfferText(d: Pick<Deal, 'amount'>): string {
-  return `Записать доход ${fmtMoneyExact(d.amount ?? 0)}?`;
+export function incomeOfferText(d: Pick<Deal, 'amount' | 'incomeDue'>): string {
+  const due = d.incomeDue ?? d.amount ?? 0;
+  // Авансы уже записаны — предлагаем только остаток.
+  return d.incomeDue != null && d.amount != null && d.incomeDue < d.amount
+    ? `Авансы уже записаны — записать остаток ${fmtMoneyExact(due)}?`
+    : `Записать доход ${fmtMoneyExact(due)}?`;
 }
 
 export function canRecordIncome(d: Deal): boolean {

@@ -264,7 +264,9 @@ export async function recordDealIncome(
   if (deal.stage !== 'won') return { ok: false, reason: 'not_won' };
   if (deal.wonIncomeId) return { ok: true, already: true, amount: deal.amount };
   const tz = await getUserTimezone(userId);
-  const amount = deal.amount;
+  // Авансы уже записаны доходом — пишем только остаток; всё оплачено авансами — нечего писать.
+  const amount = (await dealIncomeDue(deal)) ?? deal.amount;
+  if (amount <= 0) return { ok: true, already: true, amount: 0 };
   if (!opts.force) {
     const dup = await prisma.income.findFirst({
       where: {
@@ -391,9 +393,11 @@ export async function routeIncomeToDeal(
     return { kind: 'ask', message: `${describeWhichDeal(name, deals, 'Какая оплачена?')} ${JUST_INCOME_HINT}`, dealId: null, options };
   }
   const deal = deals[0];
-  // Ревью-3 I3: вопрос про одну сделку — ответ «да»/«нет» решает (pending помнит dealId).
+  // Остаток после авансов: «пришло 1,5 млн» по сделке 2 млн с авансом 500к — это и есть доплата.
+  const due = await dealIncomeDue(deal);
   const yesNo = `«Да» — закрою сделку на ${fmtMoneyExact(amount)}, «нет» — запишу доходом и отмечу в сделке аванс.`;
-  if (deal.amount != null && deal.amount !== amount) {
+  // Ревью-3 I3: вопрос про одну сделку — ответ «да»/«нет» решает (pending помнит dealId).
+  if (deal.amount != null && deal.amount !== amount && due !== amount) {
     return {
       kind: 'ask',
       message: `Сделка ${name} — ${deal.title} на ${fmtMoneyExact(deal.amount)}, а пришло ${fmtMoneyExact(amount)}. Это полная оплата по сделке? ${yesNo} ${JUST_INCOME_HINT}`,
@@ -417,9 +421,32 @@ export async function routeIncomeToDeal(
   return { kind: 'won', message, dealId: deal.id, amount, incomeOffer };
 }
 
-/** Аванс по сделке — заметкой (после подтверждённого дохода), стадию не трогаем. */
+/**
+ * Аванс по сделке — заметкой (после подтверждённого дохода), стадию не трогаем.
+ * Сумма — в `to` заметки: по ней доход при «выиграна» = сумма сделки − авансы
+ * (аудит 2026-11-09: аванс 500к + «выиграна» на 2 млн писали 2,5 млн дохода).
+ */
 export async function noteDealAdvance(userId: string, dealId: string, amount: number, now: Date = new Date()): Promise<void> {
   await updateDeal(userId, dealId, { note: `аванс ${fmtMoneyExact(amount)}` }, now);
+  const last = await prisma.dealEvent.findFirst({ where: { dealId, kind: 'note' }, orderBy: { at: 'desc' }, select: { id: true } });
+  if (last) await prisma.dealEvent.update({ where: { id: last.id }, data: { to: String(amount) } });
+}
+
+/** Сколько уже пришло авансами по сделке (заметки «аванс …»). */
+export async function dealAdvancesSum(dealId: string): Promise<number> {
+  const notes = await prisma.dealEvent.findMany({ where: { dealId, kind: 'note', text: { startsWith: 'аванс ' } }, select: { to: true, text: true } });
+  let sum = 0;
+  for (const n of notes) {
+    const v = n.to != null ? Number(n.to) : Number((n.text ?? '').replace(/\D/g, ''));
+    if (Number.isFinite(v) && v > 0) sum += v;
+  }
+  return sum;
+}
+
+/** Доход, который осталось записать по сделке: сумма − авансы (не меньше 0). */
+export async function dealIncomeDue(deal: { id: string; amount: number | null }): Promise<number | null> {
+  if (deal.amount == null) return null;
+  return Math.max(0, deal.amount - (await dealAdvancesSum(deal.id)));
 }
 
 export async function listDeals(userId: string, status: 'open' | 'closed', now: Date = new Date()): Promise<Deal[]> {

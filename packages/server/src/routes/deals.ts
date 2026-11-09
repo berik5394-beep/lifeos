@@ -5,7 +5,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import {
-  createDeal, updateDeal, listDeals, recordDealIncome, setSalesPlan, salesPlanStatus, isDealStage, type DealStage,
+  createDeal, updateDeal, listDeals, recordDealIncome, dealIncomeDue, setSalesPlan, salesPlanStatus, isDealStage, type DealStage,
   describePossibleDuplicate, STAGE_LABEL, fmtMoneyExact,
 } from '../services/deals/index.js';
 import { captureActivity } from '../services/tool-activity-summary.js';
@@ -95,7 +95,9 @@ export async function dealRoutes(app: FastifyInstance): Promise<void> {
             }
           : { type: 'deal_updated', content: `Обновил сделку ${dealHead(r.deal)}` },
       );
-      return { deal: r.deal, step: r.step, incomeOffer: r.incomeOffer };
+      // Сколько записать доходом при «выиграна»: сумма − авансы (аудит 2026-11-09).
+      const incomeDue = r.incomeOffer ? await dealIncomeDue(r.deal) : null;
+      return { deal: r.deal, step: r.step, incomeOffer: r.incomeOffer && incomeDue !== 0, incomeDue };
     } catch (err) {
       if (err instanceof Error && err.message === 'not_found') return reply.status(404).send({ message: 'Сделка не найдена' });
       throw err;

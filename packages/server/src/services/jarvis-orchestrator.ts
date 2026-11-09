@@ -54,7 +54,7 @@ import {
 } from './v2-enrichment.js';
 import { withTimeout } from '../lib/with-timeout.js';
 import { RESCHEDULE_ACTION, applyReschedule } from './reschedule.js';
-import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, openDealsForMatching, DEAL_INCOME_CHOICE, PARTIAL_PAYMENT, JUST_INCOME_EXIT, JUST_INCOME_RE } from './deals/index.js';
+import { DEAL_INCOME_ACTION, recordDealIncome, fmtMoneyExact, routeIncomeToDeal, describePossibleDuplicate, updateDeal, noteDealAdvance, textMentionsClient, openDealsForMatching, DEAL_INCOME_CHOICE, PARTIAL_PAYMENT, JUST_INCOME_EXIT, JUST_INCOME_RE, dealAdvancesSum } from './deals/index.js';
 import { isV2DealsEnabled } from '../lib/feature-flags.js';
 import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.js';
 import { getUserAxesStore } from './user-axes/index.js';
@@ -797,9 +797,12 @@ async function confirmDealIncome(userId: string, input: Record<string, unknown>)
     }
     // Суммы нет — ставим из предложения при любой стадии (в панели могли уже отметить
     // «выиграна» без суммы). «Да, это полная оплата» (fullPayment) — сумма сделки = пришедшая.
-    const setAmount = offered != null && (cur.amount == null || (input.fullPayment === true && cur.amount !== offered));
+    // С авансами «полная оплата» = авансы + пришедшее (а не только пришедшее).
+    const advances = offered != null ? await dealAdvancesSum(dealId) : 0;
+    const total = offered != null ? offered + advances : null;
+    const setAmount = total != null && (cur.amount == null || (input.fullPayment === true && cur.amount !== total));
     if (cur.stage !== 'won' || setAmount) {
-      await updateDeal(userId, dealId, { ...(cur.stage !== 'won' ? { stage: 'won' as const } : {}), ...(setAmount ? { amount: offered } : {}) });
+      await updateDeal(userId, dealId, { ...(cur.stage !== 'won' ? { stage: 'won' as const } : {}), ...(setAmount && total != null ? { amount: total } : {}) });
       if (cur.stage !== 'won') lines.push(`Сделка ${cur.personName} — ${cur.title}: выиграна.`);
     }
   }

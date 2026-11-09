@@ -78,7 +78,9 @@ function rememberAvailable(v: boolean): void {
   storage.set(AVAILABLE_KEY, String(v));
 }
 
-type MutationReply = { deal: Deal; incomeOffer: boolean };
+type MutationReply = { deal: Deal; incomeOffer: boolean; incomeDue?: number | null };
+/** Остаток к записи (сумма − авансы) — в сделку для текста «Записать доход N ₸?». */
+const withDue = (r: MutationReply): Deal => (r.incomeDue != null ? { ...r.deal, incomeDue: r.incomeDue } : r.deal);
 
 export const useDealStore = create<DealState>((set, get) => {
   /**
@@ -210,7 +212,7 @@ export const useDealStore = create<DealState>((set, get) => {
       mutated();
       applyDeal(r.deal);
       if (patch.amount !== undefined) await refreshPlan();
-      return { deal: r.deal, incomeOffer: r.incomeOffer };
+      return { deal: withDue(r), incomeOffer: r.incomeOffer };
     },
 
     moveStage: async (id, stage, lostReason) => {
@@ -234,7 +236,7 @@ export const useDealStore = create<DealState>((set, get) => {
       mutated();
       applyDeal(r.deal);
       await refreshPlan();
-      return { deal: r.deal, incomeOffer: r.incomeOffer };
+      return { deal: withDue(r), incomeOffer: r.incomeOffer };
     },
 
     recordIncome: async (id, force = false) => {

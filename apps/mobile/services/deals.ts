@@ -32,6 +32,8 @@ export interface Deal {
   closedAt: string | null;
   lostReason: string | null;
   wonIncomeId: string | null;
+  /** Сколько записать доходом при «выиграна» (сумма − авансы); только в ответе изменения. */
+  incomeDue?: number | null;
   createdAt: string;
   updatedAt: string;
 }
