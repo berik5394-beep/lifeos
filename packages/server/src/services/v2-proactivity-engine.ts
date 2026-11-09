@@ -1104,7 +1104,7 @@ async function detectWeeklyGoalStall(userId: string): Promise<NudgeCandidate[]> 
   try {
     const tz = await getUserTimezone(userId);
     const goals = await prisma.weeklyGoal.findMany({
-      where: { userId, weekStart: localWeekStartUTC(tz) },
+      where: { userId, weekStart: localWeekStartUTC(tz), archivedAt: null },
       select: { goalText: true, completed: true },
     });
     const cand = weeklyStallCandidate(localDayOfWeek(tz), goals);
@@ -1162,7 +1162,7 @@ async function detectMonthlyGoalStall(userId: string): Promise<NudgeCandidate[]>
       Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1),
     );
     const weeks = await prisma.weeklyGoal.findMany({
-      where: { userId, weekStart: { gte: monthStart, lt: nextMonth } },
+      where: { userId, weekStart: { gte: monthStart, lt: nextMonth }, archivedAt: null },
       select: { completed: true },
     });
     const weekRollup = {

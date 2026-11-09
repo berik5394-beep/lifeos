@@ -8,3 +8,10 @@ describe('прогресс цели — проценты, как на серве
     expect(goalPercent(null)).toBe(0);
   });
 });
+
+describe('аудит 2026-11-09: 1% — это 1%', () => {
+  it('целое 1 → 1%, а не «выполнено»', () => {
+    expect(goalPercent(1)).toBe(1);
+    expect(goalPercent(0.5)).toBe(50);
+  });
+});

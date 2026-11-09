@@ -195,7 +195,7 @@ async function gatherAllUserData(userId: string): Promise<RawUserData | null> {
       select: { area: true, goalText: true, progress: true },
     }),
     prisma.weeklyGoal.findMany({
-      where: { userId, weekStart: { gte: start4w } },
+      where: { userId, weekStart: { gte: start4w }, archivedAt: null },
       select: { goalText: true, completed: true, weekStart: true },
     }),
     calculateStreak(userId),

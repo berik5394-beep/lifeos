@@ -52,7 +52,7 @@ export async function gatherBriefExtras(userId: string, tz: string, now: Date = 
     // Деньги шире расходов: доход месяца + запас денег (только тревожный).
     prisma.income.aggregate({ where: { userId, date: { gte: monthStart, lt: nextMonth } }, _sum: { amount: true } }).catch(() => null),
     // План недели и месяца (раньше в брифе только одна годовая цель).
-    prisma.weeklyGoal.findMany({ where: { userId, weekStart: localWeekStartUTC(tz, now) }, select: { completed: true } }).catch(() => []),
+    prisma.weeklyGoal.findMany({ where: { userId, weekStart: localWeekStartUTC(tz, now), archivedAt: null }, select: { completed: true } }).catch(() => []),
     prisma.monthlyGoal.findMany({ where: { userId, monthStart }, select: { completed: true } }).catch(() => []),
     isV2RunwayEnabled(userId) ? buildRunway(userId, now).catch(() => null) : Promise.resolve(null),
   ]);

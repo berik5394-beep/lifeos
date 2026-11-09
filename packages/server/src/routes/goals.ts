@@ -56,13 +56,14 @@ export async function goalRoutes(app: FastifyInstance): Promise<void> {
         where: {
           userId: request.userId,
           weekStart: weekDate,
+          archivedAt: null,
         },
         orderBy: { order: 'asc' },
       });
     }
 
     return prisma.weeklyGoal.findMany({
-      where: { userId: request.userId },
+      where: { userId: request.userId, archivedAt: null },
       orderBy: [{ weekStart: 'desc' }, { order: 'asc' }],
       take: 20,
     });

@@ -63,7 +63,8 @@ export function yearElapsedPct(now: Date): number {
 
 /** progress (0..1 или 0..100) → нормализованный процент 0..100. */
 function normalizePct(progress: number): number {
-  return progress > 1 ? Math.round(progress) : Math.round(progress * 100);
+  // Целое 1 = 1% (а не 100% «с опережением»); доля — только дробная < 1 (старые записи).
+  return progress < 1 && !Number.isInteger(progress) ? Math.round(progress * 100) : Math.round(progress);
 }
 
 /**

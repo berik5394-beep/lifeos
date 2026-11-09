@@ -34,7 +34,7 @@ export const createWeeklyGoalTool = defineTool({
     const weekStart = localWeekStartUTC(tz);
 
     const week = await prisma.weeklyGoal.findMany({
-      where: { userId, weekStart },
+      where: { userId, weekStart, archivedAt: null },
       select: { id: true, goalText: true },
     });
     // Дедуп: не плодим одинаковые цели недели.

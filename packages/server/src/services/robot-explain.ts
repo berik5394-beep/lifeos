@@ -160,7 +160,7 @@ export async function gatherPanelFacts(
       const [yearly, weekly] = await Promise.all([
         prisma.yearlyGoal.findMany({ where: { userId, year }, select: { goalText: true, progress: true }, take: 10 }),
         prisma.weeklyGoal.findMany({
-          where: { userId, weekStart: localWeekStartUTC(tz, now) },
+          where: { userId, weekStart: localWeekStartUTC(tz, now), archivedAt: null },
           select: { goalText: true, completed: true },
           take: 10,
         }),

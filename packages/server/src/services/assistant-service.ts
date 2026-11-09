@@ -152,7 +152,7 @@ export async function gatherAssistantContext(
       // та же точка, что и create_weekly_goal (write↔read совпадают).
       const d = localWeekStartUTC(tz);
       return prisma.weeklyGoal.findMany({
-        where: { userId, weekStart: d },
+        where: { userId, weekStart: d, archivedAt: null },
         select: { goalText: true, completed: true },
         orderBy: { order: 'asc' },
         take: 10,

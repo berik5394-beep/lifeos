@@ -542,6 +542,8 @@ export async function persistPlan(
         },
         data: { archivedAt: now },
       });
+      // active:false — иначе архивная привычка старого плана видна на экране
+      // рядом с новой и «отметь X» попадало в неё (аудит 2026-11-09).
       const ah = await tx.habit.updateMany({
         where: {
           userId,
@@ -549,7 +551,7 @@ export async function persistPlan(
           derivedFrom: 'planner',
           archivedAt: null,
         },
-        data: { archivedAt: now },
+        data: { archivedAt: now, active: false },
       });
       archived = aw.count + ah.count;
     }

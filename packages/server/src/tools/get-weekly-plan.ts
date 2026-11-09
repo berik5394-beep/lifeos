@@ -25,7 +25,7 @@ export const getWeeklyPlanTool = defineTool({
   handler: async (_input, ctx) => {
     const m = localWeekStartUTC(await getUserTimezone(ctx.userId));
     const wg = await prisma.weeklyGoal.findMany({
-      where: { userId: ctx.userId, weekStart: m },
+      where: { userId: ctx.userId, weekStart: m, archivedAt: null },
       select: { goalText: true, completed: true },
       orderBy: { order: 'asc' },
       take: 12,

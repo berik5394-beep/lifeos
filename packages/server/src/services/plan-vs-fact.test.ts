@@ -135,3 +135,11 @@ describe('planVsFact — planStale (честный boolean, не догадка)
     expect(r.goals[0].planStale).toBe(false);
   });
 });
+
+describe('аудит 2026-11-09: прогресс 1 — это 1%, не 100%', () => {
+  it('целое 1 → 1%', () => {
+    const r = planVsFact([{ area: 'career', goalText: '100 книг', progress: 1, planWeeks: 0, planBuiltAt: null, updatedAt: new Date('2026-06-01') } as never], new Date('2026-07-01'));
+    expect(r.goals[0].progressPct).toBe(1);
+    expect(r.goals[0].status).toBe('отстаёт');
+  });
+});

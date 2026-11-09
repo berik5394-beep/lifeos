@@ -33,7 +33,7 @@ export const completePeriodGoalTool = defineTool({
     const [week, month] = await Promise.all([
       input.period === 'month'
         ? Promise.resolve([])
-        : prisma.weeklyGoal.findMany({ where: { userId, weekStart: localWeekStartUTC(tz) }, select: { id: true, goalText: true, completed: true } }),
+        : prisma.weeklyGoal.findMany({ where: { userId, weekStart: localWeekStartUTC(tz), archivedAt: null }, select: { id: true, goalText: true, completed: true } }),
       input.period === 'week'
         ? Promise.resolve([])
         : prisma.monthlyGoal.findMany({ where: { userId, monthStart: localMonthOnlyUTC(tz) }, select: { id: true, goalText: true, completed: true } }),
