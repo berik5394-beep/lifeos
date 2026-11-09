@@ -31,7 +31,7 @@ export const moveTaskTool = defineTool({
   examples: ['перенеси отчёт на завтра', 'звонок маме перенеси на 19:00'],
   handler: async (input, ctx) => {
     const userId = ctx.userId;
-    if (!input.newDate && input.newTime === undefined) return { message: `На когда перенести «${input.title}»?` };
+    if (!input.newDate && input.newTime === undefined) return { message: `На когда перенести «${input.title}»?`, needsInput: true };
     const candidates = await prisma.task.findMany({
       where: { userId, completed: false, cancelled: false },
       orderBy: { createdAt: 'desc' },
@@ -42,7 +42,7 @@ export const moveTaskTool = defineTool({
     const pick = pickOpenTask(input.title, candidates);
     if (pick.kind === 'none') return { message: `Не нашёл открытую задачу «${input.title}».`, notFound: true };
     if (pick.kind === 'many') {
-      return { message: `Какую перенести: ${pick.tasks.slice(0, 4).map((t) => `«${t.title}»`).join(', ')}?` };
+      return { message: `Какую перенести: ${pick.tasks.slice(0, 4).map((t) => `«${t.title}»`).join(', ')}?`, needsInput: true };
     }
     const task = pick.task;
 

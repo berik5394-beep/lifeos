@@ -32,7 +32,7 @@ export const setBirthdayTool = defineTool({
   handler: async (input, ctx) => {
     const bday = parseBirthday({ day: input.day, month: input.month, year: input.year });
     if (!bday) {
-      return { message: 'Не понял дату ДР — проверь день и месяц.' };
+      return { message: 'Не понял дату ДР — проверь день и месяц.', needsInput: true };
     }
     const entity = await getEntityGraph().upsertEntity(ctx.userId, {
       type: 'person',

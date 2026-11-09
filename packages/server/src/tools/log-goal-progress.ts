@@ -48,11 +48,11 @@ export const logGoalProgressTool = defineTool({
     });
 
     if (candidates.length === 0) {
-      return { message: `Не нашёл годовую цель про «${input.goalQuery}». Скажи точнее или поставь цель.` };
+      return { message: `Не нашёл годовую цель про «${input.goalQuery}». Скажи точнее или поставь цель.`, needsInput: true };
     }
     if (candidates.length > 1) {
       const list = candidates.map((g) => `«${g.goalText}»`).join(' / ');
-      return { message: `По какой цели отметить прогресс: ${list}? Уточни.` };
+      return { message: `По какой цели отметить прогресс: ${list}? Уточни.`, needsInput: true };
     }
 
     const g = candidates[0];

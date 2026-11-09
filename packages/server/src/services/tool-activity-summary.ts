@@ -41,7 +41,8 @@ function num(obj: unknown, key: string): number | undefined {
 }
 
 /**
- * Инструмент НЕ сделал дело: ошибка, «не найдено», ok:false, выключен флагом.
+ * Инструмент НЕ сделал дело: ошибка, «не найдено», ok:false, выключен флагом,
+ * встречный вопрос (needsInput) или ждёт подтверждения (pending).
  * Такое в память не пишем — раньше «закрой задачу X» без задачи X записывало
  * «Выполнил задачу «X»», и мозг «помнил» несделанное.
  */
@@ -52,8 +53,19 @@ export function isFailedResult(result: unknown): boolean {
     (typeof r.error === 'string' && r.error.length > 0) ||
     r.notFound === true ||
     r.ambiguous === true ||
-    r.ok === false
+    r.ok === false ||
+    // Аудит 2026-11-09: инструмент переспросил («Какую цель?», «На когда?») или
+    // только предложил и ждёт «да» (suggest_goal) — дела ещё нет: в память не
+    // пишем («Цель на год «машина»» после ответа «нет»), записью не считаем.
+    r.needsInput === true ||
+    r.pending === true
   );
+}
+
+/** Название из ответа инструмента («Задача «Отчёт» выполнена») — когда в input только id. */
+function quotedIn(result: unknown): string | undefined {
+  const m = str(result, 'message')?.match(/«([^»]{1,200})»/);
+  return m?.[1];
 }
 
 const DIRECTION: Record<string, string> = { i_owe: 'я должен', owed_to_me: 'мне должны' };
@@ -145,6 +157,13 @@ function summarizeOtherWrite(name: string, input: unknown, result: unknown): Act
       return { type: 'insight_applied', content: 'Применил совет робота' };
     case 'create_skill':
       return { type: 'skill_created', content: `Новый навык${q(str(input, 'request'))}` };
+    // Аудит 2026-11-09: переносы и закрытые цели мозг раньше не «помнил».
+    case 'move_task':
+      return { type: 'task_moved', content: `Перенёс задачу${q(str(input, 'title') ?? quotedIn(result))}${str(input, 'newDate') ? ` на ${str(input, 'newDate')}` : ''}${str(input, 'newTime') ? ` ${str(input, 'newTime')}` : ''}` };
+    case 'move_event':
+      return { type: 'event_moved', content: `Перенёс встречу${q(str(input, 'title') ?? quotedIn(result))}${str(input, 'date') ? ` на ${str(input, 'date')}` : ''}${str(input, 'startTime') ? ` ${str(input, 'startTime')}` : ''}` };
+    case 'complete_period_goal':
+      return { type: 'period_goal_completed', content: `Закрыл цель${q(str(input, 'goal') ?? quotedIn(result))}` };
     default:
       return null;
   }
@@ -182,7 +201,8 @@ export function summarizeToolAction(
         };
       }
       case 'complete_task': {
-        const title = str(input, 'title') ?? str(input, 'taskId') ?? 'задачу';
+        // По id (после get_tasks) — название из ответа, а не «clx…id» в памяти.
+        const title = str(input, 'title') ?? quotedIn(result) ?? 'задачу';
         return {
           type: 'task_completed',
           content: `Выполнил задачу «${title}»`,
@@ -212,7 +232,7 @@ export function summarizeToolAction(
         if (result && typeof result === 'object' && (result as { completedTask?: unknown }).completedTask === true) {
           return null;
         }
-        const habit = str(input, 'name') ?? str(input, 'habitId') ?? 'привычку';
+        const habit = str(input, 'name') ?? quotedIn(result) ?? 'привычку';
         return {
           type: 'habit_logged',
           content: `Отметил привычку «${habit}»`,

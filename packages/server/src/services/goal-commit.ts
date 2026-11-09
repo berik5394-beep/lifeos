@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma.js';
 import { parseGoalDeadline } from './goal-deadline.js';
 import { decideGoalWrite } from './goal-write.js';
 import { maybeGoalIntake } from './goal-intake-gather.js';
+import { captureActivity } from './tool-activity-summary.js';
 
 /**
  * Запись цели ПОСЛЕ подтверждения «да». Вызывается из runConfirmedAction
@@ -75,6 +76,12 @@ export async function commitGoal(
   }
   if (targetDate) parts.push(`к ${targetDate.toISOString().slice(0, 10)}`);
   const head = `Цель ${verb}: ${parts.join(' ')} (${input.area}). Буду вести.`;
+  // В память — только сейчас, после «да» (suggest_goal до ответа не пишет; аудит 2026-11-09).
+  captureActivity(userId, {
+    type: decision.mode === 'update' ? 'yearly_goal_updated' : 'yearly_goal_created',
+    content: `Цель на год ${verb}: ${parts.join(' ')}`,
+    importance: 6,
+  });
   // Разбор при постановке (флаг): деньги/темп/время/привычка + одно «да».
   // Только для НОВОЙ цели (правка старой — не постановка). Ответ уходит в
   // историю (saveTurn) → «да» приходит агенту с контекстом предложения.

@@ -35,7 +35,7 @@ export const updateDealTool = defineTool({
     if (!isV2DealsEnabled(ctx.userId)) return { error: 'deals_disabled', hint: 'сделки выключены — для напоминания используй create_task, для обещания create_obligation, полученные деньги — add_income' };
     const name = input.personName.trim();
     const stage = input.stage ? parseStage(input.stage) : null;
-    if (input.stage && !stage) return { message: `Не понял стадию «${input.stage}». Варианты: новая, переговоры, КП, договор, выиграна, проиграна.` };
+    if (input.stage && !stage) return { message: `Не понял стадию «${input.stage}». Варианты: новая, переговоры, КП, договор, выиграна, проиграна.`, needsInput: true };
     let found = await findOpenDeals(ctx.userId, name, input.title ?? null);
     // Ревью I3: открытых нет, но названа сумма или открытая стадия — это может быть
     // недавно закрытая сделка («выиграна» без суммы / вернуть проигранную в работу).
@@ -50,7 +50,7 @@ export const updateDealTool = defineTool({
         hint: 'у этого человека нет открытой сделки — если это просто напоминание, используй create_task; если новая продажа — create_deal',
       };
     }
-    if (found.length > 1) return { message: describeWhichDeal(found[0].personName, found) };
+    if (found.length > 1) return { message: describeWhichDeal(found[0].personName, found), needsInput: true };
     const now = new Date();
     const r = await updateDeal(ctx.userId, found[0].id, {
       ...(stage ? { stage } : {}),

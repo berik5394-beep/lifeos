@@ -45,7 +45,7 @@ export const completePeriodGoalTool = defineTool({
     const hit = matchHabit(input.goal, refs);
     if (!hit) {
       const list = refs.map((r) => `«${r.name}»`).join(', ');
-      return { message: list ? `Не нашёл цель «${input.goal}». Сейчас: ${list}. Какую?` : 'Целей на эту неделю и месяц пока нет.' };
+      return { message: list ? `Не нашёл цель «${input.goal}». Сейчас: ${list}. Какую?` : 'Целей на эту неделю и месяц пока нет.', needsInput: true };
     }
     const kind = refs.find((r) => r.id === hit.id)!.kind;
     const label = kind === 'week' ? 'недели' : 'месяца';
@@ -53,7 +53,7 @@ export const completePeriodGoalTool = defineTool({
       kind === 'week'
         ? await prisma.weeklyGoal.updateMany({ where: { id: hit.id, userId }, data: { completed: done } })
         : await prisma.monthlyGoal.updateMany({ where: { id: hit.id, userId }, data: { completed: done } });
-    if (r.count === 0) return { message: `Не нашёл цель «${input.goal}».` };
+    if (r.count === 0) return { message: `Не нашёл цель «${input.goal}».`, needsInput: true };
     const pool = kind === 'week' ? week : month;
     const open = pool.filter((g) => (g.id === hit.id ? !done : !g.completed)).length;
     const tail = done ? (open === 0 ? ' Все цели закрыты — красавчик!' : ` Осталось ${open} из ${pool.length}.`) : '';

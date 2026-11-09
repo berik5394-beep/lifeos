@@ -15,7 +15,7 @@ export const settleObligationTool = defineTool({
   aliases: { obligation_id: 'id' },
   schema: z.object({
     id: z.string().max(64),
-    amount: z.number().positive().optional(),
+    amount: z.coerce.number().positive().optional().describe("сколько вернули, если не весь долг"),
   }),
   needsConfirm: false,
   sideEffects: 'write',

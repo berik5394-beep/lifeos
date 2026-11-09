@@ -49,11 +49,12 @@ export const updateGoalProgressTool = defineTool({
     if (candidates.length === 0) {
       return {
         message: `Не нашёл измеримую годовую цель про «${input.goalQuery}». Скажи точнее или поставь цель.`,
+        needsInput: true,
       };
     }
     if (candidates.length > 1) {
       const list = candidates.map((g) => `«${g.goalText}»`).join(' / ');
-      return { message: `Какую цель обновить: ${list}? Уточни.` };
+      return { message: `Какую цель обновить: ${list}? Уточни.`, needsInput: true };
     }
 
     const g = candidates[0];

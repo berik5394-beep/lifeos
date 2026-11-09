@@ -55,21 +55,15 @@ export const createEventTool = defineTool({
     const startTime = input.startTime ?? null;
     const endTime = input.endTime ?? null;
 
-    // Anti-dup окно ±3 дня — shift от tz-anchored date (преcerves
-    // day boundary в локальной tz).
-    const windowStart = new Date(date);
-    windowStart.setDate(windowStart.getDate() - 3);
-    const windowEnd = new Date(date);
-    windowEnd.setDate(windowEnd.getDate() + 3);
-
-    // L99 #9 fix: STRICT equality (full title) + startTime match.
-    // Прежний slice(0,40) merge данные уничтожал.
+    // Anti-dup: та же встреча в ТОТ ЖЕ день и время (повтор просьбы) — не плодим копию.
+    // Аудит 2026-11-09: раньше окно ±3 дня — «запиши планёрку в четверг 10:00»
+    // ПЕРЕНОСИЛО понедельничную «Планёрку» 10:00 (новой не было). Перенос — move_event.
     const normalizedTitle = title.trim();
     const existingEv = await prisma.calendarEvent.findFirst({
       where: {
         userId,
         title: { equals: normalizedTitle, mode: 'insensitive' },
-        date: { gte: windowStart, lte: windowEnd },
+        date,
         // null-null или equal — две встречи в один день в разное время
         // остаются раздельными
         startTime,

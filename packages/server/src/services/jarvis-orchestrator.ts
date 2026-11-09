@@ -27,7 +27,7 @@ import { isPlannerIntent } from './planner-service.js';
 import { writeMemory, supersedeByTopic } from './episodic-memory.js';
 import { trackInterests } from './interest-service.js';
 import { registry, runRegistryTool, toolConfirmRequired } from '../tools/index.js';
-import { isFailedResult } from './tool-activity-summary.js';
+import { isFailedResult, captureActivity } from './tool-activity-summary.js';
 import { maybeSavingsCoachLine } from './savings-coach.js';
 import { commitGoal, type CommitGoalInput } from './goal-commit.js';
 import { getToolCounts } from './tool-audit.js';
@@ -876,6 +876,7 @@ export async function runConfirmedAction(
       const message = r
         ? `Удалил встречу «${r.removed.title}» ${whenText(r.removed)}.${googleNote(r.google, 'delete')}`
         : 'Этой встречи уже нет в календаре.';
+      if (r) captureActivity(userId, { type: 'event_cancelled', content: `Отменил встречу «${r.removed.title}» ${whenText(r.removed)}` });
       await saveTurn(userId, '(подтверждено)', message);
       return message;
     }
@@ -1893,6 +1894,8 @@ async function handleMessageCore(
     // ниже проверит и без явной просьбы («присела 50 раз» → «отмечаю!»).
     let retriedForTools = false;
     const onToolResult = (tool: string, ok: boolean, result?: unknown) => {
+      // Инструмент сам задал вопрос «да?» (suggest_goal) — это не выдумка «сделал».
+      if (ok && (result as { pending?: unknown } | undefined)?.pending === true) acts.staged = true;
       if (ok && isRealWrite(tool, result)) {
         acts.wrote = true;
         const msg = (result as { message?: unknown } | undefined)?.message;

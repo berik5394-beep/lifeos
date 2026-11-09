@@ -47,7 +47,7 @@ export const moveEventTool = defineTool({
     const target: { title: string; date?: string; newDate?: string; newStartTime?: string; newEndTime?: string } =
       onlyDate ? { ...input, newDate: input.date, date: undefined } : { ...input };
     if (!target.newDate && !target.newStartTime && !target.newEndTime) {
-      return { message: `На когда перенести «${input.title}»?` };
+      return { message: `На когда перенести «${input.title}»?`, needsInput: true };
     }
     let lookup = await findEventByTitle(userId, target.title, { date: target.date });
     // {date, startTime} как у create_event («в пятницу в 16:00» = КУДА): на эту
@@ -58,7 +58,7 @@ export const moveEventTool = defineTool({
       lookup = await findEventByTitle(userId, target.title, {});
     }
     if (lookup.kind !== 'one') {
-      return { message: lookupMiss(lookup, input.title, target.date), notFound: lookup.kind !== 'many' };
+      return { message: lookupMiss(lookup, input.title, target.date), notFound: lookup.kind !== 'many', needsInput: true };
     }
     const found = lookup;
 

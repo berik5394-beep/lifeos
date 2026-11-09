@@ -30,7 +30,7 @@ export const createDealTool = defineTool({
   handler: async (input, ctx) => {
     if (!isV2DealsEnabled(ctx.userId)) return { error: 'deals_disabled', hint: 'сделки выключены — клиента запомни через remember_entity/set_person_type, напоминание связаться — create_task' };
     const stage = input.stage ? parseStage(input.stage) : 'new';
-    if (!stage) return { message: `Не понял стадию «${input.stage}». Варианты: новая, переговоры, КП, договор, выиграна, проиграна.` };
+    if (!stage) return { message: `Не понял стадию «${input.stage}». Варианты: новая, переговоры, КП, договор, выиграна, проиграна.`, needsInput: true };
     const now = new Date();
     const r = await createDeal(ctx.userId, {
       personName: input.personName,

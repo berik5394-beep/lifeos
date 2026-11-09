@@ -191,3 +191,18 @@ describe('summarizeToolAction — все write-инструменты и чес�
     expect(summarizeToolAction('link_relationship', { fromName: 'я', toName: 'мама' }, {}, 'write')).toBeNull();
   });
 });
+
+describe('аудит 2026-11-09: вопрос/ожидание «да» — не дело, в память не пишем', () => {
+  it('suggest_goal с pending (ещё не «да») → null', () => {
+    expect(summarizeToolAction('suggest_goal', { goalText: 'машина' }, { message: 'Поставить цель?', pending: true }, 'write')).toBeNull();
+  });
+  it('log_goal_progress «Не нашёл цель» (needsInput) → null', () => {
+    expect(summarizeToolAction('log_goal_progress', { goalQuery: 'чтение' }, { message: 'Не нашёл…', needsInput: true }, 'write')).toBeNull();
+  });
+  it('complete_task по id → название из ответа, а не id', () => {
+    expect(summarizeToolAction('complete_task', { taskId: 'clx123' }, { message: 'Задача «Отчёт» выполнена ✅' }, 'write')?.content).toBe('Выполнил задачу «Отчёт»');
+  });
+  it('move_task — в память', () => {
+    expect(summarizeToolAction('move_task', { title: 'Звонок', newDate: '2026-11-10' }, { message: 'ok', taskId: 't' }, 'write')?.content).toBe('Перенёс задачу «Звонок» на 2026-11-10');
+  });
+});
