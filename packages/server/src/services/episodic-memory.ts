@@ -121,6 +121,58 @@ const STABLE_TYPES = new Set(['fact', 'preference', 'person', 'decision']);
 const MEM_DEDUP_MIN_RANK = 0.08;
 
 /**
+ * Дедуп в обе стороны (2026-11-09, чистка флагов вскрыла): поиск дублей шёл
+ * только «новое ⊂ старое» (plainto_tsquery = И всех слов нового). Уточнение
+ * факта («Любит кофе» → «Очень любит кофе по утрам», «Мама — Айгуль» →
+ * «Маму зовут Айгуль») не находило старую запись → копились дубли. А точный
+ * повтор короткой записи («Серик» дважды) резался порогом ранга (0.06 < 0.08).
+ *
+ * Правила:
+ *  1. Точный повтор (регистр/пробелы/точка в конце не важны) — сливаем всегда.
+ *  2. Новое ⊂ старое — как раньше, только при ранге > MEM_DEDUP_MIN_RANK.
+ *  3. Старое ⊂ новое (уточнение) — если в старом ≥2 слова и оно покрывает
+ *     ≥ половины слов нового: одно слово «Серик» не поглотит «Серик должен 20 000».
+ */
+export interface DedupCandidate {
+  id: string;
+  importance: number;
+  tags: string[];
+  details: string | null;
+  rank: number;
+  /** Новое ⊂ старое (все слова нового есть в старом). */
+  fwd: boolean;
+  /** Старое ⊂ новое (все слова старого есть в новом). */
+  rev: boolean;
+  /** Точный повтор после нормализации. */
+  exact: boolean;
+  /** Сколько разных слов (лексем) в старом. */
+  oldLex: number;
+}
+
+export const MEM_REFINE_MIN_OLD_LEX = 2;
+export const MEM_REFINE_MIN_COVERAGE = 0.5;
+
+/** Нормализация для «точного повтора» — та же, что в SQL дедупа. */
+export function normalizeMemoryText(t: string): string {
+  return t.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[.!…\s]+$/u, '');
+}
+
+/** Чистое решение (тест без БД): с какой записью слить новую, или ни с какой. */
+export function pickDedupTarget(cands: DedupCandidate[], newLex: number): DedupCandidate | null {
+  const exact = cands.find((c) => c.exact);
+  if (exact) return exact;
+  const fwd = cands
+    .filter((c) => c.fwd && Number(c.rank) > MEM_DEDUP_MIN_RANK)
+    .sort((a, b) => Number(b.rank) - Number(a.rank))[0];
+  if (fwd) return fwd;
+  if (newLex <= 0) return null;
+  const refine = cands
+    .filter((c) => c.rev && c.oldLex >= MEM_REFINE_MIN_OLD_LEX && c.oldLex / newLex >= MEM_REFINE_MIN_COVERAGE)
+    .sort((a, b) => b.oldLex - a.oldLex)[0];
+  return refine ?? null;
+}
+
+/**
  * recall-ценные типы, которые эмбедим по умолчанию (semantic retrieval
  * окупается). Высокочастотные дешёвые action-события (`task_created`,
  * `expense_added`, …) сюда НЕ входят — им хватает FTS, embedding-бюджет
@@ -180,14 +232,15 @@ export async function writeMemory(
 
     // --- 1. Дедуп (порт из captureMemory) для стабильных типов ---
     if (STABLE_TYPES.has(input.type)) {
-      const dup = await prisma.$queryRaw<
-        Array<{ id: string; importance: number; tags: string[]; details: string | null; rank: number }>
-      >`
+      const norm = normalizeMemoryText(content);
+      const cands = await prisma.$queryRaw<Array<DedupCandidate & { newLex: number }>>`
         SELECT m.id, m.importance, m.tags, m.details,
-          ts_rank(
-            to_tsvector('russian', coalesce(m.content, '')),
-            plainto_tsquery('russian', ${content})
-          ) AS rank
+          ts_rank(to_tsvector('russian', coalesce(m.content, '')), plainto_tsquery('russian', ${content})) AS rank,
+          (to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${content})) AS fwd,
+          (to_tsvector('russian', ${content}) @@ plainto_tsquery('russian', coalesce(m.content, ''))) AS rev,
+          (regexp_replace(regexp_replace(lower(btrim(coalesce(m.content, ''))), '\\s+', ' ', 'g'), '[.!…[:space:]]+$', '') = ${norm}) AS exact,
+          length(to_tsvector('russian', coalesce(m.content, '')))::int AS "oldLex",
+          length(to_tsvector('russian', ${content}))::int AS "newLex"
         FROM "Memory" m
         WHERE m."userId" = ${userId}
           AND m.type = ${input.type}
@@ -197,39 +250,37 @@ export async function writeMemory(
           -- invalidAt = new Date()). С NOW() базы, отстающей хоть на 1 мс,
           -- только что забытое считалось живым (флейк 2026-11-08).
           AND (m."invalidAt" IS NULL OR m."invalidAt" > ${new Date()})
-          AND to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${content})
-        ORDER BY ts_rank(
-          to_tsvector('russian', coalesce(m.content, '')),
-          plainto_tsquery('russian', ${content})
-        ) DESC
-        LIMIT 1;
+          AND (
+            to_tsvector('russian', coalesce(m.content, '')) @@ plainto_tsquery('russian', ${content})
+            OR to_tsvector('russian', ${content}) @@ plainto_tsquery('russian', coalesce(m.content, ''))
+            OR regexp_replace(regexp_replace(lower(btrim(coalesce(m.content, ''))), '\\s+', ' ', 'g'), '[.!…[:space:]]+$', '') = ${norm}
+          )
+        ORDER BY rank DESC
+        LIMIT 10;
       `;
 
-      if (dup.length > 0) {
-        const existing = dup[0];
-        const rankOk = (existing.rank ?? 1) > MEM_DEDUP_MIN_RANK;
-        if (rankOk) {
-          const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags])).slice(0, 10);
-          const merged = mergeDetails(existing.details, details);
-          const ex = await prisma.memory.findUnique({
-            where: { id: existing.id },
-            select: { content: true },
-          });
-          const oldContent = ex?.content ?? '';
-          const allowContentReplace = shouldOverwriteContent(oldContent, content);
-          const newContent = allowContentReplace ? content : oldContent;
-          console.warn(
-            `[memory] UPDATE type=${input.type} id=${existing.id} ` +
-              `oldLen=${oldContent.length} newLen=${content.length} ` +
-              `contentReplaced=${allowContentReplace} (user=${userId})`,
-          );
-          const updateData: Prisma.MemoryUpdateInput = { content: newContent, details: merged, tags: mergedTags, importance: Math.max(existing.importance, importance) };
-          await prisma.memory.update({ where: { id: existing.id }, data: updateData });
-          await storeMemoryEmbedding(existing.id, newContent, merged, input);
-          return { id: existing.id, action: 'updated' };
-        }
-        // on + слабый матч (rank ≤ MEM_DEDUP_MIN_RANK) → проваливаемся в create ниже
+      const existing = pickDedupTarget(cands, cands[0]?.newLex ?? 0);
+      if (existing) {
+        const mergedTags = Array.from(new Set([...(existing.tags || []), ...tags])).slice(0, 10);
+        const merged = mergeDetails(existing.details, details);
+        const ex = await prisma.memory.findUnique({
+          where: { id: existing.id },
+          select: { content: true },
+        });
+        const oldContent = ex?.content ?? '';
+        const allowContentReplace = shouldOverwriteContent(oldContent, content);
+        const newContent = allowContentReplace ? content : oldContent;
+        console.warn(
+          `[memory] UPDATE type=${input.type} id=${existing.id} ` +
+            `oldLen=${oldContent.length} newLen=${content.length} ` +
+            `contentReplaced=${allowContentReplace} (user=${userId})`,
+        );
+        const updateData: Prisma.MemoryUpdateInput = { content: newContent, details: merged, tags: mergedTags, importance: Math.max(existing.importance, importance) };
+        await prisma.memory.update({ where: { id: existing.id }, data: updateData });
+        await storeMemoryEmbedding(existing.id, newContent, merged, input);
+        return { id: existing.id, action: 'updated' };
       }
+      // Ни повтора, ни уточнения, ни сильного совпадения → новая запись ниже.
     }
 
     // --- 2. Create с episodic-полями + TTL default ---

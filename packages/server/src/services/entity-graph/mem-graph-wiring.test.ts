@@ -29,8 +29,9 @@ describe('T5 graph — FTS rank-порог в дедупе writeMemory', () => {
   const epi = readFileSync(join(process.cwd(), 'src/services/episodic-memory.ts'), 'utf8');
   it('константа MEM_DEDUP_MIN_RANK', () => { expect(epi).toMatch(/MEM_DEDUP_MIN_RANK\s*=\s*0\.08/); });
   it('rank в SELECT дедупа', () => { expect(epi).toMatch(/ts_rank\([\s\S]*?\)\s+AS rank/); });
-  it('rankOk гейт (без флага)', () => {
+  it('порог ранга держит прямой дедуп (решение — pickDedupTarget, без флага)', () => {
     expect(epi).not.toMatch(/isV2MemGraphEnabled/);
-    expect(epi).toMatch(/rankOk/);
+    expect(epi).toMatch(/c\.fwd && Number\(c\.rank\) > MEM_DEDUP_MIN_RANK/);
+    expect(epi).toMatch(/pickDedupTarget\(cands/);
   });
 });

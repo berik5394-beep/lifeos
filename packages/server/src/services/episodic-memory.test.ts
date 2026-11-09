@@ -233,8 +233,11 @@ describe('episodic-memory.ts structural — writeMemory (единый писат
   });
 
   it('create-ветка пишет episodic-поля (validAt/entityRefs/mood) + tags', () => {
-    const start = SRC.indexOf('export async function writeMemory');
-    const body = SRC.slice(start, start + 4000);
+    // Якорь — сама create-ветка, не окно от начала writeMemory: дедуп вырос
+    // (двусторонний, 2026-11-09) и выталкивал create за фиксированное окно.
+    const start = SRC.indexOf('// --- 2. Create с episodic-полями');
+    expect(start).toBeGreaterThan(-1);
+    const body = SRC.slice(start, start + 1500);
     expect(body).toContain('prisma.memory.create');
     expect(body).toContain('validAt');
     expect(body).toContain('entityRefs');
