@@ -57,11 +57,16 @@ export async function obligationRoutes(app: FastifyInstance): Promise<void> {
   /** Вернули / отдал — закрыть. */
   app.post('/obligations/:id/settle', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const o = await settleObligation(request.userId, id);
+    const body = (request.body ?? {}) as { amount?: unknown };
+    const paidAmount = typeof body.amount === 'number' && Number.isFinite(body.amount) && body.amount > 0 ? body.amount : undefined;
+    const o = await settleObligation(request.userId, id, { paidAmount });
     if (!o) return reply.status(404).send({ message: 'Долг не найден' });
+    if (o.alreadyClosed) return { obligation: o };
     captureActivity(request.userId, {
       type: 'obligation_settled',
-      content: o.direction === 'i_owe' ? `Отдал долг ${o.personName}${o.amount ? ` ${o.amount} ₸` : ''}` : `${o.personName} вернул долг${o.amount ? ` ${o.amount} ₸` : ''}`,
+      content:
+        (o.direction === 'i_owe' ? `Отдал долг ${o.personName}${o.paid ? ` ${o.paid} ₸` : ''}` : `${o.personName} вернул долг${o.paid ? ` ${o.paid} ₸` : ''}`) +
+        (o.remaining > 0 ? `, осталось ${o.remaining} ₸` : ''),
     });
     return { obligation: o };
   });

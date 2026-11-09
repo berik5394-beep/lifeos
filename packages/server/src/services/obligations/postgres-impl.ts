@@ -52,15 +52,34 @@ export async function listObligations(
   });
 }
 
-/** Закрыть (выполнено) — атомарно с проверкой ownership (паттерн tasks DELETE). */
-export async function settleObligation(userId: string, id: string) {
+/**
+ * Закрыть (выполнено) — атомарно с проверкой ownership (паттерн tasks DELETE).
+ *
+ * Аудит 2026-11-09: частичный возврат («вернул 200к из 500к») — paidAmount меньше
+ * долга: долг уменьшается и остаётся открытым (раньше закрывался целиком и
+ * предлагался доход на всю сумму). Уже закрытый/отменённый — alreadyClosed, без
+ * повторного «записать доход».
+ */
+export async function settleObligation(userId: string, id: string, opts: { paidAmount?: number } = {}) {
   return prisma.$transaction(async (tx) => {
     const o = await tx.obligation.findFirst({ where: { id, userId } });
     if (!o) return null;
-    return tx.obligation.update({
+    if (o.status !== 'open') return { ...o, paid: 0, remaining: 0, alreadyClosed: true as const };
+    const paid = opts.paidAmount;
+    if (o.kind === 'money' && o.amount != null && paid != null && paid > 0 && paid < o.amount) {
+      const remaining = Math.round((o.amount - paid) * 100) / 100;
+      const stamp = new Date().toISOString().slice(0, 10);
+      const updated = await tx.obligation.update({
+        where: { id },
+        data: { amount: remaining, note: [o.note, `${stamp}: вернули ${paid} из ${o.amount}`].filter(Boolean).join('; ') },
+      });
+      return { ...updated, paid, remaining, alreadyClosed: false as const };
+    }
+    const updated = await tx.obligation.update({
       where: { id },
       data: { status: 'done', settledAt: new Date() },
     });
+    return { ...updated, paid: o.amount ?? 0, remaining: 0, alreadyClosed: false as const };
   });
 }
 

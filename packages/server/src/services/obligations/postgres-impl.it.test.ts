@@ -46,3 +46,15 @@ describe('obligations store — реальная БД', () => {
     expect(row?.status).toBe('open');
   });
 });
+
+describe('частичный возврат долга (аудит 2026-11-09)', () => {
+  it('вернул 200к из 500к → осталось 300к, открыт; повторное закрытие закрытого — alreadyClosed', async () => {
+    const userId = await makeUser(`obl-part-${Date.now()}@a.test`);
+    const o = await createObligation({ userId, personName: 'Ахмет', direction: 'owed_to_me', kind: 'money', description: 'должен мне', amount: 500000, source: 'manual' });
+    const p = await settleObligation(userId, o.id, { paidAmount: 200000 });
+    expect(p).toMatchObject({ status: 'open', amount: 300000, paid: 200000, remaining: 300000, alreadyClosed: false });
+    const full = await settleObligation(userId, o.id);
+    expect(full).toMatchObject({ status: 'done', paid: 300000, remaining: 0 });
+    expect(await settleObligation(userId, o.id)).toMatchObject({ alreadyClosed: true });
+  });
+});
