@@ -287,22 +287,35 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch('/tasks/:id/complete', async (request, reply) => {
     const { id } = request.params as { id: string };
+    // Аудит 2026-11-09: приложение шлёт ЖЕЛАЕМОЕ состояние ({completed}). Повтор из
+    // офлайн-очереди (ответ не дошёл) раньше переключал обратно и снимал галочку.
+    // Без тела — старый переключатель (старые сборки).
+    const body = (request.body ?? {}) as { completed?: unknown };
+    const wanted = typeof body.completed === 'boolean' ? body.completed : null;
 
-    // Атомарно: проверка владельца + toggle complete в одной транзакции.
-    const result = await prisma.$transaction(async (tx) => {
+    // Атомарно: проверка владельца + отметка в одной транзакции.
+    const tx = await prisma.$transaction(async (tx) => {
       const task = await tx.task.findFirst({
         where: { id, userId: request.userId },
       });
       if (!task) return null;
-
+      const next = wanted ?? !task.completed;
+      const include = { taskTags: { include: { tag: true } }, subtasks: true } as const;
+      // Уже так — ничего не меняем (без второй монеты и записи в память).
+      if (next === task.completed) {
+        return { updated: await tx.task.findUniqueOrThrow({ where: { id }, include }), changed: false };
+      }
       const updated = await tx.task.update({
         where: { id },
-        data: { completed: !task.completed, ...kanbanForCompletion(!task.completed, task.kanbanStatus) },
+        data: { completed: next, ...kanbanForCompletion(next, task.kanbanStatus) },
+        // Теги в ответе — иначе после галочки они пропадали с карточки до перезагрузки.
+        include,
       });
-
-      return updated;
+      return { updated, changed: true };
     });
-    if (!result) throw new NotFoundError('Задача');
+    if (!tx) throw new NotFoundError('Задача');
+    const result = tx.updated;
+    if (!tx.changed) return reply.send(result);
     if (result.completed) void onTaskCompleted(request.userId, result.id, result.title);
     captureActivity(request.userId, {
       type: result.completed ? 'task_completed' : 'task_reopened',

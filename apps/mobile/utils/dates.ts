@@ -71,3 +71,11 @@ export function isSameDay(a: Date, b: Date): boolean {
     a.getDate() === b.getDate()
   );
 }
+
+/** Тот же день через n месяцев; 31 → последний день короткого месяца (не перескок). */
+export function shiftMonth(date: Date, n: number): Date {
+  const y = date.getFullYear();
+  const m = date.getMonth() + n;
+  const last = new Date(y, m + 1, 0).getDate();
+  return new Date(y, m, Math.min(date.getDate(), last), date.getHours(), date.getMinutes());
+}

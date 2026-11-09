@@ -80,11 +80,14 @@ export async function journalRoutes(app: FastifyInstance): Promise<void> {
         mood: data.mood ?? null,
         notes: data.notes ?? null,
       },
+      // undefined — поле не трогаем; null — юзер очистил (повторный тап).
+      // Аудит 2026-11-09: раньше null превращался в undefined — очистить нельзя было,
+      // старое значение возвращалось и мозг читал старое настроение.
       update: {
-        sleepHours: data.sleepHours ?? undefined,
-        energy: data.energy ?? undefined,
-        mood: data.mood ?? undefined,
-        notes: data.notes ?? undefined,
+        sleepHours: data.sleepHours,
+        energy: data.energy,
+        mood: data.mood,
+        notes: data.notes,
       },
     });
     // Сон из «Здоровья» — не запись в дневнике: без монеты (раньше синк забирал

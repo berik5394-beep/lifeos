@@ -389,7 +389,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           break;
         case 'complete_task':
           if (action.data.taskId) {
-            await api.patch(`/tasks/${action.data.taskId as string}/complete`, {}, token);
+            await api.patch(`/tasks/${action.data.taskId as string}/complete`, { completed: true }, token);
           }
           break;
         case 'complete_habit':

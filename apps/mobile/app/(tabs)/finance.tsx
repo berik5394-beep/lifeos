@@ -22,7 +22,7 @@ import { Card, Button, Input, Modal, SlideTabs, SwipeableRow, TapToAdd, InlineEn
 import { spacing, fontSize, borderRadius } from '@/constants';
 import { expenseCategories } from '@/constants/categories';
 import { FadeInView } from '@/components/ui/fade-in-view';
-import { formatDate, getMonthKey, getWeekDays, isToday, isSameDay } from '@/utils/dates';
+import { formatDate, getMonthKey, getWeekDays, isToday, isSameDay, shiftMonth } from '@/utils/dates';
 import { useColors } from '@/hooks/use-colors';
 import { hapticSelection } from '@/services/haptics';
 import { useNavigation } from '@react-navigation/native';
@@ -707,20 +707,14 @@ export default function FinanceScreen() {
   }, [loadData]);
 
   // --- Navigation ---
+  // 31-го «‹» давал «31 сентября» = 1 октября (месяц не менялся), 30 января «›» —
+  // март. Шаг ровно на месяц, день — не больше, чем есть в том месяце (аудит 2026-11-09).
   const goToPrevMonth = useCallback(() => {
-    setCurrentDate((prev) => {
-      const d = new Date(prev);
-      d.setMonth(d.getMonth() - 1);
-      return d;
-    });
+    setCurrentDate((prev) => shiftMonth(prev, -1));
   }, []);
 
   const goToNextMonth = useCallback(() => {
-    setCurrentDate((prev) => {
-      const d = new Date(prev);
-      d.setMonth(d.getMonth() + 1);
-      return d;
-    });
+    setCurrentDate((prev) => shiftMonth(prev, 1));
   }, []);
 
   const goToPrevWeek = useCallback(() => {

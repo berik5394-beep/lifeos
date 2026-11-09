@@ -14,6 +14,7 @@ import { spacing, fontSize, borderRadius } from '@/constants';
 import { useTaskStore } from '@/stores/task-store';
 import { useAuthStore } from '@/stores/auth-store';
 import type { Theme } from '@/constants/themes';
+import { formatDate } from '@/utils/dates';
 
 const CATEGORY_COLORS: Record<string, string> = {
   work: '#3B82F6',
@@ -55,11 +56,12 @@ export default function GanttViewScreen() {
 
   const weekDays = useMemo(() => getWeekDays(), []);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  // Локальные даты (аудит 2026-11-09: toISOString в UTC+5 сдвигал всё на день).
+  const todayStr = formatDate(new Date());
 
   const weekTasks = useMemo(() => {
-    const start = weekDays[0].toISOString().split('T')[0];
-    const end = weekDays[6].toISOString().split('T')[0];
+    const start = formatDate(weekDays[0]);
+    const end = formatDate(weekDays[6]);
     return tasks.filter((t) => {
       const d = typeof t.date === 'string' ? t.date.split('T')[0] : '';
       return d >= start && d <= end;
@@ -68,7 +70,7 @@ export default function GanttViewScreen() {
 
   const getDayIndex = (dateStr: string): number => {
     const d = dateStr.split('T')[0];
-    return weekDays.findIndex((wd) => wd.toISOString().split('T')[0] === d);
+    return weekDays.findIndex((wd) => formatDate(wd) === d);
   };
 
   return (
@@ -87,7 +89,7 @@ export default function GanttViewScreen() {
           {/* Day headers */}
           <View style={styles.dayRow}>
             {weekDays.map((day, i) => {
-              const dateStr = day.toISOString().split('T')[0];
+              const dateStr = formatDate(day);
               const isToday = dateStr === todayStr;
               return (
                 <View

@@ -33,7 +33,7 @@ import { useTaskStore } from '@/stores/task-store';
 import { useScheduleStore } from '@/stores/schedule-store';
 import { useHabitStore } from '@/stores/habit-store';
 import { useUIStore } from '@/stores/ui-store';
-import { getWeekDays, isToday } from '@/utils/dates';
+import { getWeekDays, isToday, shiftMonth } from '@/utils/dates';
 import { useColors } from '@/hooks/use-colors';
 import { TagChip } from '@/components/ui/tag-chip';
 import { TaskEditSheet } from '@/components/tasks/task-edit-sheet';
@@ -808,19 +808,11 @@ export default function TasksScreen() {
   }, [fetchTasks]);
 
   const handlePrevMonth = useCallback(() => {
-    setCurrentMonth((prev) => {
-      const d = new Date(prev);
-      d.setMonth(d.getMonth() - 1);
-      return d;
-    });
+    setCurrentMonth((prev) => shiftMonth(prev, -1));
   }, []);
 
   const handleNextMonth = useCallback(() => {
-    setCurrentMonth((prev) => {
-      const d = new Date(prev);
-      d.setMonth(d.getMonth() + 1);
-      return d;
-    });
+    setCurrentMonth((prev) => shiftMonth(prev, 1));
   }, []);
 
   const handlePrevWeek = useCallback(() => {

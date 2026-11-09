@@ -233,7 +233,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }));
 
     try {
-      const updated = await api.patch<Task>(`/tasks/${id}/complete`, {}, token, QUEUE_OFFLINE);
+      // Желаемое состояние, а не «переключи»: повтор из офлайн-очереди не снимет галочку.
+      const updated = await api.patch<Task>(`/tasks/${id}/complete`, { completed: !task.completed }, token, QUEUE_OFFLINE);
       set((state) => ({
         tasks: state.tasks.map((t) => (t.id === id ? updated : t)),
       }));
@@ -244,7 +245,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       // Revert on error
       set((state) => ({
         tasks: state.tasks.map((t) =>
-          t.id === id ? { ...t, completed: task.completed } : t,
+          // Откат целиком (и колонки канбана — раньше карточка уезжала в «К выполнению»).
+          t.id === id ? { ...t, completed: task.completed, kanbanStatus: task.kanbanStatus } : t,
         ),
       }));
     }

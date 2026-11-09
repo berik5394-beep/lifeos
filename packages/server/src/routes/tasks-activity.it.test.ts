@@ -44,3 +44,15 @@ describe('GET /tasks — отменённые («убери задачу») не
     }
   });
 });
+
+describe('PATCH /tasks/:id/complete с желаемым состоянием (аудит 2026-11-09)', () => {
+  it('повтор {completed:true} не снимает галочку; без тела — переключатель; теги в ответе', async () => {
+    const u = await prisma.user.create({ data: { email: `cmp-${Date.now()}-${Math.random()}@a.test`, name: 'A', passwordHash: 'x', timezone: 'UTC' } });
+    const t = await prisma.task.create({ data: { userId: u.id, title: 'x', category: 'work', priority: 'low', date: new Date('2026-11-09T00:00:00Z') } });
+    const h = { authorization: `Bearer ${app.jwt.sign({ sub: u.id })}` };
+    const send = (payload?: object) => app.inject({ method: 'PATCH', url: `/tasks/${t.id}/complete`, headers: h, ...(payload ? { payload } : {}) });
+    expect((await send({ completed: true })).json()).toMatchObject({ completed: true, taskTags: [] });
+    expect((await send({ completed: true })).json().completed).toBe(true); // повтор из очереди
+    expect((await send()).json().completed).toBe(false); // старые сборки — переключатель
+  });
+});

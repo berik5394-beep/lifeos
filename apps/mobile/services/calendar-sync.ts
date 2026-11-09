@@ -19,6 +19,7 @@ import { Platform } from 'react-native';
 import { api } from '@/services/api';
 import { useAuthStore } from '@/stores/auth-store';
 import { storage } from '@/services/storage';
+import { formatDate } from '@/utils/dates';
 
 /* ───────── Storage keys ───────── */
 const KEYS = {
@@ -206,7 +207,8 @@ export async function syncFromDevice(calendarId?: string): Promise<number> {
     for (const ev of deviceEvents) {
       const payload: CreateEventPayload = {
         title: ev.title,
-        date: new Date(ev.startDate).toISOString().split('T')[0],
+        // Локальная дата: toISOString давал вчера для событий 00:00–05:00 по Алматы.
+        date: formatDate(new Date(ev.startDate)),
         startTime: ev.allDay ? undefined : formatTime(new Date(ev.startDate)),
         endTime: ev.allDay ? undefined : formatTime(new Date(ev.endDate)),
         location: ev.location ?? undefined,
@@ -266,7 +268,7 @@ export async function syncToDevice(calendarId?: string): Promise<number> {
     const { start, end } = dateRange30();
     const existingDeviceEvents = await Calendar.getEventsAsync([targetCalId], start, end);
     const existingTitles = new Set(
-      existingDeviceEvents.map((e) => `${e.title}|${new Date(e.startDate).toISOString().split('T')[0]}`),
+      existingDeviceEvents.map((e) => `${e.title}|${formatDate(new Date(e.startDate))}`),
     );
 
     let exported = 0;
