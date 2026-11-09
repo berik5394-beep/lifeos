@@ -1255,3 +1255,33 @@ model SalesPlan {
 
   @@unique([userId, monthStart])
 }
+
+/// Расход моделей по дням (lib/ai-usage.ts): стоимость человека в день, сбои.
+/// userId — строка без связи: 'system' = фоновая работа; удаление аккаунта
+/// стирает строки человека (auth.ts).
+model AiUsageDay {
+  id               String   @id @default(cuid())
+  day              DateTime @db.Date
+  userId           String
+  provider         String // 'claude' | 'groq'
+  model            String
+  calls            Int      @default(0)
+  inputTokens      Int      @default(0)
+  outputTokens     Int      @default(0)
+  cacheReadTokens  Int      @default(0)
+  cacheWriteTokens Int      @default(0)
+  updatedAt        DateTime @updatedAt
+
+  @@unique([day, userId, provider, model])
+  @@index([day])
+}
+
+/// Человек был в приложении в этот день (UTC) — для «вернулся ли» (D1/D7) и
+/// стоимости на активного человека. Пишется authMiddleware раз в день.
+model UserActiveDay {
+  userId String
+  day    DateTime @db.Date
+
+  @@id([userId, day])
+  @@index([day])
+}

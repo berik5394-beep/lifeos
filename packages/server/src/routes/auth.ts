@@ -430,6 +430,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       await tx.toolCall.deleteMany({ where: { userId } });
       await tx.pendingAction.deleteMany({ where: { userId } });
       await tx.aiUsageDaily.deleteMany({ where: { userId } });
+      await tx.aiUsageDay.deleteMany({ where: { userId } });
+      await tx.userActiveDay.deleteMany({ where: { userId } });
       await tx.cronJobRun.deleteMany({ where: { userId } });
 
       await tx.user.delete({ where: { id: userId } });

@@ -4,7 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import crypto from 'node:crypto';
 import { createAnthropic } from '../lib/anthropic.js';
-import Groq from 'groq-sdk';
+import { createGroq } from '../lib/groq.js';
 import { prisma } from '../lib/prisma.js';
 import { AiModelError } from '../lib/errors.js';
 import { writeMemory } from './episodic-memory.js';
@@ -25,7 +25,7 @@ import { afterBulkTasksCreated } from './bulk-tasks.js';
  * Один источник истины — логика не дублируется между интерфейсами.
  */
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '' });
+const groq = createGroq();
 const anthropic = createAnthropic();
 
 export interface ExtractedTask {

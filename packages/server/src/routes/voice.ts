@@ -5,7 +5,7 @@ import { writeFile, unlink, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import crypto from 'node:crypto';
-import Groq from 'groq-sdk';
+import { createGroq } from '../lib/groq.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { prisma } from '../lib/prisma.js';
@@ -29,9 +29,7 @@ const assistantRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: '
 const transcribeRateLimit = rateLimiter({ max: 30, windowMs: 60_000, keyPrefix: 'voice-transcribe' });
 const processRateLimit = rateLimiter({ max: 20, windowMs: 60_000, keyPrefix: 'voice-process' });
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY || '',
-});
+const groq = createGroq();
 
 const voiceSchema = z.object({
   // Cap protects Claude billing: 2000 chars ≈ 500 tokens — больше для голосовой

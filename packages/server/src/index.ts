@@ -48,6 +48,7 @@ import { obligationRoutes } from './routes/obligations.js';
 import { startBot, stopBot } from './services/telegram-bot.js';
 import { startRefreshTokenCleanup } from './services/token-cleanup.js';
 import { startProactiveScheduler, stopProactiveScheduler } from './services/proactive-scheduler.js';
+import { usageContextHook, startUsageFlusher, flushUsage } from './lib/ai-usage.js';
 import { registerSecurityHeaders, rateLimiter } from './middleware/security.js';
 import { registerErrorHandler } from './middleware/error-handler.js';
 import { attachLogger } from './lib/logger.js';
@@ -173,6 +174,8 @@ app.get('/health', async () => {
 // Auth-эндпоинты имеют собственные, более строгие лимиты (3-30 req/min).
 // ============================================================================
 const globalApiLimiter = rateLimiter({ max: 120, windowMs: 60_000, keyPrefix: 'global' });
+// Счётчик расхода моделей: у каждого запроса своё хранилище (кто платит за токены).
+app.addHook('onRequest', usageContextHook);
 app.addHook('onRequest', globalApiLimiter);
 
 await app.register(authRoutes);
@@ -248,6 +251,7 @@ const start = async (): Promise<void> => {
     // Фаза 4.1: планировщик проактивности. Тикает каждые 10 мин, шлёт
     // напоминания в приложение (Expo Push) + зеркало в Telegram.
     startProactiveScheduler();
+    startUsageFlusher();
   } catch (err) {
     app.log.error(err);
     process.exit(1);
@@ -282,6 +286,7 @@ const shutdown = async (signal: string): Promise<void> => {
     }
     stopProactiveScheduler();
     await app.close();
+    await flushUsage(); // токены последней минуты не теряем при деплое
     await prisma.$disconnect();
     app.log.info('graceful shutdown complete');
     process.exit(0);

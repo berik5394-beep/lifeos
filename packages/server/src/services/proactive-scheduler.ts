@@ -12,6 +12,8 @@ import { isV2ProactivityEnabled, isV2CronEnabled, isV2ReflectorEnabled } from '.
 import { runWeekly, runEventCheck } from './reflector-v2/index.js';
 import { getProactivityEngine } from './v2-proactivity-engine.singleton.js';
 import { withCronLock } from './cron-runner.js';
+import { buildDailyDigest, isOpsDigestHour } from './ai-economics.js';
+import { opsAlertRecipients } from '../lib/ops-alert.js';
 import { syncGoogleCalendar, GOOGLE_SYNC_INTERVAL_MS } from './google-calendar-sync.js';
 import { runMoodRetention } from './cron/mood-retention-cron.js';
 import { runPatternExtraction } from './cron/pattern-extraction-cron.js';
@@ -145,6 +147,20 @@ async function tick(): Promise<void> {
     // Both behind isV2CronEnabled (global); withCronLock enforces the
     // 24h / 7d interval regardless of how often tick fires. Each hook
     // is its own try/catch — a cron failure must not break the user loop.
+    // Утренняя сводка владельцу (Berik 2026-11-09): люди, стоимость моделей на
+    // человека, вернулись ли, сбои — за вчера. 09:00 по Алматы (04 UTC), раз в день.
+    if (isOpsDigestHour(new Date()) && opsAlertRecipients().length > 0) {
+      try {
+        await withCronLock('ops-digest', 20 * 60 * 60 * 1000, null, async () => {
+          const d = await buildDailyDigest();
+          console.log(`[ops-digest] ${d.title} ${d.body.replace(/\n/g, ' | ')}`);
+          await Promise.all(opsAlertRecipients().map((id) => deliverNotification(id, d.title, d.body, { type: 'ops_digest' })));
+        });
+      } catch (err) {
+        console.warn('[ops-digest] failed:', err instanceof Error ? err.message : err);
+      }
+    }
+
     if (isV2CronEnabled()) {
       try {
         const r = await withCronLock(

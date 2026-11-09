@@ -1,5 +1,7 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { captureTimezone } from './tz-capture.js';
+import { setUsageUser } from '../lib/ai-usage.js';
+import { markActiveDay } from '../lib/active-day.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -24,6 +26,8 @@ export async function authMiddleware(
       return reply.status(401).send({ message: 'Неверный токен' });
     }
     request.userId = decoded.sub;
+    setUsageUser(decoded.sub); // расход моделей этого запроса — на этого человека
+    markActiveDay(decoded.sub); // был в приложении сегодня (удержание D1/D7)
     // Real-Time Foundation: зафиксировать настоящий пояс устройства из заголовка
     // X-Timezone. Fire-and-forget, best-effort — НИКОГДА не влияет на auth.
     void captureTimezone(decoded.sub, request.headers['x-timezone']);

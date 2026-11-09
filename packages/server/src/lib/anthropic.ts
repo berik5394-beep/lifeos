@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { observedFetch } from './observed-fetch.js';
 
 /**
  * C2 (AUDIT-2026-06): единая фабрика Anthropic-клиента с таймаутом.
@@ -23,6 +24,8 @@ export function createAnthropic(apiKey?: string): Anthropic {
     apiKey: apiKey ?? process.env.CLAUDE_API_KEY ?? '',
     timeout: ANTHROPIC_TIMEOUT_MS,
     maxRetries: ANTHROPIC_MAX_RETRIES,
+    // Каждый ответ виден: сбой ключа/баланса → оповещение, токены → счётчик расхода.
+    fetch: observedFetch('claude') as unknown as NonNullable<ConstructorParameters<typeof Anthropic>[0]>['fetch'],
   });
 }
 

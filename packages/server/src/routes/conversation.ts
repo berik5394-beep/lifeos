@@ -15,7 +15,7 @@ import { writeFile, unlink, readFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import crypto from 'node:crypto';
-import Groq from 'groq-sdk';
+import { createGroq } from '../lib/groq.js';
 import { prisma } from '../lib/prisma.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
@@ -36,9 +36,7 @@ import { getUserTimezone } from '../lib/user-context.js';
 import { localDayStartUTC, localHour } from '../lib/tz.js';
 import { sttFailure } from '../lib/stt-messages.js';
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY || '',
-});
+const groq = createGroq();
 
 // Rate limits: conversation is expensive (Claude API + Groq Whisper)
 const conversationRateLimit = rateLimiter({ max: 30, windowMs: 60_000, keyPrefix: 'conversation' });
