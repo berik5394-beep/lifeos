@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { cachedSystem, withCachedTools } from './prompt-cache.js';
+import { cachedSystem, systemText, withCachedTools } from './prompt-cache.js';
+import { SYSTEM_CACHE_BREAK } from '../ai/jarvis-prompt.js';
 
 describe('кэш промптов', () => {
   it('system — блок текста с меткой ephemeral (текст не меняется)', () => {
@@ -13,5 +14,18 @@ describe('кэш промптов', () => {
     expect(tools[1]).toEqual({ name: 'b' });
     expect(withCachedTools(undefined)).toBeUndefined();
     expect(withCachedTools([])).toEqual([]);
+  });
+});
+
+describe('cachedSystem — неизменное начало в кэш, хвост хода отдельно (2026-11-10)', () => {
+  it('с границей: два блока, метка только на первом, граница не попадает в текст', () => {
+    const blocks = cachedSystem(`ПРАВИЛА${SYSTEM_CACHE_BREAK}СЕЙЧАС: 14:37\n\nКОНТЕКСТ`);
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]).toEqual({ type: 'text', text: 'ПРАВИЛА', cache_control: { type: 'ephemeral' } });
+    expect(blocks[1]).toEqual({ type: 'text', text: 'СЕЙЧАС: 14:37\n\nКОНТЕКСТ' });
+    expect(JSON.stringify(blocks)).not.toContain('cache-break');
+  });
+  it('systemText убирает границу для путей без cachedSystem', () => {
+    expect(systemText(`А${SYSTEM_CACHE_BREAK}Б`)).toBe('А\n\nБ');
   });
 });

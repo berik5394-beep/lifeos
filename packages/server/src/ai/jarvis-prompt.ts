@@ -315,6 +315,13 @@ const VOICE_BREVITY =
   'открой приложение» или «сказать всё?».';
 
 /** Сборка: ЯДРО + СТИЛЬ[user] + (ритуал) + КОНТЕКСТ. */
+/**
+ * Граница кэша в системном промпте: до неё — неизменное (правила, стиль),
+ * после — время и контекст хода. cachedSystem (lib/prompt-cache) делит по ней
+ * на два блока; в любой другой путь промпт уходит через systemText() без неё.
+ */
+export const SYSTEM_CACHE_BREAK = '\n\n\u0000cache-break\u0000\n\n';
+
 export function buildJarvisPrompt(
   ctx: AssistantContext,
   opts: JarvisPromptOpts = {},
@@ -343,5 +350,10 @@ export function buildJarvisPrompt(
     ? `СЕЙЧАС: ${localNowString(opts.nowTz, opts._now)} — ${getTimeOfDay(opts.nowTz, opts._now)}. Пояс: ${opts.nowTz}.\n` +
       `При словах «сегодня/завтра/вчера» сверяйся с этим временем, не выдумывай.\n\n`
     : '';
-  return `${nowBlock}${body}\n\n${renderContext(ctx, opts.nowTz, opts._now)}`;
+  // Кэш промпта (2026-11-10, скорость): Claude кэширует СОВПАДАЮЩЕЕ НАЧАЛО.
+  // Раньше промпт начинался с «СЕЙЧАС: …, 14:37» — начало менялось каждую
+  // минуту, и ~10 тыс. токенов правил перечитывались заново на каждом ходе.
+  // Теперь: неизменные правила и стиль → граница кэша → время и контекст дня.
+  // Текст тот же, меняется только порядок; cachedSystem режет по границе.
+  return `${body}${SYSTEM_CACHE_BREAK}${nowBlock}${renderContext(ctx, opts.nowTz, opts._now)}`;
 }

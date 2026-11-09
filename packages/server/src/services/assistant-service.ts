@@ -1,3 +1,4 @@
+import { cachedSystem } from '../lib/prompt-cache.js';
 import { MODELS } from '../lib/models.js';
 import { withLiveProgress } from './life-facts.js';
 import { createAnthropic } from '../lib/anthropic.js';
@@ -373,7 +374,7 @@ export async function getAssistantReply(
   const aiResponse = await anthropic.messages.create({
     model: MODELS.sonnet,
     max_tokens: 512,
-    system: systemPrompt,
+    system: cachedSystem(systemPrompt),
     messages: [{ role: 'user', content: text }],
   });
 

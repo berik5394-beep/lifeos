@@ -9,8 +9,27 @@ import type Anthropic from '@anthropic-ai/sdk';
  */
 const EPHEMERAL = { type: 'ephemeral' } as const;
 
+/** Та же граница, что SYSTEM_CACHE_BREAK в ai/jarvis-prompt (без импорта — lib не тянет ai). */
+const CACHE_BREAK = '\u0000cache-break\u0000';
+
+/**
+ * Системный промпт с меткой кэша. Если в тексте есть граница (buildJarvisPrompt):
+ * неизменное начало — в кэш, хвост (время, контекст хода) — отдельным блоком
+ * без метки. Иначе — весь текст в кэш, как раньше.
+ */
 export function cachedSystem(text: string): Anthropic.TextBlockParam[] {
-  return [{ type: 'text', text, cache_control: EPHEMERAL }];
+  const i = text.indexOf(CACHE_BREAK);
+  if (i < 0) return [{ type: 'text', text, cache_control: EPHEMERAL }];
+  const head = text.slice(0, i).trimEnd();
+  const tail = systemText(text.slice(i + CACHE_BREAK.length)).trim();
+  return tail
+    ? [{ type: 'text', text: head, cache_control: EPHEMERAL }, { type: 'text', text: tail }]
+    : [{ type: 'text', text: head, cache_control: EPHEMERAL }];
+}
+
+/** Промпт одной строкой без границы кэша — для путей без cachedSystem. */
+export function systemText(text: string): string {
+  return text.split(`\n\n${CACHE_BREAK}\n\n`).join('\n\n').split(CACHE_BREAK).join('');
 }
 
 /** Метка на ПОСЛЕДНЕЙ схеме: кэшируется весь список инструментов перед ней. */

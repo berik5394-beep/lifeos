@@ -236,3 +236,17 @@ describe('свои слова и переспрос (Berik 2026-11-09)', () => {
     expect(p).toContain('только если в этом ходе инструмент реально вызван');
   });
 });
+
+describe('buildJarvisPrompt — начало промпта под кэш (2026-11-10)', () => {
+  it('правила до границы одинаковы в разные минуты; СЕЙЧАС и контекст — после границы', async () => {
+    const { SYSTEM_CACHE_BREAK } = await import('./jarvis-prompt.js');
+    const a = buildJarvisPrompt(ctx(), { nowTz: 'Asia/Almaty', _now: new Date('2026-11-10T09:01:00Z') });
+    const b = buildJarvisPrompt(ctx(), { nowTz: 'Asia/Almaty', _now: new Date('2026-11-10T09:37:00Z') });
+    const [headA, tailA] = a.split(SYSTEM_CACHE_BREAK);
+    const [headB, tailB] = b.split(SYSTEM_CACHE_BREAK);
+    expect(headA).toBe(headB);
+    expect(headA).not.toContain('СЕЙЧАС');
+    expect(tailA.startsWith('СЕЙЧАС')).toBe(true);
+    expect(tailA).not.toBe(tailB);
+  });
+});
