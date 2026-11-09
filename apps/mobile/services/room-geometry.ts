@@ -287,9 +287,15 @@ export function sceneToSurface(q: Quad, p: Pt): Pt {
 
 /** Поля, чтобы предмет не уходил за край поверхности. */
 const EDGE = 0.06;
-function clamp01(v: number, lo = EDGE, hi = 1 - EDGE): number {
+// Значения по умолчанию у ворклета НЕ ссылаются на константы модуля: плагин
+// ворклетов переносит в UI-поток только то, что видит в теле, и `lo = EDGE`
+// падал «Property 'EDGE' doesn't exist» — приложение вылетало, когда
+// отпускаешь перетащенную мебель (2026-11-09).
+function clamp01(v: number, lo?: number, hi?: number): number {
   'worklet';
-  return Math.min(hi, Math.max(lo, v));
+  const min = lo ?? EDGE;
+  const max = hi ?? 1 - EDGE;
+  return Math.min(max, Math.max(min, v));
 }
 
 /**

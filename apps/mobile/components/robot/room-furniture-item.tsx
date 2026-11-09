@@ -43,8 +43,9 @@ interface RoomFurnitureItemProps {
   /** Тап по предмету (Часть 5: мебель с инструментом — робот достаёт его). */
   onTap?: (id: string) => void;
   /**
-   * Двигать/убирать можно только в «Обставить». Иначе свайп по мебели
-   * двигал её вместо листания назад, а долгое нажатие случайно убирало.
+   * «Обставить»: тащишь сразу, долгое нажатие — убрать. Вне него — зажми
+   * и тяни (как значки на iPhone): быстрый свайп листает страницы, а не
+   * двигает мебель, и убрать случайно нельзя.
    */
   editable?: boolean;
   /** Маленький значок: что лежит внутри (📅🎯…). Пусто — без значка. */
@@ -125,7 +126,6 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
     .onTouchesDown((_e, manager) => {
       if (hiddenNow()) manager.fail();
     })
-    .enabled(editable)
     .minDistance(4)
     .onStart(() => {
       lift.value = withSpring(1.15, SPRING);
@@ -162,6 +162,10 @@ export const RoomFurnitureItem = memo(function RoomFurnitureItem({
       lift.value = withSpring(1, SPRING);
       if (onDragState) runOnJS(onDragState)(false);
     });
+  // Berik 2026-11-09: «зашёл заново — предмет не берётся и не двигается»: вне
+  // «Обставить» перетаскивание было выключено совсем. Теперь — после удержания;
+  // сдвинул палец раньше (>10pt) — это свайп страницы, предмет не трогаем.
+  if (!editable) pan = pan.activateAfterLongPress(350);
   if (blockGestures && blockGestures.length > 0) pan = pan.blocksExternalGesture(...blockGestures);
 
   const longPress = Gesture.LongPress()
