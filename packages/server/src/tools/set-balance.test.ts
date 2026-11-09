@@ -11,8 +11,8 @@ describe('set_balance — money-safety', () => {
     expect(setBalanceTool.needsConfirm).toBe(true);
     expect(setBalanceTool.sideEffects).toBe('write');
   });
-  it('flag-gated in handler', () => {
-    expect(SRC).toMatch(/isV2RunwayBalanceEnabled\(ctx\.userId\)/);
+  it('handler без флага', () => {
+    expect(SRC).not.toMatch(/isV2RunwayBalanceEnabled/);
   });
   it('writes only CashSnapshot (no Income/Expense ledger)', () => {
     expect(SRC).toMatch(/cashSnapshot\.create/);

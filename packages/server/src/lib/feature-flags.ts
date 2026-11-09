@@ -126,36 +126,11 @@ export function isV2RecentActivityEnabled(userId: string): boolean {
 }
 
 /**
- * Runway-баланс: якорь cashOnHand из CashSnapshot + инструмент set_balance.
- * Same shape as isV2AxesEnabled (env FEATURE_V2_RUNWAY_BALANCE).
- */
-export function isV2RunwayBalanceEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_RUNWAY_BALANCE;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
  * Решения↔исходы: журнал решений + ретро + детектор decision_review.
  * Same shape as isV2AxesEnabled (env FEATURE_V2_DECISIONS).
  */
 export function isV2DecisionsEnabled(userId: string): boolean {
   const raw = process.env.FEATURE_V2_DECISIONS;
-  if (raw === undefined) return false;
-  const flag = raw.trim();
-  if (flag === '' || flag === 'none' || flag === 'false') return false;
-  if (flag === 'all' || flag === 'true') return true;
-  return flag.split(',').some((s) => s.trim() === `user-${userId}`);
-}
-
-/**
- * Energy↔Result (кросс-домен #2). Same shape as isV2AxesEnabled.
- */
-export function isV2EnergyEnabled(userId: string): boolean {
-  const raw = process.env.FEATURE_V2_ENERGY;
   if (raw === undefined) return false;
   const flag = raw.trim();
   if (flag === '' || flag === 'none' || flag === 'false') return false;

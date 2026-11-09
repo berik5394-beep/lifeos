@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { localDateOnlyUTC } from '../lib/tz.js';
 import { getUserTimezone } from '../lib/user-context.js';
-import { isV2RunwayBalanceEnabled } from '../lib/feature-flags.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -32,7 +31,6 @@ export const setBalanceTool = defineTool({
   sideEffects: 'write',
   examples: ['на счету 500000', 'у меня 350 тысяч на карте', 'баланс 1.2 млн'],
   handler: async (input, ctx) => {
-    if (!isV2RunwayBalanceEnabled(ctx.userId)) return { error: 'функция отключена' };
     const tz = await getUserTimezone(ctx.userId);
     // asOf — @db.Date: календарная дата юзера (раньше баланс датировался вчера в UTC+).
     let asOf = localDateOnlyUTC(tz);

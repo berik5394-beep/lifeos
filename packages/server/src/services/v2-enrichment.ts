@@ -19,7 +19,6 @@ import { getEmotionalMemory } from './emotional-memory.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type UserAxesValues } from './user-axes/index.js';
 import {
-  isV2EnergyEnabled,
   isV2RelationshipsEnabled,
   isV2DecisionsEnabled,
   isV2BirthdayEnabled,
@@ -503,11 +502,9 @@ export async function fetchV2EnrichmentData(
       )
         .then((rw) => rw?.insightText ?? null)
         .catch(() => null),
-      isV2EnergyEnabled(userId)
-        ? withTimeout(buildEnergyLink(userId), CROSS_DOMAIN_BUDGET_MS, null)
-            .then((el) => el?.insightText ?? null)
-            .catch(() => null)
-        : Promise.resolve(null),
+      withTimeout(buildEnergyLink(userId), CROSS_DOMAIN_BUDGET_MS, null)
+        .then((el) => el?.insightText ?? null)
+        .catch(() => null),
       isV2RelationshipsEnabled(userId)
         ? withTimeout(buildRelationshipNudge(userId), CROSS_DOMAIN_BUDGET_MS, null)
             .then((r) => r?.insightText ?? null)

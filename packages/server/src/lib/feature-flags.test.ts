@@ -1,8 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  isV2RunwayBalanceEnabled,
   isV2DecisionsEnabled,
-  isV2EnergyEnabled,
   isV2RelationshipsEnabled,
   isV2WriteEnabled,
   isV2RealtimeEnabled,
@@ -236,32 +234,6 @@ describe('isV2WriteEnabled', () => {
   });
 });
 
-describe('isV2RunwayBalanceEnabled', () => {
-  afterEach(() => {
-    delete process.env.FEATURE_V2_RUNWAY_BALANCE;
-  });
-  it('unset → false', () => {
-    expect(isV2RunwayBalanceEnabled('u1')).toBe(false);
-  });
-  it('none/false/empty → false', () => {
-    for (const v of ['none', 'false', '']) {
-      process.env.FEATURE_V2_RUNWAY_BALANCE = v;
-      expect(isV2RunwayBalanceEnabled('u1')).toBe(false);
-    }
-  });
-  it('all/true → true', () => {
-    process.env.FEATURE_V2_RUNWAY_BALANCE = 'all';
-    expect(isV2RunwayBalanceEnabled('anybody')).toBe(true);
-    process.env.FEATURE_V2_RUNWAY_BALANCE = 'true';
-    expect(isV2RunwayBalanceEnabled('anybody')).toBe(true);
-  });
-  it('user-list матчит только своих', () => {
-    process.env.FEATURE_V2_RUNWAY_BALANCE = 'user-u1';
-    expect(isV2RunwayBalanceEnabled('u1')).toBe(true);
-    expect(isV2RunwayBalanceEnabled('u2')).toBe(false);
-  });
-});
-
 describe('isV2DecisionsEnabled', () => {
   afterEach(() => {
     delete process.env.FEATURE_V2_DECISIONS;
@@ -285,24 +257,6 @@ describe('isV2DecisionsEnabled', () => {
     process.env.FEATURE_V2_DECISIONS = 'user-u1';
     expect(isV2DecisionsEnabled('u1')).toBe(true);
     expect(isV2DecisionsEnabled('u2')).toBe(false);
-  });
-});
-
-describe('isV2EnergyEnabled', () => {
-  afterEach(() => {
-    delete process.env.FEATURE_V2_ENERGY;
-  });
-  it('unset → false', () => {
-    expect(isV2EnergyEnabled('u1')).toBe(false);
-  });
-  it('all → true', () => {
-    process.env.FEATURE_V2_ENERGY = 'all';
-    expect(isV2EnergyEnabled('u1')).toBe(true);
-  });
-  it('user-list матчит только своих', () => {
-    process.env.FEATURE_V2_ENERGY = 'user-u1';
-    expect(isV2EnergyEnabled('u1')).toBe(true);
-    expect(isV2EnergyEnabled('u2')).toBe(false);
   });
 });
 

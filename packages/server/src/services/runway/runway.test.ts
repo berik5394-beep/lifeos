@@ -5,8 +5,8 @@ import { describe, it, expect } from 'vitest';
 const SRC = readFileSync(join(__dirname, 'runway.ts'), 'utf8');
 
 describe('runway.ts — anchor integration (structural)', () => {
-  it('gates snapshot anchor behind isV2RunwayBalanceEnabled', () => {
-    expect(SRC).toMatch(/isV2RunwayBalanceEnabled\(/);
+  it('snapshot anchor без флага (isV2RunwayBalanceEnabled удалён)', () => {
+    expect(SRC).not.toMatch(/isV2RunwayBalanceEnabled/);
   });
   it('reads latest CashSnapshot ordered by asOf desc', () => {
     expect(SRC).toMatch(/cashSnapshot\.findFirst/);

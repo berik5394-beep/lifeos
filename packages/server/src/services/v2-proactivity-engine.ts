@@ -701,8 +701,6 @@ async function detectRunwayLow(userId: string): Promise<NudgeCandidate[]> {
 // Energy↔Result: связь сон↔выполнение подтверждена И недавно недосып.
 async function detectEnergyLink(userId: string): Promise<NudgeCandidate[]> {
   try {
-    const { isV2EnergyEnabled } = await import('../lib/feature-flags.js');
-    if (!isV2EnergyEnabled(userId)) return [];
     const { buildEnergyLink } = await import('./energy-link/index.js');
     const el = await buildEnergyLink(userId);
     if (!el) return [];
