@@ -15,7 +15,7 @@ import { buildDailyDigest, isOpsDigestHour } from './ai-economics.js';
 import { runMemoryDedupeBackfill, backfillLogLine, type BackfillMode } from './cron/memory-dedupe-backfill.js';
 
 /** Склейка старых дублей памяти: dry (счёт) → после просмотра цифр apply. */
-const MEMORY_DEDUPE_BACKFILL_MODE: BackfillMode = 'dry';
+const MEMORY_DEDUPE_BACKFILL_MODE: BackfillMode = 'apply';
 import { hasOpsRecipients, opsAlertRecipients } from '../lib/ops-alert.js';
 import { syncGoogleCalendar, GOOGLE_SYNC_INTERVAL_MS } from './google-calendar-sync.js';
 import { runMoodRetention } from './cron/mood-retention-cron.js';
