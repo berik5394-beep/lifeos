@@ -15,6 +15,8 @@ const AREA_TO_CAT: Record<string, string> = {
   health: 'health',
   career: 'work',
   spirituality: 'personal',
+  relationships: 'personal',
+  creativity: 'personal',
 };
 
 export const getGoalProgressTool = defineTool({

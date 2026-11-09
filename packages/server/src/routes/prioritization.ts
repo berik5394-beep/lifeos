@@ -37,6 +37,7 @@ export async function prioritizationRoutes(app: FastifyInstance): Promise<void> 
       where: {
         userId: request.userId,
         completed: false,
+        cancelled: false,
       },
       orderBy: { date: 'asc' },
       take: 50, // Limit to avoid huge AI prompts
@@ -122,6 +123,7 @@ export async function prioritizationRoutes(app: FastifyInstance): Promise<void> 
       where: {
         userId: request.userId,
         completed: false,
+        cancelled: false,
       },
       orderBy: { aiScore: 'desc' },
       include: {
@@ -139,6 +141,7 @@ export async function prioritizationRoutes(app: FastifyInstance): Promise<void> 
       where: {
         userId: request.userId,
         completed: false,
+        cancelled: false,
         urgency: { not: null },
         importance: { not: null },
       },

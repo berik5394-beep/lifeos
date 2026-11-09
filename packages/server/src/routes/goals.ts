@@ -13,7 +13,7 @@ import { localWeekStartUTC } from '../lib/tz.js';
 // B.3: enum/диапазоны (аудит 3.12). area из CLAUDE.md (goalAreas),
 // year ограничен, weekStart — строгий ISO (раньше z.string() →
 // new Date(garbage) = Invalid Date молча).
-const GOAL_AREA = z.enum(['finance', 'spirituality', 'career', 'health']);
+const GOAL_AREA = z.enum(['finance', 'spirituality', 'career', 'health', 'relationships', 'creativity']);
 
 const createWeeklyGoalSchema = z.object({
   weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в формате YYYY-MM-DD'),

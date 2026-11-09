@@ -21,3 +21,14 @@ describe('POST /goals/yearly с target', () => {
     expect(b.json().target).toBeNull();
   });
 });
+
+describe('POST /goals/yearly — все 6 областей экрана «Цели»', () => {
+  it('«Отношения» и «Творчество» сохраняются (раньше 400)', async () => {
+    const u = await prisma.user.create({ data: { email: `ga-${Date.now()}-${Math.random()}@a.test`, name: 'G', passwordHash: 'x', timezone: 'UTC' } });
+    const headers = { authorization: `Bearer ${app.jwt.sign({ sub: u.id })}` };
+    for (const area of ['relationships', 'creativity']) {
+      const r = await app.inject({ method: 'POST', url: '/goals/yearly', headers, payload: { year: 2026, area, goalText: 'Цель' } });
+      expect(r.statusCode).toBe(201);
+    }
+  });
+});

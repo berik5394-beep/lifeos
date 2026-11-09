@@ -28,3 +28,19 @@ describe('GET /tasks/activity', () => {
     expect(res.json()).toEqual({ year: 2026, days: { '2026-02-10': 50, '2026-09-01': 100 } });
   });
 });
+
+describe('GET /tasks — отменённые («убери задачу») не видны ни в одной выборке', () => {
+  it('date / week / month / всё', async () => {
+    const u = await prisma.user.create({ data: { email: `cnl-${Date.now()}-${Math.random()}@a.test`, name: 'A', passwordHash: 'x', timezone: 'UTC' } });
+    const mk = (title: string, cancelled: boolean) =>
+      prisma.task.create({ data: { userId: u.id, title, category: 'work', priority: 'low', date: new Date('2026-11-09T00:00:00Z'), cancelled } });
+    await mk('живая', false);
+    await mk('убранная', true);
+    const h = { authorization: `Bearer ${app.jwt.sign({ sub: u.id })}` };
+    for (const q of ['?date=2026-11-09', '?week=2026-11-09', '?month=2026-11', '']) {
+      const res = await app.inject({ method: 'GET', url: `/tasks${q}`, headers: h });
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as Array<{ title: string }>).map((t) => t.title)).toEqual(['живая']);
+    }
+  });
+});

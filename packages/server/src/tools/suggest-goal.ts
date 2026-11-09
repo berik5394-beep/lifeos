@@ -48,7 +48,7 @@ export const suggestGoalTool = defineTool({
     goal_id: 'goalId',
   },
   schema: z.object({
-    area: z.enum(['finance', 'career', 'health', 'spirituality']),
+    area: z.enum(['finance', 'career', 'health', 'spirituality', 'relationships', 'creativity']),
     goalText: z.string().min(3).max(300),
     rationale: z
       .string()

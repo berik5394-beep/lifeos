@@ -80,6 +80,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return prisma.task.findMany({
         where: {
           userId: request.userId,
+          cancelled: false,
           date: { gte: weekStart, lt: weekEnd },
         },
         include: {
@@ -97,6 +98,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return prisma.task.findMany({
         where: {
           userId: request.userId,
+          cancelled: false,
           date: parsed,
         },
         include: {
@@ -115,6 +117,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
       return prisma.task.findMany({
         where: {
           userId: request.userId,
+          cancelled: false,
           date: { gte: range.start, lt: range.end },
         },
         include: {
@@ -127,7 +130,7 @@ export async function taskRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return prisma.task.findMany({
-      where: { userId: request.userId },
+      where: { userId: request.userId, cancelled: false },
       include: {
         taskTags: { include: { tag: true } },
         subtasks: true,

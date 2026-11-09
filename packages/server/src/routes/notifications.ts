@@ -82,7 +82,7 @@ export async function notificationRoutes(app: FastifyInstance): Promise<void> {
     const [tasks, events, habits, habitLogs, expenses, budgetLimits, habitStreak, dealSteps] =
       await Promise.all([
         prisma.task.findMany({
-          where: { userId, date: today },
+          where: { userId, date: today, cancelled: false },
           orderBy: [{ time: 'asc' }],
           select: {
             id: true,
