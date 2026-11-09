@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Keyboard, KeyboardAvoidingView, Platform, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, type NativeScrollEvent, type NativeSyntheticEvent, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { dragOffset, swipeDecision } from '@/services/home-swipe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -239,14 +239,27 @@ function HomePager() {
         </Text>
       )}
       {!roomSeen && page === TOOLS_PAGE && (
-        <Text style={[styles.roomHint, { color: c.textSecondary }]} pointerEvents="none">
-          Смахни влево — там комната робота 🤖
-        </Text>
+        // Нажимается: жест невидим, поэтому подсказка ещё и ведёт в комнату сама.
+        <Pressable onPress={() => goPage(ROOM_PAGE)} accessibilityRole="button" accessibilityLabel="Открыть комнату робота">
+          <Text style={[styles.roomHint, { color: c.textSecondary }]}>
+            Смахни влево — там комната робота 🤖 (или нажми)
+          </Text>
+        </Pressable>
       )}
-      {/* Две точки: где ты — инструменты или комната. */}
-      <View style={styles.dots} pointerEvents="none">
+      {/* Две точки: где ты — инструменты или комната. Нажимаются; неактивная —
+          видимая на любой теме (была surfaceLight и сливалась с фоном). */}
+      <View style={styles.dots}>
         {[TOOLS_PAGE, ROOM_PAGE].map((p) => (
-          <View key={p} style={[styles.dot, { backgroundColor: p === page ? c.text : c.surfaceLight }]} />
+          <Pressable
+            key={p}
+            onPress={() => goPage(p)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={p === TOOLS_PAGE ? 'Инструменты' : 'Комната робота'}
+            accessibilityState={{ selected: p === page }}
+          >
+            <View style={[styles.dot, { backgroundColor: c.text, opacity: p === page ? 1 : 0.25 }]} />
+          </Pressable>
         ))}
       </View>
       <View style={{ paddingBottom: kbOpen ? 0 : insets.bottom }}>
@@ -258,7 +271,7 @@ function HomePager() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  dots: { flexDirection: 'row', justifyContent: 'center', gap: 6, paddingTop: 4 },
-  roomHint: { textAlign: 'center', fontSize: 12, paddingTop: 4 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
+  dots: { flexDirection: 'row', justifyContent: 'center', gap: 10, paddingTop: 6 },
+  roomHint: { textAlign: 'center', fontSize: 13, paddingTop: 4 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
 });

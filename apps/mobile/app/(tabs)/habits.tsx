@@ -548,8 +548,10 @@ const SleepInput = React.memo(function SleepInput({
 }: SleepInputProps) {
   const SCREEN_WIDTH = useContentWidth();
   const hours = value ?? 0;
-  const quality = hours >= 8 ? 'Отлично' : hours >= 7 ? 'Хорошо' : hours >= 6 ? 'Нормально' : hours >= 4 ? 'Мало' : 'Критично';
-  const qualityColor = hours >= 8 ? '#22C55E' : hours >= 7 ? '#3B82F6' : hours >= 6 ? '#F59E0B' : '#EF4444';
+  // Не ввёл — «не отмечено», а не «Критично» (ноль — не результат).
+  const quality = value == null || value === 0 ? 'не отмечено' : hours >= 8 ? 'Отлично' : hours >= 7 ? 'Хорошо' : hours >= 6 ? 'Нормально' : hours >= 4 ? 'Мало' : 'Критично';
+  const qualityColor =
+    value == null || value === 0 ? c.textSecondary : hours >= 8 ? '#22C55E' : hours >= 7 ? '#3B82F6' : hours >= 6 ? '#F59E0B' : '#EF4444';
 
   return (
     <View>
@@ -1432,7 +1434,7 @@ export default function HabitsScreen() {
         <View>
           {!inTools && <Text style={styles.title}>Привычки</Text>}
           <Text style={styles.subtitle}>
-            {todayCompleted}/{todayTotal} выполнено сегодня
+            {activeHabits.length === 0 ? 'Привычек пока нет' : `${todayCompleted}/${todayTotal} выполнено сегодня`}
           </Text>
         </View>
         <View style={styles.streakBadge}>
@@ -1440,7 +1442,23 @@ export default function HabitsScreen() {
         </View>
       </View>
 
+      {/* Нет привычек — сразу призыв (раньше: кольцо 0 % «Продолжай!» и три нулевые
+          карточки, а «Новая привычка» — ниже первого экрана). */}
+      {activeHabits.length === 0 && !isLoading && (
+        <View style={styles.emptyState}>
+          <Text style={styles.emptyEmoji}>{'🌱'}</Text>
+          <Text style={styles.emptyTitle}>Заведи первую привычку</Text>
+          <Text style={styles.emptyDesc}>
+            Напиши её в строке ниже — например, «Зарядка». Или скажи роботу: «заведи привычку бег».
+          </Text>
+          <View style={styles.emptyAdd}>
+            <TapToAdd hint="Новая привычка" onSubmit={handleQuickAddHabit} />
+          </View>
+        </View>
+      )}
+
       {/* Progress Ring */}
+      {activeHabits.length > 0 && (
       <View style={styles.progressSection}>
         <ProgressRing
           progress={todayProgress}
@@ -1459,6 +1477,7 @@ export default function HabitsScreen() {
           </Text>
         </View>
       </View>
+      )}
 
       {/* Streak Display */}
       {currentStreak > 0 && (
@@ -1563,7 +1582,8 @@ export default function HabitsScreen() {
         <TapToAdd hint="Новая привычка" onSubmit={handleQuickAddHabit} />
       )}
 
-      {/* Stats Row */}
+      {/* Stats Row — только когда есть что считать (нули — не результат). */}
+      {activeHabits.length > 0 && (
       <FadeInView delay={100}>
         <View style={styles.statsRow}>
           <StatCard
@@ -1589,19 +1609,6 @@ export default function HabitsScreen() {
           />
         </View>
       </FadeInView>
-
-      {/* Empty State */}
-      {activeHabits.length === 0 && !isLoading && (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyEmoji}>{'🌱'}</Text>
-          <Text style={styles.emptyTitle}>Нет привычек</Text>
-          <Text style={styles.emptyDesc}>
-            Нажми «Новая привычка» ниже, чтобы создать первую
-          </Text>
-          <View style={styles.emptyAdd}>
-            <TapToAdd hint="Новая привычка" onSubmit={handleQuickAddHabit} />
-          </View>
-        </View>
       )}
 
       <View style={{ height: 100 }} />
@@ -1742,8 +1749,8 @@ export default function HabitsScreen() {
         ) : (
           <View style={styles.emptyState}>
             <Text style={styles.emptyEmoji}>{'📅'}</Text>
-            <Text style={styles.emptyTitle}>Нет данных</Text>
-            <Text style={styles.emptyDesc}>Создайте привычки для отображения календаря</Text>
+            <Text style={styles.emptyTitle}>Пока пусто</Text>
+            <Text style={styles.emptyDesc}>Заведи привычку на «Обзоре» — здесь появится её календарь</Text>
           </View>
         )}
 

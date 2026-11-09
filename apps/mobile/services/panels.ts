@@ -66,7 +66,7 @@ export function hiddenPanelReason(
   const p = PANELS.find((x) => x.key === key);
   if (!p || isPanelVisible(p, isFeatureVisible, server)) return null;
   if (p.serverGated) return `Вкладка «${p.label}» пока недоступна.`;
-  return `Вкладка «${p.label}» скрыта: в Настройках → «Уровень интерфейса» выбери «Стандарт» или «Продвинутый».`;
+  return `Вкладка «${p.label}» скрыта: в Настройках (⚙️ справа от вкладок) → «Уровень интерфейса» выбери «Стандарт» или «Продвинутый».`;
 }
 
 /**

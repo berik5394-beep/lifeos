@@ -3,7 +3,7 @@ import { formatDate } from '@/utils/dates';
 
 export const KANBAN_COLUMNS = [
   { id: 'backlog', label: 'Бэклог', short: 'Бэклог', color: '#6B7280' },
-  { id: 'todo', label: 'К выполнению', short: 'К делу', color: '#3B82F6' },
+  { id: 'todo', label: 'К делу', short: 'К делу', color: '#3B82F6' }, // одно имя (было «К выполнению» в заголовке и «К делу» во вкладке)
   { id: 'in_progress', label: 'В работе', short: 'В работе', color: '#F59E0B' },
   { id: 'done', label: 'Готово', short: 'Готово', color: '#22C55E' },
 ] as const;

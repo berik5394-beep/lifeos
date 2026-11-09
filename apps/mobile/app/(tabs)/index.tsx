@@ -413,12 +413,10 @@ export default function PlannerScreen() {
 
   const handleDismissEveningRitual = useCallback(() => setShowEveningRitual(false), []);
 
-  const handleNavigateJournal = useCallback(() => useRoomToolStore.getState().openTool('journal'), []);
   const handleNavigateTaskCapture = useCallback(() => navigation.navigate('TaskCapture' as never), [navigation]);
   const handleNavigateFocusMode = useCallback(() => navigation.navigate('FocusMode' as never), [navigation]);
   const handleNavigateKanbanBoard = useCallback(() => navigation.navigate('KanbanBoard' as never), [navigation]);
   const handleNavigateLifeInsights = useCallback(() => navigation.navigate('LifeInsights' as never), [navigation]);
-  const handleNavigateCalendar = useCallback(() => useRoomToolStore.getState().openTool('calendar'), []);
 
   const handleQuoteSpeak = useCallback(() => {
     if (quotePlaying) {
@@ -587,24 +585,17 @@ export default function PlannerScreen() {
         <View style={styles.quickActionsRow}>
           <TouchableOpacity
             style={styles.quickActionPill}
-            onPress={handleNavigateJournal}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.quickActionText}>{'\u{1F4DD}'} Дневник</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickActionPill}
             onPress={handleNavigateTaskCapture}
             activeOpacity={0.7}
           >
-            <Text style={styles.quickActionText}>{'\u{1F4F7}'} Камера</Text>
+            <Text style={styles.quickActionText}>{'\u{1F4F7}'} Задачи с фото</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.quickActionPill}
             onPress={handleNavigateFocusMode}
             activeOpacity={0.7}
           >
-            <Text style={styles.quickActionText}>{'\u{1F3AF}'} Фокус</Text>
+            <Text style={styles.quickActionText}>{'\u{1F3AF}'} Фокус-таймер</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.quickActionPill}
@@ -615,24 +606,17 @@ export default function PlannerScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.quickActionPill}
-            onPress={handleNavigateCalendar}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.quickActionText}>{'\u{1F4C5}'} Календарь</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickActionPill}
             onPress={handleGoodnight}
             activeOpacity={0.7}
           >
-            <Text style={styles.quickActionText}>{'\u{1F319}'} Отбой</Text>
+            <Text style={styles.quickActionText}>{'\u{1F319}'} Отбой — итоги дня</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.quickActionPill, { backgroundColor: '#EF4444' + '30' }]}
+            style={styles.quickActionPill}
             onPress={handleNavigateLifeInsights}
             activeOpacity={0.7}
           >
-            <Text style={styles.quickActionText}>{'\u{1F50D}'} Разбор</Text>
+            <Text style={styles.quickActionText}>{'\u{1F50D}'} Разбор жизни</Text>
           </TouchableOpacity>
         </View>
 
@@ -859,11 +843,12 @@ function createStyles(c: C) {
       marginBottom: spacing.sm,
     },
     quoteCard: {
-      backgroundColor: '#1A2540',
+      // Цвет темы (было зашитое #1A2540 — на светлых темах текст не читался).
+      backgroundColor: c.surface,
       marginBottom: spacing.md,
     },
     quoteText: {
-      color: c.textSecondary,
+      color: c.text,
       fontSize: fontSize.sm,
       fontStyle: 'italic',
       lineHeight: 20,

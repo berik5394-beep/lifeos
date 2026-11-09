@@ -209,6 +209,11 @@ export default function FocusModeScreen() {
         .map((t) => ({ id: t.id, title: t.title, category: t.category, priority: t.priority })),
     [allTasks, todayKey],
   );
+  // Выполнено сегодня — отличить «всё сделал» от «задач не было».
+  const doneToday = useMemo(
+    () => allTasks.filter((t) => t.completed && t.date.slice(0, 10) === todayKey).length,
+    [allTasks, todayKey],
+  );
   const [currentIndex, setCurrentIndex] = useState(0);
   const [pomodoroCount, setPomodoroCount] = useState(0);
   const [remainingSeconds, setRemainingSeconds] = useState(POMODORO_DURATION);
@@ -356,9 +361,14 @@ export default function FocusModeScreen() {
           <View style={styles.emptyIcon}>
             <Feather name="check-circle" size={40} color={c.success} />
           </View>
-          <Text style={styles.emptyTitle}>Все задачи выполнены!</Text>
+          {/* Задач не было вовсе ≠ «все выполнены» (раньше: «Вы завершили 0 помидоров»). */}
+          <Text style={styles.emptyTitle}>{doneToday > 0 ? 'Все задачи выполнены!' : 'Задач на сегодня нет'}</Text>
           <Text style={styles.emptySubtitle}>
-            Отличная работа! Вы завершили {pomodoroCount} помидоров.
+            {doneToday > 0
+              ? pomodoroCount > 0
+                ? `Отличная работа! Помидоров сегодня: ${pomodoroCount}.`
+                : 'Отличная работа!'
+              : 'Добавь задачу во вкладке «Задачи» или скажи роботу — и фокус-таймер поведёт по ней.'}
           </Text>
         </View>
       )}

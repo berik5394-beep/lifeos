@@ -967,14 +967,15 @@ export default function FinanceScreen() {
             <View style={styles.summaryRow}>
               <View style={styles.summaryItem}>
                 <Text style={styles.summaryIcon}>💰</Text>
-                <Text style={styles.summaryLabel}>Накопление</Text>
+                {/* Без доходов «Накопление −2 500» красным читалось как долг/сбой. */}
+                <Text style={styles.summaryLabel}>{totalIncomes > 0 ? 'Накопление' : 'Остаток'}</Text>
                 <Text
                   style={[
                     styles.summaryValue,
-                    { color: balance >= 0 ? c.success : c.danger },
+                    { color: totalIncomes === 0 ? c.textSecondary : balance >= 0 ? c.success : c.danger },
                   ]}
                 >
-                  {formatMoney(balance)}
+                  {totalIncomes > 0 ? formatMoney(balance) : '—'}
                 </Text>
               </View>
               <View style={styles.summaryDivider} />
@@ -1016,9 +1017,10 @@ export default function FinanceScreen() {
             </View>
             <View style={styles.metricDivider} />
             <View style={styles.metricItem}>
-              <Text style={styles.metricLabel}>Рекомендуемый расход/день</Text>
-              <Text style={[styles.metricValue, { color: c.success }]}>
-                {formatMoney(Math.round(recommendedDaily))}
+              <Text style={styles.metricLabel}>Можно тратить в день</Text>
+              {/* Без доходов «0 ₸» — бесполезный совет; честно просим доход. */}
+              <Text style={[styles.metricValue, { color: totalIncomes > 0 ? c.success : c.textSecondary }]}>
+                {totalIncomes > 0 ? formatMoney(Math.round(recommendedDaily)) : 'запиши доход'}
               </Text>
             </View>
           </View>

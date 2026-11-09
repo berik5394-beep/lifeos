@@ -18,11 +18,17 @@ import { useChatStore } from '@/stores/chat-store';
 import { useScheduleStore } from '@/stores/schedule-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { api } from '@/services/api';
+import { navigateTo } from '@/navigation/ref';
+import { SkeletonList } from '@/components/ui/skeleton';
 import type { PanelDef } from '@/services/panels';
 import type { ToolKey } from '@/services/room-tools';
 import { spacing, fontSize, borderRadius } from '@/constants';
 
 const ROBOT = 52;
+/** Робот в покое (нет ответа, эмоции, голоса) — компактный. */
+const ROBOT_IDLE = 36;
+/** Первое открытие вкладки: скелетон, пока экран берёт данные (не пустой фон). */
+const FIRST_OPEN_SKELETON_MS = 700;
 /* Своей полосы под робота нет (Berik 2026-11-07: «пусть он будет поверх, без
  * отдельной рамки»). Чтобы не загораживать: прокрутка оставляет внизу место под
  * него (ROBOT_INSET), а пока листают — он уменьшается и уходит к краю. */
@@ -180,6 +186,16 @@ export const ToolsPage = memo(function ToolsPage({
   // переключение: 3–5 запросов, сброс прокрутки и под-вкладки). Вернулся на
   // вкладку после 30+ с — экраны перечитывают данные (сигнал schedule-store).
   const [visited, setVisited] = useState<ToolKey[]>([tab]);
+  // Вкладка открыта впервые — короткий скелетон поверх, пока экран грузит данные.
+  const [fresh, setFresh] = useState<ToolKey | null>(null);
+  const firstVisit = useRef<Set<ToolKey>>(new Set([tab]));
+  useEffect(() => {
+    if (firstVisit.current.has(tab)) return;
+    firstVisit.current.add(tab);
+    setFresh(tab);
+    const t = setTimeout(() => setFresh((f) => (f === tab ? null : f)), FIRST_OPEN_SKELETON_MS);
+    return () => clearTimeout(t);
+  }, [tab]);
   const lastActive = useRef<Partial<Record<ToolKey, number>>>({});
   useEffect(() => {
     setVisited((v) => (v.includes(tab) ? v : [...v, tab]));
@@ -198,6 +214,10 @@ export const ToolsPage = memo(function ToolsPage({
     if (!l) return;
     tabsRef.current?.scrollTo({ x: Math.max(0, l.x - (width - l.w) / 2), animated: true });
   }, [tab, width]);
+
+  const robotActive =
+    emotion !== 'neutral' || chatLoading || voice.typing || voice.isRecording || voice.isProcessing || showReply || !!voiceBubble ||
+    !!screenText || explaining || !!explain;
 
   const bubble = voiceBubble ? (
     <ChatReplyBubble text={voiceBubble} tail="left" />
@@ -228,7 +248,10 @@ export const ToolsPage = memo(function ToolsPage({
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Полоса вкладок листается сама (жест-скролл RNGH выигрывает у свайпа дома). */}
+      {/* Полоса вкладок листается сама (жест-скролл RNGH выигрывает у свайпа дома).
+          Справа — шестерёнка настроек: раньше она была только в комнате робота,
+          и новичок не находил ни тему, ни уровень интерфейса, ни выход. */}
+      <View style={styles.tabsRow}>
       <GHScrollView
         ref={tabsRef}
         horizontal
@@ -256,6 +279,16 @@ export const ToolsPage = memo(function ToolsPage({
           );
         })}
       </GHScrollView>
+        <Pressable
+          style={styles.gear}
+          onPress={() => navigateTo('Settings')}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Настройки"
+        >
+          <Feather name="settings" size={18} color={c.textSecondary} />
+        </Pressable>
+      </View>
 
       <View style={styles.body}>
         <RobotDodgeContext.Provider value={dodge}>
@@ -267,6 +300,11 @@ export const ToolsPage = memo(function ToolsPage({
                 <ToolActiveContext.Provider value={k === tab}>
                   <S />
                 </ToolActiveContext.Provider>
+                {fresh === k && (
+                  <View style={[StyleSheet.absoluteFill, styles.skeleton]} pointerEvents="none">
+                    <SkeletonList count={5} />
+                  </View>
+                )}
               </View>
             );
           })}
@@ -278,7 +316,13 @@ export const ToolsPage = memo(function ToolsPage({
       {!kbOpen && (
       <Animated.View style={[styles.robot, robotDodgeStyle]}>
         <Pressable onPress={askExplain} hitSlop={8} accessibilityRole="button" accessibilityLabel="Робот, что тут важного?">
-          <RobotAvatar emotion={emotion} size={ROBOT} attention={voice.typing || voice.isRecording ? 'listening' : 'idle'} />
+          {/* В покое — меньше и в самом углу (меньше закрывает данные снизу слева);
+              говорит/реагирует/слушает — в полный рост. Без отдельной полосы (Berik 2026-11-07). */}
+          <RobotAvatar
+            emotion={emotion}
+            size={robotActive ? ROBOT : ROBOT_IDLE}
+            attention={voice.typing || voice.isRecording ? 'listening' : 'idle'}
+          />
         </Pressable>
       </Animated.View>
       )}
@@ -290,7 +334,17 @@ export const ToolsPage = memo(function ToolsPage({
 function createStyles(c: ReturnType<typeof useColors>) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.background },
-    tabsBar: { flexGrow: 0 },
+    tabsRow: { flexDirection: 'row', alignItems: 'center' },
+    tabsBar: { flexGrow: 1, flexShrink: 1 },
+    gear: {
+      width: 36,
+      height: 36,
+      borderRadius: borderRadius.lg,
+      backgroundColor: c.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: spacing.md,
+    },
     tabs: { gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
     tab: {
       flexDirection: 'row',
@@ -306,6 +360,7 @@ function createStyles(c: ReturnType<typeof useColors>) {
     tabTextOn: { color: c.text },
     body: { flex: 1 },
     hidden: { display: 'none' },
+    skeleton: { backgroundColor: c.background, paddingHorizontal: spacing.md, paddingTop: spacing.md },
     robot: { position: 'absolute', left: spacing.sm, bottom: spacing.xs },
     bubble: { position: 'absolute', left: ROBOT + spacing.sm, right: spacing.sm, bottom: spacing.xs },
   });

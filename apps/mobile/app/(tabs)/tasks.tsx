@@ -897,6 +897,32 @@ export default function TasksScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Task Overview Table — первым: «Задачи» = список (раньше он был третьим блоком, между счётчиками и донатами). */}
+        <Card style={styles.tableCard}>
+          <Text style={styles.sectionTitle}>Обзор задач</Text>
+
+          {monthTasks.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              onToggle={handleToggleComplete}
+              onDelete={handleDeleteTask}
+              onEdit={handleEditTask}
+              colors={c}
+            />
+          ))}
+          {/* Пусто — подпись в ширину карточки, а не широкой таблицы (иначе обрезалась справа). */}
+          {monthTasks.length === 0 && (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyEmoji}>{'\uD83D\uDCCB'}</Text>
+              <Text style={styles.emptyText}>Нет задач за этот месяц</Text>
+              <Text style={styles.emptySubtext}>Нажми на пустую строку ниже, чтобы добавить задачу</Text>
+            </View>
+          )}
+          {/* Добавление без плюсиков: тап по пустой строке в конце списка */}
+          <TapToAdd hint="Новая задача" onSubmit={handleQuickAdd} />
+        </Card>
+
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <View style={[styles.statBox, { borderLeftColor: c.primary }]}>
@@ -926,32 +952,6 @@ export default function TasksScreen() {
             </Text>
           </View>
           <AnimatedProgressBar progress={Math.round(monthStats.completionRate * 100)} />
-        </Card>
-
-        {/* Task Overview Table */}
-        <Card style={styles.tableCard}>
-          <Text style={styles.sectionTitle}>Обзор задач</Text>
-
-          {monthTasks.map((task) => (
-            <TaskRow
-              key={task.id}
-              task={task}
-              onToggle={handleToggleComplete}
-              onDelete={handleDeleteTask}
-              onEdit={handleEditTask}
-              colors={c}
-            />
-          ))}
-          {/* Пусто — подпись в ширину карточки, а не широкой таблицы (иначе обрезалась справа). */}
-          {monthTasks.length === 0 && (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyEmoji}>{'\uD83D\uDCCB'}</Text>
-              <Text style={styles.emptyText}>Нет задач за этот месяц</Text>
-              <Text style={styles.emptySubtext}>Нажми на пустую строку ниже, чтобы добавить задачу</Text>
-            </View>
-          )}
-          {/* Добавление без плюсиков: тап по пустой строке в конце списка */}
-          <TapToAdd hint="Новая задача" onSubmit={handleQuickAdd} />
         </Card>
 
         {/* Pie Charts */}
@@ -1353,26 +1353,22 @@ export default function TasksScreen() {
         style={styles.viewModeBar}
         contentContainerStyle={styles.viewModeBarContent}
       >
-        {visibleViewModes.map((mode) => {
-          const isActive = mode.key === 'list';
-          return (
-            <TouchableOpacity
-              key={mode.key}
-              style={[styles.viewModePill, isActive && styles.viewModePillActive]}
-              onPress={() => handleViewModePress(mode)}
-              activeOpacity={0.7}
-            >
-              <Feather
-                name={mode.icon}
-                size={14}
-                color={isActive ? '#FFFFFF' : c.textSecondary}
-              />
-              <Text style={[styles.viewModePillText, isActive && styles.viewModePillTextActive]}>
-                {mode.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+        {/* Не переключатель вида, а ссылки на ОТДЕЛЬНЫЕ экраны (стрелка ↗): раньше
+            «Список» горел как выбранный, а остальные «переключали», уводя со страницы. */}
+        {visibleViewModes.filter((mode) => mode.route).map((mode) => (
+          <TouchableOpacity
+            key={mode.key}
+            style={styles.viewModePill}
+            onPress={() => handleViewModePress(mode)}
+            activeOpacity={0.7}
+            accessibilityRole="link"
+            accessibilityLabel={`Открыть ${mode.label}`}
+          >
+            <Feather name={mode.icon} size={13} color={c.textSecondary} />
+            <Text style={styles.viewModePillText}>{mode.label}</Text>
+            <Feather name="arrow-up-right" size={12} color={c.textSecondary} />
+          </TouchableOpacity>
+        ))}
       </GHScrollView>
 
       {isLoading && tasks.length === 0 ? (
@@ -2095,12 +2091,8 @@ function createStyles(c: C) {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderRadius: borderRadius.xl,
-      backgroundColor: c.surface,
-      borderWidth: 1,
-      borderColor: c.border,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
     },
     viewModePillActive: {
       backgroundColor: c.primary,
