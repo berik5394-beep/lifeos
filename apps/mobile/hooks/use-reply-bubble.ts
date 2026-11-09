@@ -40,18 +40,35 @@ export function bubbleReplyFor(
  * hostKey — «где ты» (null — этот экран сейчас не перед глазами). Смена ключа
  * (другая вкладка/страница/экран) закрывает показанный ответ навсегда.
  */
+/**
+ * Ответ, который сам сменил экран («Открой финансы» → вкладка открылась): его не
+ * закрываем при смене экрана, а несём на новый (аудит 2026-11-09: облачко мигало
+ * и пропадало — прочитать ответ можно было только в истории). Общий на все
+ * экраны: страница «комната → инструменты» — другой экземпляр хука.
+ */
+const CARRY_MS = 5000;
+let carried: { id: string; createdAt: number } | null = null;
+
 export function useReplyBubble(hostKey: string | null): { reply: ChatMessage | undefined; dismiss: () => void } {
   const latest = useChatStore((s) => s.messages[0]);
   const dismissedId = useReplyBubbleStore((s) => s.dismissedId);
   const since = useRef(Date.now());
-  const shown = useRef<string | null>(null);
+  const shown = useRef<{ id: string; createdAt: number } | null>(null);
   const reply = hostKey ? bubbleReplyFor(latest, dismissedId, since.current) : undefined;
-  shown.current = reply && !reply.pendingAction ? reply.id : null;
+  shown.current = reply && !reply.pendingAction ? { id: reply.id, createdAt: new Date(reply.createdAt).getTime() } : null;
   useEffect(() => {
-    since.current = Date.now();
+    const c = carried;
+    carried = null;
+    since.current = c && hostKey ? Math.min(Date.now(), c.createdAt) : Date.now();
     return () => {
-      const id = shown.current;
-      if (id) useReplyBubbleStore.getState().dismiss(id);
+      const s = shown.current;
+      if (!s) return;
+      // Только что пришёл и, видимо, сам открыл этот экран — несём дальше.
+      if (Date.now() - s.createdAt < CARRY_MS) {
+        carried = s;
+        return;
+      }
+      useReplyBubbleStore.getState().dismiss(s.id);
     };
   }, [hostKey]);
   return {

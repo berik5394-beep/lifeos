@@ -14,15 +14,16 @@ import { storage } from '@/services/storage';
 /** Перечитать то, что могли изменить отправленные записи. Ленивый require — без циклов импорта. */
 function refreshStores(): void {
   /* eslint-disable @typescript-eslint/no-require-imports */
-  const { useTaskStore } = require('@/stores/task-store') as typeof import('@/stores/task-store');
   const { useHabitStore } = require('@/stores/habit-store') as typeof import('@/stores/habit-store');
-  const { useFinanceStore } = require('@/stores/finance-store') as typeof import('@/stores/finance-store');
   const { useJournalStore } = require('@/stores/journal-store') as typeof import('@/stores/journal-store');
+  const { useScheduleStore } = require('@/stores/schedule-store') as typeof import('@/stores/schedule-store');
   /* eslint-enable @typescript-eslint/no-require-imports */
-  useTaskStore.getState().fetchTasks().catch(() => {});
+  // Аудит 2026-11-09: раньше fetchExpenses()/fetchIncomes() без месяца заменяли список
+  // последними 50 за всё время (октябрь против ноябрьских лимитов), а отметки привычек
+  // не перечитывались. Сигнал revision — каждый экран перечитает СВОЙ диапазон
+  // (задачи недели/месяца, траты месяца, отметки привычек).
   useHabitStore.getState().fetchHabits().catch(() => {});
-  useFinanceStore.getState().fetchExpenses().catch(() => {});
-  useFinanceStore.getState().fetchIncomes().catch(() => {});
+  useScheduleStore.getState().bump();
   useJournalStore.getState().refreshAfterSync();
 }
 

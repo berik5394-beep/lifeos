@@ -29,7 +29,7 @@ describe('добавление задачи тапом: разбор фразы 
       '/tasks',
       expect.objectContaining({ title: 'Купить хлеб', category: 'personal', priority: 'medium', date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }),
       'tok',
-      { queueOffline: true },
+      { queueOffline: true, localId: expect.stringMatching(/^offline-/) },
     );
     expect(useTaskStore.getState().tasks).toEqual([TASK]);
   });

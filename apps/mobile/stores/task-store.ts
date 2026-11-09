@@ -130,10 +130,11 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
 
+    const localId = offlineId();
     try {
       const { proposal, conflictWarning, ...task } = await api.post<
         Task & { proposal?: RescheduleProposal; conflictWarning?: string }
-      >('/tasks', data, token, QUEUE_OFFLINE);
+      >('/tasks', data, token, { ...QUEUE_OFFLINE, localId });
       set((state) => ({ tasks: [...state.tasks, task] }));
       // Перегруз дня (облачко + «Подтвердить») и наложение по времени — одним облачком.
       surfaceCreateWarnings(proposal, conflictWarning);
@@ -142,7 +143,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       // список перечитается и временный id сменится настоящим.
       if (isOfflineQueued(err)) {
         const local: Task = {
-          id: offlineId(),
+          id: localId,
           userId: '',
           title: data.title,
           category: data.category,

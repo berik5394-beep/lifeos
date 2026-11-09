@@ -157,7 +157,7 @@ describe('useFinanceStore', () => {
         '/finance/expenses',
         { date: '2026-04-01', category: 'food', description: 'Обед', amount: 3000 },
         'test-token-123',
-        { queueOffline: true },
+        { queueOffline: true, localId: expect.stringMatching(/^offline-/) },
       );
       expect(useFinanceStore.getState().expenses).toHaveLength(1);
       expect(useFinanceStore.getState().expenses[0].id).toBe('exp-1');

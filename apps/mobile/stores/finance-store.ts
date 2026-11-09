@@ -137,12 +137,13 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
 
+    const localId = offlineId();
     try {
       const { budgetInfo, ...expense } = await api.post<Expense & { budgetInfo?: BudgetInfo }>(
         '/finance/expenses',
         data,
         token,
-        QUEUE_OFFLINE,
+        { ...QUEUE_OFFLINE, localId },
       );
       set((state) => ({ expenses: [expense, ...state.expenses] }));
       // Сервер предупредил про лимит — робот говорит сразу, а не в следующий тик.
@@ -151,7 +152,7 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     } catch (err) {
       // Без сети: трата в очереди — видна сразу, после отправки список перечитается.
       if (isOfflineQueued(err)) {
-        const local: Expense = { id: offlineId(), userId: '', ...data, createdAt: new Date().toISOString() };
+        const local: Expense = { id: localId, userId: '', ...data, createdAt: new Date().toISOString() };
         set((state) => ({ expenses: [local, ...state.expenses] }));
         return;
       }
@@ -183,12 +184,13 @@ export const useFinanceStore = create<FinanceState>((set) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
 
+    const localId = offlineId();
     try {
-      const income = await api.post<Income>('/finance/incomes', data, token, QUEUE_OFFLINE);
+      const income = await api.post<Income>('/finance/incomes', data, token, { ...QUEUE_OFFLINE, localId });
       set((state) => ({ incomes: [income, ...state.incomes] }));
     } catch (err) {
       if (isOfflineQueued(err)) {
-        const local: Income = { id: offlineId(), userId: '', ...data, createdAt: new Date().toISOString() };
+        const local: Income = { id: localId, userId: '', ...data, createdAt: new Date().toISOString() };
         set((state) => ({ incomes: [local, ...state.incomes] }));
         return;
       }

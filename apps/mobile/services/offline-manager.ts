@@ -71,6 +71,18 @@ export interface QueuedMutation {
   userId?: string;
   /** Ключ повтора (Idempotency-Key): тот же при каждой попытке — без дублей на сервере. */
   idempotencyKey?: string;
+  /** Временный id созданной без сети записи (offline-…), см. sync. */
+  localId?: string;
+}
+
+/** Подставить настоящий id вместо временного в адрес и тело записи. */
+export function swapLocalId(m: QueuedMutation, localId: string, realId: string): QueuedMutation {
+  if (!m.endpoint.includes(localId) && !(m.body !== undefined && JSON.stringify(m.body).includes(localId))) return m;
+  return {
+    ...m,
+    endpoint: m.endpoint.split(localId).join(realId),
+    body: m.body === undefined ? undefined : JSON.parse(JSON.stringify(m.body).split(localId).join(realId)),
+  };
 }
 
 const QUEUE_KEY = 'lifeos_offline_queue';
@@ -124,7 +136,7 @@ class OfflineQueue {
 
   /** Process all queued mutations (called when network restored) */
   async sync(
-    executor: (mutation: QueuedMutation) => Promise<boolean>,
+    executor: (mutation: QueuedMutation) => Promise<boolean | { ok: true; createdId?: string }>,
     /** Кто вошёл сейчас: записи другого (или без владельца) не отправляются. */
     ownerId: string | null,
   ): Promise<{ success: number; failed: number }> {
@@ -147,9 +159,26 @@ class OfflineQueue {
     });
     const remaining: QueuedMutation[] = [];
 
-    for (const mutation of toProcess) {
+    // Аудит 2026-11-09: без сети создал задачу/привычку/трату и тут же отметил или
+    // удалил — второй запрос шёл на «/…/offline-…» → 404 → молча выкидывался:
+    // удалённое «воскресало», отмеченное снова открыто. Теперь после создания
+    // настоящий id подставляется в следующие записи очереди.
+    const unsentLocal = new Set<string>();
+    const refersUnsent = (m: QueuedMutation) =>
+      [...unsentLocal].some((id) => m.endpoint.includes(id) || (m.body !== undefined && JSON.stringify(m.body).includes(id)));
+    for (let i = 0; i < toProcess.length; i++) {
+      const mutation = toProcess[i];
+      // Создание ещё не ушло — зависящие от него записи ждут его (иначе 404 и потеря).
+      if (refersUnsent(mutation)) {
+        remaining.push(mutation);
+        continue;
+      }
       try {
-        const ok = await executor(mutation);
+        const res = await executor(mutation);
+        const ok = res === true || (typeof res === 'object' && res.ok);
+        if (ok && typeof res === 'object' && res.createdId && mutation.localId) {
+          for (let j = i + 1; j < toProcess.length; j++) toProcess[j] = swapLocalId(toProcess[j], mutation.localId, res.createdId);
+        }
         if (ok) {
           success++;
         } else {
@@ -158,6 +187,7 @@ class OfflineQueue {
         }
       } catch {
         // Network error — keep in queue with incremented retry count
+        if (mutation.localId) unsentLocal.add(mutation.localId);
         remaining.push({ ...mutation, retryCount: (mutation.retryCount ?? 0) + 1 });
       }
     }

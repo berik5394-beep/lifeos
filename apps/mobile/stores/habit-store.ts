@@ -113,14 +113,15 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     const token = useAuthStore.getState().token;
     if (!token) return;
 
+    const localId = offlineId();
     try {
-      const habit = await api.post<Habit>('/habits', data, token, QUEUE_OFFLINE);
+      const habit = await api.post<Habit>('/habits', data, token, { ...QUEUE_OFFLINE, localId });
       set((state) => ({ habits: [...state.habits, habit] }));
     } catch (err) {
       // Без сети: запись в очереди — привычка видна сразу, после отправки перечитается.
       if (isOfflineQueued(err)) {
         const local: Habit = {
-          id: offlineId(),
+          id: localId,
           userId: '',
           ...data,
           goalId: data.goalId ?? null,

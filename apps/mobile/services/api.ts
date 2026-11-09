@@ -58,6 +58,9 @@ interface RequestOptions {
   idempotencyKey?: string;
   /** Сколько ждать ответа. Мозгу (чат, подтверждение) нужно больше 15 с. */
   timeoutMs?: number;
+  /** Временный id записи, созданной без сети: после отправки очереди его
+   *  заменят настоящим в следующих запросах (отметка/удаление той же записи). */
+  localId?: string;
 }
 
 export class ApiError extends Error {
@@ -177,6 +180,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       body,
       userId: getAuthStore().getState().user?.id,
       idempotencyKey,
+      localId: options.localId,
     });
     throw new OfflineQueuedError();
   }
@@ -230,6 +234,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
         body,
         userId: getAuthStore().getState().user?.id,
         idempotencyKey,
+        localId: options.localId,
       });
       throw new OfflineQueuedError();
     }
@@ -278,7 +283,7 @@ export const api = {
   get: <T>(endpoint: string, token?: MaybeToken, opts?: { timeoutMs?: number }) =>
     request<T>(endpoint, { token: token ?? undefined, ...opts }),
 
-  post: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean; timeoutMs?: number }) =>
+  post: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean; timeoutMs?: number; localId?: string }) =>
     request<T>(endpoint, { method: 'POST', body, token: token ?? undefined, ...opts }),
 
   put: <T>(endpoint: string, body: unknown, token?: MaybeToken, opts?: { queueOffline?: boolean; timeoutMs?: number }) =>
@@ -295,10 +300,17 @@ export const api = {
    * true — ушло; false — сервер окончательно отказал (4xx: задачи уже нет и т.п.) →
    * выкинуть; throw — нет сети/сервера/доступа (401, 408, 429, 5xx) → оставить в очереди.
    */
-  replayQueued: async (m: { method: string; endpoint: string; body?: unknown; idempotencyKey?: string }, token: MaybeToken): Promise<boolean> => {
+  replayQueued: async (
+    m: { method: string; endpoint: string; body?: unknown; idempotencyKey?: string },
+    token: MaybeToken,
+  ): Promise<boolean | { ok: true; createdId?: string }> => {
     try {
-      await request<unknown>(m.endpoint, { method: m.method, body: m.body, token: token ?? undefined, idempotencyKey: m.idempotencyKey });
-      return true;
+      const res = await request<unknown>(m.endpoint, { method: m.method, body: m.body, token: token ?? undefined, idempotencyKey: m.idempotencyKey });
+      // Создание: настоящий id — очередь подставит его вместо временного.
+      const createdId = m.method === 'POST' && res && typeof res === 'object' && typeof (res as { id?: unknown }).id === 'string'
+        ? (res as { id: string }).id
+        : undefined;
+      return createdId ? { ok: true, createdId } : true;
     } catch (err) {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500 && ![401, 408, 429].includes(err.status)) return false;
       throw err;
