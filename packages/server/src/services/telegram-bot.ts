@@ -5,6 +5,7 @@ import crypto from 'node:crypto';
 import { prisma } from '../lib/prisma.js';
 import { transcribeAudio } from './dictation-service.js';
 import { handleMessage } from './jarvis-orchestrator.js';
+import { NOTIFY_REDIRECT, NOTIFY_WELCOME, notifyOnlyRoute, telegramBotMode } from './telegram-notify-only.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { getUserAxesStore } from './user-axes/index.js';
 import { axisLabel, type AxisName } from './user-axes/index.js';
@@ -174,6 +175,24 @@ export function createTelegramBot(): Telegraf {
   bot.catch((err, ctx) => {
     console.error('[tg] handler error', ctx.updateType, err);
   });
+
+  // Только уведомления (по умолчанию; TELEGRAM_BOT_MODE=full — прежний бот).
+  // Первым в цепочке: дальше проходит лишь привязка аккаунта из приложения.
+  if (telegramBotMode() === 'notify') {
+    bot.use(async (ctx, next) => {
+      const msg = ctx.message as { text?: string } | undefined;
+      const cb = ctx.callbackQuery as { data?: string } | undefined;
+      const route = notifyOnlyRoute({
+        text: msg?.text,
+        callbackData: cb ? cb.data ?? '' : undefined,
+        hasMessage: !!ctx.message,
+      });
+      if (route === 'pass') return next();
+      if (route === 'welcome') await ctx.reply(NOTIFY_WELCOME).catch(() => undefined);
+      else if (route === 'redirect') await ctx.reply(NOTIFY_REDIRECT).catch(() => undefined);
+      else if (cb) await ctx.answerCbQuery().catch(() => undefined);
+    });
+  }
 
   // Имя бота для deep-link привязки — у самого бота (не хардкод: ссылка на
   // чужого бота отдала бы одноразовые коды его владельцу).
@@ -732,7 +751,7 @@ export async function startBot(): Promise<Telegraf | null> {
   // launch() резолвится только при остановке — НЕ await'им, иначе сервер
   // зависнет на старте. Запускаем в фоне с авто-ретраем (409 при деплое).
   launchWithRetry(bot);
-  console.log('Telegram бот запущен (@LifeOS_jarvis_bot)');
+  console.log(`Telegram бот запущен (@LifeOS_jarvis_bot), режим: ${telegramBotMode() === 'full' ? 'собеседник' : 'только уведомления'}`);
   return bot;
 }
 
