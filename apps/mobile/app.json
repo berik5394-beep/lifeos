@@ -12,7 +12,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0F172A"
+      "backgroundColor": "#F5F0E5"
     },
     "ios": {
       "supportsTablet": false,
@@ -79,7 +79,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0F172A"
+        "backgroundColor": "#5A51E6"
       },
       "edgeToEdgeEnabled": true,
       "package": "kz.lifeos.app",

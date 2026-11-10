@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+<linearGradient id="violet" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8F87FF"/><stop offset="1" stop-color="#4A41D6"/></linearGradient>
+<radialGradient id="shine" cx="0.28" cy="0.18" r="0.85"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.24"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></radialGradient></defs>
+<g transform="translate(512 528) scale(0.62) translate(-512 -454)">
+    <rect x="500" y="110" width="24" height="150" rx="12" fill="#ECECF5"/>
+    <circle cx="512" cy="104" r="70" fill="#FFD166" opacity="0.45" filter="url(#glow)"/>
+    <circle cx="512" cy="104" r="46" fill="#FFD166"/>
+    <circle cx="498" cy="90" r="13" fill="#FFF3C9"/>
+    <rect x="152" y="244" width="720" height="560" rx="184" fill="#F4F4FA" stroke="#C9CAE0" stroke-width="14"/>
+    <rect x="218" y="314" width="588" height="420" rx="118" fill="#23202F"/>
+    <g filter="url(#glow)" opacity="0.95">
+      <path d="M320 552 A66 66 0 0 1 452 552" fill="none" stroke="#6CF0FF" stroke-width="50" stroke-linecap="round"/>
+      <path d="M572 552 A66 66 0 0 1 704 552" fill="none" stroke="#6CF0FF" stroke-width="50" stroke-linecap="round"/>
+    </g>
+    <path d="M320 552 A66 66 0 0 1 452 552" fill="none" stroke="#C6FBFF" stroke-width="38" stroke-linecap="round"/>
+    <path d="M572 552 A66 66 0 0 1 704 552" fill="none" stroke="#C6FBFF" stroke-width="38" stroke-linecap="round"/>
+    <ellipse cx="330" cy="640" rx="36" ry="22" fill="#FF7FA8" opacity="0.5"/>
+    <ellipse cx="694" cy="640" rx="36" ry="22" fill="#FF7FA8" opacity="0.5"/>
+</g></svg>
