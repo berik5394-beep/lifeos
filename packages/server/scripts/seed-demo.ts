@@ -5,8 +5,9 @@
  *
  * Запуск (пароль задаёшь сам, в репо его нет):
  *   локально:  DEMO_PASSWORD='…' npx tsx scripts/seed-demo.ts
- *   прод:      DEMO_PASSWORD='…' ~/.npm-global/bin/railway run -s Postgres npx tsx scripts/seed-demo.ts
- *              (сервис Postgres даёт DATABASE_PUBLIC_URL — внутренний адрес Railway снаружи недоступен)
+ *   прод:      DATABASE_PUBLIC_URL='<Railway → Postgres → Connect → Public URL>' DEMO_PASSWORD='…' npx tsx scripts/seed-demo.ts
+ *              (`railway run -s Postgres` НЕ подходит: даёт только внутренний *.railway.internal,
+ *               с Mac недоступен; адрес-прокси в packages/server/.env на 2026-11-10 соединение рвёт)
  * Email — DEMO_EMAIL (по умолчанию appreview@lifeos.kz). Аккаунт уже есть — ничего не трогает.
  * Даты — от «сегодня» по Алматы: запусти накануне отправки на ревью.
  */
@@ -215,6 +216,13 @@ async function main(): Promise<void> {
   }
   if (!url) {
     console.error('Нет DATABASE_PUBLIC_URL / DATABASE_URL');
+    process.exit(1);
+  }
+  if (/\.railway\.internal\b/.test(url)) {
+    // `railway run -s Postgres` даёт только внутренний адрес — с Mac он недоступен.
+    console.error('Адрес базы внутренний (*.railway.internal) — с компьютера не достучаться.\n' +
+      'Нужен публичный адрес: Railway → Postgres → Connect → Public URL, и запуск так:\n' +
+      "  DATABASE_PUBLIC_URL='…' DEMO_PASSWORD='…' npx tsx scripts/seed-demo.ts");
     process.exit(1);
   }
   const prisma = new PrismaClient({ datasources: { db: { url } } });

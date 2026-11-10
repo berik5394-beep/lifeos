@@ -8,14 +8,12 @@
 после одобрения нажать «Выпустить». Ждём решения (обычно 1–2 дня).
 
 ## 1. Демо-аккаунт для проверяющего Apple
-- [ ] В Терминале (придумай пароль, в репо он не попадёт):
-  ```bash
-  cd ~/Desktop/LifeOS/packages/server && DEMO_PASSWORD='придумай-пароль' ~/.npm-global/bin/railway run -s Postgres npx tsx scripts/seed-demo.ts
-  ```
+- В App Store Connect для проверяющего указан **Leyla@mail.ru** (не appreview@lifeos.kz) — значит, создавать appreview не нужно.
+- [ ] Войти на телефоне (сборка из TestFlight) под **Leyla@mail.ru** с тем паролем, что в App Store Connect → App Review Information. Пускает → всё ок.
+- [ ] Желательно, чтобы в аккаунте были задачи/привычки/траты/цели и пара разговоров с роботом — проверяющий смотрит функции, пустой аккаунт выглядит слабо.
+- (Запасной вариант — заполненный appreview@lifeos.kz через `scripts/seed-demo.ts`: нужен публичный адрес базы из Railway → Postgres → Connect; `railway run -s Postgres` не подходит.)
   Должно написать «Демо-аккаунт создан: appreview@lifeos.kz». ⚠️ В отчёте не сказано, что команда запускалась на проде — проверь входом в приложение (сборка из TestFlight).
-- [ ] Войти в приложение под `appreview@lifeos.kz` — задачи, привычки, финансы, цели, чат заполнены.
-- [x] App Store Connect → App Review Information: контакт, демо-аккаунт, примечания на английском.
-- [ ] Запускать накануне отправки на ревью (даты в демо — от дня запуска).
+- [x] App Store Connect → App Review Information: контакт, демо-аккаунт Leyla@mail.ru, примечания на английском.
 
 ## 2. Оповещения о сбоях (иначе молчат)
 - [x] Railway → сервис **lifeos-api** → Variables: `OPS_ALERT_EMAILS=berik5394@gmail.com`.
