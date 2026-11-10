@@ -52,7 +52,8 @@ async function storeEmbedding(
  * string concat с пользовательским вводом (userId/query/limit — параметры).
  */
 
-type MemoryRow = { type: string; content: string; importance: number };
+/** createdAt — чтобы мозг знал, КОГДА записано («3 нед. назад ты переживал…», G 2026-11-10). */
+type MemoryRow = { type: string; content: string; importance: number; createdAt?: Date };
 
 /**
  * Фаза 2.2 — запись памяти с дедупликацией.
@@ -209,7 +210,7 @@ export async function getRelevantMemories(
       where,
       orderBy: [{ importance: 'desc' }, { createdAt: 'desc' }],
       take: limit,
-      select: { type: true, content: true, importance: true },
+      select: { type: true, content: true, importance: true, createdAt: true },
     });
     return rows;
   }
@@ -228,7 +229,7 @@ export async function getRelevantMemories(
     if (qvec) {
       const hybrid = await prisma.$queryRawUnsafe<MemoryRow[]>(
         `
-        SELECT m.type, m.content, m.importance
+        SELECT m.type, m.content, m.importance, m."createdAt"
         FROM "Memory" m
         WHERE m."userId" = $1
           AND (m."expiresAt" IS NULL OR m."expiresAt" > NOW())
@@ -263,7 +264,7 @@ ts_rank(${SEARCH_VECTOR}, plainto_tsquery('russian', $2)) * 5.0
   // по-прежнему биндятся (никакого concat пользовательского ввода);
   // forgetSql — серверная константа без user-input.
   const result = await prisma.$queryRawUnsafe<MemoryRow[]>(
-    `SELECT m.type, m.content, m.importance
+    `SELECT m.type, m.content, m.importance, m."createdAt"
      FROM "Memory" m
      WHERE m."userId" = $1
        AND (m."expiresAt" IS NULL OR m."expiresAt" > NOW())

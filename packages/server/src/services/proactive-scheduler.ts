@@ -1,3 +1,4 @@
+import { writeNightlyDiaries } from './robot-diary.js';
 import { prisma } from '../lib/prisma.js';
 import { generateProactiveNotifications } from './proactive-notifications.js';
 import { withTimeout } from '../lib/with-timeout.js';
@@ -106,6 +107,15 @@ async function tick(): Promise<void> {
         '[scheduler] crisis purge failed:',
         err instanceof Error ? err.message : err,
       );
+    }
+
+    // F (робот-друг): дневник робота за вчера — ночью по часам человека,
+    // а не только при открытии экрана (тогда роботу есть чем делиться).
+    try {
+      const n = await writeNightlyDiaries(new Date());
+      if (n > 0) console.log(`[scheduler] robot diary nightly: ${n}`);
+    } catch (err) {
+      console.warn('[scheduler] robot diary nightly failed:', err instanceof Error ? err.message : err);
     }
 
     // Кого обрабатывать: юзеры с каналом доставки (пуш/Telegram) + активные

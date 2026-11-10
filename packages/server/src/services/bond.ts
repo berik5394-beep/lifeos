@@ -14,6 +14,7 @@
  */
 import { prisma } from '../lib/prisma.js';
 import { currentFollowUp, formatFollowUp, type FollowUp } from './follow-ups.js';
+import { gatherJourney } from './journey.js';
 import { getUserTimezone } from '../lib/user-context.js';
 import { localDateOnlyUTC, localDateStr } from '../lib/tz.js';
 import { annotateRelativeDates } from '../lib/relative-dates.js';
@@ -44,6 +45,10 @@ export interface BondFacts {
   days: number;
   since: Date;
   milestone: number | null;
+  /** Сколько дней прошло с круглой даты (0 — сегодня; окно до 3 дней, G). */
+  milestoneAgo?: number;
+  /** Вехи пути (journey.ts) — факты с датами. */
+  journey?: string | null;
   /** Незакрытое (follow-ups.ts): о чём спросить «как прошло?». */
   thread: FollowUp | null;
   diary: string | null;
@@ -96,12 +101,20 @@ export function formatBondSection(f: BondFacts): string {
       ? 'Наша история: вы знакомы с сегодняшнего дня.'
       : `Наша история: вы знакомы ${daysWord(f.days)} (с ${since}).`,
   );
-  if (f.milestone) L.push(`Сегодня ровно ${daysWord(f.milestone)} знакомства — тепло отметь это один раз, коротко, без пафоса.`);
+  if (f.milestone) {
+    const word = MILESTONE_WORD[f.milestone] ?? `${daysWord(f.milestone)}`;
+    const when = !f.milestoneAgo ? 'сегодня' : f.milestoneAgo === 1 ? 'вчера' : `${f.milestoneAgo} дн. назад`;
+    L.push(
+      `Круглая дата: ${when} исполнилось ${word} вашего знакомства (ровно ${daysWord(f.milestone)}). Отметь именно её — ` +
+        `например «${!f.milestoneAgo ? 'сегодня' : 'на днях'} ${f.milestone === 30 ? 'был месяц' : f.milestone === 7 ? 'была неделя' : f.milestone === 365 ? 'был год' : `было ${daysWord(f.milestone)}`}, как мы знакомы» — один раз, коротко, без пафоса. Не называй другое число дней.`,
+    );
+  }
   if (f.quiet === 'no-support') {
     L.push('Человек выключил режим поддержки: о чувствах и личном не расспрашивай сам — только если он заговорит первым; отвечай по делу.');
   } else if (f.quiet === 'no-checkins') {
     L.push('Человек выключил вопросы «как ты?»: сам личных расспросов не заводи (ни «как прошло?», ни знакомство) — откликайся, если он сам рассказывает.');
   }
+  if (f.journey) L.push(f.journey);
   if (f.thread) L.push(formatFollowUp(f.thread));
   if (f.diary) L.push(`Твоя запись в дневнике (можно поделиться к месту, от первого лица): «${f.diary}»`);
   // D: один вопрос за ответ — есть незакрытое, знакомство в этот раз не подсказываем.
@@ -113,6 +126,57 @@ export function formatBondSection(f: BondFacts): string {
     );
   }
   return L.join('\n');
+}
+
+/** Как называть круглую дату по-человечески. */
+const MILESTONE_WORD: Record<number, string> = { 7: 'неделя', 30: 'месяц', 365: 'год', 730: 'два года' };
+
+/** Окно круглой даты: человек мог не зайти в сам день — отмечаем до 3 дней спустя (G). */
+export const MILESTONE_WINDOW_DAYS = 3;
+
+/** Какая круглая дата сейчас в окне (чистая). */
+export function milestoneInWindow(days: number): { m: number; ago: number } | null {
+  const m = [...BOND_MILESTONES].reverse().find((x) => days >= x && days - x <= MILESTONE_WINDOW_DAYS);
+  return m ? { m, ago: days - m } : null;
+}
+
+/** Круглая дата в окне и ещё не отмечена — запомнить, что предложили (журнал FollowUpLog). */
+async function openMilestone(userId: string, days: number, now: Date): Promise<{ m: number; ago: number } | null> {
+  const w = milestoneInWindow(days);
+  if (!w) return null;
+  const refKey = `milestone:${w.m}`;
+  const log = await prisma.followUpLog.findUnique({ where: { userId_refKey: { userId, refKey } }, select: { closedAt: true } }).catch(() => null);
+  if (log?.closedAt) return null;
+  if (!log) await prisma.followUpLog.create({ data: { userId, refKey, offeredAt: now, text: `${w.m} дней знакомства` } }).catch(() => null);
+  return w;
+}
+
+/** Слова, по которым видно, что робот отметил дату: число или «месяц/год/неделя». */
+export function celebratesMilestone(m: number, reply: string): boolean {
+  const words: Record<number, RegExp> = {
+    7: /недел/i,
+    30: /месяц/i,
+    365: /(?:^|[^а-яё])год(?![а-яё])/i,
+    730: /(?:два|2)\s+года/i,
+  };
+  return new RegExp(`(?:^|\\D)${m}(?:\\D|$)`).test(reply) || (words[m]?.test(reply) ?? false);
+}
+
+/** После ответа робота: отметил круглую дату — закрыть, больше не напоминать. */
+export async function markMilestoneCelebrated(userId: string, reply: string, now: Date = new Date()): Promise<boolean> {
+  try {
+    const open = await prisma.followUpLog.findFirst({
+      where: { userId, closedAt: null, refKey: { startsWith: 'milestone:' } },
+      select: { id: true, refKey: true },
+    });
+    if (!open) return false;
+    const m = Number(open.refKey.slice('milestone:'.length));
+    if (!celebratesMilestone(m, reply)) return false;
+    await prisma.followUpLog.update({ where: { id: open.id }, data: { askedAt: now, closedAt: now } });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function gatherBond(userId: string, now: Date = new Date()): Promise<string | null> {
@@ -129,7 +193,7 @@ export async function gatherBond(userId: string, now: Date = new Date()): Promis
     const checkIns = ((user.settings ?? {}) as { checkIns?: unknown }).checkIns !== false;
     const quiet: BondFacts['quiet'] = user.therapeuticMode === false ? 'no-support' : !checkIns ? 'no-checkins' : undefined;
     const newcomer = days <= ACQUAINTANCE_DAYS && !quiet;
-    const [thread, diary, known] = await Promise.all([
+    const [thread, diary, known, journey] = await Promise.all([
       quiet ? Promise.resolve(null) : currentFollowUp(userId, tz, now),
       prisma.robotDiaryEntry.findFirst({
         where: { userId, day: { lt: today, gte: new Date(today.getTime() - 3 * DAY_MS) } },
@@ -147,12 +211,16 @@ export async function gatherBond(userId: string, now: Date = new Date()): Promis
             prisma.yearlyGoal.count({ where: { userId } }),
           ]).then(([people, memories, goals]) => ({ people, memories, goals }))
         : Promise.resolve(null),
+      days >= 7 ? gatherJourney(userId, tz, now) : Promise.resolve(null),
     ]);
     const diaryText = diary?.text ? diary.text.replace(/\s+/g, ' ').trim() : null;
+    const ms = await openMilestone(userId, days, now);
     return formatBondSection({
       days,
       since: created,
-      milestone: (BOND_MILESTONES as readonly number[]).includes(days) ? days : null,
+      milestone: ms?.m ?? null,
+      milestoneAgo: ms?.ago,
+      journey,
       thread: thread ? { ...thread, text: annotateRelativeDates(thread.text, localDateStr(tz, now)) } : null,
       unknown: known ? unknownTopics(known).map((t) => ACQUAINTANCE_TOPICS[t]) : undefined,
       quiet,

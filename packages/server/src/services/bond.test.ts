@@ -23,7 +23,7 @@ describe('bond — чистые части', () => {
       diary: 'Сегодня Алия закрыла презентацию — мне запомнилось, как она радовалась.',
     });
     expect(full).toContain('вы знакомы 30 дней (с 11 октября)');
-    expect(full).toContain('Сегодня ровно 30 дней знакомства');
+    expect(full).toContain('Круглая дата: сегодня исполнилось месяц вашего знакомства');
     expect(full).toContain('у него было: «Собеседование в Kaspi» (вчера)');
     expect(full).toContain('Твоя запись в дневнике');
     const bare = formatBondSection({ days: 3, since: new Date('2026-11-07T00:00:00Z'), milestone: null, thread: null, diary: null });
@@ -69,5 +69,25 @@ describe('один вопрос и настройки человека (D, E —
   it('выключены «как ты?» / режим поддержки — сам не расспрашивает', () => {
     expect(formatBondSection({ ...base, thread: null, quiet: 'no-checkins' })).toContain('выключил вопросы «как ты?»');
     expect(formatBondSection({ ...base, thread: null, quiet: 'no-support' })).toContain('выключил режим поддержки');
+  });
+});
+
+describe('G: круглые даты с окном и вехи', () => {
+  it('окно 3 дня после даты; самая свежая круглая', async () => {
+    const { milestoneInWindow, celebratesMilestone } = await import('./bond.js');
+    expect(milestoneInWindow(30)).toEqual({ m: 30, ago: 0 });
+    expect(milestoneInWindow(32)).toEqual({ m: 30, ago: 2 });
+    expect(milestoneInWindow(34)).toBeNull();
+    expect(milestoneInWindow(101)).toEqual({ m: 100, ago: 1 });
+    expect(celebratesMilestone(30, 'Кстати, мы знакомы уже месяц!')).toBe(true);
+    expect(celebratesMilestone(100, 'Сегодня 100 дней как мы вместе')).toBe(true);
+    expect(celebratesMilestone(100, 'Потратил 1000 ₸')).toBe(false);
+    expect(celebratesMilestone(365, 'Год вместе!')).toBe(true);
+  });
+  it('блок: «вчера было ровно 30 дней» и вехи', () => {
+    const b = formatBondSection({ days: 31, since: new Date('2026-10-10T00:00:00Z'), milestone: 30, milestoneAgo: 1, thread: null, diary: null, journey: 'Вехи вашего пути: первая цель «Взнос» — 12 октября.' });
+    expect(b).toContain('Круглая дата: вчера исполнилось месяц');
+    expect(b).toContain('«на днях был месяц, как мы знакомы»');
+    expect(b).toContain('Вехи вашего пути');
   });
 });

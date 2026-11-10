@@ -23,7 +23,7 @@ import { capabilityText } from '../tools/index.js';
 import { CONSTRAINTS_TEXT } from './capabilities.js';
 import { THERAPEUTIC_STYLE_BLOCK } from './therapeutic-mode.js';
 import { localNowString, localHour, localDateStr } from '../lib/tz.js';
-import { annotateRelativeDates } from '../lib/relative-dates.js';
+import { annotateRelativeDates, ruDate } from '../lib/relative-dates.js';
 
 // D (spec 2026-06-01): inline-подсказка из длинного рассказа. ОДНО мягкое
 // предложение оформить скрытое намерение в задачу/цель, вопросом, легко
@@ -95,7 +95,7 @@ export interface AssistantContext {
   /** Погода на сегодня — подмешивается только если есть событие
    *  сегодня (проактивно: «одевайся легко / выезжай раньше»). */
   weatherToday?: string;
-  memories?: { type: string; content: string; importance: number }[];
+  memories?: { type: string; content: string; importance: number; createdAt?: Date }[];
   /** Что робот сам недавно подсказал (нуджи за 2 дня, не смахнутые) — чтобы
    *  «да, давай» в ответ на подсказку не уходило в пустоту. */
   recentNudges?: string[];
@@ -175,6 +175,17 @@ function core(userName: string, timeOfDay: string): string {
 }
 
 // --- ЧАСТЬ 3. КОНТЕКСТ (данные, пустые секции опускаются) ----------------
+/**
+ * Воспоминание для мозга: даты в тексте — с подписью «(завтра/вчера)», и когда
+ * записано, если не сегодня: «[записано 15 октября (3 нед. назад)]» (G 2026-11-10).
+ */
+export function memoryLine(m: { content: string; createdAt?: Date }, tz: string, now: Date): string {
+  const today = localDateStr(tz, now);
+  const day = m.createdAt ? localDateStr(tz, new Date(m.createdAt)) : today;
+  const stamp = day !== today ? ` [записано ${ruDate(day)}]` : '';
+  return annotateRelativeDates(`${m.content}${stamp}`, today);
+}
+
 export function renderContext(
   ctx: AssistantContext,
   nowTz?: string,
@@ -253,7 +264,7 @@ export function renderContext(
       '',
       'Что ты помнишь о пользователе:',
       // Даты в памяти — числом; чем приходятся сегодня — дописываем (Berik 2026-11-10).
-      ...ctx.memories.slice(0, 15).map((m) => `- ${annotateRelativeDates(m.content, localDateStr(nowTz ?? 'UTC', now ?? new Date()))}`),
+      ...ctx.memories.slice(0, 15).map((m) => `- ${memoryLine(m, nowTz ?? 'UTC', now ?? new Date())}`),
     );
   }
   if (ctx.recentNudges && ctx.recentNudges.length > 0) {

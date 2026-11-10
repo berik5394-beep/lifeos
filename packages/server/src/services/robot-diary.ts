@@ -188,3 +188,40 @@ export async function readDiary(userId: string, now: Date = new Date()): Promise
   });
   return rows.map((r) => ({ day: r.day.toISOString().slice(0, 10), text: r.text }));
 }
+
+/** Ночью (по часам человека) пишем вчерашний день — дневник есть, даже если экран не открывали (F, 2026-11-10). */
+export const NIGHTLY_FROM_HOUR = 3;
+export const NIGHTLY_TO_HOUR = 6;
+const NIGHTLY_BATCH = 40;
+
+export function isNightlyDiaryHour(hour: number): boolean {
+  return hour >= NIGHTLY_FROM_HOUR && hour < NIGHTLY_TO_HOUR;
+}
+
+/**
+ * Раньше дневник писался только при открытии экрана дневника — у большинства был
+ * пуст, и роботу нечем было делиться в разговоре. Теперь: активные за 3 дня, у
+ * кого сейчас 3–6 утра, — запись за вчера (если в дне что-то было и записи нет).
+ * Возвращает, сколько записей проверено.
+ */
+export async function writeNightlyDiaries(now: Date = new Date()): Promise<number> {
+  const since = new Date(now.getTime() - 3 * 86_400_000);
+  const active = await prisma.userActiveDay.findMany({
+    where: { day: { gte: new Date(since.toISOString().slice(0, 10) + 'T00:00:00Z') } },
+    select: { userId: true },
+    distinct: ['userId'],
+    take: 2000,
+  });
+  let done = 0;
+  for (const { userId } of active) {
+    if (done >= NIGHTLY_BATCH) break;
+    const tz = await getUserTimezone(userId).catch(() => 'Asia/Almaty');
+    if (!isNightlyDiaryHour(localHour(tz, now))) continue;
+    const yesterday = dateOnlyUTC(addCivilDays(localDateStr(tz, now), -1));
+    const exists = await prisma.robotDiaryEntry.findUnique({ where: { userId_day: { userId, day: yesterday } }, select: { id: true } });
+    if (exists) continue;
+    await ensureDiaryEntry(userId, tz, 1, now).catch((err) => console.warn('[robot-diary] nightly failed:', err instanceof Error ? err.message : err));
+    done++;
+  }
+  return done;
+}

@@ -163,3 +163,43 @@ describe('H: пуш «как ты?» не повторяет спрошенно�
     expect(await askedInChatRecently(u)).toBe(true);
   });
 });
+
+describe('F: дневник робота ночью', () => {
+  it('активный за 3 дня, у него 4 утра — запись за вчера; днём — нет; повторно — не пишет', async () => {
+    const { writeNightlyDiaries } = await import('./robot-diary.js');
+    const u = await user();
+    const almaty4am = new Date(`${day(0).toISOString().slice(0, 10)}T04:00:00+05:00`);
+    await prisma.userActiveDay.create({ data: { userId: u, day: day(-1, almaty4am) } });
+    await prisma.task.create({ data: { userId: u, title: 'Сдать отчёт', category: 'work', priority: 'high', date: day(-1, almaty4am), completed: true } });
+    const noon = new Date(almaty4am.getTime() + 8 * H);
+    await writeNightlyDiaries(noon);
+    expect(await prisma.robotDiaryEntry.count({ where: { userId: u } })).toBe(0);
+    await writeNightlyDiaries(almaty4am);
+    expect(await prisma.robotDiaryEntry.count({ where: { userId: u } })).toBe(1);
+    await writeNightlyDiaries(almaty4am);
+    expect(await prisma.robotDiaryEntry.count({ where: { userId: u } })).toBe(1);
+  });
+});
+
+describe('G: вехи и круглая дата по БД', () => {
+  it('вехи: первая цель, дела, серия', async () => {
+    const { gatherJourney } = await import('./journey.js');
+    const u = await user();
+    await prisma.yearlyGoal.create({ data: { userId: u, year: 2026, area: 'finance', goalText: 'Накопить на взнос' } });
+    await prisma.task.create({ data: { userId: u, title: 'X', category: 'work', priority: 'low', date: day(-1), completed: true } });
+    const h = await prisma.habit.create({ data: { userId: u, name: 'Зарядка', category: 'health', frequency: 'daily' } });
+    for (const d of [-3, -2, -1]) await prisma.habitLog.create({ data: { habitId: h.id, userId: u, date: day(d), completed: true } });
+    const j = await gatherJourney(u, TZ);
+    expect(j).toContain('первая цель «Накопить на взнос»');
+    expect(j).toContain('выполнено дел всего: 1');
+    expect(j).toContain('«Зарядка» 3 дн. подряд (идёт сейчас)');
+  });
+  it('круглая дата: предложили → отметил → больше не предлагаем', async () => {
+    const { markMilestoneCelebrated } = await import('./bond.js');
+    const u = await user(new Date(Date.now() - 31 * 24 * H));
+    expect(await gatherBond(u)).toMatch(/Круглая дата: .* исполнилось месяц/);
+    expect(await markMilestoneCelebrated(u, 'Привет! Чем займёмся?')).toBe(false);
+    expect(await markMilestoneCelebrated(u, 'Кстати, мы уже месяц знакомы!')).toBe(true);
+    expect(await gatherBond(u)).not.toMatch(/Круглая дата/);
+  });
+});
