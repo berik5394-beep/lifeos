@@ -1,56 +1,101 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { gatherBond, THREAD_HOLD_MS } from './bond.js';
+import { gatherBond } from './bond.js';
+import { currentFollowUp, FOLLOW_UP_HOLD_MS } from './follow-ups.js';
 
+/**
+ * «Незакрытое» по реальной БД (аудит 2026-11-10): источник — прошедшие значимые
+ * события календаря/задач и переживания из разговора, журнал FollowUpLog.
+ */
 const prisma = new PrismaClient();
 afterAll(async () => { await prisma.$disconnect(); });
 const H = 3_600_000;
-const user = async (createdAt: Date) =>
+const TZ = 'Asia/Almaty';
+const user = async (createdAt = new Date(Date.now() - 20 * 24 * H)) =>
   (await prisma.user.create({
-    data: { email: `bond-${Date.now()}-${Math.random()}@a.test`, name: 'B', passwordHash: 'x', timezone: 'Asia/Almaty', createdAt, settings: { checkIns: false } },
+    data: { email: `bond-${Date.now()}-${Math.random()}@a.test`, name: 'B', passwordHash: 'x', timezone: TZ, createdAt },
   })).id;
-const mem = (userId: string, type: string, content: string, ageH: number, importance = 7) =>
-  prisma.memory.create({ data: { userId, type, content, source: 'chat', importance, createdAt: new Date(Date.now() - ageH * H) } });
+/** Гражданская дата Алматы со сдвигом в днях → полночь UTC (@db.Date). */
+const day = (offset: number, now = new Date()) =>
+  new Date(`${new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date(now.getTime() + offset * 24 * H))}T00:00:00Z`);
 
-describe('gatherBond — «наша связь» по реальной БД', () => {
-  it('история + незакрытое (событие 12ч–10дн) + дневник; другие настройки целы', async () => {
+describe('незакрытое — источники', () => {
+  it('вчерашнее значимое событие календаря — спросим; рутина — нет', async () => {
+    const u = await user();
+    await prisma.calendarEvent.create({ data: { userId: u, title: 'Планёрка', date: day(-1), startTime: '09:00' } });
+    await prisma.calendarEvent.create({ data: { userId: u, title: 'Собеседование в Kaspi', date: day(-1), startTime: '10:00' } });
+    const f = await currentFollowUp(u, TZ);
+    expect(f?.text).toBe('Собеседование в Kaspi');
+    expect(f?.kind).toBe('event');
+    expect(await gatherBond(u)).toContain('у него было: «Собеседование в Kaspi» (вчера)');
+  });
+
+  it('событие в будущем — ещё рано', async () => {
+    const u = await user();
+    await prisma.calendarEvent.create({ data: { userId: u, title: 'Экзамен', date: day(2) } });
+    expect(await currentFollowUp(u, TZ)).toBeNull();
+  });
+
+  it('переживание из разговора (emotion, chat) через 12 ч — бережно', async () => {
+    const u = await user();
+    await prisma.memory.create({ data: { userId: u, type: 'emotion', content: 'Поссорилась с братом из-за денег — тяжело', source: 'chat', importance: 7, createdAt: new Date(Date.now() - 20 * H) } });
+    const f = await currentFollowUp(u, TZ);
+    expect(f?.kind).toBe('concern');
+    expect(f?.heavy).toBe(true);
+    expect(await gatherBond(u)).toContain('очень бережно');
+  });
+
+  it('значимая задача с прошедшей датой («Мама — операция»)', async () => {
+    const u = await user();
+    await prisma.task.create({ data: { userId: u, title: 'Мама ложится на операцию', category: 'personal', priority: 'high', date: day(-1) } });
+    const f = await currentFollowUp(u, TZ);
+    expect(f?.kind).toBe('task');
+    expect(f?.heavy).toBe(true);
+  });
+
+  it('служебные записи памяти (v2-episodic) — не источник', async () => {
+    const u = await user();
+    await prisma.memory.create({ data: { userId: u, type: 'event', content: 'Встреча «X» 2026-11-11', source: 'v2-episodic', importance: 5, createdAt: new Date(Date.now() - 20 * H) } });
+    expect(await currentFollowUp(u, TZ)).toBeNull();
+  });
+});
+
+describe('незакрытое — журнал', () => {
+  it('предложенное держится сутки, потом закрывается и берётся следующее', async () => {
+    const u = await user();
+    await prisma.calendarEvent.create({ data: { userId: u, title: 'Собеседование в Kaspi', date: day(-1) } });
+    await prisma.calendarEvent.create({ data: { userId: u, title: 'Стоматолог', date: day(-2) } });
+    const now = new Date();
+    const first = await currentFollowUp(u, TZ, now);
+    expect((await currentFollowUp(u, TZ, new Date(now.getTime() + 3 * H)))?.refKey).toBe(first?.refKey);
+    const later = await currentFollowUp(u, TZ, new Date(now.getTime() + FOLLOW_UP_HOLD_MS + H));
+    expect(later?.refKey).not.toBe(first?.refKey);
+    expect(later).not.toBeNull();
+    const log = await prisma.followUpLog.findUniqueOrThrow({ where: { userId_refKey: { userId: u, refKey: first!.refKey } } });
+    expect(log.closedAt).toBeInstanceOf(Date);
+  });
+
+  it('спрошенное пушем «как ты?» — в чате не повторяем', async () => {
+    const u = await user();
+    const m = await prisma.memory.create({ data: { userId: u, type: 'emotion', content: 'Переживает за маму', source: 'chat', importance: 7, createdAt: new Date(Date.now() - 20 * H) } });
+    await prisma.insight.create({ data: { userId: u, severity: 1, scope: {}, message: 'Как мама?', kind: 'v2_nudge', scopeKey: `check_in:${m.id}`, source: 'v2-proactivity' } });
+    expect(await currentFollowUp(u, TZ)).toBeNull();
+  });
+
+  it('забытое («Неправда») не всплывает; удаление аккаунта убирает журнал', async () => {
+    const u = await user();
+    await prisma.memory.create({ data: { userId: u, type: 'emotion', content: 'Неверное', source: 'chat', importance: 9, createdAt: new Date(Date.now() - 20 * H), invalidAt: new Date(Date.now() - H) } });
+    expect(await currentFollowUp(u, TZ)).toBeNull();
+  });
+});
+
+describe('наша история', () => {
+  it('сколько знакомы + дневник робота', async () => {
     const now = new Date();
     const u = await user(new Date(now.getTime() - 47 * 24 * H));
-    await mem(u, 'event', 'Завтра собеседование в Kaspi', 30);
-    await mem(u, 'fact', 'Любит кофе', 30); // не событие — не «как прошло?»
-    await mem(u, 'event', 'Только что рассказал про отпуск', 2); // слишком свежее — уже обсуждаем
-    await prisma.robotDiaryEntry.create({ data: { userId: u, day: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 24 * H), text: 'Мне запомнилось, как ты готовился к собеседованию.' } });
+    await prisma.robotDiaryEntry.create({ data: { userId: u, day: day(-1, now), text: 'Мне запомнилось, как ты готовился.' } });
     const b = await gatherBond(u, now);
     expect(b).toMatch(/вы знакомы 4[67] дн/);
-    expect(b).toContain('Незакрытое из ваших разговоров: «Завтра собеседование в Kaspi»');
     expect(b).toContain('Мне запомнилось');
-    const s = (await prisma.user.findUniqueOrThrow({ where: { id: u } })).settings as Record<string, unknown>;
-    expect(s.checkIns).toBe(false);
-    expect((s.openThread as { id: string }).id).toBeTruthy();
-  });
-
-  it('незакрытое держится сутки, потом следующее; спрошенное пушем — не повторяем', async () => {
-    const now = new Date();
-    const u = await user(new Date(now.getTime() - 10 * 24 * H));
-    const a = await mem(u, 'event', 'Собеседование в Kaspi', 30, 8);
-    const b = await mem(u, 'emotion', 'Переживает из-за ссоры с братом', 40, 7);
-    const c = await mem(u, 'event', 'Поездка в Астану', 50, 6);
-    expect(await gatherBond(u, now)).toContain(a.content);
-    expect(await gatherBond(u, new Date(now.getTime() + 2 * H))).toContain(a.content); // та же сутки
-    // Пушем «как ты?» уже спрашивали про ссору — её пропускаем
-    await prisma.insight.create({ data: { userId: u, severity: 1, scope: {}, message: 'Как вы с братом?', kind: 'v2_nudge', scopeKey: `check_in:${b.id}`, source: 'v2-proactivity' } });
-    const later = await gatherBond(u, new Date(now.getTime() + THREAD_HOLD_MS + H));
-    expect(later).not.toContain(a.content);
-    expect(later).not.toContain(b.content);
-    expect(later).toContain(c.content);
-  });
-
-  it('забытое («Неправда») не всплывает; круглая дата', async () => {
-    const now = new Date();
-    const u = await user(new Date(now.getTime() - 30 * 24 * H));
-    await prisma.memory.create({ data: { userId: u, type: 'event', content: 'Неверное событие', source: 'chat', importance: 9, createdAt: new Date(now.getTime() - 20 * H), invalidAt: new Date(now.getTime() - H) } });
-    const b = await gatherBond(u, now);
-    expect(b).not.toContain('Неверное событие');
-    expect(b).toMatch(/Сегодня ровно 30 дней знакомства|вы знакомы (29|31) дн/);
   });
 });

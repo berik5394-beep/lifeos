@@ -1,3 +1,5 @@
+import { annotateRelativeDates, civilDiffDays, relativeLabel, ruDate } from '../lib/relative-dates.js';
+import { isLifeMoment } from './life-moment.js';
 import { expenseRemark } from './money-voice.js';
 import { withDoneSummary, type DoneItem } from './done-summary.js';
 import { prisma } from '../lib/prisma.js';
@@ -62,7 +64,7 @@ import { shouldForceOneStep, extractStepCount } from './user-axes/content-rules.
 import { getUserAxesStore } from './user-axes/index.js';
 import { getBotTraitsStore } from './bot-traits/index.js';
 import { getUserTimezone } from '../lib/user-context.js';
-import { civilDayRefs, dateOnlyUTC } from '../lib/tz.js';
+import { civilDayRefs, dateOnlyUTC, localDateStr } from '../lib/tz.js';
 import {
   routeToSkill,
   buildSkillInstruction,
@@ -307,14 +309,22 @@ export async function getRecentHistory(
     // позже вопроса (в обратном порядке 'assistant' < 'user' идёт первым).
     orderBy: [{ createdAt: 'desc' }, { role: 'asc' }],
     take: limit,
-    select: { role: true, content: true },
+    select: { role: true, content: true, createdAt: true },
   });
+  // «Завтра собеседование», написанное позавчера, — уже не «завтра» (Berik 2026-11-10):
+  // сообщениям человека прошлых дней — пометка, когда написано и чем это было.
+  const tz = await getUserTimezone(userId).catch(() => 'Asia/Almaty');
+  const today = civilDayRefs(tz).today;
   return rows
     .reverse()
-    .map((r) => ({
-      role: r.role === 'assistant' ? ('assistant' as const) : ('user' as const),
-      content: r.content,
-    }));
+    .map((r) => {
+      const day = localDateStr(tz, r.createdAt);
+      const stale = r.role !== 'assistant' && day !== today;
+      return {
+        role: r.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+        content: stale ? `(написано ${ruDate(day)} — ${relativeLabel(civilDiffDays(day, today))}) ${r.content}` : r.content,
+      };
+    });
 }
 
 async function saveTurn(
@@ -1254,7 +1264,14 @@ async function handleMessageCore(
   const intentP = parseIntent(text, userTz).then(
     // Несколько дел в одном сообщении — быстрый путь создал бы ОДНУ запись со
     // всем текстом. Отдаём агенту: он создаст по задаче/встрече на каждое дело.
-    (ip) => (isMultiItemRequest(text) && SINGLE_WRITE_INTENTS.has(ip.action) ? { action: 'unknown' as const, text } : ip),
+    (ip) =>
+      (isMultiItemRequest(text) && SINGLE_WRITE_INTENTS.has(ip.action)) ||
+      // «Завтра собеседование, очень волнуюсь», «мама ложится на операцию» — мозг
+      // и запишет встречей, и откликнется; быстрый путь отвечал голым «Встреча
+      // создана» / делал задачу (аудит робота-друга 2026-11-10).
+      ((ip.action === 'create_task' || ip.action === 'create_event') && isLifeMoment(text))
+        ? { action: 'unknown' as const, text }
+        : ip,
   );
   // Контекст для агента: история, память/цели/финансы, эмоция. Не зависит от
   // намерения (кроме ритуала — подставляется из того же intentP).
@@ -1927,7 +1944,8 @@ async function handleMessageCore(
   timing.mark('prep');
 
   const [v2Data, axesSection] = enrich;
-  if (v2Data) system = system + '\n\n' + buildV2EnrichmentBlock(v2Data);
+  // Даты в памяти — числом; чем они приходятся сегодня — дописываем (Berik 2026-11-10).
+  if (v2Data) system = system + '\n\n' + annotateRelativeDates(buildV2EnrichmentBlock(v2Data), civilDayRefs(userTz).today);
   if (axesSection) system = system + '\n\n' + axesSection;
   if (toneSection) {
     system = system + '\n\n' + toneSection + '\n(Стиль, который выбрал пользователь, главнее этих оттенков.)';

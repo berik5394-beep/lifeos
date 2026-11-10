@@ -19,12 +19,12 @@ describe('bond — чистые части', () => {
       days: 30,
       since: new Date('2026-10-11T00:00:00Z'),
       milestone: 30,
-      thread: 'Завтра собеседование в Kaspi, очень волнуюсь',
+      thread: { refKey: 'event:e1', text: 'Собеседование в Kaspi', kind: 'event', daysAgo: 1, heavy: false },
       diary: 'Сегодня Алия закрыла презентацию — мне запомнилось, как она радовалась.',
     });
     expect(full).toContain('вы знакомы 30 дней (с 11 октября)');
     expect(full).toContain('Сегодня ровно 30 дней знакомства');
-    expect(full).toContain('«Завтра собеседование в Kaspi, очень волнуюсь»');
+    expect(full).toContain('у него было: «Собеседование в Kaspi» (вчера)');
     expect(full).toContain('Твоя запись в дневнике');
     const bare = formatBondSection({ days: 3, since: new Date('2026-11-07T00:00:00Z'), milestone: null, thread: null, diary: null });
     expect(bare).toBe('Наша история: вы знакомы 3 дня (с 7 ноября).');

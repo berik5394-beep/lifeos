@@ -58,6 +58,7 @@ model User {
   events                 CalendarEvent[]
   budgetLimits           BudgetLimit[]
   chatMessages           ChatMessage[]
+  followUps              FollowUpLog[]
   integrations           Integration[]
   interests              UserInterest[]
   refreshTokens          RefreshToken[]
@@ -458,6 +459,21 @@ model IdempotencyKey {
 
 /// Дневник робота (робот-друг №3): что робот «думал» о дне человека —
 /// 2–3 фразы от первого лица по реальным фактам дня. Одна запись на день.
+/// «Незакрытое» (робот-друг, 2026-11-10): о каком событии/переживании робот уже
+/// собирался спросить «как прошло?» и что закрыто. refKey: event:<id> | task:<id> | mem:<id>.
+model FollowUpLog {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refKey    String
+  offeredAt DateTime  @default(now())
+  closedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, refKey])
+  @@index([userId, closedAt])
+}
+
 model RobotDiaryEntry {
   id        String   @id @default(cuid())
   userId    String

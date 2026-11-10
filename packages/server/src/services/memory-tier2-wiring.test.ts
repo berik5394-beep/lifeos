@@ -12,8 +12,9 @@ describe('T4 extractFromChat — консервативный промпт', () 
     expect(f).toContain('точность важнее полноты');
     expect(f).toMatch(/Сомневаешься\s*—\s*НЕ извлекай|не извлекай/i);
   });
-  it('эмоции из чата НЕ извлекаются', () => {
-    expect(f).toMatch(/эмоции\/настроение.*НЕ извлекаем вообще/s);
+  it('мимолётное настроение без повода НЕ извлекается; значимое переживание с поводом — да (2026-11-10)', () => {
+    expect(f).toMatch(/мимолётное настроение БЕЗ повода.*НЕ извлекаем/s);
+    expect(f).toMatch(/emotion — ЗНАЧИМОЕ переживание С ПОВОДОМ/);
   });
   it('возвращает только tasks+memories (Pick), без фейкового summary', () => {
     expect(f).toMatch(/Pick<DictationExtraction, 'tasks' \| 'memories'>/);
@@ -61,5 +62,14 @@ describe('E2 врезка — значимость при чтении', () => {
     expect(enrSrc).not.toMatch(/isV2MemQualityEnabled/);
     expect(enrSrc).toMatch(/significantMemories\(userId, 6\)/);
     expect(enrSrc).not.toMatch(/recentEvents\(userId, 6\)/);
+  });
+});
+
+describe('память без «завтра/вчера» (2026-11-10, аудит друга)', () => {
+  it('экстрактор чата превращает относительные даты в конкретные', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('./dictation-service.ts', import.meta.url), 'utf8');
+    expect(src).toContain('ДАТЫ В ПАМЯТИ');
+    expect(src).toMatch(/weekday: 'long'/);
   });
 });

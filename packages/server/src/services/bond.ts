@@ -6,27 +6,22 @@
  *
  * Здесь — блок для мозга:
  *  1. «Наша история»: сколько вы знакомы, круглая дата сегодня;
- *  2. «Незакрытое»: одно личное событие/переживание 12 ч – 10 дн назад, о котором
- *     друг спросил бы «как прошло?» — держится сутки, потом следующее; то, о чём
- *     робот уже спрашивал пушем «как ты?», не повторяем;
+ *  2. «Незакрытое» (follow-ups.ts): прошедшее значимое событие из календаря/задач,
+ *     переживание из разговора — друг спросил бы «как прошло?»;
  *  3. «Твой дневник»: вчерашняя запись робота — чтобы было чем поделиться
  *     (взаимность — так строится близость, а не только «отвечать и выполнять»).
  * Только факты из БД — ничего не выдумываем. Сбой — null, разговор как раньше.
  */
 import { prisma } from '../lib/prisma.js';
-import { Prisma } from '@prisma/client';
+import { currentFollowUp, formatFollowUp, type FollowUp } from './follow-ups.js';
 import { getUserTimezone } from '../lib/user-context.js';
-import { localDateOnlyUTC } from '../lib/tz.js';
+import { localDateOnlyUTC, localDateStr } from '../lib/tz.js';
+import { annotateRelativeDates } from '../lib/relative-dates.js';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
 /** Круглые даты знакомства, которые друг отметит. */
 export const BOND_MILESTONES = [7, 30, 50, 100, 200, 365, 500, 730, 1000] as const;
-/** Сколько держим одно «незакрытое» в разговоре, прежде чем взять следующее. */
-export const THREAD_HOLD_MS = DAY_MS;
-const THREAD_MIN_AGE_MS = 12 * HOUR_MS;
-const THREAD_MAX_AGE_MS = 10 * DAY_MS;
-const RETIRED_KEEP = 50;
 const DIARY_MAX_CHARS = 220;
 
 const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
@@ -45,75 +40,12 @@ export function daysWord(n: number): string {
   return `${n} дней`;
 }
 
-export interface OpenThread {
-  id: string;
-  firstOfferedAt: string;
-}
-interface BondSettings {
-  openThread?: OpenThread;
-  threadsRetired?: string[];
-}
-
-/**
- * Какое «незакрытое» держать сейчас. Текущее — пока ему меньше суток и оно
- * живо; иначе — следующее подходящее (не отставленное, не спрошенное пушем).
- * Чистая логика выбора — в pickThread; здесь БД.
- */
-async function currentThread(
-  userId: string,
-  settings: BondSettings,
-  now: Date,
-): Promise<{ thread: { id: string; content: string } | null; save: BondSettings | null }> {
-  const retired = new Set(settings.threadsRetired ?? []);
-  const cur = settings.openThread;
-  if (cur && now.getTime() - new Date(cur.firstOfferedAt).getTime() < THREAD_HOLD_MS) {
-    const m = await prisma.memory.findFirst({
-      where: { id: cur.id, userId, OR: [{ invalidAt: null }, { invalidAt: { gt: now } }] },
-      select: { id: true, content: true },
-    });
-    if (m) return { thread: m, save: null };
-  }
-  if (cur) retired.add(cur.id);
-  // Уже спрошено пушем «как ты?» (scopeKey check_in:<memoryId>) — не повторяем в чате.
-  const asked = await prisma.insight.findMany({
-    where: { userId, kind: 'v2_nudge', scopeKey: { startsWith: 'check_in:' }, createdAt: { gte: new Date(now.getTime() - THREAD_MAX_AGE_MS) } },
-    select: { scopeKey: true },
-  });
-  for (const a of asked) if (a.scopeKey) retired.add(a.scopeKey.slice('check_in:'.length));
-  const next = await prisma.memory.findFirst({
-    where: {
-      userId,
-      // Событие или переживание — то, про что спрашивают «как прошло?»
-      type: { in: ['event', 'emotion'] },
-      source: { not: 'v2-episodic' },
-      importance: { gte: 5 },
-      createdAt: { gte: new Date(now.getTime() - THREAD_MAX_AGE_MS), lte: new Date(now.getTime() - THREAD_MIN_AGE_MS) },
-      OR: [{ invalidAt: null }, { invalidAt: { gt: now } }],
-      ...(retired.size > 0 ? { id: { notIn: [...retired] } } : {}),
-    },
-    orderBy: [{ importance: 'desc' }, { createdAt: 'desc' }],
-    select: { id: true, content: true },
-  });
-  const retiredList = [...retired].slice(-RETIRED_KEEP);
-  const save: BondSettings = next
-    ? { openThread: { id: next.id, firstOfferedAt: now.toISOString() }, threadsRetired: retiredList }
-    : { threadsRetired: retiredList };
-  return { thread: next, save: cur || next ? save : null };
-}
-
-/** Атомарно дописать ключи в User.settings (не затирая чужие). */
-async function mergeSettings(userId: string, patch: BondSettings): Promise<void> {
-  const json = JSON.stringify(patch);
-  await prisma.$executeRaw(
-    Prisma.sql`UPDATE "User" SET settings = COALESCE(settings::jsonb, '{}'::jsonb) - 'openThread' || ${json}::jsonb WHERE id = ${userId}`,
-  );
-}
-
 export interface BondFacts {
   days: number;
   since: Date;
   milestone: number | null;
-  thread: string | null;
+  /** Незакрытое (follow-ups.ts): о чём спросить «как прошло?». */
+  thread: FollowUp | null;
   diary: string | null;
   /** Знакомство (первая неделя): о чём робот ещё не знает. Пусто/нет — уже знакомы. */
   unknown?: string[];
@@ -160,12 +92,7 @@ export function formatBondSection(f: BondFacts): string {
       : `Наша история: вы знакомы ${daysWord(f.days)} (с ${since}).`,
   );
   if (f.milestone) L.push(`Сегодня ровно ${daysWord(f.milestone)} знакомства — тепло отметь это один раз, коротко, без пафоса.`);
-  if (f.thread) {
-    L.push(
-      `Незакрытое из ваших разговоров: «${f.thread}». Друг спросил бы, как прошло — спроси одной фразой после ответа, ` +
-        'если разговор не про срочное дело и ты ещё не спрашивал об этом в истории диалога.',
-    );
-  }
+  if (f.thread) L.push(formatFollowUp(f.thread));
   if (f.diary) L.push(`Твоя запись в дневнике (можно поделиться к месту, от первого лица): «${f.diary}»`);
   if (f.unknown && f.unknown.length > 0) {
     L.push(
@@ -180,17 +107,16 @@ export function formatBondSection(f: BondFacts): string {
 export async function gatherBond(userId: string, now: Date = new Date()): Promise<string | null> {
   try {
     const [user, tz] = await Promise.all([
-      prisma.user.findUnique({ where: { id: userId }, select: { createdAt: true, settings: true } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { createdAt: true } }),
       getUserTimezone(userId),
     ]);
     if (!user) return null;
     const today = localDateOnlyUTC(tz, now);
     const created = localDateOnlyUTC(tz, user.createdAt);
     const days = daysTogether(created, today);
-    const settings = (user.settings ?? {}) as BondSettings;
     const newcomer = days <= ACQUAINTANCE_DAYS;
-    const [{ thread, save }, diary, known] = await Promise.all([
-      currentThread(userId, settings, now),
+    const [thread, diary, known] = await Promise.all([
+      currentFollowUp(userId, tz, now),
       prisma.robotDiaryEntry.findFirst({
         where: { userId, day: { lt: today, gte: new Date(today.getTime() - 3 * DAY_MS) } },
         orderBy: { day: 'desc' },
@@ -208,13 +134,12 @@ export async function gatherBond(userId: string, now: Date = new Date()): Promis
           ]).then(([people, memories, goals]) => ({ people, memories, goals }))
         : Promise.resolve(null),
     ]);
-    if (save) await mergeSettings(userId, save).catch(() => {});
     const diaryText = diary?.text ? diary.text.replace(/\s+/g, ' ').trim() : null;
     return formatBondSection({
       days,
       since: created,
       milestone: (BOND_MILESTONES as readonly number[]).includes(days) ? days : null,
-      thread: thread?.content ?? null,
+      thread: thread ? { ...thread, text: annotateRelativeDates(thread.text, localDateStr(tz, now)) } : null,
       unknown: known ? unknownTopics(known).map((t) => ACQUAINTANCE_TOPICS[t]) : undefined,
       diary: diaryText ? (diaryText.length > DIARY_MAX_CHARS ? `${diaryText.slice(0, DIARY_MAX_CHARS - 1)}…` : diaryText) : null,
     });
