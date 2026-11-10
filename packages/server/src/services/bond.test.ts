@@ -56,3 +56,18 @@ describe('знакомство в первую неделю', () => {
     expect(b).toContain('об ОДНОЙ из этих тем');
   });
 });
+
+describe('один вопрос и настройки человека (D, E — 2026-11-10)', () => {
+  const base = { days: 3, since: new Date('2026-11-07T00:00:00Z'), milestone: null, diary: null };
+  const thread = { refKey: 'event:1', text: 'Собеседование', kind: 'event' as const, daysAgo: 1, heavy: false };
+  it('есть незакрытое — знакомство в этот раз не подсказываем', () => {
+    const b = formatBondSection({ ...base, thread, unknown: ['кто его близкие'] });
+    expect(b).toContain('Собеседование');
+    expect(b).not.toContain('Вы ещё знакомитесь');
+    expect(formatBondSection({ ...base, thread: null, unknown: ['кто его близкие'] })).toContain('Вы ещё знакомитесь');
+  });
+  it('выключены «как ты?» / режим поддержки — сам не расспрашивает', () => {
+    expect(formatBondSection({ ...base, thread: null, quiet: 'no-checkins' })).toContain('выключил вопросы «как ты?»');
+    expect(formatBondSection({ ...base, thread: null, quiet: 'no-support' })).toContain('выключил режим поддержки');
+  });
+});

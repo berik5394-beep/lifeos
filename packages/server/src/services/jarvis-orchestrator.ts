@@ -424,6 +424,18 @@ const NEEDS_TOOLS_REFUSAL =
   /не\s+(?:могу|получается|получилось|смогу|умею)\s+(?:это\s+|тебе\s+|сейчас\s+)?(?:записать|сохранить|добавить|отметить|создать|запомнить|поставить|удалить|изменить|перенести|внести)/i;
 const NEEDS_TOOLS_CLAIM =
   /(?:^|[^а-яё])(?:(?:записал|добавил|сохранил|отметил|создал|запомнил|поставил|внёс|внес|перенёс|перенес|удалил)[аи]?|отмечаю|записываю|добавляю|создаю|ставлю|сохраняю|вношу|переношу|закидываю|запоминаю|удаляю)(?![а-яё])/i;
+/**
+ * «Кто ты?», «расскажи о себе», «что умеешь» — робот рассказывает о себе в
+ * настоящем времени («записываю твои задачи, отмечаю привычки»): это не ложное
+ * «записал». Тест характера 2026-11-10: сторож подменял такой ответ заготовкой
+ * «Стоп, честно: я это ещё НЕ записал».
+ */
+const ABOUT_ROBOT =
+  /(?:^|[^а-яё])(?:кто\s+ты|ты\s+кто|расскажи\s+(?:о|про)\s+себ|что\s+(?:ты\s+)?умеешь|чем\s+ты\s+(?:можешь|занимаешься|полезен)|как\s+ты\s+работаешь|что\s+ты\s+(?:такое|можешь))/i;
+export function asksAboutRobot(text: string): boolean {
+  return ABOUT_ROBOT.test(text);
+}
+
 export function replyNeedsTools(reply: string): boolean {
   return NEEDS_TOOLS_REFUSAL.test(reply) || NEEDS_TOOLS_CLAIM.test(reply);
 }
@@ -2030,7 +2042,7 @@ async function handleMessageCore(
       // Словарь не узнал фразу, а ответ — про действие («не могу записать» /
       // выдуманное «записал») → тот же запрос с инструментами. Сбой повтора —
       // честный отказ, а не выдумка.
-      if (!wantTools && replyNeedsTools(reply)) {
+      if (!wantTools && replyNeedsTools(reply) && !asksAboutRobot(text)) {
         retriedForTools = true;
         console.log(`[jarvis] user=${userId} ответ без инструментов про действие → повтор с инструментами`);
         try {
@@ -2059,7 +2071,7 @@ async function handleMessageCore(
       // Сторож «сказал — сделал»: просили действие, ответ «создал/записал»,
       // а записи за ход не было (и вопроса «да?» тоже) → ещё раз с прямым
       // требованием вызвать инструмент; снова пусто → честное «не сделал».
-      if ((asksForAction(text) || retriedForTools) && claimsDoneAction(reply) && !acts.wrote && !acts.staged) {
+      if ((asksForAction(text) || retriedForTools) && !asksAboutRobot(text) && claimsDoneAction(reply) && !acts.wrote && !acts.staged) {
         console.log(`[jarvis] user=${userId} «сделал» без записи → повтор с требованием инструмента`);
         try {
           const again = await runAgent({

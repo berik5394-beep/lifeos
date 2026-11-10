@@ -49,6 +49,11 @@ export interface BondFacts {
   diary: string | null;
   /** Знакомство (первая неделя): о чём робот ещё не знает. Пусто/нет — уже знакомы. */
   unknown?: string[];
+  /**
+   * Человек выключил (E, 2026-11-10): 'no-checkins' — «Робот спрашивает «как ты?»»;
+   * 'no-support' — режим поддержки. Тогда сам личных расспросов робот не заводит.
+   */
+  quiet?: 'no-checkins' | 'no-support';
 }
 
 /** Первая неделя — робот узнаёт человека (как друг, а не анкета). */
@@ -92,9 +97,15 @@ export function formatBondSection(f: BondFacts): string {
       : `Наша история: вы знакомы ${daysWord(f.days)} (с ${since}).`,
   );
   if (f.milestone) L.push(`Сегодня ровно ${daysWord(f.milestone)} знакомства — тепло отметь это один раз, коротко, без пафоса.`);
+  if (f.quiet === 'no-support') {
+    L.push('Человек выключил режим поддержки: о чувствах и личном не расспрашивай сам — только если он заговорит первым; отвечай по делу.');
+  } else if (f.quiet === 'no-checkins') {
+    L.push('Человек выключил вопросы «как ты?»: сам личных расспросов не заводи (ни «как прошло?», ни знакомство) — откликайся, если он сам рассказывает.');
+  }
   if (f.thread) L.push(formatFollowUp(f.thread));
   if (f.diary) L.push(`Твоя запись в дневнике (можно поделиться к месту, от первого лица): «${f.diary}»`);
-  if (f.unknown && f.unknown.length > 0) {
+  // D: один вопрос за ответ — есть незакрытое, знакомство в этот раз не подсказываем.
+  if (f.unknown && f.unknown.length > 0 && !f.thread) {
     L.push(
       `Вы ещё знакомитесь. Ты пока не знаешь: ${f.unknown.join('; ')}. В личном разговоре (не в деловых командах) после ответа ` +
         'спроси об ОДНОЙ из этих тем — живо, с интересом, своими словами, не анкетой и не списком. Ответит — запомнится само; ' +
@@ -107,16 +118,19 @@ export function formatBondSection(f: BondFacts): string {
 export async function gatherBond(userId: string, now: Date = new Date()): Promise<string | null> {
   try {
     const [user, tz] = await Promise.all([
-      prisma.user.findUnique({ where: { id: userId }, select: { createdAt: true } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { createdAt: true, settings: true, therapeuticMode: true } }),
       getUserTimezone(userId),
     ]);
     if (!user) return null;
     const today = localDateOnlyUTC(tz, now);
     const created = localDateOnlyUTC(tz, user.createdAt);
     const days = daysTogether(created, today);
-    const newcomer = days <= ACQUAINTANCE_DAYS;
+    // E: личные расспросы — только если человек их не выключил.
+    const checkIns = ((user.settings ?? {}) as { checkIns?: unknown }).checkIns !== false;
+    const quiet: BondFacts['quiet'] = user.therapeuticMode === false ? 'no-support' : !checkIns ? 'no-checkins' : undefined;
+    const newcomer = days <= ACQUAINTANCE_DAYS && !quiet;
     const [thread, diary, known] = await Promise.all([
-      currentFollowUp(userId, tz, now),
+      quiet ? Promise.resolve(null) : currentFollowUp(userId, tz, now),
       prisma.robotDiaryEntry.findFirst({
         where: { userId, day: { lt: today, gte: new Date(today.getTime() - 3 * DAY_MS) } },
         orderBy: { day: 'desc' },
@@ -141,6 +155,7 @@ export async function gatherBond(userId: string, now: Date = new Date()): Promis
       milestone: (BOND_MILESTONES as readonly number[]).includes(days) ? days : null,
       thread: thread ? { ...thread, text: annotateRelativeDates(thread.text, localDateStr(tz, now)) } : null,
       unknown: known ? unknownTopics(known).map((t) => ACQUAINTANCE_TOPICS[t]) : undefined,
+      quiet,
       diary: diaryText ? (diaryText.length > DIARY_MAX_CHARS ? `${diaryText.slice(0, DIARY_MAX_CHARS - 1)}…` : diaryText) : null,
     });
   } catch (err) {

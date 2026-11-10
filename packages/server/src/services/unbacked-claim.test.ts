@@ -119,3 +119,11 @@ describe('жалоба «не сделал» — не просьба о дейс
     expect(asksForAction('Сделал зарядку')).toBe(true);
   });
 });
+
+describe('рассказ робота о себе — не ложное «записал» (тест характера 2026-11-10)', () => {
+  it('«кто ты / расскажи о себе / что умеешь» — сторож не вмешивается', async () => {
+    const { asksAboutRobot } = await import('./jarvis-orchestrator.js');
+    for (const t of ['Расскажи о себе — кто ты?', 'Кто ты?', 'Что ты умеешь?', 'чем ты можешь помочь', 'Ты кто такой']) expect(asksAboutRobot(t), t).toBe(true);
+    for (const t of ['Запиши задачу', 'Кто такой Серик?', 'Расскажи про инвестиции', 'Отметь зарядку']) expect(asksAboutRobot(t), t).toBe(false);
+  });
+});

@@ -99,3 +99,23 @@ describe('наша история', () => {
     expect(b).toContain('Мне запомнилось');
   });
 });
+
+describe('настройки человека (E)', () => {
+  it('выключил «как ты?» — незакрытое не выбирается и не записывается в журнал', async () => {
+    const u = await user();
+    await prisma.user.update({ where: { id: u }, data: { settings: { checkIns: false } } });
+    await prisma.calendarEvent.create({ data: { userId: u, title: 'Собеседование в Kaspi', date: day(-1) } });
+    const b = await gatherBond(u);
+    expect(b).toContain('выключил вопросы «как ты?»');
+    expect(b).not.toContain('Собеседование');
+    expect(await prisma.followUpLog.count({ where: { userId: u } })).toBe(0);
+  });
+  it('выключил режим поддержки — тоже тихо', async () => {
+    const u = await user();
+    await prisma.user.update({ where: { id: u }, data: { therapeuticMode: false } });
+    await prisma.memory.create({ data: { userId: u, type: 'emotion', content: 'Переживает за маму', source: 'chat', importance: 7, createdAt: new Date(Date.now() - 20 * H) } });
+    const b = await gatherBond(u);
+    expect(b).toContain('выключил режим поддержки');
+    expect(b).not.toContain('Переживает за маму');
+  });
+});
