@@ -765,6 +765,9 @@ model Memory {
   // читаем/пишем только через $queryRaw/$executeRaw. NULL у старых
   // записей (досемантических) — гибридный ранкинг это учитывает.
   embedding  Unsupported("vector(512)")?
+  // Слова записи для поиска (content+details+tags) — заполняет триггер в БД
+  // (миграция 20261110140000_memory_search_indexes; там же GIN и частичные индексы).
+  searchVector Unsupported("tsvector")?
   createdAt  DateTime                    @default(now())
   // v2.0 — Episodic extension (validity windows + entity refs + mood)
   validAt    DateTime                    @default(now())

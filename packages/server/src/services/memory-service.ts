@@ -154,6 +154,12 @@ export async function getRelevantMemories(
   // Task 4 read-side decay Part 2: importance в FTS-скоринге умножается на
   // свежесть. Старая низко-важная память тонет (halflife 90 дней: 100%
   // сегодня → 50% через 90д → 25% через 180д).
+  // Слова записи — готовая колонка searchVector (триггер считает при записи,
+  // миграция 20261110140000): раньше to_tsvector считался заново для каждой
+  // записи на каждый поиск (~половина времени запроса). coalesce — на случай
+  // строки без колонки (БД до миграции).
+  const SEARCH_VECTOR = `coalesce(m."searchVector", to_tsvector('russian', coalesce(m.content, '') || ' ' || coalesce(m.details, '') || ' ' || coalesce(array_to_string(m.tags, ' '), '')))`;
+
   const MEM_HALFLIFE_DAYS = 90;
   const impTerm = `(m.importance::float / 10.0) * power(2, - extract(epoch from (NOW() - m."createdAt")) / (86400.0 * ${MEM_HALFLIFE_DAYS}))`;
 
@@ -189,14 +195,7 @@ export async function getRelevantMemories(
           AND (m."expiresAt" IS NULL OR m."expiresAt" > NOW())
           ${forgetSql}
         ORDER BY (
-          ts_rank(
-            to_tsvector('russian',
-              coalesce(m.content,'') || ' ' ||
-              coalesce(m.details,'') || ' ' ||
-              coalesce(array_to_string(m.tags,' '),'')
-            ),
-            plainto_tsquery('russian', $2)
-          ) * 5.0
+ts_rank(${SEARCH_VECTOR}, plainto_tsquery('russian', $2)) * 5.0
           + ${impTerm}
           + exp(- extract(epoch from (NOW() - m."createdAt")) / (86400.0 * 30.0))
           -- семантическая близость: 1 - cosine_distance, NULL→0 (старые
@@ -228,14 +227,7 @@ export async function getRelevantMemories(
        AND (m."expiresAt" IS NULL OR m."expiresAt" > NOW())
        ${forgetSql}
      ORDER BY (
-       ts_rank(
-         to_tsvector('russian',
-           coalesce(m.content, '') || ' ' ||
-           coalesce(m.details, '') || ' ' ||
-           coalesce(array_to_string(m.tags, ' '), '')
-         ),
-         plainto_tsquery('russian', $2)
-       ) * 5.0
+ts_rank(${SEARCH_VECTOR}, plainto_tsquery('russian', $2)) * 5.0
        + ${impTerm}
        -- Фаза 2.2: временнóе затухание. Свежий факт при прочих равных
        -- весит выше старого (exp(-возраст_дней/30): ~1.0 сегодня,
