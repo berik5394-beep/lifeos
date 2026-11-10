@@ -5,8 +5,8 @@
  *
  * Запуск (пароль задаёшь сам, в репо его нет):
  *   локально:  DEMO_PASSWORD='…' npx tsx scripts/seed-demo.ts
- *   прод:      DEMO_PASSWORD='…' ~/.npm-global/bin/railway run -s lifeos-api npx tsx scripts/seed-demo.ts
- *              (берёт DATABASE_PUBLIC_URL — внутренний адрес Railway снаружи недоступен)
+ *   прод:      DEMO_PASSWORD='…' ~/.npm-global/bin/railway run -s Postgres npx tsx scripts/seed-demo.ts
+ *              (сервис Postgres даёт DATABASE_PUBLIC_URL — внутренний адрес Railway снаружи недоступен)
  * Email — DEMO_EMAIL (по умолчанию appreview@lifeos.kz). Аккаунт уже есть — ничего не трогает.
  * Даты — от «сегодня» по Алматы: запусти накануне отправки на ревью.
  */
