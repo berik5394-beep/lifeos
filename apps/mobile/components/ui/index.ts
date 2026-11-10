@@ -21,7 +21,6 @@ export { QuickAddBar } from './quick-add-bar';
 export { PomodoroTimer } from './pomodoro-timer';
 export { KanbanColumn } from './kanban-column';
 export { TagChip } from './tag-chip';
-export { FeatureGate } from './feature-gate';
 export { EisenhowerMatrix } from './eisenhower-matrix';
 export { AnimatedPress } from './animated-press';
 export { FadeInView } from './fade-in-view';

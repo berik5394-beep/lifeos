@@ -19,3 +19,10 @@ describe('GET /subscription — роут статуса подписки (4.4)',
     expect(IDX).toContain('await app.register(subscriptionRoutes)');
   });
 });
+
+describe('одна версия для всех (2026-11-10)', () => {
+  it('подписок нет — полная версия каждому', async () => {
+    const { FREE_FOR_ALL } = await import('./subscription.js');
+    expect(FREE_FOR_ALL).toBe(true);
+  });
+});

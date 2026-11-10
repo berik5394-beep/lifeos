@@ -524,10 +524,6 @@ export default function SettingsScreen() {
     navigation.navigate('Integrations' as never);
   }, [navigation]);
 
-  const handleSubscription = useCallback(() => {
-    navigation.navigate('Subscription' as never);
-  }, [navigation]);
-
   const handleTagManager = useCallback(() => {
     navigation.navigate('TagManager' as never);
   }, [navigation]);
@@ -850,8 +846,6 @@ export default function SettingsScreen() {
       <FadeInView delay={640}>
         <Text style={styles.sectionTitle}>Продвинутое</Text>
         <Card>
-          <SettingRow icon="⭐" label="Подписка PRO" onPress={handleSubscription} styles={styles} />
-          <View style={styles.separator} />
           <SettingRow icon="🏷️" label="Теги" onPress={handleTagManager} styles={styles} />
           <View style={styles.separator} />
           <SettingRow icon="👥" label="Общие пространства" onPress={handleSharedSpaces} styles={styles} />

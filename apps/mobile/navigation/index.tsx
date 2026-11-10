@@ -49,7 +49,6 @@ const GanttViewScreen = React.lazy(() => import('@/screens/gantt-view'));
 const SharedSpacesScreen = React.lazy(() => import('@/screens/shared-spaces'));
 const SharedSpaceDetailScreen = React.lazy(() => import('@/screens/shared-space-detail'));
 const TagManagerScreen = React.lazy(() => import('@/screens/tag-manager'));
-const SubscriptionScreen = React.lazy(() => import('@/screens/subscription'));
 const ExportScreen = React.lazy(() => import('@/screens/export'));
 const LifeInsightsScreen = React.lazy(() => import('@/screens/life-insights'));
 const LegalScreen = React.lazy(() => import('@/screens/legal'));
@@ -267,7 +266,6 @@ export default function Navigation() {
             <RootStack.Screen name="SharedSpaces" component={SharedSpacesScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="SharedSpaceDetail" component={SharedSpaceDetailScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="TagManager" component={TagManagerScreen} options={{ headerShown: false }} />
-            <RootStack.Screen name="Subscription" component={SubscriptionScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="Export" component={ExportScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="LifeInsights" component={LifeInsightsScreen} options={{ headerShown: false }} />
             <RootStack.Screen name="Legal" component={LegalScreen} options={{ headerShown: false }} />

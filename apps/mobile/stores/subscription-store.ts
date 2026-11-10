@@ -4,6 +4,14 @@ import { useAuthStore } from '@/stores/auth-store';
 import { storage } from '@/services/storage';
 import { formatDate } from '@/utils/dates';
 
+/**
+ * Одна версия для всех (Berik 2026-11-10): подписок нет, все функции открыты
+ * каждому. Стор оставлен как ЕДИНАЯ точка «что доступно» — если появится платный
+ * уровень или реклама, переключаем здесь и на сервере (GET /subscription),
+ * экраны трогать не придётся.
+ */
+export const FREE_FOR_ALL = true;
+
 const PRO_FEATURES = [
   'unlimited_voice',
   'jarvis_full',
@@ -81,6 +89,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   },
 
   canUseFeature: (feature: string) => {
+    if (FREE_FOR_ALL) return true;
     const state = get();
     if (state.tier === 'pro') return true;
     if (!(PRO_FEATURES as readonly string[]).includes(feature)) return true;

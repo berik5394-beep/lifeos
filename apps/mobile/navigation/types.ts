@@ -27,7 +27,6 @@ export type RootStackParamList = {
   SharedSpaces: undefined;
   SharedSpaceDetail: { spaceId: string; spaceName: string };
   TagManager: undefined;
-  Subscription: undefined;
   Export: undefined;
   LifeInsights: undefined;
   Legal: undefined;

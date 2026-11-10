@@ -1,5 +1,5 @@
 import { useSubscriptionStore } from '@/stores/subscription-store';
-import { PRO_FEATURES, DAILY_VOICE_LIMIT_FREE } from '@/stores/subscription-store';
+import { PRO_FEATURES, DAILY_VOICE_LIMIT_FREE, FREE_FOR_ALL } from '@/stores/subscription-store';
 
 beforeEach(() => {
   useSubscriptionStore.setState({
@@ -12,6 +12,10 @@ beforeEach(() => {
 });
 
 describe('useSubscriptionStore', () => {
+  it('подписок нет — всё открыто всем', () => {
+    expect(FREE_FOR_ALL).toBe(true);
+  });
+
   it('defaults to free tier', () => {
     const state = useSubscriptionStore.getState();
     expect(state.tier).toBe('free');
@@ -26,11 +30,9 @@ describe('useSubscriptionStore', () => {
       expect(canUseFeature('habits')).toBe(true);
     });
 
-    it('returns false for pro features on free tier', () => {
+    it('одна версия для всех: PRO-функции открыты и без подписки (2026-11-10)', () => {
       const { canUseFeature } = useSubscriptionStore.getState();
-      expect(canUseFeature('kanban_view')).toBe(false);
-      expect(canUseFeature('gantt_view')).toBe(false);
-      expect(canUseFeature('all_themes')).toBe(false);
+      for (const feature of PRO_FEATURES) expect(canUseFeature(feature)).toBe(true);
     });
 
     it('returns true for all features on pro tier', () => {
@@ -47,12 +49,12 @@ describe('useSubscriptionStore', () => {
       expect(useSubscriptionStore.getState().canUseFeature('unlimited_voice')).toBe(true);
     });
 
-    it('blocks voice usage on free tier after daily limit', () => {
+    it('голос без дневного лимита — даже сверх старого лимита free', () => {
       useSubscriptionStore.setState({
         tier: 'free',
         dailyVoiceUsed: DAILY_VOICE_LIMIT_FREE,
       });
-      expect(useSubscriptionStore.getState().canUseFeature('unlimited_voice')).toBe(false);
+      expect(useSubscriptionStore.getState().canUseFeature('unlimited_voice')).toBe(true);
     });
   });
 
