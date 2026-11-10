@@ -87,7 +87,9 @@ async function restorePendingButtons(
     set((state) => {
       // Пока ждали ответ, могло прийти новое предложение со своими кнопками — не трогаем.
       if (state.messages.some((m) => m.pendingAction)) return {};
-      const i = state.messages.findIndex((m) => m.role === 'assistant' && m.content.trim() === text);
+      // Перед подтверждением траты может стоять фраза робота в его стиле (2026-11-10) —
+      // ищем сообщение, которое ЗАКАНЧИВАЕТСЯ текстом подтверждения.
+      const i = state.messages.findIndex((m) => m.role === 'assistant' && m.content.trim().endsWith(text));
       if (i < 0) return {};
       return { messages: state.messages.map((m, j) => (j === i ? { ...m, pendingAction: r.pending } : m)) };
     });

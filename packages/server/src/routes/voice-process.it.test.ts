@@ -44,7 +44,8 @@ describe('/voice/process → единый мозг', () => {
     };
     expect(body.pendingAction?.action).toBe('add_expense');
     expect(body.confirmationText).toBeTruthy();
-    expect(body.response).toBe(body.confirmationText);
+    // Перед подтверждением — фраза робота в стиле (2026-11-10); само подтверждение — в конце, без изменений.
+    expect(body.response.endsWith(body.confirmationText)).toBe(true);
     expect(await prisma.expense.count({ where: { userId } })).toBe(0);
 
     const ok = await app.inject({ method: 'POST', url: '/voice/confirm-action', headers, payload: { confirm: true } });

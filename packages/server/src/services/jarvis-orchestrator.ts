@@ -1,3 +1,4 @@
+import { expenseRemark } from './money-voice.js';
 import { withDoneSummary, type DoneItem } from './done-summary.js';
 import { prisma } from '../lib/prisma.js';
 import { parseIntent, deterministicIntent } from '../ai/intent-parser.js';
@@ -1684,14 +1685,24 @@ async function handleMessageCore(
       console.log(
         `[jarvis] user=${userId} intent=${intent.action} PENDING (awaiting confirm)`,
       );
-      await saveTurn(userId, text, ctext);
+      // Характер робота перед подтверждением траты (само подтверждение — как было:
+      // оно же текст кнопок и pending). Тест характера 2026-11-10.
+      let replyText = ctext;
+      if (intent.action === 'add_expense') {
+        const style = await prisma.user
+          .findUnique({ where: { id: userId }, select: { assistantStyle: true } })
+          .then((u) => u?.assistantStyle ?? null)
+          .catch(() => null);
+        replyText = `${expenseRemark(style, text, Number(input.amount) || 0)}\n\n${ctext}`;
+      }
+      await saveTurn(userId, text, replyText);
       // Факты и люди из фразы — сразу (ужин с Сериком был, даже если запись
       // траты отменят). Только память — без задач.
       if (looksPeopleWorthy(text)) {
         void captureInBackground(userId, text, String(Date.now()), { memoriesOnly: true }).catch(() => {});
       }
       return {
-        reply: ctext,
+        reply: replyText,
         pendingAction: { action: intent.action, input },
         confirmationText: ctext,
         intent: intent.action,

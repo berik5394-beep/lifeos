@@ -209,6 +209,17 @@ describe('кнопка «Подтвердить» после перезапус�
     expect(msg?.pendingAction).toMatchObject({ action: 'add_expense' });
     expect(mockApi.get).toHaveBeenLastCalledWith('/voice/pending-action', 'test-token-123');
   });
+  it('перед подтверждением фраза робота в стиле → кнопки всё равно находят сообщение', async () => {
+    useChatStore.setState({ messages: [] } as never);
+    const ask = 'Записать расход 15000 ₸ (кроссовки)? Подтверди — запишу.';
+    mockApi.get
+      .mockResolvedValueOnce([
+        { id: 'm5', role: 'assistant', content: `Копил на «отпуск», а купил это. Классика.\n\n${ask}`, createdAt: '2026-11-10T10:01:00Z' },
+      ])
+      .mockResolvedValueOnce({ pending: { action: 'add_expense', input: { amount: 15000 } }, confirmationText: ask });
+    await useChatStore.getState().fetchHistory(0);
+    expect(useChatStore.getState().messages.find((m) => m.id === 'm5')?.pendingAction).toMatchObject({ action: 'add_expense' });
+  });
   it('текст не совпал → кнопки не вешаем на чужое сообщение', async () => {
     useChatStore.setState({ messages: [] } as never);
     mockApi.get
