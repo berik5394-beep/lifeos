@@ -12,6 +12,7 @@
 
 import { roomContextFromItems } from './room-context.js';
 import { friendshipContextLine } from './friendship.js';
+import { gatherBond } from './bond.js';
 import { prisma } from '../lib/prisma.js';
 import { getBotIdentityService } from './bot-identity.singleton.js';
 import { getProceduralMemory } from './procedural-memory.singleton.js';
@@ -101,6 +102,8 @@ export type V2EnrichmentData = {
   deals?: string | null;
   /** Комната робота (Часть 4): «Комната робота: диван, лампа» или null. */
   room?: string | null;
+  /** «Наша связь» (bond.ts): сколько знакомы, незакрытое, дневник робота — или null. */
+  bond?: string | null;
   /** Дневник за неделю: сон/энергия/настроение/тренд/последняя запись или null. */
   journal?: string | null;
   /** Шаги из «Здоровья» за неделю (reflection-context). */
@@ -221,6 +224,7 @@ export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   if (data.steps) lines.push(data.steps);
   if (data.weekNotes) lines.push(data.weekNotes);
   if (data.room) lines.push(data.room);
+  if (data.bond) lines.push(data.bond);
   return lines.join('\n');
 }
 
@@ -406,6 +410,8 @@ export async function fetchV2EnrichmentData(
       BASE_MEMBER_BUDGET_MS,
       null,
     );
+    // «Наша связь»: знакомы N дней, незакрытое «как прошло?», дневник робота (bond.ts).
+    const bondP = withTimeout(gatherBond(userId, nowDate).catch(() => null), BASE_MEMBER_BUDGET_MS, null);
     // Рефлексия: дневник целиком + заметки недели (раньше мозг видел только сон).
     const reflectionP = withTimeout(
       gatherReflection(userId, nowDate).catch(() => null),
@@ -524,6 +530,7 @@ export async function fetchV2EnrichmentData(
           'Это перекрывает выбранный стиль (даже strict/toxic).'
         : null;
     const room = await roomPromise;
+    const bond = await bondP;
     const reflection = await reflectionP;
     const now = Date.now();
     return {
@@ -584,6 +591,7 @@ export async function fetchV2EnrichmentData(
       openLoops,
       deals,
       room,
+      bond,
       journal: reflection?.journal ?? null,
       steps: reflection?.steps ?? null,
       weekNotes: reflection?.weekNotes ?? null,
