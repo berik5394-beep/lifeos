@@ -9,7 +9,7 @@
 
 ## 1. Демо-аккаунт для проверяющего Apple
 - В App Store Connect для проверяющего указан **Leyla@mail.ru** (не appreview@lifeos.kz) — значит, создавать appreview не нужно.
-- [ ] Войти на телефоне (сборка из TestFlight) под **Leyla@mail.ru** с тем паролем, что в App Store Connect → App Review Information. Пускает → всё ок.
+- [x] Войти на телефоне (сборка из TestFlight) под **Leyla@mail.ru** с тем паролем, что в App Store Connect → App Review Information. Пускает → всё ок.
 - [ ] Желательно, чтобы в аккаунте были задачи/привычки/траты/цели и пара разговоров с роботом — проверяющий смотрит функции, пустой аккаунт выглядит слабо.
 - (Запасной вариант — заполненный appreview@lifeos.kz через `scripts/seed-demo.ts`: нужен публичный адрес базы из Railway → Postgres → Connect; `railway run -s Postgres` не подходит.)
 - [x] App Store Connect → App Review Information: контакт, демо-аккаунт Leyla@mail.ru, примечания на английском.
