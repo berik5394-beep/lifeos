@@ -1,3 +1,4 @@
+import { fuzzyNameRank } from '../../lib/fuzzy.js';
 import { prisma } from '../../lib/prisma.js';
 import type { Direction, ObligationKind } from './types.js';
 
@@ -38,18 +39,24 @@ export async function listObligations(
   userId: string,
   opts: { status?: string; direction?: Direction; personName?: string } = {},
 ) {
-  return prisma.obligation.findMany({
-    where: {
-      userId,
-      status: opts.status ?? 'open',
-      ...(opts.direction ? { direction: opts.direction } : {}),
-      ...(opts.personName
-        ? { personName: { contains: opts.personName, mode: 'insensitive' } }
-        : {}),
-    },
-    orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
-    take: 100,
-  });
+  const base = {
+    userId,
+    status: opts.status ?? 'open',
+    ...(opts.direction ? { direction: opts.direction } : {}),
+  };
+  const query = (personName?: string) =>
+    prisma.obligation.findMany({
+      where: { ...base, ...(personName ? { personName: { contains: personName, mode: 'insensitive' as const } } : {}) },
+      orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }],
+      take: 100,
+    });
+  const rows = await query(opts.personName);
+  if (rows.length > 0 || !opts.personName) return rows;
+  // «Что я должен Сирику?» — точного имени нет: самый похожий человек по кусочкам
+  // букв (в ответе его настоящее имя — мозг скажет «у Серика…»).
+  const people = await prisma.obligation.findMany({ where: base, select: { personName: true }, distinct: ['personName'], take: 500 });
+  const best = fuzzyNameRank(opts.personName, people, (p) => p.personName, 1)[0];
+  return best ? query(best.item.personName) : rows;
 }
 
 /**

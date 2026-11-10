@@ -1,3 +1,4 @@
+import { fuzzyRank } from '../lib/fuzzy.js';
 /**
  * Чистые хелперы названий задач. Чинят 2 бага:
  *  A) модель оставляет хвостовой предлог/дату в названии («…отчёт на сегодня»);
@@ -66,19 +67,29 @@ export function matchTaskByWholeWords<T extends { title: string }>(query: string
 export function pickOpenTask<T extends { title: string; createdAt: Date }>(
   query: string,
   candidates: T[],
-): { kind: 'one'; task: T } | { kind: 'many'; tasks: T[] } | { kind: 'none' } {
+): { kind: 'one'; task: T } | { kind: 'many'; tasks: T[]; fuzzy?: true } | { kind: 'none' } {
   const q = sanitizeTaskTitle(query).toLowerCase();
   if (q.length === 0) return { kind: 'none' };
   const matches = candidates.filter((c) => {
     const t = sanitizeTaskTitle(c.title).toLowerCase();
     return t.length > 0 && (t.includes(q) || q.includes(t));
   });
-  if (matches.length === 0) return { kind: 'none' };
+  if (matches.length === 0) {
+    // Точно нет — похожие по кусочкам букв («отчот» → «Подготовить отчёт»).
+    // Только предлагаем: даже одну похожую не закрываем молча — переспросить.
+    const similar = suggestOpenTasks(query, candidates);
+    return similar.length > 0 ? { kind: 'many', tasks: similar, fuzzy: true } : { kind: 'none' };
+  }
   if (matches.length === 1) return { kind: 'one', task: matches[0] };
   const exact = matches.filter((c) => sanitizeTaskTitle(c.title).toLowerCase() === q);
   if (exact.length === 1) return { kind: 'one', task: exact[0] };
   const newestFirst = [...matches].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   return { kind: 'many', tasks: newestFirst.slice(0, 5) };
+}
+
+/** Похожие по кусочкам букв открытые задачи (голос исказил название). Лучшие первыми. */
+export function suggestOpenTasks<T extends { title: string }>(query: string, candidates: T[]): T[] {
+  return fuzzyRank(sanitizeTaskTitle(query), candidates, (c) => sanitizeTaskTitle(c.title), 0.5, 3).map((x) => x.item);
 }
 
 export function matchOpenTask<T extends { title: string; createdAt: Date }>(

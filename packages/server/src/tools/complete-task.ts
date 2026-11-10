@@ -40,9 +40,12 @@ export const completeTaskTool = defineTool({
       const pick = pickOpenTask(input.title, candidates);
       if (pick.kind === 'many') {
         // Не угадываем — спрашиваем (раньше молча закрывалась самая свежая).
+        const list = pick.tasks.map((t) => `«${t.title}»`).join(', ');
         return {
           ambiguous: true,
-          message: `Под «${input.title}» подходит несколько задач: ${pick.tasks.map((t) => `«${t.title}»`).join(', ')}. Какую закрыть?`,
+          message: pick.fuzzy
+            ? `Точно «${input.title}» не нашёл. Ты про ${list}? Какую закрыть?`
+            : `Под «${input.title}» подходит несколько задач: ${list}. Какую закрыть?`,
           candidates: pick.tasks.map((t) => ({ taskId: t.id, title: t.title })),
         };
       }

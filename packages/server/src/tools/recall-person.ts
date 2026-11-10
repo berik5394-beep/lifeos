@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { getRelevantMemories } from '../services/memory-service.js';
 import { defineTool } from './_types.js';
+import { fuzzyNameRank } from '../lib/fuzzy.js';
 import { entityFacts, entityRelationshipLines } from '../services/v2-enrichment.js';
 
 /**
@@ -28,7 +29,7 @@ export const recallPersonTool = defineTool({
     const userId = ctx.userId;
     const name = String(input.name || '').trim();
     if (!name) return { error: 'имя не указано' };
-    const [contacts, mem, entities] = await Promise.all([
+    let [contacts, mem, entities] = await Promise.all([
       prisma.contactCache.findMany({
         where: { userId, name: { contains: name, mode: 'insensitive' } },
         select: { name: true, phone: true, email: true, birthday: true },
@@ -50,6 +51,26 @@ export const recallPersonTool = defineTool({
         })
         .catch(() => []),
     ]);
+    // Точно не нашли — похожие по кусочкам букв (голос: «Сирик» вместо «Серик»,
+    // падеж «Серику»). Помечаем approximate: мозг переспросит «ты про Серика?».
+    let approximate: string[] = [];
+    if (contacts.length === 0 && entities.length === 0) {
+      const [allContacts, allPeople] = await Promise.all([
+        prisma.contactCache.findMany({ where: { userId }, select: { name: true, phone: true, email: true, birthday: true }, take: 3000 }),
+        prisma.entity
+          .findMany({
+            where: { userId, type: 'person' },
+            select: { id: true, name: true, aliases: true, attributes: true, importance: true, lastSeenAt: true },
+            take: 2000,
+          })
+          .catch(() => []),
+      ]);
+      contacts = fuzzyNameRank(name, allContacts, (c) => c.name).map((x) => x.item);
+      entities = fuzzyNameRank(name, allPeople, (e) => [e.name, ...(e.aliases ?? [])].join(' ')).map((x) => x.item);
+      approximate = [...new Set([...entities.map((e) => e.name), ...contacts.map((c) => c.name)])];
+      if (approximate.length > 0) mem = await getRelevantMemories(userId, approximate[0], 6);
+    }
+    const names = [name, ...approximate].map((n) => n.toLowerCase());
     const relationships = entities.length
       ? await entityRelationshipLines(userId, entities.map((e) => e.id)).catch(() => [] as string[])
       : [];
@@ -71,9 +92,15 @@ export const recallPersonTool = defineTool({
         .filter(
           (m) =>
             m.type === 'person' ||
-            m.content.toLowerCase().includes(name.toLowerCase()),
+            names.some((n) => m.content.toLowerCase().includes(n)),
         )
         .map((m) => m.content),
+      ...(approximate.length > 0
+        ? {
+            approximate: true,
+            note: `Точно «${name}» не нашёл — похоже на: ${approximate.join(', ')}. Переспроси пользователя, тот ли это человек, прежде чем что-то делать.`,
+          }
+        : {}),
     };
   },
 });

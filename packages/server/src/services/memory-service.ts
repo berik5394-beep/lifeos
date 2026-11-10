@@ -1,3 +1,4 @@
+import { FUZZY_WORD_MIN, fuzzyWords } from '../lib/fuzzy.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import {
@@ -136,6 +137,39 @@ export function mergeDetails(
 // writeMemory (episodic-memory.ts) заменил его (флага записи больше нет).
 // getRelevantMemories (legacy reader) ещё жив — Unit B.
 
+/**
+ * Записи, похожие на слова вопроса по кусочкам букв (2026-11-10): голос
+ * исказил имя/слово («Сирик», «инвистор») — по корням и смыслу не найдётся.
+ * GIN-индекс по триграммам (Memory_content_trgm_idx), ~1 мс. Не вышло (нет
+ * pg_trgm и т.п.) — пусто, поиск работает как раньше.
+ */
+export async function fuzzyMemoryIds(userId: string, query: string, now: Date = new Date()): Promise<string[]> {
+  const words = fuzzyWords(query);
+  if (words.length === 0) return [];
+  try {
+    // На каждое слово — до 15 записей отдельно (частое слово не вытесняет редкое
+    // имя); без сортировки по похожести — её цена растёт с числом совпадений
+    // (220 мс на 4k), а для подъёма в выдаче достаточно «похоже / нет».
+    const perWord = words.map(
+      (w) => Prisma.sql`(SELECT m.id FROM "Memory" m
+        WHERE m."userId" = ${userId} AND m.type <> 'message'
+          AND (m."invalidAt" IS NULL OR m."invalidAt" > ${now})
+          AND ${w} <<% m.content
+        LIMIT 15)`,
+    );
+    const [, rows] = await prisma.$transaction([
+      // Строгая похожесть (с целыми словами записи): обычная word_similarity ловит
+      // куски соседних слов («пароль» ≈ «партнёр по» = 0.5). Порог — lib/fuzzy.
+      prisma.$executeRawUnsafe(`SET LOCAL pg_trgm.strict_word_similarity_threshold = ${FUZZY_WORD_MIN}`),
+      prisma.$queryRaw<Array<{ id: string }>>`${Prisma.join(perWord, ' UNION ')}`,
+    ]);
+    return rows.map((r) => r.id);
+  } catch (err) {
+    console.warn('[memory] fuzzy search failed:', err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
 export async function getRelevantMemories(
   userId: string,
   query: string | null,
@@ -184,8 +218,13 @@ export async function getRelevantMemories(
   // свежесть. Семантика ловит смысл без общих слов: «что про здоровье»
   // найдёт «болела спина после зала». Если эмбеддинг запроса получить
   // не удалось (нет ключа/сбой) — падаем на чистый FTS (ниже).
+  // Кусочки букв (~1 мс, БД) и смысл вопроса (сеть) — параллельно, без лишней задержки.
+  const [fuzzyIds, qvecEarly] = await Promise.all([
+    fuzzyMemoryIds(userId, query, now),
+    embeddingsEnabled() ? embedQuery(query) : Promise.resolve(null),
+  ]);
   if (embeddingsEnabled()) {
-    const qvec = await embedQuery(query);
+    const qvec = qvecEarly;
     if (qvec) {
       const hybrid = await prisma.$queryRawUnsafe<MemoryRow[]>(
         `
@@ -201,6 +240,8 @@ ts_rank(${SEARCH_VECTOR}, plainto_tsquery('russian', $2)) * 5.0
           -- семантическая близость: 1 - cosine_distance, NULL→0 (старые
           -- досемантические записи не штрафуем — их несёт FTS).
           + COALESCE(1 - (m.embedding <=> $4::vector), 0) * 3.0
+          -- похоже по кусочкам букв на слово вопроса (опечатка/голос)
+          + CASE WHEN m.id = ANY($5::text[]) THEN 1.0 ELSE 0 END
         ) DESC,
           m.importance DESC,
           m."createdAt" DESC
@@ -210,6 +251,7 @@ ts_rank(${SEARCH_VECTOR}, plainto_tsquery('russian', $2)) * 5.0
         query,
         limit,
         toVectorLiteral(qvec),
+        fuzzyIds,
       );
       return hybrid;
     }
@@ -234,6 +276,7 @@ ts_rank(${SEARCH_VECTOR}, plainto_tsquery('russian', $2)) * 5.0
        -- 0.72 через 10д, 0.37 через 30д). Не доминирует над явным
        -- FTS-совпадением, но решает ничьи в пользу актуального.
        + exp(- extract(epoch from (NOW() - m."createdAt")) / (86400.0 * 30.0))
+       + CASE WHEN m.id = ANY($4::text[]) THEN 1.0 ELSE 0 END
      ) DESC,
        m.importance DESC,
        m."createdAt" DESC
@@ -241,6 +284,7 @@ ts_rank(${SEARCH_VECTOR}, plainto_tsquery('russian', $2)) * 5.0
     userId,
     query,
     limit,
+    fuzzyIds,
   );
 
   return result;

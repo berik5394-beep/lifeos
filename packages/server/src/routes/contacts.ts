@@ -1,3 +1,4 @@
+import { fuzzyNameRank } from '../lib/fuzzy.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
@@ -144,8 +145,11 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
         take: 10,
         select: { name: true, phone: true, email: true },
       });
+      if (contacts.length > 0) return reply.send(contacts);
 
-      return reply.send(contacts);
+      // Точно нет — похожие по кусочкам букв («Сирик» → «Серик»).
+      const all = await prisma.contactCache.findMany({ where: { userId }, take: 3000, select: { name: true, phone: true, email: true } });
+      return reply.send(fuzzyNameRank(q, all, (c) => c.name, 10).map((x) => x.item));
     },
   );
 }

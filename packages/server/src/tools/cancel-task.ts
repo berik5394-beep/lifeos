@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { matchOpenTask } from '../services/task-title.js';
+import { matchOpenTask, suggestOpenTasks } from '../services/task-title.js';
 import { defineTool } from './_types.js';
 
 /**
@@ -35,6 +35,17 @@ export const cancelTaskTool = defineTool({
         take: 50,
       });
       task = matchOpenTask(input.title, candidates);
+      if (!task) {
+        // Голос исказил название — предложить похожие, не убирать наугад.
+        const similar = suggestOpenTasks(input.title, candidates);
+        if (similar.length > 0) {
+          return {
+            ambiguous: true,
+            message: `Точно «${input.title}» не нашёл. Ты про ${similar.map((t) => `«${t.title}»`).join(', ')}? Какую убрать?`,
+            candidates: similar.map((t) => ({ taskId: t.id, title: t.title })),
+          };
+        }
+      }
     }
     if (!task) return { message: 'Задача не найдена', notFound: true };
     await prisma.task.update({

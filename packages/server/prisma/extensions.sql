@@ -2,3 +2,4 @@
 -- (db push сам расширения не ставит, а колонка vector(512) без него
 -- не создастся). Railway managed Postgres поддерживает pgvector.
 CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;

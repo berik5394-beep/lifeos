@@ -41,7 +41,11 @@ export const moveTaskTool = defineTool({
     const pick = pickOpenTask(input.title, candidates);
     if (pick.kind === 'none') return { message: `Не нашёл открытую задачу «${input.title}».`, notFound: true };
     if (pick.kind === 'many') {
-      return { message: `Какую перенести: ${pick.tasks.slice(0, 4).map((t) => `«${t.title}»`).join(', ')}?`, needsInput: true };
+      const list = pick.tasks.slice(0, 4).map((t) => `«${t.title}»`).join(', ');
+      return {
+        message: pick.fuzzy ? `Точно «${input.title}» не нашёл. Ты про ${list}?` : `Какую перенести: ${list}?`,
+        needsInput: true,
+      };
     }
     const task = pick.task;
 
