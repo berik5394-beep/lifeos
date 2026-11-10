@@ -19,6 +19,7 @@ import { RoomFurnitureItem } from '@/components/robot/room-furniture-item';
 import { RoomDiorama } from '@/components/room/room-diorama';
 import { RobotSpeechBubble } from '@/components/robot/robot-speech-bubble';
 import { ChatReplyBubble } from '@/components/room/chat-reply-bubble';
+import { ChatThreadBubble } from '@/components/room/chat-thread-bubble';
 import { RoomBottomBar } from '@/components/room/room-bottom-bar';
 import { RoomShop } from '@/components/room/room-shop';
 import { CoinCounter } from '@/components/room/coin-counter';
@@ -170,7 +171,7 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   // Ответ робота — одно облачко на всё приложение (use-reply-bubble).
   const route = useCurrentRoute();
   const host = active && (route ?? 'Home') === 'Home' ? 'room' : null;
-  const { reply, dismiss: dismissReply } = useReplyBubble(host);
+  const { reply, thread, open: threadOpen, dismiss: dismissReply } = useReplyBubble(host);
   const replyEmotion = useRobotReaction(reply?.emotion, reply?.id ?? null);
   const happy = useRobotReaction('happy', reactionKey);
   // Действие с экрана инструментов — эмоцию видно и здесь, если свайпнул сразу.
@@ -542,15 +543,13 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
   }, []);
 
   const onConfirm = useCallback(
-    (yes: boolean) => {
-      if (reply) void confirmPendingAction(reply.id, yes);
-    },
-    [reply, confirmPendingAction],
+    (id: string, yes: boolean) => void confirmPendingAction(id, yes),
+    [confirmPendingAction],
   );
 
   const pointing = zoomed;
   const showReply =
-    introStep == null && !zoomed && ((chatLoading && !!host) || !!reply);
+    introStep == null && !zoomed && threadOpen;
   const voiceBubble = isRecording
     ? liveTranscript || 'Слушаю…'
     : isProcessing
@@ -630,30 +629,35 @@ export const RoomPage = memo(function RoomPage({ active = true }: { active?: boo
           )}
           {showReply && !chatMode && !voiceBubble && (
             <View style={[styles.bubbleReply, { bottom: size.h * 0.04 + ROBOT_SIZE + 6 }]} pointerEvents="box-none">
-              <ChatReplyBubble
-                text={reply?.content ?? ''}
+              <ChatThreadBubble
+                thread={thread}
                 thinking={chatLoading}
                 tail="bottom"
-                confirm={!chatLoading && !!reply?.pendingAction}
+                maxHeight={Math.max(120, size.h * 0.96 - ROBOT_SIZE - topInset - 90)}
                 onConfirm={onConfirm}
-                onDismiss={reply ? dismissReply : undefined}
+                onDismiss={dismissReply}
               />
             </View>
           )}
           {/* Пишем роботу: ответ справа от маленького робота, длинный — прокручивается. */}
-          {chatMode && (showReply || voiceBubble) && (
+          {chatMode && voiceBubble && (
             <View style={[styles.bubbleChat, { maxHeight: Math.max(80, size.h - 56 - insets.top) }]}>
               <ScrollView bounces={false} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                <ChatReplyBubble
-                  text={voiceBubble ?? reply?.content ?? ''}
-                  thinking={!voiceBubble && chatLoading}
-                  tail="left"
-                  confirm={!voiceBubble && !chatLoading && !!reply?.pendingAction}
-                  onConfirm={onConfirm}
-                  onDismiss={!voiceBubble && reply ? dismissReply : undefined}
-                  horizontalOnly
-                />
+                <ChatReplyBubble text={voiceBubble} tail="left" horizontalOnly />
               </ScrollView>
+            </View>
+          )}
+          {/* Пишешь ответ — весь разговор справа от робота, листается; убирается тапом. */}
+          {chatMode && showReply && !voiceBubble && (
+            <View style={styles.bubbleChat}>
+              <ChatThreadBubble
+                thread={thread}
+                thinking={chatLoading}
+                tail="left"
+                maxHeight={Math.max(80, size.h - 56 - insets.top - 40)}
+                onConfirm={onConfirm}
+                onDismiss={dismissReply}
+              />
             </View>
           )}
           {/* Голос: пока держишь — что расслышал; ошибка — подсказка. */}

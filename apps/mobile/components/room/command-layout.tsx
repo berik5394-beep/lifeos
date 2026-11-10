@@ -1,11 +1,12 @@
 import React, { memo, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Keyboard, Platform, StyleSheet, View } from 'react-native';
+import { Keyboard, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/use-colors';
 import { useChatStore } from '@/stores/chat-store';
 import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 import { ChatInputRow } from './chat-input-row';
 import { ChatReplyBubble } from './chat-reply-bubble';
+import { ChatThreadBubble } from './chat-thread-bubble';
 import { spacing } from '@/constants';
 import { routeHasCommandBar } from '@/services/command-bar';
 import { useCurrentRoute, useReplyBubble } from '@/hooks/use-reply-bubble';
@@ -31,22 +32,23 @@ function useKeyboardHeight(): number {
  * на всё приложение (use-reply-bubble): только на экране перед глазами, до
  * тапа/смахивания; новый экран не показывает старый ответ заново.
  */
-const CommandReply = memo(function CommandReply({ routeName }: { routeName: string }) {
+const CommandReply = memo(function CommandReply({ routeName, maxHeight }: { routeName: string; maxHeight: number }) {
   const loading = useChatStore((s) => s.isLoading);
   const confirmPendingAction = useChatStore((s) => s.confirmPendingAction);
   const route = useCurrentRoute();
   const host = route === routeName ? routeName : null;
-  const { reply, dismiss } = useReplyBubble(host);
+  const { thread, open, dismiss } = useReplyBubble(host);
 
-  if (loading && host) return <View style={styles.reply}><ChatReplyBubble text="" thinking tail="bottom" /></View>;
-  if (!reply) return null;
+  if (!open) return null;
+  // Весь разговор: не пропадает, пока пишешь ответ, листается вверх; убирается тапом.
   return (
     <View style={styles.reply}>
-      <ChatReplyBubble
-        text={reply.content}
+      <ChatThreadBubble
+        thread={thread}
+        thinking={loading}
         tail="bottom"
-        confirm={!!reply.pendingAction}
-        onConfirm={(yes) => void confirmPendingAction(reply.id, yes)}
+        maxHeight={maxHeight}
+        onConfirm={(id, yes) => void confirmPendingAction(id, yes)}
         onDismiss={dismiss}
       />
     </View>
@@ -93,13 +95,16 @@ export const CommandLayout = memo(function CommandLayout({ routeName, children }
   // Экран тянется до низа экрана: открыта клавиатура — строка прямо над ней,
   // закрыта — над полоской «домой».
   const pad = kb > 0 ? kb : insets.bottom;
+  const { height } = useWindowDimensions();
+  // Облачко-диалог не выше половины свободного места — сверху остаётся экран.
+  const replyMax = Math.max(120, (height - pad - insets.top - 80) * 0.6);
   const wrap = useMemo(() => [styles.bar, { backgroundColor: c.background, paddingBottom: pad }], [c.background, pad]);
   if (!routeHasCommandBar(routeName)) return <>{children}</>;
   return (
     <View style={styles.fill}>
       <View style={styles.fill}>{children}</View>
       <ScreenReaction routeName={routeName} />
-      <CommandReply routeName={routeName} />
+      <CommandReply routeName={routeName} maxHeight={replyMax} />
       <View style={wrap}>
         <ChatInputRow />
       </View>

@@ -7,6 +7,7 @@ import { Feather } from '@expo/vector-icons';
 import { RobotAvatar } from '@/components/robot/robot-avatar';
 import { RobotSpeechBubble } from '@/components/robot/robot-speech-bubble';
 import { ChatReplyBubble } from '@/components/room/chat-reply-bubble';
+import { ChatThreadBubble } from '@/components/room/chat-thread-bubble';
 import { TOOL_SCREEN } from '@/components/room/tool-screens';
 import { ContentWidthContext, ToolActiveContext } from '@/hooks/use-content-width';
 import { RobotDodgeContext, type RobotDodge } from '@/hooks/use-robot-dodge';
@@ -117,7 +118,9 @@ export const ToolsPage = memo(function ToolsPage({
   // здесь, пока эта вкладка перед глазами; держится до тапа/смахивания.
   const route = useCurrentRoute();
   const host = active && (route ?? 'Home') === 'Home' ? `tools:${tab}` : null; // null — навигация ещё не готова (старт = дом)
-  const { reply, dismiss: dismissReply } = useReplyBubble(host);
+  const { reply, thread, open: threadOpen, dismiss: dismissReply } = useReplyBubble(host);
+  // Высота страницы — облачко-диалог не выше неё (над ним остаётся место).
+  const [pageH, setPageH] = useState(0);
   const replyEmotion = useRobotReaction(reply?.emotion, reply?.id ?? null);
   // Действие с экрана (задача/привычка/трата сверх лимита) — робот реагирует сразу.
   const screenReaction = useRobotReactionStore((s) => s.reaction);
@@ -133,7 +136,7 @@ export const ToolsPage = memo(function ToolsPage({
   }, [freshScreen?.id, freshScreen?.text, freshScreen?.holdMs]);
   const screenText = freshScreen?.text && screenDismissed !== freshScreen.id ? freshScreen : null;
 
-  const showReply = (chatLoading && !!host) || !!reply;
+  const showReply = threadOpen;
 
   // Голос: пока держишь — что расслышал; ошибка — подсказка.
   const [voiceNote, setVoiceNote] = useState<string | null>(null);
@@ -214,13 +217,14 @@ export const ToolsPage = memo(function ToolsPage({
   const bubble = voiceBubble ? (
     <ChatReplyBubble text={voiceBubble} tail="left" />
   ) : showReply ? (
-    <ChatReplyBubble
-      text={reply?.content ?? ''}
+    // Весь разговор: не пропадает, пока пишешь ответ, листается вверх; убирается тапом.
+    <ChatThreadBubble
+      thread={thread}
       thinking={chatLoading}
-      tail="left"
-      confirm={!chatLoading && !!reply?.pendingAction}
-      onConfirm={(yes) => reply && void confirmPendingAction(reply.id, yes)}
-      onDismiss={reply ? dismissReply : undefined}
+      tail={kbOpen ? 'bottom' : 'left'}
+      maxHeight={Math.max(120, Math.min(pageH * 0.7, pageH - 140))}
+      onConfirm={(id, yes) => void confirmPendingAction(id, yes)}
+      onDismiss={dismissReply}
     />
   ) : screenText ? (
     <Pressable
@@ -239,7 +243,7 @@ export const ToolsPage = memo(function ToolsPage({
   ) : null;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top']} onLayout={(e) => setPageH(e.nativeEvent.layout.height)}>
       {/* Полоса вкладок листается сама (жест-скролл RNGH выигрывает у свайпа дома).
           Справа — шестерёнка настроек: раньше она была только в комнате робота,
           и новичок не находил ни тему, ни уровень интерфейса, ни выход. */}
@@ -326,7 +330,8 @@ export const ToolsPage = memo(function ToolsPage({
         </Pressable>
       </Animated.View>
       )}
-      {bubble && !kbOpen && <View style={styles.bubble}>{bubble}</View>}
+      {/* Пишешь роботу ответ — разговор остаётся перед глазами (робот спрятан, облачко во всю ширину). */}
+      {bubble && (!kbOpen || showReply) && <View style={[styles.bubble, kbOpen && styles.bubbleKb]}>{bubble}</View>}
     </SafeAreaView>
   );
 });
@@ -363,5 +368,6 @@ function createStyles(c: ReturnType<typeof useColors>) {
     skeleton: { backgroundColor: c.background, paddingHorizontal: spacing.md, paddingTop: spacing.md },
     robot: { position: 'absolute', left: spacing.sm, bottom: spacing.xs },
     bubble: { position: 'absolute', left: ROBOT + spacing.sm, right: spacing.sm, bottom: spacing.xs },
+    bubbleKb: { left: spacing.md, right: spacing.md, bottom: spacing.md },
   });
 }
