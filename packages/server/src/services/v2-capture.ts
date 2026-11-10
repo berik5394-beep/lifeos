@@ -74,20 +74,14 @@ export async function captureV2InBackground(
       }
     }
 
-    // 3. Relationships — resolve endpoints (upsert if missing), then link.
-    //    Done after the entity pass so names found in step 2 are available.
+    // 3. Relationships — только между сущностями, записанными в шаге 2.
+    //    Конец без сущности НЕ заводим как person (2026-11-10: так абстракция
+    //    «Отказ» стала «человеком» в «Что я о тебе помню»).
     for (const rel of extracted.relationships ?? []) {
       try {
-        const fromId =
-          idByName.get(rel.fromName) ??
-          (await graph.upsertEntity(userId, { type: 'person', name: rel.fromName }))
-            .id;
-        const toId =
-          idByName.get(rel.toName) ??
-          (await graph.upsertEntity(userId, { type: 'person', name: rel.toName }))
-            .id;
-        idByName.set(rel.fromName, fromId);
-        idByName.set(rel.toName, toId);
+        const fromId = idByName.get(rel.fromName);
+        const toId = idByName.get(rel.toName);
+        if (!fromId || !toId) continue;
         await graph.linkEntities(userId, fromId, toId, rel.type ?? 'connected_to', {
           label: rel.label,
           strength: rel.strength,

@@ -113,6 +113,37 @@ export function isSelfReference(name: string, userName?: string): boolean {
   return false;
 }
 
+/**
+ * Местоимение / «кто-то» вместо имени (2026-11-10): «Вдруг он откажет» →
+ * экстрактор вернул человека «Он» и связь «Он → Отказ», в памяти появились
+ * «люди» «Он» и «Отказ». Местоимение — не сущность: о ком оно, из одной
+ * фразы не понять. Чистая.
+ */
+const PRONOUNS = new Set([
+  'он', 'она', 'оно', 'они', 'его', 'её', 'ее', 'ему', 'ей', 'им', 'их', 'ими',
+  'него', 'неё', 'нее', 'нему', 'ней', 'ним', 'них', 'ними', 'нём', 'нем',
+  'мы', 'нас', 'нам', 'нами', 'ты', 'тебя', 'тебе', 'тобой', 'вы', 'вас', 'вам', 'вами',
+  'кто', 'кто-то', 'кто-нибудь', 'никто', 'некто', 'кое-кто', 'все', 'всё', 'каждый',
+  'тот', 'та', 'то', 'те', 'этот', 'эта', 'это', 'эти', 'такой', 'такая', 'сам', 'сама', 'сами',
+  'he', 'she', 'it', 'they', 'him', 'her', 'them', 'we', 'you', 'someone', 'somebody',
+]);
+export function isPronounName(name: string): boolean {
+  return PRONOUNS.has(name.trim().toLowerCase().replace(/[.,!?…]+$/, ''));
+}
+
+/**
+ * Связи — только между сущностями, которые реально извлечены и прошли
+ * фильтры. Раньше конец связи без своей сущности заводился как person —
+ * так абстракция «Отказ» стала «человеком». Чистая.
+ */
+export function keepResolvableRelationships(
+  entities: ExtractedEntityInput[],
+  relationships: ExtractedRelationshipInput[],
+): ExtractedRelationshipInput[] {
+  const names = new Set(entities.map((e) => e.name));
+  return relationships.filter((r) => names.has(r.fromName) && names.has(r.toName) && r.fromName !== r.toName);
+}
+
 export function parseExtractorResponse(raw: string): ExtractorResult {
   const empty: ExtractorResult = { entities: [], relationships: [] };
   if (!raw || !raw.trim()) return empty;
@@ -186,6 +217,7 @@ const SYSTEM_PROMPT = `Ты — аналитик знаний LifeOS. Из со�
 4. importance: 1-3 мелочь, 4-6 средне, 7-10 важно (семья, здоровье, цели).
 5. relationships — только если из текста явно следует связь между двумя entities.
 6. relationship.type из: ${RELATIONSHIP_TYPES.join('|')}.
+6b. Местоимения («он», «она», «они», «кто-то») — НЕ сущности: из одной фразы не ясно, о ком речь. Абстракции и события («отказ», «страх», «встреча») — не person.
 7. НЕ извлекай самого пользователя ("я", "пользователь", "user", собственное имя владельца) как entity — он known by context; ты пишешь его graph, не его самого.
 8. Если entities нет — верни { "entities": [], "relationships": [] }.
 9. НЕ добавляй объяснений, только JSON.`;
@@ -236,12 +268,13 @@ export async function extractEntities(
         if (Array.isArray(e.aliases)) {
           out.aliases = e.aliases
             .map((a) => normalizeEntityName(String(a)))
-            .filter((a) => a && !isSelfReference(a, userName));
+            .filter((a) => a && !isSelfReference(a, userName) && !isPronounName(a));
         }
         return out;
       })
       // Drop self-references — the user is not an entity in their own graph.
-      .filter((e) => !isSelfReference(e.name, userName));
+      // И местоимения: «он» — не человек, о ком он — неизвестно.
+      .filter((e) => e.name && !isSelfReference(e.name, userName) && !isPronounName(e.name));
 
     // Build a set of dropped names so we can skip relationships involving them.
     const droppedNames = new Set(
@@ -267,7 +300,10 @@ export async function extractEntities(
           !droppedNames.has(r.toName),
       );
 
-    return { entities: normalizedEntities, relationships: normalizedRelationships };
+    return {
+      entities: normalizedEntities,
+      relationships: keepResolvableRelationships(normalizedEntities, normalizedRelationships),
+    };
   } catch (err) {
     console.warn(
       '[entity-extractor] extractEntities failed:',

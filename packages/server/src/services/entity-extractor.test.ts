@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeEntityName, parseExtractorResponse } from './entity-extractor.js';
+import { normalizeEntityName, parseExtractorResponse, isPronounName, keepResolvableRelationships } from './entity-extractor.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -245,5 +245,28 @@ describe('SYSTEM_PROMPT — aliases присутствует', () => {
     const src = readFileSync(join(process.cwd(), 'src/services/entity-extractor.ts'), 'utf8');
     expect(src).toContain('"aliases"');
     expect(src).toMatch(/aliases.*НЕ-морфологические/);
+  });
+});
+
+describe('isPronounName — местоимение не сущность (2026-11-10, «Вдруг он откажет»)', () => {
+  it('местоимения в любом падеже и регистре', () => {
+    for (const p of ['Он', 'она', 'Они', 'его', 'Ему', 'ней', 'Кто-то', 'никто', 'Это']) expect(isPronounName(p)).toBe(true);
+  });
+  it('имена, родство и роли — не местоимения', () => {
+    for (const n of ['Ержан', 'Мама', 'Брат', 'Инвестор', 'Оно-сан', 'Тимур']) expect(isPronounName(n)).toBe(false);
+  });
+});
+
+describe('keepResolvableRelationships — связь только между извлечёнными сущностями', () => {
+  const ents = [{ name: 'Ержан', type: 'person' }, { name: 'Kaspi', type: 'organization' }];
+  it('конец без сущности → связь выкинута («Он → Отказ»)', () => {
+    const rels = [
+      { fromName: 'Он', toName: 'Отказ', type: 'concern' },
+      { fromName: 'Ержан', toName: 'Kaspi', type: 'works_at' },
+    ];
+    expect(keepResolvableRelationships(ents, rels)).toEqual([{ fromName: 'Ержан', toName: 'Kaspi', type: 'works_at' }]);
+  });
+  it('петля на себя — выкинута', () => {
+    expect(keepResolvableRelationships(ents, [{ fromName: 'Ержан', toName: 'Ержан', type: 'friend' }])).toEqual([]);
   });
 });
