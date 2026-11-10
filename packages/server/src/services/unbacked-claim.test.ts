@@ -107,3 +107,15 @@ describe('аудит 2026-11-09: сторож без ложных срабаты
     expect(isRealWrite('send_email', { sent: true })).toBe(true);
   });
 });
+
+describe('жалоба «не сделал» — не просьба о действии (2026-11-10, тест характера)', () => {
+  it('сторож не подменяет тёплый ответ заготовкой «Стоп, честно»', async () => {
+    const { asksForAction } = await import('./jarvis-orchestrator.js');
+    expect(asksForAction('Я сегодня не сделал ни одной задачи')).toBe(false);
+    expect(asksForAction('Ничего не успела сегодня')).toBe(false);
+    expect(asksForAction('я не успел позвонить маме')).toBe(false);
+    // с просьбой — по-прежнему действие
+    expect(asksForAction('не сделал отчёт, перенеси на завтра')).toBe(true);
+    expect(asksForAction('Сделал зарядку')).toBe(true);
+  });
+});

@@ -60,9 +60,9 @@ describe('buildV2EnrichmentBlock — pure', () => {
     const out = buildV2EnrichmentBlock({ ...FULL, entities: [] });
     expect(out).not.toMatch(/ключевые/);
   });
-  it('falls back to JARVIS when no identity', () => {
+  it('нет профиля робота — имя «ЛайфОС» (одно имя везде, 2026-11-10)', () => {
     const out = buildV2EnrichmentBlock({ ...FULL, identity: null });
-    expect(out).toMatch(/имя:\s*JARVIS/);
+    expect(out).toMatch(/имя:\s*ЛайфОС/);
   });
   it('caps patterns at 3 and entities at 5', () => {
     const many: V2EnrichmentData = {

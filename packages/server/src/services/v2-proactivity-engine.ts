@@ -407,6 +407,7 @@ const SKILL_TOOL_LABELS: Record<string, string> = {
 
 // ---- Detectors (A2-A3) -------------------------------------------------------
 
+import { botDisplayName } from '../lib/bot-name.js';
 import { getEntityGraph } from './entity-graph/index.js';
 import { buildUpcomingBirthdays, buildUpcomingMemorials, whenLabel, ageSuffix } from './birthday/index.js';
 import { buildGoalHabitHealth, computeStall, pickWorstStall } from './goal-habits/index.js';
@@ -1764,7 +1765,7 @@ export class V2ProactivityEngine implements ProactivityEngine {
       const identity = await getBotIdentityService()
         .getIdentity(userId)
         .catch(() => null);
-      const botName = identity?.botName ?? 'JARVIS';
+      const botName = botDisplayName(identity?.botName);
       const tone = candidate.toneHint;
       const prompt =
         `Ты — ${botName}, проактивный AI-друг. Сгенерируй ОДНО короткое ` +

@@ -19,3 +19,6 @@ web-build/
 *.swp
 .claude/
 packages/server/scripts/*.js
+
+# тест характера: последний прогон (эталон — baseline.json, в репо)
+packages/server/scripts/persona-eval/last.json

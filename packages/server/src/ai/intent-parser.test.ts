@@ -271,3 +271,13 @@ describe('parseIntent — пустая фраза', () => {
     expect(await parseIntent('   ')).toEqual({ action: 'unknown', text: '   ' });
   });
 });
+
+describe('описание траты без разговорной оговорки (2026-11-10, тест характера)', () => {
+  it('«на кроссовки, хотя копил на отпуск» → «кроссовки»', async () => {
+    const { parseIntent } = await import('./intent-parser.js');
+    const r = await parseIntent('Я потратил 15000 на кроссовки, хотя копил на отпуск', 'Asia/Almaty', new Date('2026-11-10T06:00:00Z'));
+    expect(r).toMatchObject({ action: 'add_expense', amount: 15000, description: 'кроссовки' });
+    const r2 = await parseIntent('Потратил 2000 на хлеб и молоко', 'Asia/Almaty', new Date('2026-11-10T06:00:00Z'));
+    expect(r2).toMatchObject({ description: 'хлеб и молоко' });
+  });
+});

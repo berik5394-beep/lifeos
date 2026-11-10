@@ -14,6 +14,8 @@ import type { ChipConfig } from '@/components/voice/morning-greeting';
  * «Скажи роботу» — дописал и ➤. Голосом — микрофон рядом со строкой.
  */
 export const FIRST_DAY_CHIPS: ChipConfig[] = [
+  // Робот-друг: знакомство — робот сам расспросит о близких, работе, главном (по одной теме).
+  { action: 'ask', icon: '\u{1F91D}', label: 'Познакомиться', text: 'Давай познакомимся' },
   { action: 'prefill', icon: '\u270D\uFE0F', label: 'Написать', text: 'На этой неделе мне нужно ' },
   {
     action: 'prefill',

@@ -16,7 +16,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "eval:persona": "tsx --env-file=.env scripts/persona-eval.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

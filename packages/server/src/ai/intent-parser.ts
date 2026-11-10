@@ -137,7 +137,10 @@ const CURRENCY = String.raw`(?:тенге|тг|₸|рублей|рубля|ру�
 function cleanRest(rest: string): string {
   const t = rest.trim();
   const stripped = t.replace(/^[,.!?\s]+/, '');
-  return /^\d/.test(stripped) ? t : stripped;
+  if (/^\d/.test(stripped)) return t;
+  // «на кроссовки, хотя копил на отпуск» — в описание траты идёт только «кроссовки»;
+  // оговорка после «хотя/но/зато…» — разговор, не название (тест характера 2026-11-10).
+  return stripped.replace(/\s*[,—–-]?\s+(?:хотя|но|зато|правда|потому что|так как|ведь|блин)(?![а-яё]).*$/i, '').trim();
 }
 
 function parseAmount(num: string, word: string | undefined, k: string | undefined): number {

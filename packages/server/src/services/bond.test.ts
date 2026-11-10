@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { daysTogether, daysWord, formatBondSection } from './bond.js';
+import { ACQUAINTANCE_TOPICS, daysTogether, daysWord, formatBondSection, unknownTopics } from './bond.js';
 
 /** «Наша связь» (2026-11-10): друг помнит историю, незакрытое и делится своим. */
 describe('bond — чистые части', () => {
@@ -28,6 +28,31 @@ describe('bond — чистые части', () => {
     expect(full).toContain('Твоя запись в дневнике');
     const bare = formatBondSection({ days: 3, since: new Date('2026-11-07T00:00:00Z'), milestone: null, thread: null, diary: null });
     expect(bare).toBe('Наша история: вы знакомы 3 дня (с 7 ноября).');
-    expect(formatBondSection({ days: 0, since: new Date(), milestone: null, thread: null, diary: null })).toMatch(/первый разговор/);
+    expect(formatBondSection({ days: 0, since: new Date(), milestone: null, thread: null, diary: null })).toMatch(/с сегодняшнего дня/);
+  });
+});
+
+describe('знакомство в первую неделю', () => {
+  it('новичок — не знаем ничего; узнали близких и работу — их больше не спрашиваем', () => {
+    expect(unknownTopics({ people: 0, memories: [], goals: 0 })).toEqual(['people', 'work', 'priority', 'worry', 'joy']);
+    expect(
+      unknownTopics({
+        people: 1,
+        memories: [
+          { type: 'fact', content: 'Работает аналитиком в Kaspi' },
+          { type: 'emotion', content: 'Волнуется из-за переезда' },
+        ],
+        goals: 1,
+      }),
+    ).toEqual(['joy']);
+  });
+  it('блок просит спросить об ОДНОЙ теме и не анкетой', () => {
+    const b = formatBondSection({
+      days: 1, since: new Date('2026-11-09T00:00:00Z'), milestone: null, thread: null, diary: null,
+      unknown: [ACQUAINTANCE_TOPICS.people, ACQUAINTANCE_TOPICS.work],
+    });
+    expect(b).toContain('Вы ещё знакомитесь');
+    expect(b).toContain('кто его близкие');
+    expect(b).toContain('об ОДНОЙ из этих тем');
   });
 });

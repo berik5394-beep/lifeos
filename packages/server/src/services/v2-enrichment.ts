@@ -10,6 +10,7 @@
  * prompt diff stays predictable turn-to-turn.
  */
 
+import { botDisplayName } from '../lib/bot-name.js';
 import { roomContextFromItems } from './room-context.js';
 import { friendshipContextLine } from './friendship.js';
 import { gatherBond } from './bond.js';
@@ -167,7 +168,7 @@ export async function entityRelationshipLines(userId: string, entityIds: string[
 export function buildV2EnrichmentBlock(data: V2EnrichmentData): string {
   const lines: string[] = ['[v2-память]'];
   const id = data.identity;
-  lines.push(`имя: ${id?.botName ?? 'JARVIS'} (стиль: ${id?.style ?? 'default'})`);
+  lines.push(`имя: ${botDisplayName(id?.botName)} (стиль: ${id?.style ?? 'default'})`);
   if (data.patterns.length > 0) {
     const top = data.patterns.slice(0, 3).map((p) => p.summary).join('; ');
     lines.push(`активные паттерны: ${top}`);

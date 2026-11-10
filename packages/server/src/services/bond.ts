@@ -115,6 +115,39 @@ export interface BondFacts {
   milestone: number | null;
   thread: string | null;
   diary: string | null;
+  /** Знакомство (первая неделя): о чём робот ещё не знает. Пусто/нет — уже знакомы. */
+  unknown?: string[];
+}
+
+/** Первая неделя — робот узнаёт человека (как друг, а не анкета). */
+export const ACQUAINTANCE_DAYS = 7;
+
+/** Темы знакомства и как понять, что уже известно (по памяти и данным). */
+export const ACQUAINTANCE_TOPICS = {
+  people: 'кто его близкие (как зовут, кто они ему)',
+  work: 'чем он занимается — работа или учёба',
+  priority: 'что для него сейчас главное в жизни',
+  worry: 'что его сейчас волнует или тревожит',
+  joy: 'что он любит, чем отдыхает и заряжается',
+} as const;
+export type AcquaintanceTopic = keyof typeof ACQUAINTANCE_TOPICS;
+
+const WORK_RE = /работ|учусь|учёб|учеб|студент|бизнес|компани|професси|должност|занимаюсь|предпринимател|фриланс|офис|универ/i;
+
+/** Чего ещё не знаем (чистая функция). */
+export function unknownTopics(known: {
+  people: number;
+  memories: Array<{ type: string; content: string }>;
+  goals: number;
+}): AcquaintanceTopic[] {
+  const has = (types: string[]) => known.memories.some((m) => types.includes(m.type));
+  const out: AcquaintanceTopic[] = [];
+  if (known.people === 0 && !has(['person'])) out.push('people');
+  if (!known.memories.some((m) => WORK_RE.test(m.content))) out.push('work');
+  if (known.goals === 0 && !has(['decision', 'goal'])) out.push('priority');
+  if (!has(['emotion'])) out.push('worry');
+  if (!has(['preference'])) out.push('joy');
+  return out;
 }
 
 /** Блок для мозга (чистый, тестируемый). */
@@ -123,7 +156,7 @@ export function formatBondSection(f: BondFacts): string {
   const since = `${f.since.getUTCDate()} ${MONTHS[f.since.getUTCMonth()]}`;
   L.push(
     f.days === 0
-      ? 'Наша история: вы знакомы с сегодняшнего дня — это первый разговор, расспроси о нём самом.'
+      ? 'Наша история: вы знакомы с сегодняшнего дня.'
       : `Наша история: вы знакомы ${daysWord(f.days)} (с ${since}).`,
   );
   if (f.milestone) L.push(`Сегодня ровно ${daysWord(f.milestone)} знакомства — тепло отметь это один раз, коротко, без пафоса.`);
@@ -134,6 +167,13 @@ export function formatBondSection(f: BondFacts): string {
     );
   }
   if (f.diary) L.push(`Твоя запись в дневнике (можно поделиться к месту, от первого лица): «${f.diary}»`);
+  if (f.unknown && f.unknown.length > 0) {
+    L.push(
+      `Вы ещё знакомитесь. Ты пока не знаешь: ${f.unknown.join('; ')}. В личном разговоре (не в деловых командах) после ответа ` +
+        'спроси об ОДНОЙ из этих тем — живо, с интересом, своими словами, не анкетой и не списком. Ответит — запомнится само; ' +
+        'не переспрашивай то, что он уже рассказал в этом разговоре. Просит «давай познакомимся» — одна тёплая фраза о себе (без перечня функций и без вопросов про приложение) и сразу вопрос о первой теме из списка.',
+    );
+  }
   return L.join('\n');
 }
 
@@ -148,13 +188,25 @@ export async function gatherBond(userId: string, now: Date = new Date()): Promis
     const created = localDateOnlyUTC(tz, user.createdAt);
     const days = daysTogether(created, today);
     const settings = (user.settings ?? {}) as BondSettings;
-    const [{ thread, save }, diary] = await Promise.all([
+    const newcomer = days <= ACQUAINTANCE_DAYS;
+    const [{ thread, save }, diary, known] = await Promise.all([
       currentThread(userId, settings, now),
       prisma.robotDiaryEntry.findFirst({
         where: { userId, day: { lt: today, gte: new Date(today.getTime() - 3 * DAY_MS) } },
         orderBy: { day: 'desc' },
         select: { text: true },
       }),
+      newcomer
+        ? Promise.all([
+            prisma.entity.count({ where: { userId, type: 'person' } }),
+            prisma.memory.findMany({
+              where: { userId, type: { not: 'message' }, OR: [{ invalidAt: null }, { invalidAt: { gt: now } }] },
+              select: { type: true, content: true },
+              take: 300,
+            }),
+            prisma.yearlyGoal.count({ where: { userId } }),
+          ]).then(([people, memories, goals]) => ({ people, memories, goals }))
+        : Promise.resolve(null),
     ]);
     if (save) await mergeSettings(userId, save).catch(() => {});
     const diaryText = diary?.text ? diary.text.replace(/\s+/g, ' ').trim() : null;
@@ -163,6 +215,7 @@ export async function gatherBond(userId: string, now: Date = new Date()): Promis
       since: created,
       milestone: (BOND_MILESTONES as readonly number[]).includes(days) ? days : null,
       thread: thread?.content ?? null,
+      unknown: known ? unknownTopics(known).map((t) => ACQUAINTANCE_TOPICS[t]) : undefined,
       diary: diaryText ? (diaryText.length > DIARY_MAX_CHARS ? `${diaryText.slice(0, DIARY_MAX_CHARS - 1)}…` : diaryText) : null,
     });
   } catch (err) {
