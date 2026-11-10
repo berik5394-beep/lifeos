@@ -25,3 +25,14 @@ describe('follow-ups — чистые части', () => {
     expect(heavy).toContain('очень бережно');
   });
 });
+
+describe('C: робот спросил о теме?', () => {
+  it('вопрос с темой (с другим окончанием) — да; без вопроса или про другое — нет', async () => {
+    const { mentionsTopic } = await import('./follow-ups.js');
+    expect(mentionsTopic('Собеседование в Kaspi', 'Привет! Как прошло собеседование в Kaspi?')).toBe(true);
+    expect(mentionsTopic('Собеседование в Kaspi', 'Привет! Как там твоё собеседовании, рассказывай?')).toBe(true);
+    expect(mentionsTopic('Собеседование в Kaspi', 'Собеседование уже было. Чем займёмся сегодня?')).toBe(false);
+    expect(mentionsTopic('Собеседование в Kaspi', 'Как ты сегодня?')).toBe(false);
+    expect(mentionsTopic('Поссорилась с братом из-за денег — тяжело', 'Как вы с братом, помирились?')).toBe(true);
+  });
+});

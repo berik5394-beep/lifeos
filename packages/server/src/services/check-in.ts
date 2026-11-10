@@ -64,10 +64,13 @@ export async function chattedRecently(userId: string, now: Date = new Date()): P
 export async function pickCheckInMemory(
   userId: string,
   now: Date = new Date(),
+  /** H (2026-11-10): уже поднятое роботом в чате — не повторять пушем. */
+  excludeIds: string[] = [],
 ): Promise<{ id: string; type: string; content: string } | null> {
   return prisma.memory.findFirst({
     where: {
       userId,
+      ...(excludeIds.length > 0 ? { id: { notIn: excludeIds } } : {}),
       type: { in: ['event', 'person', 'emotion', 'fact', 'decision'] },
       source: { not: 'v2-episodic' },
       importance: { gte: 5 },

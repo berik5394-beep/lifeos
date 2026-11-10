@@ -407,6 +407,7 @@ const SKILL_TOOL_LABELS: Record<string, string> = {
 
 // ---- Detectors (A2-A3) -------------------------------------------------------
 
+import { askedInChatRecently, memoryIdsRaisedInChat } from './follow-ups.js';
 import { botDisplayName } from '../lib/bot-name.js';
 import { getEntityGraph } from './entity-graph/index.js';
 import { buildUpcomingBirthdays, buildUpcomingMemorials, whenLabel, ageSuffix } from './birthday/index.js';
@@ -938,10 +939,14 @@ async function detectCheckIn(userId: string): Promise<NudgeCandidate[]> {
     if (!(await checkInsEnabled(userId))) return [];
     if (await sourceNudgedWithin(userId, 'check_in', CHECK_IN_EVERY_DAYS, now)) return [];
     if (await chattedRecently(userId, now)) return [];
+    // H (2026-11-10): робот сам спросил о личном в чате за сутки — пуш молчит;
+    // и не берём воспоминание, которое робот уже поднимал в чате.
+    if (await askedInChatRecently(userId, 24, now).catch(() => false)) return [];
+    const raised = await memoryIdsRaisedInChat(userId, 10, now).catch(() => [] as string[]);
     // Вопрос (Haiku) сочиняем НЕ здесь, а в generateNudge — только для
     // реально выбранного нуджа: детектор крутится каждые 10 минут, и фильтры
     // могут его отсеять — иначе платили бы за вопрос на каждом тике.
-    const mem = await pickCheckInMemory(userId, now).catch(() => null);
+    const mem = await pickCheckInMemory(userId, now, raised).catch(() => null);
     const cand: NudgeCandidate = {
       source: 'check_in',
       significance: 0,

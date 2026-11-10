@@ -466,7 +466,14 @@ model FollowUpLog {
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   refKey    String
+  /// О чём (снимок текста на момент предложения).
+  text      String?
   offeredAt DateTime  @default(now())
+  /// Робот спросил в ответе (C).
+  askedAt    DateTime?
+  /// Человек ответил — исход («Меня взяли!»), тоже в память.
+  answeredAt DateTime?
+  outcome    String?
   closedAt  DateTime?
   createdAt DateTime  @default(now())
 

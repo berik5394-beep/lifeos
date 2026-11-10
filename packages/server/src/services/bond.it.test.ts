@@ -119,3 +119,47 @@ describe('настройки человека (E)', () => {
     expect(b).not.toContain('Переживает за маму');
   });
 });
+
+describe('C: спросил → ответ → исход', () => {
+  it('робот спросил — ждём ответ, нового не берём; ответ — исход в журнал и память; потом не всплывает', async () => {
+    const { markFollowUpAsked, recordFollowUpAnswer } = await import('./follow-ups.js');
+    const u = await user();
+    await prisma.calendarEvent.create({ data: { userId: u, title: 'Собеседование в Kaspi', date: day(-1) } });
+    await prisma.calendarEvent.create({ data: { userId: u, title: 'Стоматолог', date: day(-2) } });
+    const f = await currentFollowUp(u, TZ);
+    expect(f?.text).toBe('Собеседование в Kaspi');
+    // ответ робота без вопроса о теме — не «спросил»
+    expect(await markFollowUpAsked(u, 'Привет! Чем займёмся?')).toBe(false);
+    expect(await markFollowUpAsked(u, 'Привет! Как прошло собеседование в Kaspi?')).toBe(true);
+    // пока ждём ответа — ни повтора, ни новой темы
+    expect(await currentFollowUp(u, TZ)).toBeNull();
+    // команда — не ответ
+    expect(await recordFollowUpAnswer(u, 'Запиши расход 3000 на кофе', { isCommand: true })).toBeNull();
+    expect(await recordFollowUpAnswer(u, 'Меня взяли! Выхожу в понедельник', { isCommand: false })).not.toBeNull();
+    const log = await prisma.followUpLog.findFirstOrThrow({ where: { userId: u, refKey: f!.refKey } });
+    expect(log.outcome).toBe('Меня взяли! Выхожу в понедельник');
+    expect(log.closedAt).toBeInstanceOf(Date);
+    const mem = await prisma.memory.findFirstOrThrow({ where: { userId: u, tags: { has: 'follow-up' } } });
+    expect(mem.content).toMatch(/^Как прошло «Собеседование в Kaspi» \(рассказал \d{1,2} [а-я]+\): Меня взяли/);
+    // исход не становится новым «как прошло?»; следующее — другое событие
+    const next = await currentFollowUp(u, TZ, new Date(Date.now() + 20 * H));
+    expect(next?.text).toBe('Стоматолог');
+  });
+});
+
+describe('H: пуш «как ты?» не повторяет спрошенное в чате', () => {
+  it('поднятое в чате — исключено; спросил за сутки — пуш молчит', async () => {
+    const { memoryIdsRaisedInChat, askedInChatRecently, markFollowUpAsked } = await import('./follow-ups.js');
+    const { pickCheckInMemory } = await import('./check-in.js');
+    const u = await user();
+    const a = await prisma.memory.create({ data: { userId: u, type: 'emotion', content: 'Поссорилась с братом — тяжело', source: 'chat', importance: 8, createdAt: new Date(Date.now() - 20 * H) } });
+    const b = await prisma.memory.create({ data: { userId: u, type: 'event', content: 'Ходила на концерт', source: 'chat', importance: 6, createdAt: new Date(Date.now() - 30 * H) } });
+    expect((await currentFollowUp(u, TZ))?.refKey).toBe(`mem:${a.id}`);
+    const raised = await memoryIdsRaisedInChat(u);
+    expect(raised).toContain(a.id);
+    expect((await pickCheckInMemory(u, new Date(), raised))?.id).toBe(b.id);
+    expect(await askedInChatRecently(u)).toBe(false);
+    await markFollowUpAsked(u, 'Как вы с братом, помирились?');
+    expect(await askedInChatRecently(u)).toBe(true);
+  });
+});

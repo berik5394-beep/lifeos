@@ -1,5 +1,6 @@
 import { annotateRelativeDates, civilDiffDays, relativeLabel, ruDate } from '../lib/relative-dates.js';
 import { isLifeMoment } from './life-moment.js';
+import { markFollowUpAsked, recordFollowUpAnswer } from './follow-ups.js';
 import { expenseRemark } from './money-voice.js';
 import { withDoneSummary, type DoneItem } from './done-summary.js';
 import { prisma } from '../lib/prisma.js';
@@ -473,6 +474,9 @@ const NEGATED = /(?:^|[^а-яё])(?:не|ещё\s+не|пока\s+не|нель�
  * (тест «характер не поплыл» 2026-11-10: сторож ловил тёплый ответ на это и
  * подменял его заготовкой «Стоп, честно: я это ещё НЕ записал»).
  */
+/** Намерения-разговоры: такое сообщение может быть ответом на «как прошло?». */
+const CONVERSATIONAL_INTENTS = new Set(['unknown', 'ask_assistant', 'good_morning', 'goodnight', 'get_summary']);
+
 const NEGATED_SELF_REPORT =
   /(?:^|[^а-яё])(?:не|ни\s+одн\S*|ничего\s+не)\s+(?:\S+\s+){0,2}?(?:сделал|выполнил|успел|отметил|закрыл|сделала|выполнила|успела|отметила|закрыла)(?![а-яё])|(?:^|[^а-яё])ничего\s+не\s+(?:сделал|успел|выполнил)/i;
 
@@ -1298,6 +1302,11 @@ async function handleMessageCore(
   early?.catch(() => {});
   const intent = await intentP;
   timing.mark('intent');
+  // C (робот-друг): робот спросил «как прошло?» — это сообщение и есть ответ (исход
+  // в журнал и память), если это не команда. До сборки контекста: незакрытое закрыто.
+  await recordFollowUpAnswer(userId, text, {
+    isCommand: !CONVERSATIONAL_INTENTS.has(intent.action) || asksForAction(text),
+  }).catch(() => null);
 
   // ---- Робот-эпик, Часть 3: открыть панель приложения (без ИИ) ----------
   if (intent.action === 'open_panel' && typeof intent.panel === 'string') {
@@ -2231,6 +2240,8 @@ async function handleMessageCore(
   }
 
   await saveTurn(userId, text, reply);
+  // C: предложенное незакрытое робот реально спросил — отметить (дальше ждём ответ).
+  void markFollowUpAsked(userId, reply).catch(() => null);
 
   // Бейдж = реальные исполненные за ход инструменты (ToolCall).
   // Только успешные (getToolCounts фильтрует error=null). 0 → нет бейджа.
