@@ -12,12 +12,14 @@ import { useNavigation } from '@react-navigation/native';
 import { Button, Input } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth-store';
 import { useColors } from '@/hooks/use-colors';
+import { ConsentCheck } from '@/components/shared/consent-check';
 
 export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [agreed, setAgreed] = useState(false);
 
   const { register, isLoading } = useAuthStore();
   const navigation = useNavigation();
@@ -29,13 +31,17 @@ export default function RegisterScreen() {
       setError('Заполните все поля');
       return;
     }
-    if (password.length < 6) {
-      setError('Пароль должен быть не менее 6 символов');
+    if (password.length < 8) {
+      setError('Пароль должен быть не менее 8 символов');
+      return;
+    }
+    if (!agreed) {
+      setError('Отметь согласие ниже — без него помощник не сможет работать');
       return;
     }
     setError('');
     try {
-      await register(email.trim(), name.trim(), password);
+      await register(email.trim(), name.trim(), password, true);
       // Navigation auto-switches via root navigator when token is set
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка регистрации';
@@ -78,12 +84,15 @@ export default function RegisterScreen() {
 
           <Input
             label="Пароль"
-            placeholder="Минимум 6 символов"
+            placeholder="Минимум 8 символов"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
             autoCapitalize="none"
           />
+
+          {/* Согласие: 16+, условия, передача данных стороннему ИИ (App Store 5.1.2(i)). */}
+          <ConsentCheck checked={agreed} onToggle={() => setAgreed((v) => !v)} />
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -91,7 +100,7 @@ export default function RegisterScreen() {
             title="Зарегистрироваться"
             onPress={handleRegister}
             loading={isLoading}
-            disabled={isLoading}
+            disabled={isLoading || !agreed}
             size="lg"
           />
         </View>

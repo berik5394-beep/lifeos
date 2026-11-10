@@ -53,6 +53,7 @@ const SubscriptionScreen = React.lazy(() => import('@/screens/subscription'));
 const ExportScreen = React.lazy(() => import('@/screens/export'));
 const LifeInsightsScreen = React.lazy(() => import('@/screens/life-insights'));
 const LegalScreen = React.lazy(() => import('@/screens/legal'));
+const ConsentScreen = React.lazy(() => import('@/screens/consent'));
 
 import { ErrorBoundary } from '@/components/shared/error-boundary';
 import { OfflineBanner } from '@/components/shared/offline-banner';
@@ -94,6 +95,7 @@ function AuthNavigator() {
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
       <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <AuthStack.Screen name="Legal" component={LegalScreen} />
     </AuthStack.Navigator>
   );
 }
@@ -107,6 +109,12 @@ export default function Navigation() {
   const token = useAuthStore((s) => s.token);
   const loadStoredAuth = useAuthStore((s) => s.loadStoredAuth);
   const refreshAuth = useAuthStore((s) => s.refreshAuth);
+  const consentRequired = useAuthStore((s) => s.consentRequired);
+  const checkConsent = useAuthStore((s) => s.checkConsent);
+  // Вошёл (или сменил аккаунт) — сервер скажет, нужно ли согласие.
+  useEffect(() => {
+    if (token) void checkConsent();
+  }, [token, checkConsent]);
 
   useEffect(() => {
     (async () => {
@@ -186,6 +194,11 @@ export default function Navigation() {
           <RootStack.Screen name="Onboarding" component={OnboardingScreen} />
         ) : !token ? (
           <RootStack.Screen name="Auth" component={AuthNavigator} />
+        ) : consentRequired ? (
+          <>
+            <RootStack.Screen name="Consent" component={ConsentScreen} />
+            <RootStack.Screen name="Legal" component={LegalScreen} />
+          </>
         ) : (
           <>
             <RootStack.Screen name="Home" component={HomeScreen} />

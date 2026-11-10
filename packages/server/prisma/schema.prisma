@@ -34,6 +34,13 @@ model User {
   quietHoursEnd   String?
   settings        Json     @default("{}")
   createdAt       DateTime @default(now())
+  // App Store 2026-11-10: явное согласие (условия + политика + передача данных
+  // стороннему ИИ, 5.1.2(i)) и подтверждение возраста 16+. consentVersion старше
+  // CONSENT_VERSION (src/legal/legal-text.ts) → приложение спросит снова.
+  consentAt       DateTime?
+  consentVersion  String?
+  // Токсичный стиль включается только после подтверждения предупреждения (сервер проверяет).
+  toxicConsentAt  DateTime?
 
   habits                 Habit[]
   habitLogs              HabitLog[]

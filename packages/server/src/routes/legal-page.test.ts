@@ -21,3 +21,20 @@ describe('/privacy — публичная политика конфиденци�
     expect(html).toMatch(/Удалить аккаунт/);
   });
 });
+
+describe('/terms и /support — ссылки для App Store Connect (2026-11-10)', () => {
+  it('отдаются без входа', async () => {
+    const app = Fastify();
+    registerSecurityHeaders(app);
+    await app.register(legalPageRoutes);
+    for (const [url, text] of [['/terms', 'Условия использования'], ['/support', 'Поддержка']] as const) {
+      const res = await app.inject({ method: 'GET', url });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toContain(text);
+    }
+    await app.close();
+  });
+  it('согласие на сторонний ИИ описано в политике', () => {
+    expect(renderPrivacyHtml()).toMatch(/явного согласия/);
+  });
+});

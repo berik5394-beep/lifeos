@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { storage } from '@/services/storage';
 import { api, ApiError } from '@/services/api';
+import { CONSENT_VERSION } from '@/constants/legal-text';
 
 interface User {
   id: string;
@@ -22,8 +23,16 @@ interface AuthState {
   user: User | null;
   isLoading: boolean;
   error: string | null;
+  /**
+   * Сервер ждёт согласия (16+, условия, сторонний ИИ) — не дано или политика
+   * обновилась. Пока true — вместо приложения экран согласия (App Store 2026-11-10).
+   */
+  consentRequired: boolean;
+  checkConsent: () => Promise<void>;
+  acceptConsent: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, name: string, password: string) => Promise<void>;
+  /** consent — галочка «16+, условия, сторонний ИИ» на экране регистрации. */
+  register: (email: string, name: string, password: string, consent?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   deleteAccount: (password: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -40,6 +49,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: false,
   error: null,
+  consentRequired: false,
+
+  checkConsent: async () => {
+    const token = get().token;
+    if (!token) return;
+    try {
+      const me = await api.get<{ user?: { consentRequired?: boolean } }>('/auth/me', token);
+      set({ consentRequired: me.user?.consentRequired === true });
+    } catch {
+      // Нет сети — не держим человека снаружи; спросим при следующем запуске.
+    }
+  },
+
+  acceptConsent: async () => {
+    const token = get().token;
+    if (!token) return;
+    await api.post('/auth/consent', { ageConfirmed: true, version: CONSENT_VERSION }, token);
+    set({ consentRequired: false });
+  },
 
   login: async (email: string, password: string) => {
     set({ isLoading: true, error: null });
@@ -61,13 +89,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  register: async (email: string, name: string, password: string) => {
+  register: async (email: string, name: string, password: string, consent = false) => {
     set({ isLoading: true, error: null });
     try {
       const data = await api.post<AuthResponse>('/auth/register', {
         email,
         name,
         password,
+        ...(consent ? { consent: true } : {}),
       });
       await SecureStore.setItemAsync('token', data.accessToken);
       await SecureStore.setItemAsync('refreshToken', data.refreshToken);
@@ -113,7 +142,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Сторы, облачко, будильники и настройки прошлого аккаунта — не следующему.
     const { resetUserSession } = await import('@/services/session-reset');
     await resetUserSession().catch(() => {});
-    set({ token: null, refreshToken: null, user: null, error: null });
+    set({ token: null, refreshToken: null, user: null, error: null, consentRequired: false });
   },
 
   deleteAccount: async (password: string) => {
@@ -136,7 +165,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // Сторы, облачко, будильники — не достаются следующему аккаунту.
     const { resetUserSession } = await import('@/services/session-reset');
     await resetUserSession().catch(() => {});
-    set({ token: null, refreshToken: null, user: null, error: null });
+    set({ token: null, refreshToken: null, user: null, error: null, consentRequired: false });
   },
 
   changePassword: async (currentPassword: string, newPassword: string) => {

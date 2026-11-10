@@ -54,7 +54,10 @@ export function notifyPrefOn(field: keyof typeof NOTIFY_PREF_KEYS): boolean {
 export async function saveAssistantProfile(patch: AssistantProfile): Promise<void> {
   const token = useAuthStore.getState().token;
   if (!token) throw new Error('Войди в аккаунт.');
-  await api.patch('/auth/profile', patch, token);
+  // Токсичный стиль выбирают только через предупреждение «будет грубым» (Настройки,
+  // знакомство) — сервер требует подтверждение (App Store 2026-11-10).
+  const body = patch.assistantStyle === 'toxic' ? { ...patch, toxicConsent: true } : patch;
+  await api.patch('/auth/profile', body, token);
   cache(patch);
 }
 

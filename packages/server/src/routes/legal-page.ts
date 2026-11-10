@@ -1,114 +1,96 @@
 import type { FastifyInstance } from 'fastify';
+import {
+  LEGAL_UPDATED,
+  PRIVACY_SECTIONS,
+  SUPPORT_EMAIL,
+  TERMS_SECTIONS,
+  type LegalSection,
+} from '../legal/legal-text.js';
 
 /**
- * Публичная политика конфиденциальности (без входа) — ссылка для Apple
- * (TestFlight внешнее тестирование / App Store) и Google Play.
- * Текст — тот же, что в приложении (apps/mobile/app/legal.tsx, вкладка
- * «Конфиденциальность»), плюс фактические обработчики данных, которых там
- * не было: Voyage AI (поиск по памяти) и Google (календарь — по желанию).
- * Меняешь текст — поменяй и в приложении.
+ * Публичные страницы без входа — ссылки для App Store Connect и Google Play:
+ * /privacy (Privacy Policy URL), /terms (условия), /support (Support URL).
+ * Текст — общий с приложением (src/legal/legal-text.ts = apps/mobile/constants/legal-text.ts),
+ * раньше здесь жила своя копия и расходилась с экраном в приложении.
  */
 
-const CONTACT_EMAIL = process.env.SUPPORT_EMAIL || 'support@lifeos.kz';
-
-interface Section {
-  title: string;
-  items: string[];
-}
-
-const PRIVACY: Section[] = [
-  {
-    title: '1. Какие данные мы собираем',
-    items: [
-      'Данные аккаунта: имя, адрес электронной почты, пароль (хранится только в виде необратимого хеша).',
-      'Привычки и задачи: названия, статус выполнения, приоритеты, категории, даты.',
-      'Финансовые данные: суммы доходов и расходов, категории, лимиты бюджета, описания операций.',
-      'Дневник самочувствия: сон, настроение, энергия, личные заметки.',
-      'Цели: годовые, месячные и недельные цели, прогресс.',
-      'События календаря: встречи, время, место, описание.',
-      'Сообщения ассистенту и то, что ассистент запомнил о вас из разговоров (чтобы советы были личными).',
-      'Голосовые данные: аудио голосовых команд — передаётся на распознавание и не хранится после обработки.',
-      'Импортированные файлы (xlsx, csv, ics) — для извлечения данных.',
-    ],
-  },
-  {
-    title: '2. Как мы используем данные',
-    items: [
-      'Персонализация: прогресс, статистика, рекомендации по вашим привычкам и целям.',
-      'AI-ассистент: анализ задач, привычек, финансов и расписания для личных советов и напоминаний.',
-      'Уведомления о задачах, встречах и достижениях.',
-      'Синхронизация между устройствами.',
-      'Мы НЕ используем ваши данные для рекламы и НЕ продаём их третьим лицам.',
-    ],
-  },
-  {
-    title: '3. Хранение и защита',
-    items: [
-      'Сервер размещён на Railway (railway.app), передача данных — только по TLS.',
-      'Пароли — bcrypt-хеши; мы не видим ваш пароль.',
-      'Вход — JWT-токены с обновлением; данные одного пользователя недоступны другим.',
-      'Чувствительные документы и токены интеграций хранятся в зашифрованном виде.',
-    ],
-  },
-  {
-    title: '4. Третьи стороны (обработчики данных)',
-    items: [
-      'Anthropic (Claude API) — текст сообщений и контекст (задачи, привычки, финансы) для ответов ассистента. Anthropic не обучает модели на данных API. anthropic.com/privacy',
-      'Groq — аудио голосовых команд для распознавания речи; не хранится. groq.com/privacy',
-      'Voyage AI — текст заметок ассистента превращается в числовые векторы для поиска по памяти. voyageai.com/privacy',
-      'Google — только если вы сами подключите Google Календарь: события календаря. policies.google.com/privacy',
-      'Expo — доставка push-уведомлений (токен устройства и текст уведомления).',
-      'Railway — хостинг сервера и базы данных PostgreSQL.',
-      'Рекламным сетям и аналитическим платформам данные не передаются.',
-    ],
-  },
-  {
-    title: '5. Ваши права',
-    items: [
-      'Просматривать свои данные в приложении в любой момент.',
-      'Экспортировать данные (финансы, привычки, задачи) в CSV.',
-      'Удалить аккаунт и все данные в приложении: «Настройки → Удалить аккаунт».',
-      `Задать вопрос о своих данных: ${CONTACT_EMAIL}.`,
-    ],
-  },
-  {
-    title: '6. Возраст',
-    items: [
-      'LifeOS не предназначен для лиц младше 16 лет. Если ребёнок передал нам данные — напишите нам, мы их удалим.',
-    ],
-  },
-  {
-    title: '7. Изменения политики',
-    items: ['При существенных изменениях мы сообщим в приложении. Актуальная версия всегда по этой ссылке.'],
-  },
-];
+const CONTACT_EMAIL = process.env.SUPPORT_EMAIL || SUPPORT_EMAIL;
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-export function renderPrivacyHtml(): string {
-  const body = PRIVACY.map(
-    (s) => `<h2>${esc(s.title)}</h2>\n<ul>${s.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`,
-  ).join('\n');
+/** Текст раздела → HTML: строки «- …» — список, остальное — абзацы. */
+function renderBody(body: string): string {
+  const out: string[] = [];
+  let list: string[] = [];
+  const flush = () => {
+    if (list.length) out.push(`<ul>${list.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`);
+    list = [];
+  };
+  for (const raw of body.replaceAll(SUPPORT_EMAIL, CONTACT_EMAIL).split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith('- ')) list.push(line.slice(2));
+    else {
+      flush();
+      out.push(`<p>${esc(line)}</p>`);
+    }
+  }
+  flush();
+  return out.join('\n');
+}
+
+function page(title: string, content: string): string {
   return `<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LifeOS — Политика конфиденциальности</title>
-<style>body{font-family:-apple-system,system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px;line-height:1.55;color:#0F172A}h1{font-size:24px}h2{font-size:18px;margin-top:28px}li{margin:6px 0}.muted{color:#64748B;font-size:14px}</style>
+<title>LifeOS — ${esc(title)}</title>
+<style>body{font-family:-apple-system,system-ui,sans-serif;max-width:720px;margin:0 auto;padding:24px 16px;line-height:1.55;color:#0F172A}h1{font-size:24px}h2{font-size:18px;margin-top:28px}li{margin:6px 0}.muted{color:#64748B;font-size:14px}a{color:#4F46E5}</style>
 </head><body>
-<h1>LifeOS — Политика конфиденциальности</h1>
-<p class="muted">Дата обновления: 5 ноября 2026 г.</p>
-${body}
-<p class="muted">Контакт: ${esc(CONTACT_EMAIL)}</p>
+<h1>LifeOS — ${esc(title)}</h1>
+${content}
+<p class="muted">Контакт: <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> · <a href="/privacy">Конфиденциальность</a> · <a href="/terms">Условия</a> · <a href="/support">Поддержка</a></p>
 </body></html>`;
+}
+
+function renderSections(title: string, sections: LegalSection[]): string {
+  const body = sections.map((s) => `<h2>${esc(s.title)}</h2>\n${renderBody(s.body)}`).join('\n');
+  return page(title, `<p class="muted">Дата обновления: ${esc(LEGAL_UPDATED)}</p>\n${body}`);
+}
+
+export function renderPrivacyHtml(): string {
+  return renderSections('Политика конфиденциальности', PRIVACY_SECTIONS);
+}
+
+export function renderTermsHtml(): string {
+  return renderSections('Условия использования', TERMS_SECTIONS);
+}
+
+export function renderSupportHtml(): string {
+  return page(
+    'Поддержка',
+    `<p>LifeOS — личный помощник: задачи, привычки, цели, финансы и робот-друг, который всё это помнит.</p>
+<h2>Как связаться</h2>
+<p>Напишите на <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> — ответим в течение 2 рабочих дней.</p>
+<h2>Частые вопросы</h2>
+<ul>
+<li>Как удалить аккаунт и все данные? «Настройки → Удалить аккаунт» в приложении — данные стираются с сервера.</li>
+<li>Как выгрузить данные? «Настройки → Экспорт» (CSV); полную копию пришлём по запросу на почту выше.</li>
+<li>Робот грубит? Это стиль «Токсичный мотиватор» — смените стиль в «Настройках».</li>
+<li>Не работает голос? Разрешите доступ к микрофону в настройках iPhone → LifeOS.</li>
+</ul>`,
+  );
 }
 
 export async function legalPageRoutes(app: FastifyInstance): Promise<void> {
   // Публично, без auth. Свой CSP: разрешаем только встроенный стиль страницы.
-  app.get('/privacy', async (_request, reply) => {
+  const html = (render: () => string) => async (_request: unknown, reply: import('fastify').FastifyReply) => {
     reply.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
     reply.type('text/html; charset=utf-8');
-    return renderPrivacyHtml();
-  });
+    return render();
+  };
+  app.get('/privacy', html(renderPrivacyHtml));
+  app.get('/terms', html(renderTermsHtml));
+  app.get('/support', html(renderSupportHtml));
 }

@@ -1,3 +1,4 @@
+import { CONSENT_VERSION } from '../legal/legal-text.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
@@ -27,6 +28,14 @@ const registerSchema = z.object({
   password: z.string().min(8, 'Пароль минимум 8 символов').max(128),
   assistantGender: z.enum(['male', 'female']).optional(),
   wakeUpTime: z.string().regex(/^\d{2}:\d{2}$/, 'Формат HH:MM').optional(),
+  // Галочка согласия на экране регистрации (16+, условия, сторонний ИИ). Старые
+  // сборки без неё регистрируются, но приложение спросит согласие при входе.
+  consent: z.boolean().optional(),
+});
+
+const consentSchema = z.object({
+  ageConfirmed: z.literal(true),
+  version: z.string().max(32),
 });
 
 const loginSchema = z.object({
@@ -51,6 +60,8 @@ const refreshSchema = z.object({
 const profileUpdateSchema = z.object({
   name: z.string().min(2, 'Имя слишком короткое').max(100).optional(),
   assistantStyle: z.enum(['friendly', 'strict', 'calm', 'toxic']).optional(),
+  // Человек прочитал предупреждение «будет грубым» и согласился (нужно для toxic).
+  toxicConsent: z.boolean().optional(),
   assistantGender: z.enum(['male', 'female']).optional(),
   wakeUpTime: z.string().regex(/^\d{2}:\d{2}$/, 'Формат HH:MM').optional(),
   currency: z.string().max(8).optional(),
@@ -144,7 +155,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post('/auth/register', {
     preHandler: [registerLimiter, validate(registerSchema)],
   }, async (request, reply) => {
-    const { email, name, password, assistantGender, wakeUpTime } =
+    const { email, name, password, assistantGender, wakeUpTime, consent } =
       request.body as z.infer<typeof registerSchema>;
 
     // Усиленная валидация пароля
@@ -168,6 +179,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         passwordHash,
         ...(assistantGender ? { assistantGender } : {}),
         ...(wakeUpTime ? { wakeUpTime } : {}),
+        ...(consent === true ? { consentAt: new Date(), consentVersion: CONSENT_VERSION } : {}),
       },
     });
 
@@ -546,6 +558,22 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (body.therapeuticMode !== undefined)
       dataToUpdate.therapeuticMode = body.therapeuticMode;
 
+    // Токсичный стиль — только после согласия с предупреждением (App Store:
+    // проверка на сервере, не только Alert в приложении — прямой PATCH его обходил).
+    let toxicConsentAt: Date | undefined;
+    if (body.assistantStyle === 'toxic') {
+      if (body.toxicConsent === true) {
+        toxicConsentAt = new Date();
+      } else {
+        const cur = await prisma.user.findUnique({ where: { id: userId }, select: { toxicConsentAt: true } });
+        if (!cur?.toxicConsentAt) {
+          return reply.status(400).send({
+            message: 'Токсичный стиль грубый и саркастичный. Подтверди предупреждение, чтобы включить его.',
+          });
+        }
+      }
+    }
+
     // settings — JSON: сливаем, а не затираем (там могут быть другие ключи).
     let settingsUpdate: Record<string, unknown> | undefined;
     const notifyKeys = (['morningReminder', 'eveningReview', 'taskReminders'] as const).filter((k) => body[k] !== undefined);
@@ -578,7 +606,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     // Уровень интерфейса — не про отношения с роботом: в память не пишем.
     const user = await prisma.user.update({
       where: { id: userId },
-      data: { ...dataToUpdate, ...(settingsUpdate ? { settings: settingsUpdate as Prisma.InputJsonValue } : {}) },
+      data: {
+        ...dataToUpdate,
+        ...(toxicConsentAt ? { toxicConsentAt } : {}),
+        ...(settingsUpdate ? { settings: settingsUpdate as Prisma.InputJsonValue } : {}),
+      },
       select: {
         id: true,
         email: true,
@@ -615,10 +647,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         wakeUpTime: true,
         therapeuticMode: true,
         settings: true,
+        consentVersion: true,
       },
     });
     if (!user) return reply.status(404).send({ message: 'Не найден' });
-    const { settings, ...rest } = user;
+    const { settings, consentVersion, ...rest } = user;
+    // Согласие не дано или устарело (политика поменялась) — приложение спросит.
+    const consentRequired = consentVersion !== CONSENT_VERSION;
     const st = (settings ?? {}) as { checkIns?: unknown; uiComplexity?: unknown; morningReminder?: unknown; eveningReview?: unknown; taskReminders?: unknown };
     const checkIns = st.checkIns !== false;
     // Тумблеры уведомлений (по умолчанию вкл) — телефон подтягивает их при входе.
@@ -627,6 +662,27 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     const taskReminders = st.taskReminders !== false;
     const uiComplexity =
       st.uiComplexity === 'simple' || st.uiComplexity === 'standard' || st.uiComplexity === 'power' ? st.uiComplexity : null;
-    return reply.send({ user: { ...rest, checkIns, uiComplexity, morningReminder, eveningReview, taskReminders }, disclaimer: disclaimerFull() });
+    return reply.send({
+      user: { ...rest, checkIns, uiComplexity, morningReminder, eveningReview, taskReminders, consentRequired },
+      consentVersion: CONSENT_VERSION,
+      disclaimer: disclaimerFull(),
+    });
+  });
+
+  // ----- CONSENT -------------------------------------------------------------
+  // Экран согласия (16+, условия, передача данных стороннему ИИ). Сохраняем
+  // время и версию — доказательство согласия (App Store 5.1.2(i)).
+  app.post('/auth/consent', {
+    preHandler: [authMiddleware, validate(consentSchema)],
+  }, async (request, reply) => {
+    const { version } = request.body as z.infer<typeof consentSchema>;
+    if (version !== CONSENT_VERSION) {
+      return reply.status(409).send({ message: 'Условия обновились — открой их заново.', consentVersion: CONSENT_VERSION });
+    }
+    await prisma.user.update({
+      where: { id: request.userId },
+      data: { consentAt: new Date(), consentVersion: CONSENT_VERSION },
+    });
+    return reply.send({ consentVersion: CONSENT_VERSION });
   });
 }

@@ -7,6 +7,7 @@ import { useRobotReactionStore } from '@/stores/robot-reaction-store';
 import { ChatInputRow } from './chat-input-row';
 import { ChatReplyBubble } from './chat-reply-bubble';
 import { ChatThreadBubble } from './chat-thread-bubble';
+import { useAuthStore } from '@/stores/auth-store';
 import { spacing } from '@/constants';
 import { routeHasCommandBar } from '@/services/command-bar';
 import { useCurrentRoute, useReplyBubble } from '@/hooks/use-reply-bubble';
@@ -99,7 +100,9 @@ export const CommandLayout = memo(function CommandLayout({ routeName, children }
   // Облачко-диалог не выше половины свободного места — сверху остаётся экран.
   const replyMax = Math.max(120, (height - pad - insets.top - 80) * 0.6);
   const wrap = useMemo(() => [styles.bar, { backgroundColor: c.background, paddingBottom: pad }], [c.background, pad]);
-  if (!routeHasCommandBar(routeName)) return <>{children}</>;
+  // Пока не дано согласие на передачу данных ИИ — говорить с роботом нельзя (и с «Правовой информации»).
+  const consentRequired = useAuthStore((st) => st.consentRequired);
+  if (!routeHasCommandBar(routeName) || consentRequired) return <>{children}</>;
   return (
     <View style={styles.fill}>
       <View style={styles.fill}>{children}</View>

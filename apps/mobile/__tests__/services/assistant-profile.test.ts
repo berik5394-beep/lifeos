@@ -9,7 +9,7 @@ describe('стиль ассистента — на сервере, не толь
   it('выбор стиля уходит в PATCH /auth/profile и кэшируется', async () => {
     mocked.patch.mockResolvedValueOnce({});
     await saveAssistantProfile({ assistantStyle: 'toxic' });
-    expect(mocked.patch).toHaveBeenCalledWith('/auth/profile', { assistantStyle: 'toxic' }, 'test-token-123');
+    expect(mocked.patch).toHaveBeenCalledWith('/auth/profile', { assistantStyle: 'toxic', toxicConsent: true }, 'test-token-123');
     expect(storage.getString('assistantStyle')).toBe('toxic');
   });
   it('сервер не сохранил → ошибка, кэш не меняется', async () => {

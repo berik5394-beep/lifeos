@@ -3,7 +3,7 @@
  * обоими экранами), у истории чата и разговора — свой ввод, у входа и
  * знакомства — ещё нет аккаунта. Остальные экраны стека — со строкой.
  */
-const NO_BAR = new Set(['Home', 'ChatHistory', 'VoiceConversation', 'Onboarding', 'Auth', 'Login', 'Register']);
+const NO_BAR = new Set(['Home', 'ChatHistory', 'VoiceConversation', 'Onboarding', 'Auth', 'Login', 'Register', 'Consent']);
 
 export function routeHasCommandBar(routeName: string): boolean {
   return !NO_BAR.has(routeName);

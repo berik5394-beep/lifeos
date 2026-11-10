@@ -1,5 +1,7 @@
 export type RootStackParamList = {
   Onboarding: undefined;
+  /** Согласие (16+, условия, сторонний ИИ) — пока не дано, вместо приложения. */
+  Consent: undefined;
   Auth: undefined;
   Home: undefined;
   Dashboard: undefined;
@@ -38,5 +40,7 @@ export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
   ForgotPassword: { email?: string } | undefined;
+  /** Политика и условия — до входа тоже (ссылка у галочки согласия). */
+  Legal: undefined;
 };
 
