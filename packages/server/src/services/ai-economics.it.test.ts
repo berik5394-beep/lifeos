@@ -55,3 +55,22 @@ describe('экономика и удержание (БД)', () => {
     expect(d.body).toContain('Вернулись: на следующий день 1 из 1');
   });
 });
+
+describe('J: счётчики друга по БД', () => {
+  it('считает за сутки: предложено, спросил, ответили, круглые даты, дневник', async () => {
+    const { companionStats } = await import('./companion-stats.js');
+    const { PrismaClient } = await import('@prisma/client');
+    const db = new PrismaClient();
+    const u = (await db.user.create({ data: { email: `cs-${Date.now()}@a.test`, name: 'C', passwordHash: 'x' } })).id;
+    const at = new Date('2030-03-05T10:00:00Z');
+    await db.followUpLog.createMany({ data: [
+      { userId: u, refKey: 'event:1', offeredAt: at, askedAt: at, answeredAt: at, closedAt: at },
+      { userId: u, refKey: 'event:2', offeredAt: at },
+      { userId: u, refKey: 'milestone:30', offeredAt: at, askedAt: at, closedAt: at },
+    ] });
+    await db.robotDiaryEntry.create({ data: { userId: u, day: new Date('2030-03-04T00:00:00Z'), text: 'x', createdAt: at } });
+    const s = await companionStats('2030-03-05');
+    expect(s).toMatchObject({ offered: 2, asked: 1, answered: 1, milestones: 1, diaries: 1 });
+    await db.$disconnect();
+  });
+});

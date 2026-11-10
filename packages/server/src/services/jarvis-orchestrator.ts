@@ -1,3 +1,4 @@
+import { rememberRobotSelf } from './robot-self.js';
 import { annotateRelativeDates, civilDiffDays, relativeLabel, ruDate } from '../lib/relative-dates.js';
 import { isLifeMoment } from './life-moment.js';
 import { markFollowUpAsked, recordFollowUpAnswer } from './follow-ups.js';
@@ -2245,6 +2246,8 @@ async function handleMessageCore(
   void markFollowUpAsked(userId, reply).catch(() => null);
   // G: робот отметил круглую дату знакомства — больше не напоминать.
   void markMilestoneCelebrated(userId, reply).catch(() => null);
+  // L: что робот сказал о себе — запомнить, чтобы не противоречить в другой день.
+  void rememberRobotSelf(userId, reply).catch(() => 0);
 
   // Бейдж = реальные исполненные за ход инструменты (ToolCall).
   // Только успешные (getToolCounts фильтрует error=null). 0 → нет бейджа.

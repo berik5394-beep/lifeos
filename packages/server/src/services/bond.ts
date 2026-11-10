@@ -12,6 +12,7 @@
  *     (взаимность — так строится близость, а не только «отвечать и выполнять»).
  * Только факты из БД — ничего не выдумываем. Сбой — null, разговор как раньше.
  */
+import { formatRobotSelf } from './robot-self.js';
 import { prisma } from '../lib/prisma.js';
 import { currentFollowUp, formatFollowUp, type FollowUp } from './follow-ups.js';
 import { gatherJourney } from './journey.js';
@@ -49,6 +50,8 @@ export interface BondFacts {
   milestoneAgo?: number;
   /** Вехи пути (journey.ts) — факты с датами. */
   journey?: string | null;
+  /** Что робот раньше говорил о себе (robot-self.ts, L). */
+  robotSelf?: string | null;
   /** Незакрытое (follow-ups.ts): о чём спросить «как прошло?». */
   thread: FollowUp | null;
   diary: string | null;
@@ -116,6 +119,7 @@ export function formatBondSection(f: BondFacts): string {
   }
   if (f.journey) L.push(f.journey);
   if (f.thread) L.push(formatFollowUp(f.thread));
+  if (f.robotSelf) L.push(f.robotSelf);
   if (f.diary) L.push(`Твоя запись в дневнике (можно поделиться к месту, от первого лица): «${f.diary}»`);
   // D: один вопрос за ответ — есть незакрытое, знакомство в этот раз не подсказываем.
   if (f.unknown && f.unknown.length > 0 && !f.thread) {
@@ -190,7 +194,9 @@ export async function gatherBond(userId: string, now: Date = new Date()): Promis
     const created = localDateOnlyUTC(tz, user.createdAt);
     const days = daysTogether(created, today);
     // E: личные расспросы — только если человек их не выключил.
-    const checkIns = ((user.settings ?? {}) as { checkIns?: unknown }).checkIns !== false;
+    const st = (user.settings ?? {}) as { checkIns?: unknown; robotSelf?: unknown };
+    const checkIns = st.checkIns !== false;
+    const robotSelf = Array.isArray(st.robotSelf) ? formatRobotSelf(st.robotSelf.filter((x): x is string => typeof x === 'string')) : null;
     const quiet: BondFacts['quiet'] = user.therapeuticMode === false ? 'no-support' : !checkIns ? 'no-checkins' : undefined;
     const newcomer = days <= ACQUAINTANCE_DAYS && !quiet;
     const [thread, diary, known, journey] = await Promise.all([
@@ -221,6 +227,7 @@ export async function gatherBond(userId: string, now: Date = new Date()): Promis
       milestone: ms?.m ?? null,
       milestoneAgo: ms?.ago,
       journey,
+      robotSelf,
       thread: thread ? { ...thread, text: annotateRelativeDates(thread.text, localDateStr(tz, now)) } : null,
       unknown: known ? unknownTopics(known).map((t) => ACQUAINTANCE_TOPICS[t]) : undefined,
       quiet,

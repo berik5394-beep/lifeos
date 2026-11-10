@@ -1,3 +1,4 @@
+import { companionLine, companionStats } from './companion-stats.js';
 import { prisma } from '../lib/prisma.js';
 import { SYSTEM_USER } from '../lib/ai-usage.js';
 
@@ -143,7 +144,7 @@ export function isOpsDigestHour(now: Date): boolean {
 }
 
 /** Утренняя сводка владельцу: вчерашний день одним сообщением. */
-export function digestText(s: DaySummary, d1: Retention, d7: Retention): { title: string; body: string } {
+export function digestText(s: DaySummary, d1: Retention, d7: Retention, companion?: string | null): { title: string; body: string } {
   const lines: string[] = [];
   lines.push(`Людей: ${s.activeUsers}${s.newUsers ? ` (новых ${s.newUsers})` : ''}.`);
   lines.push(
@@ -158,11 +159,18 @@ export function digestText(s: DaySummary, d1: Retention, d7: Retention): { title
   if (retParts.length) lines.push(`Вернулись: ${retParts.join(', ')}.`);
   const fails = Object.entries(s.failures);
   lines.push(fails.length ? `Сбои: ${fails.map(([k, v]) => `${k} ×${v}`).join(', ')}.` : 'Сбоев моделей не было.');
+  // J: работает ли «друг» на живых людях (спросил / ответили / дневник / пуши).
+  if (companion) lines.push(companion);
   return { title: `📊 LifeOS за ${s.day.slice(8, 10)}.${s.day.slice(5, 7)}`, body: lines.join('\n') };
 }
 
 export async function buildDailyDigest(now: Date = new Date()): Promise<{ title: string; body: string; summary: DaySummary }> {
   const yesterday = addDays(dayStr(now), -1);
-  const [summary, d1, d7] = await Promise.all([daySummary(yesterday), retentionOn(yesterday, 1), retentionOn(yesterday, 7)]);
-  return { ...digestText(summary, d1, d7), summary };
+  const [summary, d1, d7, comp] = await Promise.all([
+    daySummary(yesterday),
+    retentionOn(yesterday, 1),
+    retentionOn(yesterday, 7),
+    companionStats(yesterday).catch(() => null),
+  ]);
+  return { ...digestText(summary, d1, d7, comp ? companionLine(comp) : null), summary };
 }
