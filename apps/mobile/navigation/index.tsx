@@ -56,6 +56,7 @@ const ConsentScreen = React.lazy(() => import('@/screens/consent'));
 
 import { ErrorBoundary } from '@/components/shared/error-boundary';
 import { OfflineBanner } from '@/components/shared/offline-banner';
+import { crashReporting } from '@/services/crash-reporting';
 import type { RootStackParamList, AuthStackParamList } from './types';
 import { rehydrateStores } from '@/services/rehydrate-stores';
 import { startTalkLinks } from '@/services/talk-link';
@@ -122,6 +123,8 @@ export default function Navigation() {
       } catch {
         // continue with empty cache
       }
+      // Сбои у пользователя — на сервер (раньше только консоль телефона).
+      crashReporting.init();
       // Сохранённые настройки (тема, уровень интерфейса, «Фокус»…) — только после storage.load().
       rehydrateStores();
       await loadStoredAuth();

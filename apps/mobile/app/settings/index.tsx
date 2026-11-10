@@ -13,7 +13,7 @@ import { storage } from '@/services/storage';
 import { resyncDailyDigests, DEFAULT_WAKE_UP } from '@/services/daily-digests';
 import { saveAssistantProfile, loadAssistantProfile, NOTIFY_PREF_KEYS, type AssistantProfile } from '@/services/assistant-profile';
 import { cancelAllTaskReminders } from '@/services/task-reminders';
-import { exportCSV } from '@/services/export';
+import { exportAllData, exportCSV } from '@/services/export';
 import { useAuthStore } from '@/stores/auth-store';
 import { useThemeStore } from '@/stores/theme-store';
 import { themeLabels, themeIcons, type ThemeName } from '@/constants/themes';
@@ -515,6 +515,14 @@ export default function SettingsScreen() {
         { text: '💰 Финансы (CSV)', onPress: () => handleExportModule('finance') },
         { text: '🏃 Привычки (CSV)', onPress: () => handleExportModule('habits') },
         { text: '📋 Задачи (CSV)', onPress: () => handleExportModule('tasks') },
+        {
+          text: '📦 Все мои данные (JSON)',
+          onPress: () => {
+            exportAllData().catch((err) =>
+              Alert.alert('Ошибка', err instanceof Error && err.message ? err.message : 'Не удалось выгрузить данные'),
+            );
+          },
+        },
         { text: 'Отмена', style: 'cancel' },
       ],
     );

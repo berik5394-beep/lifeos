@@ -118,3 +118,42 @@ export function reportProviderFailure(provider: ProviderName, status: number, bo
     console.warn('[ops-alert] report failed:', err instanceof Error ? err.message : err);
   }
 }
+
+/** Разослать текст получателям ops-алертов (пуш на телефон). Никогда не бросает. */
+function notifyOps(title: string, body: string): void {
+  if (!hasOpsRecipients()) return;
+  void Promise.all([opsAlertRecipients(), import('../services/push-service.js')])
+    .then(([ids, { deliverNotification }]) =>
+      Promise.all(ids.map((id) => deliverNotification(id, title, body, { type: 'ops_alert' }))),
+    )
+    .catch((err) => console.warn('[ops-alert] deliver failed:', err instanceof Error ? err.message : err));
+}
+
+/**
+ * Сбой приложения у пользователя (2026-11-10: раньше падения писались только в
+ * консоль телефона — мы о них не знали). Новый вид сбоя — сразу пуш; тот же
+ * повторяется — не чаще раза в час (с числом повторов).
+ */
+export function shouldAlertCrash(signature: string, now: number): { send: boolean; count: number } {
+  const key = `crash:${signature}`;
+  const times = (recent.get(key) ?? []).filter((t) => now - t < COOLDOWN_MS);
+  times.push(now);
+  recent.set(key, times);
+  const last = lastSent.get(key);
+  if (last !== undefined && now - last < COOLDOWN_MS) return { send: false, count: times.length };
+  lastSent.set(key, now);
+  return { send: true, count: times.length };
+}
+
+export function reportClientCrash(message: string, where: string, now: number = Date.now()): void {
+  try {
+    const signature = `${where}|${message.slice(0, 120)}`;
+    const { send, count } = shouldAlertCrash(signature, now);
+    if (!send) return;
+    const body = `${where ? `${where}: ` : ''}${message.slice(0, 160)}${count > 1 ? ` (×${count} за час)` : ''}`;
+    console.error(`[ops-alert] SEND client-crash — ${body}`);
+    notifyOps('Сбой в приложении у пользователя', body);
+  } catch (err) {
+    console.warn('[ops-alert] crash report failed:', err instanceof Error ? err.message : err);
+  }
+}

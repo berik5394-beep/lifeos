@@ -1,3 +1,4 @@
+import { exportAllUserData } from '../services/export-all.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
@@ -151,6 +152,15 @@ function toCsv(headers: string[], rows: (string | number | boolean | null | unde
 
 export async function exportRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
+
+  // --- Все мои данные (JSON, GDPR ст. 20) ---
+  app.post('/export/all', async (request, reply) => {
+    const body = await exportAllUserData(request.userId);
+    const day = new Date().toISOString().slice(0, 10);
+    reply.header('Content-Type', 'application/json; charset=utf-8');
+    reply.header('Content-Disposition', `attachment; filename="lifeos-all-data-${day}.json"`);
+    return reply.send(JSON.stringify(body, null, 2));
+  });
 
   // --- Export CSV ---
 

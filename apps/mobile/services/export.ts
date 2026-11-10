@@ -38,6 +38,15 @@ export async function exportCSV(module: ExportModule): Promise<void> {
   await share(uri, 'text/csv', 'public.comma-separated-values-text', 'Экспорт LifeOS');
 }
 
+/** Все мои данные одним файлом (JSON, GDPR) → «Поделиться» (сохранить в Файлы/почту). */
+export async function exportAllData(): Promise<void> {
+  const res = await api.postRaw('/export/all', undefined, token());
+  if (!res.ok) throw new Error('Сервер не отдал файл, попробуйте ещё раз');
+  const uri = `${cacheDirectory}lifeos_all_data_${today()}.json`;
+  await writeAsStringAsync(uri, await res.text());
+  await share(uri, 'application/json', 'public.json', 'Все данные LifeOS');
+}
+
 /** PDF-отчёт за месяц/год → файл → «Поделиться». */
 export async function exportReport(period: ReportPeriod): Promise<void> {
   // base64 в JSON: читать бинарный ответ fetch в React Native ненадёжно.

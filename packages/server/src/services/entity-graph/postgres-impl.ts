@@ -197,7 +197,9 @@ export class PostgresEntityGraph implements EntityGraphStore {
     const mentionClean = mention.trim().slice(0, 255);
     if (!mentionClean) return null;
 
-    const typeFilter = type ? `AND e.type = '${type.replace(/'/g, "''")}'` : '';
+    // Тип — параметром ($3), не подстановкой в текст запроса (аудит безопасности 2026-11-10).
+    const typeFilter = 'AND ($3::text IS NULL OR e.type = $3)';
+    const typeParam = type ?? null;
 
     // Step 1: FTS match on canonical name (russian stemming).
     // NOTE: SELECT ${COLS} — NOT e.* — to avoid deserializing the Unsupported
@@ -212,6 +214,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
        LIMIT 1`,
       userId,
       mentionClean,
+      typeParam,
     );
     if (nameFts.length > 0) return nameFts[0];
 
@@ -227,6 +230,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
        LIMIT 1`,
       userId,
       mentionClean,
+      typeParam,
     );
     if (aliasFts.length > 0) return aliasFts[0];
 
@@ -236,17 +240,17 @@ export class PostgresEntityGraph implements EntityGraphStore {
       const qvec = await embedQuery(mentionClean);
       if (qvec) {
         const vecLit = toVectorLiteral(qvec);
-        const typeFilterEmbed = type ? `AND e.type = '${type.replace(/'/g, "''")}'` : '';
         const embResult = await prisma.$queryRawUnsafe<Entity[]>(
           `SELECT ${COLS}
            FROM "Entity" e
            WHERE e."userId" = $1
              AND e.embedding IS NOT NULL
-             ${typeFilterEmbed}
+             ${typeFilter}
            ORDER BY e.embedding <=> $2::vector
            LIMIT 1`,
           userId,
           vecLit,
+          typeParam,
         );
         if (embResult.length > 0) return embResult[0];
       }
@@ -263,8 +267,9 @@ export class PostgresEntityGraph implements EntityGraphStore {
   async resolveForMerge(userId: string, mention: string, type: string): Promise<Entity | null> {
     const mentionClean = mention.trim().slice(0, 255);
     if (!mentionClean) return null;
-    const tf = `AND e.type = '${type.replace(/'/g, "''")}'`; // type обязателен
-    const q = (s: string) => prisma.$queryRawUnsafe<Entity[]>(s, userId, mentionClean);
+    // type обязателен; параметром $3, не подстановкой в текст (аудит безопасности 2026-11-10).
+    const tf = 'AND e.type = $3';
+    const q = (s: string) => prisma.$queryRawUnsafe<Entity[]>(s, userId, mentionClean, type);
     // Точность: матч ТОЛЬКО при РАВЕНСТВЕ множеств стем-лексем (не подмножество).
     // tsvector_to_array(...) → отсортированный distinct список лексем; сравнение
     // массивов на равенство порядко-независимо. Loose `@@` мёржил любое общее
@@ -291,6 +296,7 @@ export class PostgresEntityGraph implements EntityGraphStore {
             `SELECT ${COLS}, (e.embedding <=> $2::vector) AS dist FROM "Entity" e WHERE e."userId"=$1 AND e.embedding IS NOT NULL ${tf} ORDER BY e.embedding <=> $2::vector LIMIT 1`,
             userId,
             v,
+            type,
           );
           // «Старший брат» ≈ «Младший брат» по смыслу, но это два человека.
           if (rows.length > 0 && shouldMergeByEmbedding(Number(rows[0].dist)) && !kinConflict(rows[0].name, mentionClean)) {
