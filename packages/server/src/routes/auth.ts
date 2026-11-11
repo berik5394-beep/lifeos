@@ -1,5 +1,5 @@
 import { CONSENT_VERSION, SUPPORT_EMAIL } from '../legal/legal-text.js';
-import { isMailConfigured } from '../lib/mailer.js';
+import { isMailWorking } from '../lib/mailer.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
@@ -525,9 +525,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       console.warn('[auth] forgot-password failed:', err instanceof Error ? err.message : err);
     });
     // Ответ одинаковый, есть такой аккаунт или нет — почты не перебрать.
-    // Почта на сервере не настроена — не обещаем письмо (2026-11-11: обещали, а не слали).
-    // Это общее состояние сервера, а не аккаунта — перебора почт не даёт.
-    if (!isMailConfigured()) {
+    // Почта на сервере не настроена или последняя отправка провалилась — не обещаем
+    // письмо (2026-11-11: обещали, а не слали). Это общее состояние сервера, а не
+    // аккаунта — перебора почт не даёт.
+    if (!isMailWorking()) {
       return {
         message: `Если аккаунт с этой почтой есть и к нему подключён Telegram, код пришёл туда. Письма на почту сейчас не отправляются — если кода нет, напишите нам: ${SUPPORT_EMAIL}.`,
       };
