@@ -17,6 +17,11 @@
 ## 2. Оповещения о сбоях (иначе молчат)
 - [x] Railway → сервис **lifeos-api** → Variables: `OPS_ALERT_EMAILS=berik5394@gmail.com`.
 
+## 2а. Письма с кодом «Забыли пароль?» (сейчас НЕ уходят)
+- [ ] Google: включена двухэтапная проверка → https://myaccount.google.com/apppasswords → создать пароль приложения «LifeOS» (16 букв).
+- [ ] Railway → lifeos-api → Variables: `SMTP_USER=berik5394@gmail.com` и `SMTP_PASS=<эти 16 букв>` → Deploy.
+- [ ] Сказать Claude — он запросит код на твою почту и проверит, что письмо пришло.
+
 ## 3. App Store Connect — карточка приложения
 - [x] Privacy Policy URL: `https://lifeos-api-production-736d.up.railway.app/privacy` (открывается)
 - [x] Support URL: `https://lifeos-api-production-736d.up.railway.app/support` (открывается)
