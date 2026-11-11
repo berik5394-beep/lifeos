@@ -72,7 +72,7 @@ export async function requestPasswordReset(
     getTelegramChatId(user.id).catch(() => null),
   ]);
   const telegram = chatId ? await sendTelegramTo(chatId, text).catch(() => false) : false;
-  if (!mailed && !telegram) console.warn(`[password-reset] код не доставлен: нет почты (RESEND_API_KEY/MAIL_FROM) и Telegram (user=${user.id})`);
+  if (!mailed && !telegram) console.warn(`[password-reset] код не доставлен: почта не ушла (SMTP_USER/SMTP_PASS или RESEND_API_KEY/MAIL_FROM) и нет Telegram (user=${user.id})`);
   return { email: mailed, telegram };
 }
 
