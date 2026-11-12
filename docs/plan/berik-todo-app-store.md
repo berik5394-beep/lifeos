@@ -17,12 +17,12 @@
 ## 2. Оповещения о сбоях (иначе молчат)
 - [x] Railway → сервис **lifeos-api** → Variables: `OPS_ALERT_EMAILS=berik5394@gmail.com`.
 
-## 2а. Письма с кодом «Забыли пароль?» (сейчас НЕ уходят)
-- [x] Gmail-пароль приложения в Railway (`SMTP_USER`/`SMTP_PASS`) — добавлен, но **не работает**: Railway на тарифе Hobby закрывает исходящую почту по SMTP (только Pro, $20/мес).
-- [ ] **Brevo (бесплатно, 300 писем/день):** зарегистрироваться на brevo.com → Senders → добавить и подтвердить `berik5394@gmail.com` → SMTP & API → API Keys → создать ключ.
-- [ ] Railway → lifeos-api → Variables: `BREVO_API_KEY=<ключ>` и `MAIL_FROM=LifeOS <berik5394@gmail.com>` → Deploy.
-- [ ] Сказать Claude — он запросит код на твою почту и проверит, что письмо пришло.
-- (Вместо Brevo можно перейти на Railway Pro — тогда заработает уже добавленный Gmail.)
+## 2а. Письма с кодом «Забыли пароль?» — ✅ работают с 2026-11-12
+- [x] Gmail-пароль приложения в Railway (`SMTP_USER`/`SMTP_PASS`) — добавлен, но **не работает**: Railway на тарифе Hobby закрывает исходящую почту по SMTP (только Pro, $20/мес). Остаётся запасным.
+- [x] **Brevo (бесплатно, 300 писем/день):** аккаунт на `berik5394@gmail.com`, отправитель подтверждён, телефон подтверждён, ключ `lifeos-api` (только «Transactional email»).
+- [x] Railway → lifeos-api → Variables: `BREVO_API_KEY` и `MAIL_FROM=LifeOS <berik5394@gmail.com>` → Deploy.
+- [x] Проверено 2026-11-12 18:15: код сброса пришёл во «Входящие» (вкладка «Оповещения»), не в спам. Отправитель в письме — «LifeOS», адрес Brevo подменяет на `…@…brevosend.com` (так он делает для gmail-отправителей; на доставку не влияет).
+- (Свой домен потом — письма будут от `noreply@домен`: Brevo → Senders, Domains → добавить домен и DNS-записи.)
 
 ## 3. App Store Connect — карточка приложения
 - [x] Privacy Policy URL: `https://lifeos-api-production-736d.up.railway.app/privacy` (открывается)
